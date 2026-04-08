@@ -22,6 +22,7 @@ class DatabaseServiceTest {
     @TempDir
     Path tempDir
 
+    private DatabaseService databaseService
     private String previousHome
     private String previousUrl
 
@@ -29,6 +30,7 @@ class DatabaseServiceTest {
     void captureProperties() {
         previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
         previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
+        databaseService = DatabaseService.newForTesting()
     }
 
     @AfterEach
@@ -41,9 +43,9 @@ class DatabaseServiceTest {
     void initializeCreatesBaselineSchemaVersion() {
         System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
 
-        DatabaseService.instance.initialize()
+        databaseService.initialize()
 
-        int version = DatabaseService.instance.withSql { Sql sql ->
+        int version = databaseService.withSql { Sql sql ->
             GroovyRowResult row = sql.firstRow(
                 'select coalesce(max(version), 0) as version from schema_version'
             ) as GroovyRowResult
@@ -59,7 +61,7 @@ class DatabaseServiceTest {
         System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
         System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:file:/tmp/accounting;AUTO_SERVER=TRUE')
 
-        Executable action = { DatabaseService.instance.initialize() } as Executable
+        Executable action = { databaseService.initialize() } as Executable
 
         assertThrows(IllegalStateException, action)
     }

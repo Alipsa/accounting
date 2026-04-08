@@ -3,8 +3,11 @@ package se.alipsa.accounting.ui
 import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
 
+import se.alipsa.accounting.support.LoggingConfigurer
+
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Font
 import java.awt.Image
 import java.util.logging.Logger
 
@@ -47,7 +50,7 @@ final class MainFrame {
         setStatus('Applikationen är startad och redo för fortsatt implementation.')
     }
 
-    void show() {
+    void display() {
         frame.visible = true
     }
 
@@ -78,7 +81,7 @@ final class MainFrame {
                 label(
                     text: 'Alipsa Accounting',
                     horizontalAlignment: SwingConstants.LEFT,
-                    font: new java.awt.Font('Dialog', java.awt.Font.BOLD, 22),
+                    font: new Font('Dialog', Font.BOLD, 22),
                     constraints: BorderLayout.CENTER
                 )
             }
@@ -99,10 +102,12 @@ final class MainFrame {
     }
 
     private JPanel buildPlaceholderPanel(String title, String description) {
+        String safeTitle = escapeHtml(title)
+        String safeDescription = escapeHtml(description)
         swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
             borderLayout()
             label(
-                text: "<html><h2>${title}</h2><p>${description}</p></html>",
+                text: "<html><h2>${safeTitle}</h2><p>${safeDescription}</p></html>",
                 horizontalAlignment: SwingConstants.CENTER,
                 constraints: BorderLayout.CENTER
             )
@@ -110,6 +115,7 @@ final class MainFrame {
     }
 
     private void exitRequested() {
+        LoggingConfigurer.shutdown()
         frame.dispose()
     }
 
@@ -147,5 +153,12 @@ final class MainFrame {
         stream.withCloseable { InputStream input ->
             new ImageIcon(ImageIO.read(input))
         }
+    }
+
+    private static String escapeHtml(String text) {
+        text
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
     }
 }

@@ -10,18 +10,18 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.apache.groovy:groovy:5.0.5'
-    implementation 'org.apache.groovy:groovy-swing:5.0.5'
-    implementation 'org.apache.groovy:groovy-sql:5.0.5'
+    implementation libs.groovy.core
+    implementation libs.groovy.swing
+    implementation libs.groovy.sql
 
-    implementation 'com.h2database:h2:2.2.224'
-    implementation 'se.alipsa:SieParser:2.0'
-    implementation 'org.apache.poi:poi-ooxml:5.3.0'
-    implementation 'se.alipsa.journo:journo-runtime:0.7.3'
+    implementation libs.h2
+    implementation libs.sie.parser
+    implementation libs.poi.ooxml
+    implementation libs.journo.runtime
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
-    testImplementation 'se.alipsa.groovy:groovier-junit:0.3.1'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+    testImplementation libs.junit.jupiter
+    testImplementation libs.groovier.junit
+    testRuntimeOnly libs.junit.platform.launcher
 }
 
 java {

@@ -30,7 +30,7 @@ final class AlipsaAccounting {
             DatabaseService.instance.initialize()
             SwingUtilities.invokeLater {
                 MainFrame mainFrame = new MainFrame()
-                mainFrame.show()
+                mainFrame.display()
             }
         } catch (Throwable throwable) {
             log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', throwable)

@@ -24,9 +24,12 @@ final class DatabaseService {
         new MigrationDefinition(1, 'V1__baseline.sql', '/db/migrations/V1__baseline.sql')
     ]
 
+    static DatabaseService newForTesting() {
+        new DatabaseService()
+    }
+
     void initialize() {
         AppPaths.ensureDirectoryStructure()
-        validateConfiguration()
         withTransaction { Sql sql ->
             ensureSchemaVersionTable(sql)
             applyPendingMigrations(sql)
@@ -65,10 +68,6 @@ final class DatabaseService {
 
     private String defaultDatabaseUrl() {
         "jdbc:h2:file:${AppPaths.databaseBasePath()};AUTO_SERVER=FALSE;DB_CLOSE_ON_EXIT=FALSE"
-    }
-
-    private void validateConfiguration() {
-        validateDatabaseUrl(databaseUrl())
     }
 
     private String validateDatabaseUrl(String url) {
