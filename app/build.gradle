@@ -1,0 +1,85 @@
+plugins {
+    id 'groovy'
+    id 'application'
+    id 'codenarc'
+    id 'com.diffplug.spotless' version '8.4.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.apache.groovy:groovy:5.0.5'
+    implementation 'org.apache.groovy:groovy-swing:5.0.5'
+    implementation 'org.apache.groovy:groovy-sql:5.0.5'
+
+    implementation 'com.h2database:h2:2.2.224'
+    implementation 'se.alipsa:SieParser:2.0'
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    implementation 'se.alipsa.journo:journo-runtime:0.7.3'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'se.alipsa.groovy:groovier-junit:0.3.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'se.alipsa.accounting.AlipsaAccounting'
+}
+
+tasks.withType(GroovyCompile).configureEach {
+    groovyOptions.configurationScript = rootProject.file('config/groovy/compileStatic.groovy')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+codenarc {
+    toolVersion = '3.7.0'
+    configFile = rootProject.file('config/codenarc/ruleset.groovy')
+    ignoreFailures = false
+    maxPriority1Violations = 0
+    maxPriority2Violations = 0
+    maxPriority3Violations = 0
+}
+
+tasks.withType(CodeNarc).configureEach {
+    reports {
+        html.required = true
+        text.required = false
+        xml.required = false
+    }
+}
+
+spotless {
+    groovy {
+        target 'src/*/groovy/**/*.groovy'
+        importOrder('\\#', 'groovy', '', 'se.alipsa', 'java', 'javax')
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+
+    groovyGradle {
+        target '*.gradle'
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+
+    format 'misc', {
+        target '*.md', '.gitignore', '.gitattributes'
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('spotlessCheck')
+}
