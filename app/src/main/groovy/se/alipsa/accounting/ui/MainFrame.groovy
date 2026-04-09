@@ -4,7 +4,9 @@ import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
 
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
@@ -28,7 +30,6 @@ final class MainFrame {
   private static final Logger log = Logger.getLogger(MainFrame.name)
   private static final List<Map<String, String>> PLACEHOLDER_TABS = [
       [title: 'Översikt', description: 'Översikt och status för bokföringen kommer här.'],
-      [title: 'Kontoplan', description: 'Kontoplanen visas här när kontomodulen är implementerad.'],
       [title: 'Verifikationer', description: 'Registrering och sökning av verifikationer kommer här.'],
       [title: 'Rapporter', description: 'Rapporter och export kommer här.']
   ]
@@ -42,6 +43,8 @@ final class MainFrame {
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanySettingsService companySettingsService = new CompanySettingsService()
   private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
+  private final AccountService accountService = new AccountService()
+  private final ChartOfAccountsImportService chartOfAccountsImportService = new ChartOfAccountsImportService()
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService)
   private JLabel statusLabel
   private JLabel companySummaryLabel
@@ -51,7 +54,7 @@ final class MainFrame {
     frame = buildFrame()
     applyIcons()
     refreshCompanySettingsSummary()
-    setStatus('Applikationen är startad och redo för företagsinställningar och räkenskapsår.')
+    setStatus('Applikationen är startad och redo för kontoplan, företagsinställningar och räkenskapsår.')
   }
 
   void display() {
@@ -99,6 +102,10 @@ final class MainFrame {
         PLACEHOLDER_TABS.each { Map<String, String> tab ->
           widget(buildPlaceholderPanel(tab.title, tab.description), title: tab.title)
         }
+        widget(
+            new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService),
+            title: 'Kontoplan'
+        )
         widget(new FiscalYearPanel(fiscalYearService, accountingPeriodService), title: 'Räkenskapsår')
         widget(buildCompanySettingsPanel(), title: 'Inställningar')
       }
@@ -150,7 +157,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 2: företagsdata, räkenskapsår och periodlåsning.',
+        'Alipsa Accounting\nFas 3: kontoplan, BAS-import och ingående balanser.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon

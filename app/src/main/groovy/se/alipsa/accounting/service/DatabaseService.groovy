@@ -22,7 +22,8 @@ final class DatabaseService {
   private static final String DRIVER = 'org.h2.Driver'
   private static final List<MigrationDefinition> MIGRATIONS = [
       new MigrationDefinition(1, 'V1__baseline.sql', '/db/migrations/V1__baseline.sql'),
-      new MigrationDefinition(2, 'V2__company_and_fiscal_years.sql', '/db/migrations/V2__company_and_fiscal_years.sql')
+      new MigrationDefinition(2, 'V2__company_and_fiscal_years.sql', '/db/migrations/V2__company_and_fiscal_years.sql'),
+      new MigrationDefinition(3, 'V3__chart_of_accounts.sql', '/db/migrations/V3__chart_of_accounts.sql')
   ]
 
   static DatabaseService newForTesting() {
