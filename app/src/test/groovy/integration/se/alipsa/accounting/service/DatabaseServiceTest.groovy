@@ -45,14 +45,20 @@ class DatabaseServiceTest {
 
         databaseService.initialize()
 
-        int version = databaseService.withSql { Sql sql ->
-            GroovyRowResult row = sql.firstRow(
-                'select coalesce(max(version), 0) as version from schema_version'
-            ) as GroovyRowResult
-            ((Number) row.version).intValue()
+        GroovyRowResult result = databaseService.withSql { Sql sql ->
+            sql.firstRow('''
+                select
+                    (select coalesce(max(version), 0) from schema_version) as version,
+                    (select count(*) from information_schema.tables where table_name = 'COMPANY_SETTINGS') as companySettings,
+                    (select count(*) from information_schema.tables where table_name = 'FISCAL_YEAR') as fiscalYear,
+                    (select count(*) from information_schema.tables where table_name = 'ACCOUNTING_PERIOD') as accountingPeriod
+            ''') as GroovyRowResult
         }
 
-        assertEquals(1, version)
+        assertEquals(2, ((Number) result.version).intValue())
+        assertEquals(1, ((Number) result.companySettings).intValue())
+        assertEquals(1, ((Number) result.fiscalYear).intValue())
+        assertEquals(1, ((Number) result.accountingPeriod).intValue())
         assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
     }
 
@@ -60,6 +66,16 @@ class DatabaseServiceTest {
     void unsafeDatabaseUrlIsRejected() {
         System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
         System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:file:/tmp/accounting;AUTO_SERVER=TRUE')
+
+        Executable action = { databaseService.initialize() } as Executable
+
+        assertThrows(IllegalStateException, action)
+    }
+
+    @Test
+    void networkedDatabaseUrlIsRejected() {
+        System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+        System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:tcp://localhost/accounting')
 
         Executable action = { databaseService.initialize() } as Executable
 
