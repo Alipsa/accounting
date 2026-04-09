@@ -1,85 +1,92 @@
 plugins {
-    id 'groovy'
-    id 'application'
-    id 'codenarc'
-    id 'com.diffplug.spotless' version '8.4.0'
+  id 'groovy'
+  id 'application'
+  id 'codenarc'
+  id 'com.diffplug.spotless' version '8.4.0'
 }
 
 repositories {
-    mavenCentral()
+  mavenCentral()
 }
 
 dependencies {
-    implementation libs.groovy.core
-    implementation libs.groovy.swing
-    implementation libs.groovy.sql
+  implementation libs.groovy.core
+  implementation libs.groovy.swing
+  implementation libs.groovy.sql
 
-    implementation libs.h2
-    implementation libs.sie.parser
-    implementation libs.poi.ooxml
-    implementation libs.journo.runtime
+  implementation libs.h2
+  implementation libs.sie.parser
+  implementation libs.poi.ooxml
+  implementation libs.journo.runtime
 
-    testImplementation libs.junit.jupiter
-    testImplementation libs.groovier.junit
-    testRuntimeOnly libs.junit.platform.launcher
+  testImplementation libs.junit.jupiter
+  testImplementation libs.groovier.junit
+  testRuntimeOnly libs.junit.platform.launcher
 }
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(21)
+  }
 }
 
 application {
-    mainClass = 'se.alipsa.accounting.AlipsaAccounting'
+  mainClass = 'se.alipsa.accounting.AlipsaAccounting'
 }
 
 tasks.withType(GroovyCompile).configureEach {
-    groovyOptions.configurationScript = rootProject.file('config/groovy/compileStatic.groovy')
+  groovyOptions.configurationScript = rootProject.file('config/groovy/compileStatic.groovy')
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+  useJUnitPlatform()
 }
 
 codenarc {
-    toolVersion = '3.7.0'
-    configFile = rootProject.file('config/codenarc/ruleset.groovy')
-    ignoreFailures = false
-    maxPriority1Violations = 0
-    maxPriority2Violations = 0
-    maxPriority3Violations = 0
+  toolVersion = '3.7.0'
+  configFile = rootProject.file('config/codenarc/ruleset.groovy')
+  ignoreFailures = false
+  maxPriority1Violations = 0
+  maxPriority2Violations = 0
+  maxPriority3Violations = 0
 }
 
 tasks.withType(CodeNarc).configureEach {
-    reports {
-        html.required = true
-        text.required = false
-        xml.required = false
-    }
+  reports {
+    html.required = true
+    text.required = false
+    xml.required = false
+  }
 }
 
 spotless {
-    groovy {
-        target 'src/*/groovy/**/*.groovy'
-        importOrder('\\#', 'groovy', '', 'se.alipsa', 'java', 'javax')
-        trimTrailingWhitespace()
-        endWithNewline()
-    }
+  groovy {
+    target 'src/*/groovy/**/*.groovy'
+    importOrder('\\#', 'groovy', '', 'se.alipsa', 'java', 'javax')
+    leadingTabsToSpaces(2)
+    trimTrailingWhitespace()
+    endWithNewline()
+  }
 
-    groovyGradle {
-        target '*.gradle'
-        trimTrailingWhitespace()
-        endWithNewline()
-    }
+  groovyGradle {
+    target '*.gradle'
+    greclipse().configProperties(
+        'org.eclipse.jdt.core.formatter.tabulation.char=space',
+        'org.eclipse.jdt.core.formatter.tabulation.size=2',
+        'org.eclipse.jdt.core.formatter.indentation.size=2'
+        )
+    leadingTabsToSpaces(2)
+    trimTrailingWhitespace()
+    endWithNewline()
+  }
 
-    format 'misc', {
-        target '*.md', '.gitignore', '.gitattributes'
-        trimTrailingWhitespace()
-        endWithNewline()
-    }
+  format 'misc', {
+    target '*.md', '.gitignore', '.gitattributes'
+    trimTrailingWhitespace()
+    endWithNewline()
+  }
 }
 
 tasks.named('check') {
-    dependsOn tasks.named('spotlessCheck')
+  dependsOn tasks.named('spotlessCheck')
 }

@@ -19,4 +19,9 @@ final class FiscalYear {
   LocalDate endDate
   boolean closed
   LocalDateTime closedAt
+
+  @Override
+  String toString() {
+    name ? "${name} (${startDate} - ${endDate})" : "${startDate} - ${endDate}"
+  }
 }
