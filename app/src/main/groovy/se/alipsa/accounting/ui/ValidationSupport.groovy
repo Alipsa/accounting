@@ -8,18 +8,18 @@ import groovy.transform.CompileStatic
 @CompileStatic
 final class ValidationSupport {
 
-    private ValidationSupport() {
-    }
+  private ValidationSupport() {
+  }
 
-    static List<ValidationMessage> noIssues() {
-        []
-    }
+  static List<ValidationMessage> noIssues() {
+    []
+  }
 
-    static ValidationMessage fieldError(String fieldName, String message, String suggestion = '') {
-        new ValidationMessage(fieldName, message, suggestion)
-    }
+  static ValidationMessage fieldError(String fieldName, String message, String suggestion = '') {
+    new ValidationMessage(fieldName, message, suggestion)
+  }
 
-    static String summaryText(List<ValidationMessage> messages) {
-        messages.collect { ValidationMessage message -> "• ${message.toSummaryLine()}" }.join(System.lineSeparator())
-    }
+  static String summaryText(List<ValidationMessage> messages) {
+    messages.collect { ValidationMessage message -> "• ${message.toSummaryLine()}" }.join(System.lineSeparator())
+  }
 }
