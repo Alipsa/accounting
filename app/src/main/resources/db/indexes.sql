@@ -9,3 +9,18 @@ create index if not exists idx_accounting_period_dates
 
 create index if not exists idx_accounting_period_locked
     on accounting_period(locked);
+
+create index if not exists idx_account_class
+    on account(account_class);
+
+create index if not exists idx_account_active
+    on account(active);
+
+create index if not exists idx_account_manual_review
+    on account(manual_review_required);
+
+create index if not exists idx_account_name
+    on account(account_name);
+
+create index if not exists idx_opening_balance_fiscal_year
+    on opening_balance(fiscal_year_id);
