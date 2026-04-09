@@ -1,8 +1,8 @@
 [versions]
 groovy = "5.0.5"
-h2 = "2.2.224"
+h2 = "2.4.240"
 sie-parser = "2.0"
-poi = "5.3.0"
+poi = "5.5.1"
 journo = "0.7.3"
 junit = "6.0.3"
 groovier-junit = "0.3.1"
