@@ -15,31 +15,31 @@ import java.time.LocalDate
 @CompileStatic
 final class FiscalYearService {
 
-    private static final String YEAR_CLOSE_REASON = 'Räkenskapsåret har stängts.'
+  private static final String YEAR_CLOSE_REASON = 'Räkenskapsåret har stängts.'
 
-    private final DatabaseService databaseService
-    private final AccountingPeriodService accountingPeriodService
+  private final DatabaseService databaseService
+  private final AccountingPeriodService accountingPeriodService
 
-    FiscalYearService() {
-        this(DatabaseService.instance, new AccountingPeriodService(DatabaseService.instance))
-    }
+  FiscalYearService() {
+    this(DatabaseService.instance, new AccountingPeriodService(DatabaseService.instance))
+  }
 
-    FiscalYearService(DatabaseService databaseService) {
-        this(databaseService, new AccountingPeriodService(databaseService))
-    }
+  FiscalYearService(DatabaseService databaseService) {
+    this(databaseService, new AccountingPeriodService(databaseService))
+  }
 
-    FiscalYearService(DatabaseService databaseService, AccountingPeriodService accountingPeriodService) {
-        this.databaseService = databaseService
-        this.accountingPeriodService = accountingPeriodService
-    }
+  FiscalYearService(DatabaseService databaseService, AccountingPeriodService accountingPeriodService) {
+    this.databaseService = databaseService
+    this.accountingPeriodService = accountingPeriodService
+  }
 
-    FiscalYear createFiscalYear(String name, LocalDate startDate, LocalDate endDate) {
-        validateDateRange(startDate, endDate)
-        String safeName = resolveName(name, startDate, endDate)
+  FiscalYear createFiscalYear(String name, LocalDate startDate, LocalDate endDate) {
+    validateDateRange(startDate, endDate)
+    String safeName = resolveName(name, startDate, endDate)
 
-        databaseService.withTransaction { Sql sql ->
-            ensureNoOverlap(sql, startDate, endDate)
-            List<List<Object>> keys = sql.executeInsert('''
+    databaseService.withTransaction { Sql sql ->
+      ensureNoOverlap(sql, startDate, endDate)
+      List<List<Object>> keys = sql.executeInsert('''
                 insert into fiscal_year (
                     name,
                     start_date,
@@ -49,15 +49,15 @@ final class FiscalYearService {
                     created_at
                 ) values (?, ?, ?, false, null, current_timestamp)
             ''', [safeName, Date.valueOf(startDate), Date.valueOf(endDate)])
-            long fiscalYearId = ((Number) keys.first().first()).longValue()
-            accountingPeriodService.createPeriods(sql, fiscalYearId, startDate, endDate)
-            findById(sql, fiscalYearId)
-        }
+      long fiscalYearId = ((Number) keys.first().first()).longValue()
+      accountingPeriodService.createPeriods(sql, fiscalYearId, startDate, endDate)
+      findById(sql, fiscalYearId)
     }
+  }
 
-    List<FiscalYear> listFiscalYears() {
-        databaseService.withSql { Sql sql ->
-            sql.rows('''
+  List<FiscalYear> listFiscalYears() {
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
                 select id,
                        name,
                        start_date as startDate,
@@ -67,64 +67,64 @@ final class FiscalYearService {
                   from fiscal_year
                  order by start_date desc
             ''').collect { GroovyRowResult row ->
-                mapFiscalYear(row)
-            }
-        }
+        mapFiscalYear(row)
+      }
     }
+  }
 
-    FiscalYear findById(long fiscalYearId) {
-        databaseService.withSql { Sql sql ->
-            findById(sql, fiscalYearId)
-        }
+  FiscalYear findById(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      findById(sql, fiscalYearId)
     }
+  }
 
-    FiscalYear closeFiscalYear(long fiscalYearId) {
-        databaseService.withTransaction { Sql sql ->
-            FiscalYear year = findById(sql, fiscalYearId)
-            if (year == null) {
-                throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
-            }
-            if (!year.closed) {
-                sql.executeUpdate('''
+  FiscalYear closeFiscalYear(long fiscalYearId) {
+    databaseService.withTransaction { Sql sql ->
+      FiscalYear year = findById(sql, fiscalYearId)
+      if (year == null) {
+        throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+      }
+      if (!year.closed) {
+        sql.executeUpdate('''
                     update fiscal_year
                        set closed = true,
                            closed_at = current_timestamp
                      where id = ?
                 ''', [fiscalYearId])
-                accountingPeriodService.lockUnlockedPeriods(sql, fiscalYearId, YEAR_CLOSE_REASON)
-            }
-            findById(sql, fiscalYearId)
-        }
+        accountingPeriodService.lockUnlockedPeriods(sql, fiscalYearId, YEAR_CLOSE_REASON)
+      }
+      findById(sql, fiscalYearId)
     }
+  }
 
-    private static void validateDateRange(LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null) {
-            throw new IllegalArgumentException('Start and end date are required.')
-        }
-        if (endDate.isBefore(startDate)) {
-            throw new IllegalArgumentException('End date must be on or after start date.')
-        }
+  private static void validateDateRange(LocalDate startDate, LocalDate endDate) {
+    if (startDate == null || endDate == null) {
+      throw new IllegalArgumentException('Start and end date are required.')
     }
-
-    private static String resolveName(String name, LocalDate startDate, LocalDate endDate) {
-        String trimmed = name?.trim()
-        trimmed ?: "${startDate} - ${endDate}"
+    if (endDate.isBefore(startDate)) {
+      throw new IllegalArgumentException('End date must be on or after start date.')
     }
+  }
 
-    private static void ensureNoOverlap(Sql sql, LocalDate startDate, LocalDate endDate) {
-        GroovyRowResult row = sql.firstRow('''
+  private static String resolveName(String name, LocalDate startDate, LocalDate endDate) {
+    String trimmed = name?.trim()
+    trimmed ?: "${startDate} - ${endDate}"
+  }
+
+  private static void ensureNoOverlap(Sql sql, LocalDate startDate, LocalDate endDate) {
+    GroovyRowResult row = sql.firstRow('''
             select count(*) as total
               from fiscal_year
              where start_date <= ?
                and end_date >= ?
         ''', [Date.valueOf(endDate), Date.valueOf(startDate)]) as GroovyRowResult
-        if (((Number) row.get('total')).intValue() > 0) {
-            throw new IllegalArgumentException('Fiscal year dates overlap an existing fiscal year.')
-        }
+    if (((Number) row.get('total')).intValue() > 0) {
+      throw new IllegalArgumentException('Fiscal year dates overlap an existing fiscal year.')
     }
+  }
 
-    private static FiscalYear findById(Sql sql, long fiscalYearId) {
-        GroovyRowResult row = sql.firstRow('''
+  private static FiscalYear findById(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow('''
             select id,
                    name,
                    start_date as startDate,
@@ -134,17 +134,17 @@ final class FiscalYearService {
               from fiscal_year
              where id = ?
         ''', [fiscalYearId]) as GroovyRowResult
-        row == null ? null : mapFiscalYear(row)
-    }
+    row == null ? null : mapFiscalYear(row)
+  }
 
-    private static FiscalYear mapFiscalYear(GroovyRowResult row) {
-        new FiscalYear(
-            Long.valueOf(row.get('id').toString()),
-            row.get('name') as String,
-            SqlValueMapper.toLocalDate(row.get('startDate')),
-            SqlValueMapper.toLocalDate(row.get('endDate')),
-            Boolean.TRUE == row.get('closed'),
-            SqlValueMapper.toLocalDateTime(row.get('closedAt'))
-        )
-    }
+  private static FiscalYear mapFiscalYear(GroovyRowResult row) {
+    new FiscalYear(
+        Long.valueOf(row.get('id').toString()),
+        row.get('name') as String,
+        SqlValueMapper.toLocalDate(row.get('startDate')),
+        SqlValueMapper.toLocalDate(row.get('endDate')),
+        Boolean.TRUE == row.get('closed'),
+        SqlValueMapper.toLocalDateTime(row.get('closedAt'))
+    )
+  }
 }

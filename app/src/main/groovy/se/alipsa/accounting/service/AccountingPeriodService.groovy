@@ -16,15 +16,15 @@ import java.time.LocalDate
 @CompileStatic
 final class AccountingPeriodService {
 
-    private final DatabaseService databaseService
+  private final DatabaseService databaseService
 
-    AccountingPeriodService(DatabaseService databaseService = DatabaseService.instance) {
-        this.databaseService = databaseService
-    }
+  AccountingPeriodService(DatabaseService databaseService = DatabaseService.instance) {
+    this.databaseService = databaseService
+  }
 
-    List<AccountingPeriod> listPeriods(long fiscalYearId) {
-        databaseService.withSql { Sql sql ->
-            sql.rows('''
+  List<AccountingPeriod> listPeriods(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
                 select id,
                        fiscal_year_id as fiscalYearId,
                        period_index as periodIndex,
@@ -38,68 +38,68 @@ final class AccountingPeriodService {
                  where fiscal_year_id = ?
                  order by period_index
             ''', [fiscalYearId]).collect { GroovyRowResult row ->
-                mapPeriod(row)
-            }
-        }
+        mapPeriod(row)
+      }
     }
+  }
 
-    AccountingPeriod findPeriod(long periodId) {
-        databaseService.withSql { Sql sql ->
-            findPeriod(sql, periodId)
-        }
+  AccountingPeriod findPeriod(long periodId) {
+    databaseService.withSql { Sql sql ->
+      findPeriod(sql, periodId)
     }
+  }
 
-    AccountingPeriod lockPeriod(long periodId, String reason) {
-        String safeReason = reason?.trim()
-        databaseService.withTransaction { Sql sql ->
-            AccountingPeriod current = findPeriod(sql, periodId)
-            if (current == null) {
-                throw new IllegalArgumentException("Unknown accounting period id: ${periodId}")
-            }
-            if (current.locked) {
-                throw new IllegalStateException("Accounting period ${current.periodName} is already locked.")
-            }
-            int updated = sql.executeUpdate('''
+  AccountingPeriod lockPeriod(long periodId, String reason) {
+    String safeReason = reason?.trim()
+    databaseService.withTransaction { Sql sql ->
+      AccountingPeriod current = findPeriod(sql, periodId)
+      if (current == null) {
+        throw new IllegalArgumentException("Unknown accounting period id: ${periodId}")
+      }
+      if (current.locked) {
+        throw new IllegalStateException("Accounting period ${current.periodName} is already locked.")
+      }
+      int updated = sql.executeUpdate('''
                 update accounting_period
                    set locked = true,
                        lock_reason = ?,
                        locked_at = current_timestamp
                  where id = ?
             ''', [safeReason, periodId])
-            if (updated != 1) {
-                throw new IllegalStateException("Failed to lock accounting period id: ${periodId}")
-            }
-            findPeriod(sql, periodId)
-        }
+      if (updated != 1) {
+        throw new IllegalStateException("Failed to lock accounting period id: ${periodId}")
+      }
+      findPeriod(sql, periodId)
     }
+  }
 
-    boolean isDateLocked(LocalDate accountingDate) {
-        if (accountingDate == null) {
-            throw new IllegalArgumentException('Accounting date is required.')
-        }
-        databaseService.withSql { Sql sql ->
-            GroovyRowResult row = sql.firstRow('''
+  boolean isDateLocked(LocalDate accountingDate) {
+    if (accountingDate == null) {
+      throw new IllegalArgumentException('Accounting date is required.')
+    }
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
                 select count(*) as total
                   from accounting_period
                  where locked = true
                    and ? between start_date and end_date
             ''', [Date.valueOf(accountingDate)]) as GroovyRowResult
-            ((Number) row.get('total')).intValue() > 0
-        }
+      ((Number) row.get('total')).intValue() > 0
     }
+  }
 
-    @PackageScope
-    List<AccountingPeriod> createPeriods(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-        List<AccountingPeriod> periods = []
-        LocalDate cursor = startDate
-        int index = 1
-        while (!cursor.isAfter(endDate)) {
-            LocalDate periodEnd = cursor.withDayOfMonth(cursor.lengthOfMonth())
-            if (periodEnd.isAfter(endDate)) {
-                periodEnd = endDate
-            }
-            String periodName = cursor.format(java.time.format.DateTimeFormatter.ofPattern('yyyy-MM'))
-            sql.executeInsert('''
+  @PackageScope
+  List<AccountingPeriod> createPeriods(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
+    List<AccountingPeriod> periods = []
+    LocalDate cursor = startDate
+    int index = 1
+    while (!cursor.isAfter(endDate)) {
+      LocalDate periodEnd = cursor.withDayOfMonth(cursor.lengthOfMonth())
+      if (periodEnd.isAfter(endDate)) {
+        periodEnd = endDate
+      }
+      String periodName = cursor.format(java.time.format.DateTimeFormatter.ofPattern('yyyy-MM'))
+      sql.executeInsert('''
                 insert into accounting_period (
                     fiscal_year_id,
                     period_index,
@@ -112,22 +112,22 @@ final class AccountingPeriodService {
                     created_at
                 ) values (?, ?, ?, ?, ?, false, null, null, current_timestamp)
             ''', [
-                fiscalYearId,
-                index,
-                periodName,
-                Date.valueOf(cursor),
-                Date.valueOf(periodEnd)
-            ])
-            periods << new AccountingPeriod(null, fiscalYearId, index, periodName, cursor, periodEnd, false, null, null)
-            cursor = periodEnd.plusDays(1)
-            index++
-        }
-        periods
+          fiscalYearId,
+          index,
+          periodName,
+          Date.valueOf(cursor),
+          Date.valueOf(periodEnd)
+      ])
+      periods << new AccountingPeriod(null, fiscalYearId, index, periodName, cursor, periodEnd, false, null, null)
+      cursor = periodEnd.plusDays(1)
+      index++
     }
+    periods
+  }
 
-    @PackageScope
-    void lockUnlockedPeriods(Sql sql, long fiscalYearId, String reason) {
-        sql.executeUpdate('''
+  @PackageScope
+  void lockUnlockedPeriods(Sql sql, long fiscalYearId, String reason) {
+    sql.executeUpdate('''
             update accounting_period
                set locked = true,
                    lock_reason = coalesce(lock_reason, ?),
@@ -135,10 +135,10 @@ final class AccountingPeriodService {
              where fiscal_year_id = ?
                and locked = false
         ''', [reason?.trim(), fiscalYearId])
-    }
+  }
 
-    private static AccountingPeriod findPeriod(Sql sql, long periodId) {
-        GroovyRowResult row = sql.firstRow('''
+  private static AccountingPeriod findPeriod(Sql sql, long periodId) {
+    GroovyRowResult row = sql.firstRow('''
             select id,
                    fiscal_year_id as fiscalYearId,
                    period_index as periodIndex,
@@ -151,20 +151,20 @@ final class AccountingPeriodService {
               from accounting_period
              where id = ?
         ''', [periodId]) as GroovyRowResult
-        row == null ? null : mapPeriod(row)
-    }
+    row == null ? null : mapPeriod(row)
+  }
 
-    private static AccountingPeriod mapPeriod(GroovyRowResult row) {
-        new AccountingPeriod(
-            Long.valueOf(row.get('id').toString()),
-            Long.valueOf(row.get('fiscalYearId').toString()),
-            ((Number) row.get('periodIndex')).intValue(),
-            row.get('periodName') as String,
-            SqlValueMapper.toLocalDate(row.get('startDate')),
-            SqlValueMapper.toLocalDate(row.get('endDate')),
-            Boolean.TRUE == row.get('locked'),
-            row.get('lockReason') as String,
-            SqlValueMapper.toLocalDateTime(row.get('lockedAt'))
-        )
-    }
+  private static AccountingPeriod mapPeriod(GroovyRowResult row) {
+    new AccountingPeriod(
+        Long.valueOf(row.get('id').toString()),
+        Long.valueOf(row.get('fiscalYearId').toString()),
+        ((Number) row.get('periodIndex')).intValue(),
+        row.get('periodName') as String,
+        SqlValueMapper.toLocalDate(row.get('startDate')),
+        SqlValueMapper.toLocalDate(row.get('endDate')),
+        Boolean.TRUE == row.get('locked'),
+        row.get('lockReason') as String,
+        SqlValueMapper.toLocalDateTime(row.get('lockedAt'))
+    )
+  }
 }

@@ -13,13 +13,13 @@ import java.time.LocalDateTime
 @CompileStatic
 final class AccountingPeriod {
 
-    Long id
-    Long fiscalYearId
-    int periodIndex
-    String periodName
-    LocalDate startDate
-    LocalDate endDate
-    boolean locked
-    String lockReason
-    LocalDateTime lockedAt
+  Long id
+  Long fiscalYearId
+  int periodIndex
+  String periodName
+  LocalDate startDate
+  LocalDate endDate
+  boolean locked
+  String lockReason
+  LocalDateTime lockedAt
 }

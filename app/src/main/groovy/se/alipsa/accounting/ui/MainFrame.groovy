@@ -17,13 +17,7 @@ import java.awt.Image
 import java.util.logging.Logger
 
 import javax.imageio.ImageIO
-import javax.swing.ImageIcon
-import javax.swing.JFrame
-import javax.swing.JLabel
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.SwingConstants
-import javax.swing.SwingUtilities
+import javax.swing.*
 
 /**
  * Main desktop window with phase two navigation and setup actions.
@@ -31,160 +25,160 @@ import javax.swing.SwingUtilities
 @CompileDynamic
 final class MainFrame {
 
-    private static final Logger log = Logger.getLogger(MainFrame.name)
-    private static final List<Map<String, String>> PLACEHOLDER_TABS = [
-        [title: 'Översikt', description: 'Översikt och status för bokföringen kommer här.'],
-        [title: 'Kontoplan', description: 'Kontoplanen visas här när kontomodulen är implementerad.'],
-        [title: 'Verifikationer', description: 'Registrering och sökning av verifikationer kommer här.'],
-        [title: 'Rapporter', description: 'Rapporter och export kommer här.']
-    ]
-    private static final List<String> ICON_PATHS = [
-        '/icons/logo16.png',
-        '/icons/logo32.png',
-        '/icons/logo64.png',
-        '/icons/logo128.png'
-    ]
+  private static final Logger log = Logger.getLogger(MainFrame.name)
+  private static final List<Map<String, String>> PLACEHOLDER_TABS = [
+      [title: 'Översikt', description: 'Översikt och status för bokföringen kommer här.'],
+      [title: 'Kontoplan', description: 'Kontoplanen visas här när kontomodulen är implementerad.'],
+      [title: 'Verifikationer', description: 'Registrering och sökning av verifikationer kommer här.'],
+      [title: 'Rapporter', description: 'Rapporter och export kommer här.']
+  ]
+  private static final List<String> ICON_PATHS = [
+      '/icons/logo16.png',
+      '/icons/logo32.png',
+      '/icons/logo64.png',
+      '/icons/logo128.png'
+  ]
 
-    private final SwingBuilder swing = new SwingBuilder()
-    private final CompanySettingsService companySettingsService = new CompanySettingsService()
-    private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
-    private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService)
-    private JLabel statusLabel
-    private JLabel companySummaryLabel
-    private final JFrame frame
+  private final SwingBuilder swing = new SwingBuilder()
+  private final CompanySettingsService companySettingsService = new CompanySettingsService()
+  private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
+  private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService)
+  private JLabel statusLabel
+  private JLabel companySummaryLabel
+  private final JFrame frame
 
-    MainFrame() {
-        frame = buildFrame()
-        applyIcons()
-        refreshCompanySettingsSummary()
-        setStatus('Applikationen är startad och redo för företagsinställningar och räkenskapsår.')
+  MainFrame() {
+    frame = buildFrame()
+    applyIcons()
+    refreshCompanySettingsSummary()
+    setStatus('Applikationen är startad och redo för företagsinställningar och räkenskapsår.')
+  }
+
+  void display() {
+    frame.visible = true
+    if (!companySettingsService.isConfigured()) {
+      SwingUtilities.invokeLater {
+        showCompanySettingsDialog()
+      }
     }
+  }
 
-    void display() {
-        frame.visible = true
-        if (!companySettingsService.isConfigured()) {
-            SwingUtilities.invokeLater {
-                showCompanySettingsDialog()
-            }
+  void setStatus(String text) {
+    statusLabel.text = text
+  }
+
+  private JFrame buildFrame() {
+    swing.frame(
+        title: 'Alipsa Accounting',
+        size: [1100, 720],
+        defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
+        locationByPlatform: true,
+        show: false
+    ) {
+      lookAndFeel 'system'
+      menuBar {
+        menu(text: 'Arkiv') {
+          menuItem(text: 'Företagsuppgifter...', actionPerformed: { showCompanySettingsDialog() })
+          menuItem(text: 'Avsluta', actionPerformed: { exitRequested() })
         }
-    }
-
-    void setStatus(String text) {
-        statusLabel.text = text
-    }
-
-    private JFrame buildFrame() {
-        swing.frame(
-            title: 'Alipsa Accounting',
-            size: [1100, 720],
-            defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
-            locationByPlatform: true,
-            show: false
-        ) {
-            lookAndFeel 'system'
-            menuBar {
-                menu(text: 'Arkiv') {
-                    menuItem(text: 'Företagsuppgifter...', actionPerformed: { showCompanySettingsDialog() })
-                    menuItem(text: 'Avsluta', actionPerformed: { exitRequested() })
-                }
-                menu(text: 'Hjälp') {
-                    menuItem(text: 'Om', actionPerformed: { showAboutDialog() })
-                }
-            }
-            borderLayout()
-            panel(constraints: BorderLayout.NORTH, border: swing.emptyBorder(12, 16, 8, 16)) {
-                borderLayout()
-                label(
-                    text: 'Alipsa Accounting',
-                    horizontalAlignment: SwingConstants.LEFT,
-                    font: new Font('Dialog', Font.BOLD, 22),
-                    constraints: BorderLayout.CENTER
-                )
-            }
-            tabbedPane(constraints: BorderLayout.CENTER) {
-                PLACEHOLDER_TABS.each { Map<String, String> tab ->
-                    widget(buildPlaceholderPanel(tab.title, tab.description), title: tab.title)
-                }
-                widget(new FiscalYearPanel(fiscalYearService, accountingPeriodService), title: 'Räkenskapsår')
-                widget(buildCompanySettingsPanel(), title: 'Inställningar')
-            }
-            panel(constraints: BorderLayout.SOUTH, border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
-                borderLayout()
-                statusLabel = label(
-                    text: 'Redo',
-                    border: swing.emptyBorder(6, 12, 6, 12),
-                    constraints: BorderLayout.CENTER
-                ) as JLabel
-            }
-        } as JFrame
-    }
-
-    private JPanel buildCompanySettingsPanel() {
-        swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
-            borderLayout(vgap: 12)
-            panel(constraints: BorderLayout.NORTH) {
-                flowLayout(alignment: java.awt.FlowLayout.LEFT, hgap: 8, vgap: 0)
-                button(text: 'Redigera företagsuppgifter', actionPerformed: { showCompanySettingsDialog() })
-            }
-            companySummaryLabel = label(
-                text: '',
-                verticalAlignment: SwingConstants.TOP,
-                constraints: BorderLayout.CENTER
-            ) as JLabel
-        } as JPanel
-    }
-
-    private JPanel buildPlaceholderPanel(String title, String description) {
-        String safeTitle = escapeHtml(title)
-        String safeDescription = escapeHtml(description)
-        swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
-            borderLayout()
-            label(
-                text: "<html><h2>${safeTitle}</h2><p>${safeDescription}</p></html>",
-                horizontalAlignment: SwingConstants.CENTER,
-                constraints: BorderLayout.CENTER
-            )
-        } as JPanel
-    }
-
-    private void exitRequested() {
-        LoggingConfigurer.shutdown()
-        frame.dispose()
-    }
-
-    private void showAboutDialog() {
-        ImageIcon icon = loadIcon('/icons/logo64.png')
-        JOptionPane.showMessageDialog(
-            frame,
-            'Alipsa Accounting\nFas 2: företagsdata, räkenskapsår och periodlåsning.',
-            'Om Alipsa Accounting',
-            JOptionPane.INFORMATION_MESSAGE,
-            icon
+        menu(text: 'Hjälp') {
+          menuItem(text: 'Om', actionPerformed: { showAboutDialog() })
+        }
+      }
+      borderLayout()
+      panel(constraints: BorderLayout.NORTH, border: swing.emptyBorder(12, 16, 8, 16)) {
+        borderLayout()
+        label(
+            text: 'Alipsa Accounting',
+            horizontalAlignment: SwingConstants.LEFT,
+            font: new Font('Dialog', Font.BOLD, 22),
+            constraints: BorderLayout.CENTER
         )
-    }
-
-    private void showCompanySettingsDialog() {
-        CompanySettingsDialog.showDialog(frame, companySettingsService, {
-            refreshCompanySettingsSummary()
-            setStatus('Företagsinställningarna sparades.')
-        } as Runnable)
-    }
-
-    private void refreshCompanySettingsSummary() {
-        if (companySummaryLabel == null) {
-            return
+      }
+      tabbedPane(constraints: BorderLayout.CENTER) {
+        PLACEHOLDER_TABS.each { Map<String, String> tab ->
+          widget(buildPlaceholderPanel(tab.title, tab.description), title: tab.title)
         }
-        CompanySettings settings = companySettingsService.getSettings()
-        if (settings == null) {
-            companySummaryLabel.text = '''
+        widget(new FiscalYearPanel(fiscalYearService, accountingPeriodService), title: 'Räkenskapsår')
+        widget(buildCompanySettingsPanel(), title: 'Inställningar')
+      }
+      panel(constraints: BorderLayout.SOUTH, border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
+        borderLayout()
+        statusLabel = label(
+            text: 'Redo',
+            border: swing.emptyBorder(6, 12, 6, 12),
+            constraints: BorderLayout.CENTER
+        ) as JLabel
+      }
+    } as JFrame
+  }
+
+  private JPanel buildCompanySettingsPanel() {
+    swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
+      borderLayout(vgap: 12)
+      panel(constraints: BorderLayout.NORTH) {
+        flowLayout(alignment: java.awt.FlowLayout.LEFT, hgap: 8, vgap: 0)
+        button(text: 'Redigera företagsuppgifter', actionPerformed: { showCompanySettingsDialog() })
+      }
+      companySummaryLabel = label(
+          text: '',
+          verticalAlignment: SwingConstants.TOP,
+          constraints: BorderLayout.CENTER
+      ) as JLabel
+    } as JPanel
+  }
+
+  private JPanel buildPlaceholderPanel(String title, String description) {
+    String safeTitle = escapeHtml(title)
+    String safeDescription = escapeHtml(description)
+    swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
+      borderLayout()
+      label(
+          text: "<html><h2>${safeTitle}</h2><p>${safeDescription}</p></html>",
+          horizontalAlignment: SwingConstants.CENTER,
+          constraints: BorderLayout.CENTER
+      )
+    } as JPanel
+  }
+
+  private void exitRequested() {
+    LoggingConfigurer.shutdown()
+    frame.dispose()
+  }
+
+  private void showAboutDialog() {
+    ImageIcon icon = loadIcon('/icons/logo64.png')
+    JOptionPane.showMessageDialog(
+        frame,
+        'Alipsa Accounting\nFas 2: företagsdata, räkenskapsår och periodlåsning.',
+        'Om Alipsa Accounting',
+        JOptionPane.INFORMATION_MESSAGE,
+        icon
+    )
+  }
+
+  private void showCompanySettingsDialog() {
+    CompanySettingsDialog.showDialog(frame, companySettingsService, {
+      refreshCompanySettingsSummary()
+      setStatus('Företagsinställningarna sparades.')
+    } as Runnable)
+  }
+
+  private void refreshCompanySettingsSummary() {
+    if (companySummaryLabel == null) {
+      return
+    }
+    CompanySettings settings = companySettingsService.getSettings()
+    if (settings == null) {
+      companySummaryLabel.text = '''
                 <html>
                 <h2>Företagsinställningar</h2>
                 <p>Ingen företagsprofil är sparad än. Öppna dialogen för att genomföra grundinställningen.</p>
                 </html>
             '''.stripIndent().trim()
-            return
-        }
-        companySummaryLabel.text = """
+      return
+    }
+    companySummaryLabel.text = """
             <html>
             <h2>${escapeHtml(settings.companyName)}</h2>
             <p>Organisationsnummer: ${escapeHtml(settings.organizationNumber)}</p>
@@ -192,37 +186,37 @@ final class MainFrame {
             <p>Locale: ${escapeHtml(settings.localeTag)}</p>
             </html>
         """.stripIndent().trim()
-    }
+  }
 
-    private void applyIcons() {
-        List<Image> icons = []
-        ICON_PATHS.each { String path ->
-            ImageIcon icon = loadIcon(path)
-            if (icon != null) {
-                icons << icon.image
-            }
-        }
-        if (icons) {
-            frame.iconImages = icons
-        } else {
-            log.fine('No application icons were available on the classpath.')
-        }
+  private void applyIcons() {
+    List<Image> icons = []
+    ICON_PATHS.each { String path ->
+      ImageIcon icon = loadIcon(path)
+      if (icon != null) {
+        icons << icon.image
+      }
     }
+    if (icons) {
+      frame.iconImages = icons
+    } else {
+      log.fine('No application icons were available on the classpath.')
+    }
+  }
 
-    private ImageIcon loadIcon(String path) {
-        InputStream stream = MainFrame.getResourceAsStream(path)
-        if (stream == null) {
-            return null
-        }
-        stream.withCloseable { InputStream input ->
-            new ImageIcon(ImageIO.read(input))
-        }
+  private ImageIcon loadIcon(String path) {
+    InputStream stream = MainFrame.getResourceAsStream(path)
+    if (stream == null) {
+      return null
     }
+    stream.withCloseable { InputStream input ->
+      new ImageIcon(ImageIO.read(input))
+    }
+  }
 
-    private static String escapeHtml(String text) {
-        text
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-    }
+  private static String escapeHtml(String text) {
+    text
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+  }
 }

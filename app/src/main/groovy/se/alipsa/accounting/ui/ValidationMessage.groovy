@@ -10,13 +10,13 @@ import groovy.transform.CompileStatic
 @CompileStatic
 final class ValidationMessage {
 
-    String fieldName
-    String message
-    String suggestion = ''
+  String fieldName
+  String message
+  String suggestion = ''
 
-    String toSummaryLine() {
-        String prefix = fieldName ? "${fieldName}: " : ''
-        String suffix = suggestion ? " (${suggestion})" : ''
-        "${prefix}${message}${suffix}"
-    }
+  String toSummaryLine() {
+    String prefix = fieldName ? "${fieldName}: " : ''
+    String suffix = suggestion ? " (${suggestion})" : ''
+    "${prefix}${message}${suffix}"
+  }
 }

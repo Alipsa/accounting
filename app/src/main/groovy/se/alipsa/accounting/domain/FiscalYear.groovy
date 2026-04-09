@@ -13,10 +13,10 @@ import java.time.LocalDateTime
 @CompileStatic
 final class FiscalYear {
 
-    Long id
-    String name
-    LocalDate startDate
-    LocalDate endDate
-    boolean closed
-    LocalDateTime closedAt
+  Long id
+  String name
+  LocalDate startDate
+  LocalDate endDate
+  boolean closed
+  LocalDateTime closedAt
 }

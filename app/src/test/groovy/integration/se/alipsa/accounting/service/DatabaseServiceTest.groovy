@@ -1,8 +1,6 @@
 package se.alipsa.accounting.service
 
-import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertThrows
-import static org.junit.jupiter.api.Assertions.assertTrue
+import static org.junit.jupiter.api.Assertions.*
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
@@ -19,74 +17,74 @@ import java.nio.file.Path
 
 class DatabaseServiceTest {
 
-    @TempDir
-    Path tempDir
+  @TempDir
+  Path tempDir
 
-    private DatabaseService databaseService
-    private String previousHome
-    private String previousUrl
+  private DatabaseService databaseService
+  private String previousHome
+  private String previousUrl
 
-    @BeforeEach
-    void captureProperties() {
-        previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
-        previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
-        databaseService = DatabaseService.newForTesting()
-    }
+  @BeforeEach
+  void captureProperties() {
+    previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
+    databaseService = DatabaseService.newForTesting()
+  }
 
-    @AfterEach
-    void restoreProperties() {
-        restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
-        restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
-    }
+  @AfterEach
+  void restoreProperties() {
+    restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
+  }
 
-    @Test
-    void initializeCreatesBaselineSchemaVersion() {
-        System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+  @Test
+  void initializeCreatesBaselineSchemaVersion() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
 
-        databaseService.initialize()
+    databaseService.initialize()
 
-        GroovyRowResult result = databaseService.withSql { Sql sql ->
-            sql.firstRow('''
+    GroovyRowResult result = databaseService.withSql { Sql sql ->
+      sql.firstRow('''
                 select
                     (select coalesce(max(version), 0) from schema_version) as version,
                     (select count(*) from information_schema.tables where table_name = 'COMPANY_SETTINGS') as companySettings,
                     (select count(*) from information_schema.tables where table_name = 'FISCAL_YEAR') as fiscalYear,
                     (select count(*) from information_schema.tables where table_name = 'ACCOUNTING_PERIOD') as accountingPeriod
             ''') as GroovyRowResult
-        }
-
-        assertEquals(2, ((Number) result.version).intValue())
-        assertEquals(1, ((Number) result.companySettings).intValue())
-        assertEquals(1, ((Number) result.fiscalYear).intValue())
-        assertEquals(1, ((Number) result.accountingPeriod).intValue())
-        assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
     }
 
-    @Test
-    void unsafeDatabaseUrlIsRejected() {
-        System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
-        System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:file:/tmp/accounting;AUTO_SERVER=TRUE')
+    assertEquals(2, ((Number) result.version).intValue())
+    assertEquals(1, ((Number) result.companySettings).intValue())
+    assertEquals(1, ((Number) result.fiscalYear).intValue())
+    assertEquals(1, ((Number) result.accountingPeriod).intValue())
+    assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
+  }
 
-        Executable action = { databaseService.initialize() } as Executable
+  @Test
+  void unsafeDatabaseUrlIsRejected() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:file:/tmp/accounting;AUTO_SERVER=TRUE')
 
-        assertThrows(IllegalStateException, action)
+    Executable action = { databaseService.initialize() } as Executable
+
+    assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void networkedDatabaseUrlIsRejected() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:tcp://localhost/accounting')
+
+    Executable action = { databaseService.initialize() } as Executable
+
+    assertThrows(IllegalStateException, action)
+  }
+
+  private static void restoreProperty(String name, String value) {
+    if (value == null) {
+      System.clearProperty(name)
+      return
     }
-
-    @Test
-    void networkedDatabaseUrlIsRejected() {
-        System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
-        System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:tcp://localhost/accounting')
-
-        Executable action = { databaseService.initialize() } as Executable
-
-        assertThrows(IllegalStateException, action)
-    }
-
-    private static void restoreProperty(String name, String value) {
-        if (value == null) {
-            System.clearProperty(name)
-            return
-        }
-        System.setProperty(name, value)
-    }
+    System.setProperty(name, value)
+  }
 }

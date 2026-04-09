@@ -13,32 +13,32 @@ import java.time.LocalDateTime
 @CompileStatic
 final class SqlValueMapper {
 
-    private SqlValueMapper() {
-    }
+  private SqlValueMapper() {
+  }
 
-    static LocalDate toLocalDate(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDate) {
-            return (LocalDate) value
-        }
-        if (value instanceof Date) {
-            return ((Date) value).toLocalDate()
-        }
-        throw new IllegalStateException("Unsupported date value: ${value.class.name}")
+  static LocalDate toLocalDate(Object value) {
+    if (value == null) {
+      return null
     }
+    if (value instanceof LocalDate) {
+      return (LocalDate) value
+    }
+    if (value instanceof Date) {
+      return ((Date) value).toLocalDate()
+    }
+    throw new IllegalStateException("Unsupported date value: ${value.class.name}")
+  }
 
-    static LocalDateTime toLocalDateTime(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDateTime) {
-            return (LocalDateTime) value
-        }
-        if (value instanceof Timestamp) {
-            return ((Timestamp) value).toLocalDateTime()
-        }
-        throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
+  static LocalDateTime toLocalDateTime(Object value) {
+    if (value == null) {
+      return null
     }
+    if (value instanceof LocalDateTime) {
+      return (LocalDateTime) value
+    }
+    if (value instanceof Timestamp) {
+      return ((Timestamp) value).toLocalDateTime()
+    }
+    throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
+  }
 }

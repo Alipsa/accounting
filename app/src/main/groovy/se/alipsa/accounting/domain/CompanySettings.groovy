@@ -10,9 +10,9 @@ import groovy.transform.CompileStatic
 @CompileStatic
 final class CompanySettings {
 
-    Long id
-    String companyName
-    String organizationNumber
-    String defaultCurrency
-    String localeTag
+  Long id
+  String companyName
+  String organizationNumber
+  String defaultCurrency
+  String localeTag
 }
