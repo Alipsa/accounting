@@ -102,6 +102,24 @@ class FiscalYearServiceTest {
         assertTrue(closedPeriods.every { AccountingPeriod period -> period.locked })
     }
 
+    @Test
+    void lockingAnAlreadyLockedPeriodIsRejected() {
+        FiscalYear year = fiscalYearService.createFiscalYear(
+            '2026',
+            LocalDate.of(2026, 1, 1),
+            LocalDate.of(2026, 12, 31)
+        )
+
+        AccountingPeriod january = accountingPeriodService.listPeriods(year.id).first()
+        accountingPeriodService.lockPeriod(january.id, 'Första låsningen.')
+
+        Executable action = {
+            accountingPeriodService.lockPeriod(january.id, 'Andra låsningen.')
+        } as Executable
+
+        assertThrows(IllegalStateException, action)
+    }
+
     private static void restoreProperty(String name, String value) {
         if (value == null) {
             System.clearProperty(name)

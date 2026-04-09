@@ -59,7 +59,7 @@ final class PeriodLockDialog extends JDialog {
         ((JPanel) contentPane).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12))
 
         add(new JLabel(
-            """<html><b>${period.periodName}</b> ${period.startDate} till ${period.endDate}<br/>
+            """<html><b>${escapeHtml(period.periodName)}</b> ${period.startDate} till ${period.endDate}<br/>
 När perioden låses ska nya bokningar i datumintervallet blockeras.</html>"""
         ), BorderLayout.NORTH)
 
@@ -114,5 +114,15 @@ När perioden låses ska nya bokningar i datumintervallet blockeras.</html>"""
         accountingPeriodService.lockPeriod(period.id, reason)
         onLock.run()
         dispose()
+    }
+
+    private static String escapeHtml(String text) {
+        if (text == null) {
+            return ''
+        }
+        text
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
     }
 }

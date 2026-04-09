@@ -8,9 +8,7 @@ import groovy.transform.PackageScope
 import se.alipsa.accounting.domain.AccountingPeriod
 
 import java.sql.Date
-import java.sql.Timestamp
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * Handles period creation, lock status and date based lock checks.
@@ -54,6 +52,13 @@ final class AccountingPeriodService {
     AccountingPeriod lockPeriod(long periodId, String reason) {
         String safeReason = reason?.trim()
         databaseService.withTransaction { Sql sql ->
+            AccountingPeriod current = findPeriod(sql, periodId)
+            if (current == null) {
+                throw new IllegalArgumentException("Unknown accounting period id: ${periodId}")
+            }
+            if (current.locked) {
+                throw new IllegalStateException("Accounting period ${current.periodName} is already locked.")
+            }
             int updated = sql.executeUpdate('''
                 update accounting_period
                    set locked = true,
@@ -62,7 +67,7 @@ final class AccountingPeriodService {
                  where id = ?
             ''', [safeReason, periodId])
             if (updated != 1) {
-                throw new IllegalArgumentException("Unknown accounting period id: ${periodId}")
+                throw new IllegalStateException("Failed to lock accounting period id: ${periodId}")
             }
             findPeriod(sql, periodId)
         }
@@ -155,37 +160,11 @@ final class AccountingPeriodService {
             Long.valueOf(row.get('fiscalYearId').toString()),
             ((Number) row.get('periodIndex')).intValue(),
             row.get('periodName') as String,
-            toLocalDate(row.get('startDate')),
-            toLocalDate(row.get('endDate')),
+            SqlValueMapper.toLocalDate(row.get('startDate')),
+            SqlValueMapper.toLocalDate(row.get('endDate')),
             Boolean.TRUE == row.get('locked'),
             row.get('lockReason') as String,
-            toLocalDateTime(row.get('lockedAt'))
+            SqlValueMapper.toLocalDateTime(row.get('lockedAt'))
         )
-    }
-
-    private static LocalDate toLocalDate(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDate) {
-            return (LocalDate) value
-        }
-        if (value instanceof Date) {
-            return ((Date) value).toLocalDate()
-        }
-        throw new IllegalStateException("Unsupported date value: ${value.class.name}")
-    }
-
-    private static LocalDateTime toLocalDateTime(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDateTime) {
-            return (LocalDateTime) value
-        }
-        if (value instanceof Timestamp) {
-            return ((Timestamp) value).toLocalDateTime()
-        }
-        throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
     }
 }

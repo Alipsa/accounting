@@ -7,9 +7,7 @@ import groovy.transform.CompileStatic
 import se.alipsa.accounting.domain.FiscalYear
 
 import java.sql.Date
-import java.sql.Timestamp
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * Creates fiscal years, prevents overlap and supports year close.
@@ -82,7 +80,7 @@ final class FiscalYearService {
 
     FiscalYear closeFiscalYear(long fiscalYearId) {
         databaseService.withTransaction { Sql sql ->
-            FiscalYear year = findById(fiscalYearId)
+            FiscalYear year = findById(sql, fiscalYearId)
             if (year == null) {
                 throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
             }
@@ -143,36 +141,10 @@ final class FiscalYearService {
         new FiscalYear(
             Long.valueOf(row.get('id').toString()),
             row.get('name') as String,
-            toLocalDate(row.get('startDate')),
-            toLocalDate(row.get('endDate')),
+            SqlValueMapper.toLocalDate(row.get('startDate')),
+            SqlValueMapper.toLocalDate(row.get('endDate')),
             Boolean.TRUE == row.get('closed'),
-            toLocalDateTime(row.get('closedAt'))
+            SqlValueMapper.toLocalDateTime(row.get('closedAt'))
         )
-    }
-
-    private static LocalDate toLocalDate(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDate) {
-            return (LocalDate) value
-        }
-        if (value instanceof Date) {
-            return ((Date) value).toLocalDate()
-        }
-        throw new IllegalStateException("Unsupported date value: ${value.class.name}")
-    }
-
-    private static LocalDateTime toLocalDateTime(Object value) {
-        if (value == null) {
-            return null
-        }
-        if (value instanceof LocalDateTime) {
-            return (LocalDateTime) value
-        }
-        if (value instanceof Timestamp) {
-            return ((Timestamp) value).toLocalDateTime()
-        }
-        throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
     }
 }
