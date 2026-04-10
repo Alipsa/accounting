@@ -51,16 +51,22 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.tables where table_name = 'FISCAL_YEAR') as fiscalYear,
               (select count(*) from information_schema.tables where table_name = 'ACCOUNTING_PERIOD') as accountingPeriod,
               (select count(*) from information_schema.tables where table_name = 'ACCOUNT') as accountTable,
-              (select count(*) from information_schema.tables where table_name = 'OPENING_BALANCE') as openingBalance
+              (select count(*) from information_schema.tables where table_name = 'OPENING_BALANCE') as openingBalance,
+              (select count(*) from information_schema.tables where table_name = 'VOUCHER_SERIES') as voucherSeries,
+              (select count(*) from information_schema.tables where table_name = 'VOUCHER') as voucher,
+              (select count(*) from information_schema.tables where table_name = 'VOUCHER_LINE') as voucherLine
       ''') as GroovyRowResult
     }
 
-    assertEquals(3, ((Number) result.version).intValue())
+    assertEquals(4, ((Number) result.version).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())
     assertEquals(1, ((Number) result.accountingPeriod).intValue())
     assertEquals(1, ((Number) result.accountTable).intValue())
     assertEquals(1, ((Number) result.openingBalance).intValue())
+    assertEquals(1, ((Number) result.voucherSeries).intValue())
+    assertEquals(1, ((Number) result.voucher).intValue())
+    assertEquals(1, ((Number) result.voucherLine).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 

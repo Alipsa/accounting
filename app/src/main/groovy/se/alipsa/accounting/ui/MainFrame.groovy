@@ -10,6 +10,7 @@ import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
 
 import java.awt.BorderLayout
@@ -30,7 +31,6 @@ final class MainFrame {
   private static final Logger log = Logger.getLogger(MainFrame.name)
   private static final List<Map<String, String>> PLACEHOLDER_TABS = [
       [title: 'Översikt', description: 'Översikt och status för bokföringen kommer här.'],
-      [title: 'Verifikationer', description: 'Registrering och sökning av verifikationer kommer här.'],
       [title: 'Rapporter', description: 'Rapporter och export kommer här.']
   ]
   private static final List<String> ICON_PATHS = [
@@ -46,6 +46,7 @@ final class MainFrame {
   private final AccountService accountService = new AccountService()
   private final ChartOfAccountsImportService chartOfAccountsImportService = new ChartOfAccountsImportService()
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService)
+  private final VoucherService voucherService = new VoucherService()
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private final JFrame frame
@@ -99,9 +100,9 @@ final class MainFrame {
         )
       }
       tabbedPane(constraints: BorderLayout.CENTER) {
-        PLACEHOLDER_TABS.each { Map<String, String> tab ->
-          widget(buildPlaceholderPanel(tab.title, tab.description), title: tab.title)
-        }
+        widget(buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description), title: PLACEHOLDER_TABS[0].title)
+        widget(new VoucherListPanel(voucherService, fiscalYearService, accountService), title: 'Verifikationer')
+        widget(buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description), title: PLACEHOLDER_TABS[1].title)
         widget(
             new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService),
             title: 'Kontoplan'
@@ -157,7 +158,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 3: kontoplan, BAS-import och ingående balanser.',
+        'Alipsa Accounting\nFas 4: verifikationer, nummerserier och korrigeringar.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon
