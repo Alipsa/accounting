@@ -589,8 +589,7 @@ final class VoucherService {
 
   private static ChainHead lockChainHead(Sql sql) {
     GroovyRowResult row = sql.firstRow('''
-        select id,
-               last_content_hash as lastContentHash
+        select last_content_hash as lastContentHash
           from voucher_chain_head
          where id = 1
          for update

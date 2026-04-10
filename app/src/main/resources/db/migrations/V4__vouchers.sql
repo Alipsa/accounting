@@ -19,6 +19,8 @@ create table if not exists voucher_chain_head (
     constraint ck_voucher_chain_head_singleton check (id = 1)
 );
 
+-- Seed the singleton chain head idempotently. This is one of the few migrations
+-- that initializes data as part of the schema change.
 merge into voucher_chain_head (id, last_content_hash, updated_at)
 key (id)
 values (1, null, current_timestamp);

@@ -41,6 +41,9 @@ final class SqlValueMapper {
       return ((Timestamp) value).toLocalDateTime()
     }
     if (value instanceof OffsetDateTime) {
+      // The app treats database timestamps as local wall-clock values.
+      // When H2 returns OffsetDateTime for current_timestamp we intentionally
+      // drop the offset instead of converting across zones.
       return ((OffsetDateTime) value).toLocalDateTime()
     }
     throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
