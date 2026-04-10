@@ -177,7 +177,7 @@ final class VoucherEditor extends JDialog {
     validationArea.editable = false
     validationArea.lineWrap = true
     validationArea.wrapStyleWord = true
-    validationArea.background = background
+    validationArea.opaque = false
     validationArea.visible = false
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT))
@@ -354,7 +354,7 @@ final class VoucherEditor extends JDialog {
   }
 
   private static boolean hasText(String value) {
-    value != null && value.trim()
+    value != null && !value.isBlank()
   }
 
   private static final class LineEntry {

@@ -37,9 +37,6 @@ create index if not exists idx_voucher_status
 create index if not exists idx_voucher_original
     on voucher(original_voucher_id);
 
-create index if not exists idx_voucher_hash_chain
-    on voucher(booked_at, id);
-
 create index if not exists idx_voucher_line_voucher
     on voucher_line(voucher_id, line_index);
 

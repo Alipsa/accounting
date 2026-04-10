@@ -100,15 +100,9 @@ final class MainFrame {
         )
       }
       tabbedPane(constraints: BorderLayout.CENTER) {
-        widget(buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description), title: PLACEHOLDER_TABS[0].title)
-        widget(new VoucherListPanel(voucherService, fiscalYearService, accountService), title: 'Verifikationer')
-        widget(buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description), title: PLACEHOLDER_TABS[1].title)
-        widget(
-            new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService),
-            title: 'Kontoplan'
-        )
-        widget(new FiscalYearPanel(fiscalYearService, accountingPeriodService), title: 'Räkenskapsår')
-        widget(buildCompanySettingsPanel(), title: 'Inställningar')
+        buildMainTabs().each { Map<String, Object> tab ->
+          widget(tab.component, title: tab.title as String)
+        }
       }
       panel(constraints: BorderLayout.SOUTH, border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
         borderLayout()
@@ -147,6 +141,17 @@ final class MainFrame {
           constraints: BorderLayout.CENTER
       )
     } as JPanel
+  }
+
+  private List<Map<String, Object>> buildMainTabs() {
+    [
+        [title: PLACEHOLDER_TABS[0].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description)],
+        [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService)],
+        [title: PLACEHOLDER_TABS[1].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description)],
+        [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
+        [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService)],
+        [title: 'Inställningar', component: buildCompanySettingsPanel()]
+    ]
   }
 
   private void exitRequested() {

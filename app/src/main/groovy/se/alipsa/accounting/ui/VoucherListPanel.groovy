@@ -25,6 +25,8 @@ import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 import javax.swing.table.AbstractTableModel
 
 /**
@@ -56,6 +58,7 @@ final class VoucherListPanel extends JPanel {
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
     buildUi()
+    installFilterListeners()
     reloadFiscalYears()
     reloadVouchers()
   }
@@ -106,10 +109,35 @@ final class VoucherListPanel extends JPanel {
     feedbackArea.editable = false
     feedbackArea.lineWrap = true
     feedbackArea.wrapStyleWord = true
-    feedbackArea.background = background
+    feedbackArea.opaque = false
     JPanel panel = new JPanel(new BorderLayout())
     panel.add(feedbackArea, BorderLayout.CENTER)
     panel
+  }
+
+  private void installFilterListeners() {
+    fiscalYearComboBox.addActionListener {
+      reloadVouchers()
+    }
+    statusComboBox.addActionListener {
+      reloadVouchers()
+    }
+    searchField.document.addDocumentListener(new DocumentListener() {
+      @Override
+      void insertUpdate(DocumentEvent event) {
+        reloadVouchers()
+      }
+
+      @Override
+      void removeUpdate(DocumentEvent event) {
+        reloadVouchers()
+      }
+
+      @Override
+      void changedUpdate(DocumentEvent event) {
+        reloadVouchers()
+      }
+    })
   }
 
   private void reloadFiscalYears() {
@@ -184,7 +212,7 @@ final class VoucherListPanel extends JPanel {
       reloadVouchers()
       showInfo("Korrigering skapad som ${correction.voucherNumber}.")
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Korrigeringen kunde inte skapas.')
+      showError(exception.message ?: 'Korrigeringen kunde inte skapas på originalets bokföringsdatum.')
     }
   }
 

@@ -139,6 +139,9 @@ final class VoucherService {
       if (!safeDescription) {
         safeDescription = "Korrigering av ${original.voucherNumber ?: original.id}"
       }
+      // Conservative policy: the correction keeps the original accounting date.
+      // If that period has been locked after booking, the correction is blocked and
+      // the user must unlock the period before retrying.
       List<VoucherLine> reversingLines = original.lines.collect { VoucherLine line ->
         new VoucherLine(
             null,
@@ -276,14 +279,15 @@ final class VoucherService {
     }
 
     validateVoucherEnvelope(sql, current.fiscalYearId, current.accountingDate, current.description)
-    normalizeLines(sql, current.lines, true, targetStatus == VoucherStatus.BOOKED)
+    List<VoucherLine> safeLines = normalizeLines(sql, current.lines, true, targetStatus == VoucherStatus.BOOKED)
     ensurePeriodUnlocked(sql, current.fiscalYearId, current.accountingDate)
 
     int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
     String voucherNumber = "${current.seriesCode}-${runningNumber}"
-    String previousHash = latestVoucherHash(sql)
-    LocalDateTime bookedAt = LocalDateTime.now()
-    String contentHash = calculateContentHash(current, targetStatus, runningNumber, voucherNumber, previousHash)
+    ChainHead chainHead = lockChainHead(sql)
+    String previousHash = chainHead.lastContentHash
+    LocalDateTime bookedAt = currentDatabaseTimestamp(sql)
+    String contentHash = calculateContentHash(current, safeLines, targetStatus, runningNumber, voucherNumber, previousHash)
 
     int updated = sql.executeUpdate('''
         update voucher
@@ -308,6 +312,7 @@ final class VoucherService {
     if (updated != 1) {
       throw new IllegalStateException("Verifikationen kunde inte bokföras: ${voucherId}")
     }
+    updateChainHead(sql, contentHash)
     requireVoucher(sql, voucherId)
   }
 
@@ -550,19 +555,9 @@ final class VoucherService {
     runningNumber
   }
 
-  private static String latestVoucherHash(Sql sql) {
-    GroovyRowResult row = sql.firstRow('''
-        select content_hash as contentHash
-          from voucher
-         where content_hash is not null
-         order by booked_at desc, id desc
-         limit 1
-    ''') as GroovyRowResult
-    row == null ? null : row.get('contentHash') as String
-  }
-
   private static String calculateContentHash(
       Voucher voucher,
+      List<VoucherLine> lines,
       VoucherStatus status,
       int runningNumber,
       String voucherNumber,
@@ -580,7 +575,7 @@ final class VoucherService {
     payload.append(voucher.description).append('|')
     payload.append(status.name()).append('|')
     payload.append(voucher.originalVoucherId ?: '').append('\n')
-    voucher.lines.sort { VoucherLine line -> line.lineIndex }.each { VoucherLine line ->
+    lines.sort { VoucherLine line -> line.lineIndex }.each { VoucherLine line ->
       payload.append(line.lineIndex).append('|')
       payload.append(line.accountNumber).append('|')
       payload.append(line.description ?: '').append('|')
@@ -590,6 +585,39 @@ final class VoucherService {
     MessageDigest digest = MessageDigest.getInstance('SHA-256')
     byte[] hash = digest.digest(payload.toString().getBytes(StandardCharsets.UTF_8))
     HexFormat.of().formatHex(hash)
+  }
+
+  private static ChainHead lockChainHead(Sql sql) {
+    GroovyRowResult row = sql.firstRow('''
+        select id,
+               last_content_hash as lastContentHash
+          from voucher_chain_head
+         where id = 1
+         for update
+    ''') as GroovyRowResult
+    if (row == null) {
+      throw new IllegalStateException('Kedjehuvudet för verifikationer saknas.')
+    }
+    new ChainHead(
+        row.get('lastContentHash') as String
+    )
+  }
+
+  private static void updateChainHead(Sql sql, String contentHash) {
+    int updated = sql.executeUpdate('''
+        update voucher_chain_head
+           set last_content_hash = ?,
+               updated_at = current_timestamp
+         where id = 1
+    ''', [contentHash])
+    if (updated != 1) {
+      throw new IllegalStateException('Kedjehuvudet för verifikationer kunde inte uppdateras.')
+    }
+  }
+
+  private static LocalDateTime currentDatabaseTimestamp(Sql sql) {
+    GroovyRowResult row = sql.firstRow('select current_timestamp as bookedAt') as GroovyRowResult
+    SqlValueMapper.toLocalDateTime(row.get('bookedAt'))
   }
 
   private static void replaceLines(Sql sql, long voucherId, List<VoucherLine> lines) {
@@ -708,5 +736,14 @@ final class VoucherService {
         row.get('seriesName') as String,
         ((Number) row.get('nextRunningNumber')).intValue()
     )
+  }
+
+  private static final class ChainHead {
+
+    final String lastContentHash
+
+    private ChainHead(String lastContentHash) {
+      this.lastContentHash = lastContentHash
+    }
   }
 }

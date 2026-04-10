@@ -87,6 +87,7 @@ class VoucherServiceTest {
 
     assertEquals(2, second.runningNumber)
     assertEquals(first.contentHash, second.previousHash)
+    assertNotNull(voucherService.findVoucher(second.id).contentHash)
 
     VoucherSeries series = voucherService.listSeries(fiscalYear.id).find { VoucherSeries item ->
       item.seriesCode == 'A'
@@ -187,6 +188,124 @@ class VoucherServiceTest {
     assertEquals(1, voucherService.listSeries(fiscalYear.id).first().nextRunningNumber)
   }
 
+  @Test
+  void draftCanBeUpdatedAndCancelled() {
+    Voucher draft = voucherService.createDraft(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Första utkastet',
+        balancedLines(100.00G)
+    )
+
+    Voucher updated = voucherService.updateDraft(
+        draft.id,
+        LocalDate.of(2026, 2, 16),
+        'Uppdaterat utkast',
+        [
+            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 125.00G, 0.00G),
+            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 125.00G)
+        ]
+    )
+
+    assertEquals(LocalDate.of(2026, 2, 16), updated.accountingDate)
+    assertEquals('Uppdaterat utkast', updated.description)
+    assertEquals(125.00G, updated.debitTotal())
+
+    Voucher cancelled = voucherService.cancelDraft(draft.id)
+
+    assertEquals(VoucherStatus.CANCELLED, cancelled.status)
+  }
+
+  @Test
+  void bookingRejectsInvalidDateUnknownAccountAndInactiveAccount() {
+    Executable outsideFiscalYear = {
+      voucherService.createAndBook(
+          fiscalYear.id,
+          'A',
+          LocalDate.of(2025, 12, 31),
+          'Utanför räkenskapsåret',
+          balancedLines(100.00G)
+      )
+    } as Executable
+    Executable unknownAccount = {
+      voucherService.createAndBook(
+          fiscalYear.id,
+          'A',
+          LocalDate.of(2026, 3, 1),
+          'Okänt konto',
+          [
+              new VoucherLine(null, null, 0, '9999', null, 'Okänt konto', 100.00G, 0.00G),
+              new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G)
+          ]
+      )
+    } as Executable
+
+    deactivateAccount('1510')
+    Executable inactiveAccount = {
+      voucherService.createAndBook(
+          fiscalYear.id,
+          'A',
+          LocalDate.of(2026, 3, 2),
+          'Inaktivt konto',
+          balancedLines(100.00G)
+      )
+    } as Executable
+
+    assertThrows(IllegalArgumentException, outsideFiscalYear)
+    assertThrows(IllegalArgumentException, unknownAccount)
+    assertThrows(IllegalArgumentException, inactiveAccount)
+  }
+
+  @Test
+  void differentSeriesKeepIndependentRunningNumbers() {
+    Voucher firstInA = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 4, 1),
+        'Serie A',
+        balancedLines(100.00G)
+    )
+    Voucher firstInB = voucherService.createAndBook(
+        fiscalYear.id,
+        'B',
+        LocalDate.of(2026, 4, 2),
+        'Serie B',
+        balancedLines(200.00G)
+    )
+    Voucher secondInA = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 4, 3),
+        'Serie A igen',
+        balancedLines(300.00G)
+    )
+
+    assertEquals('A-1', firstInA.voucherNumber)
+    assertEquals('B-1', firstInB.voucherNumber)
+    assertEquals('A-2', secondInA.voucherNumber)
+  }
+
+  @Test
+  void correctionIsBlockedIfOriginalPeriodWasLockedAfterBooking() {
+    Voucher booked = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 10),
+        'Försäljning i januari',
+        balancedLines(100.00G)
+    )
+    AccountingPeriod january = accountingPeriodService.listPeriods(fiscalYear.id).first()
+    accountingPeriodService.lockPeriod(january.id, 'Januari är låst.')
+
+    Executable action = {
+      voucherService.createCorrectionVoucher(booked.id)
+    } as Executable
+
+    IllegalStateException exception = assertThrows(IllegalStateException, action)
+    assertEquals('Perioden är låst och kan inte bokföras på.', exception.message)
+  }
+
   private void insertTestAccounts() {
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
@@ -222,6 +341,12 @@ class VoucherServiceTest {
         new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', amount, 0.00G),
         new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, amount)
     ]
+  }
+
+  private void deactivateAccount(String accountNumber) {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update account set active = false, updated_at = current_timestamp where account_number = ?', [accountNumber])
+    }
   }
 
   private static void restoreProperty(String name, String value) {
