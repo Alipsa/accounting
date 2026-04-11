@@ -13,6 +13,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
 import java.awt.Frame
+import java.awt.event.ActionListener
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -25,6 +26,7 @@ import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.table.AbstractTableModel
@@ -36,10 +38,12 @@ import javax.swing.table.AbstractTableModel
 final class VoucherListPanel extends JPanel {
 
   private static final String ALL = 'Alla'
+  private static final int SEARCH_DEBOUNCE_MILLIS = 250
 
   private final VoucherService voucherService
   private final FiscalYearService fiscalYearService
   private final AccountService accountService
+  private final Timer searchDebounceTimer
   private final JComboBox<Object> fiscalYearComboBox = new JComboBox<>()
   private final JComboBox<String> statusComboBox = new JComboBox<>(
       ([ALL] + VoucherStatus.values()*.name()) as String[]
@@ -48,6 +52,7 @@ final class VoucherListPanel extends JPanel {
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final VoucherTableModel tableModel = new VoucherTableModel()
   private final JTable voucherTable = new JTable(tableModel)
+  private boolean reloadingFilters = false
 
   VoucherListPanel(
       VoucherService voucherService,
@@ -57,9 +62,11 @@ final class VoucherListPanel extends JPanel {
     this.voucherService = voucherService
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
+    searchDebounceTimer = new Timer(SEARCH_DEBOUNCE_MILLIS, { reloadVouchers() } as ActionListener)
+    searchDebounceTimer.repeats = false
     buildUi()
-    installFilterListeners()
     reloadFiscalYears()
+    installFilterListeners()
     reloadVouchers()
   }
 
@@ -85,8 +92,7 @@ final class VoucherListPanel extends JPanel {
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     JButton refreshButton = new JButton('Uppdatera')
     refreshButton.addActionListener {
-      reloadFiscalYears()
-      reloadVouchers()
+      refreshData()
     }
     JButton newButton = new JButton('Ny verifikation...')
     newButton.addActionListener { openEditor(null) }
@@ -117,7 +123,9 @@ final class VoucherListPanel extends JPanel {
 
   private void installFilterListeners() {
     fiscalYearComboBox.addActionListener {
-      reloadVouchers()
+      if (!reloadingFilters) {
+        reloadVouchers()
+      }
     }
     statusComboBox.addActionListener {
       reloadVouchers()
@@ -125,30 +133,38 @@ final class VoucherListPanel extends JPanel {
     searchField.document.addDocumentListener(new DocumentListener() {
       @Override
       void insertUpdate(DocumentEvent event) {
-        reloadVouchers()
+        scheduleVoucherReload()
       }
 
       @Override
       void removeUpdate(DocumentEvent event) {
-        reloadVouchers()
+        scheduleVoucherReload()
       }
 
       @Override
       void changedUpdate(DocumentEvent event) {
-        reloadVouchers()
+        scheduleVoucherReload()
       }
     })
+    searchField.addActionListener {
+      reloadVouchers()
+    }
   }
 
   private void reloadFiscalYears() {
-    Object selected = fiscalYearComboBox.selectedItem
-    fiscalYearComboBox.removeAllItems()
-    fiscalYearComboBox.addItem(ALL)
-    fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
-      fiscalYearComboBox.addItem(fiscalYear)
-    }
-    if (selected != null) {
-      selectFiscalYearItem(selected)
+    reloadingFilters = true
+    try {
+      Object selected = fiscalYearComboBox.selectedItem
+      fiscalYearComboBox.removeAllItems()
+      fiscalYearComboBox.addItem(ALL)
+      fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
+        fiscalYearComboBox.addItem(fiscalYear)
+      }
+      if (selected != null) {
+        selectFiscalYearItem(selected)
+      }
+    } finally {
+      reloadingFilters = false
     }
   }
 
@@ -163,11 +179,23 @@ final class VoucherListPanel extends JPanel {
   }
 
   private void reloadVouchers() {
+    if (searchDebounceTimer.running) {
+      searchDebounceTimer.stop()
+    }
     Long fiscalYearId = selectedFiscalYearId()
     VoucherStatus status = selectedStatus()
     List<Voucher> vouchers = voucherService.listVouchers(fiscalYearId, status, searchField.text)
     tableModel.setRows(vouchers)
     showInfo("Visar ${vouchers.size()} verifikationer.")
+  }
+
+  private void scheduleVoucherReload() {
+    searchDebounceTimer.restart()
+  }
+
+  private void refreshData() {
+    reloadFiscalYears()
+    reloadVouchers()
   }
 
   private Long selectedFiscalYearId() {
@@ -196,8 +224,7 @@ final class VoucherListPanel extends JPanel {
 
   private void openEditor(Long voucherId) {
     VoucherEditor.showDialog(ownerFrame(), voucherService, fiscalYearService, accountService, voucherId, {
-      reloadFiscalYears()
-      reloadVouchers()
+      refreshData()
     } as Runnable)
   }
 

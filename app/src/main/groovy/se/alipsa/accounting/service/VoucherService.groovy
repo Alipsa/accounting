@@ -575,7 +575,7 @@ final class VoucherService {
     payload.append(voucher.description).append('|')
     payload.append(status.name()).append('|')
     payload.append(voucher.originalVoucherId ?: '').append('\n')
-    lines.sort { VoucherLine line -> line.lineIndex }.each { VoucherLine line ->
+    new ArrayList<>(lines).sort { VoucherLine line -> line.lineIndex }.each { VoucherLine line ->
       payload.append(line.lineIndex).append('|')
       payload.append(line.accountNumber).append('|')
       payload.append(line.description ?: '').append('|')
