@@ -29,7 +29,8 @@ final class DatabaseService {
       new MigrationDefinition(6, 'V6__audit_log_chain_head.sql', '/db/migrations/V6__audit_log_chain_head.sql'),
       new MigrationDefinition(7, 'V7__vat_periods.sql', '/db/migrations/V7__vat_periods.sql'),
       new MigrationDefinition(8, 'V8__vat_periodicity.sql', '/db/migrations/V8__vat_periodicity.sql'),
-      new MigrationDefinition(9, 'V9__audit_log_vat_period.sql', '/db/migrations/V9__audit_log_vat_period.sql')
+      new MigrationDefinition(9, 'V9__audit_log_vat_period.sql', '/db/migrations/V9__audit_log_vat_period.sql'),
+      new MigrationDefinition(10, 'V10__report_archive.sql', '/db/migrations/V10__report_archive.sql')
   ]
 
   static DatabaseService newForTesting() {

@@ -211,6 +211,61 @@ final class VoucherService {
     }
   }
 
+  List<String> validateIntegrity() {
+    databaseService.withSql { Sql sql ->
+      List<String> problems = []
+      String expectedPreviousHash = null
+      String actualLastHash = null
+      sql.rows('''
+          select v.id,
+                 v.fiscal_year_id as fiscalYearId,
+                 v.voucher_series_id as voucherSeriesId,
+                 s.series_code as seriesCode,
+                 s.series_name as seriesName,
+                 v.running_number as runningNumber,
+                 v.voucher_number as voucherNumber,
+                 v.accounting_date as accountingDate,
+                 v.description,
+                 v.status,
+                 v.original_voucher_id as originalVoucherId,
+                 v.previous_hash as previousHash,
+                 v.content_hash as contentHash,
+                 v.booked_at as bookedAt
+            from voucher v
+            join voucher_series s on s.id = v.voucher_series_id
+           where v.status in ('BOOKED', 'CORRECTION')
+           order by v.id
+      ''').each { GroovyRowResult row ->
+        Voucher voucher = mapVoucher(row)
+        voucher.lines = loadLines(sql, voucher.id)
+        if (voucher.previousHash != expectedPreviousHash) {
+          problems << ("Verifikation ${voucher.id} har fel föregående hash." as String)
+        }
+        VoucherStatus status = VoucherStatus.valueOf(row.get('status') as String)
+        String calculated = calculateContentHash(
+            voucher,
+            voucher.lines,
+            status,
+            voucher.runningNumber,
+            voucher.voucherNumber,
+            voucher.previousHash
+        )
+        if (voucher.contentHash != calculated) {
+          problems << ("Verifikation ${voucher.id} har ogiltig innehållshash." as String)
+        }
+        expectedPreviousHash = voucher.contentHash
+        actualLastHash = voucher.contentHash
+      }
+      ChainHead chainHead = loadChainHead(sql)
+      if (chainHead == null) {
+        problems << 'Verifikationskedjans huvud saknas.'
+      } else if (chainHead.lastContentHash != actualLastHash) {
+        problems << 'Verifikationskedjans huvud pekar inte på sista bokförda verifikation.'
+      }
+      problems
+    }
+  }
+
   List<Voucher> listVouchers(Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
@@ -671,6 +726,15 @@ final class VoucherService {
     new ChainHead(
         row.get('lastContentHash') as String
     )
+  }
+
+  private static ChainHead loadChainHead(Sql sql) {
+    GroovyRowResult row = sql.firstRow('''
+        select last_content_hash as lastContentHash
+          from voucher_chain_head
+         where id = 1
+    ''') as GroovyRowResult
+    row == null ? null : new ChainHead(row.get('lastContentHash') as String)
   }
 
   private static void updateChainHead(Sql sql, String contentHash) {

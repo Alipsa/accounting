@@ -12,6 +12,10 @@ import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.JournoReportService
+import se.alipsa.accounting.service.ReportArchiveService
+import se.alipsa.accounting.service.ReportDataService
+import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
@@ -53,6 +57,10 @@ final class MainFrame {
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService, auditLogService)
   private final VoucherService voucherService = new VoucherService(DatabaseService.instance, auditLogService)
   private final VatService vatService = new VatService(DatabaseService.instance, voucherService)
+  private final ReportDataService reportDataService = new ReportDataService(DatabaseService.instance, fiscalYearService, accountingPeriodService)
+  private final ReportArchiveService reportArchiveService = new ReportArchiveService(DatabaseService.instance)
+  private final ReportExportService reportExportService = new ReportExportService()
+  private final JournoReportService journoReportService = new JournoReportService()
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private final JFrame frame
@@ -154,7 +162,15 @@ final class MainFrame {
         [title: PLACEHOLDER_TABS[0].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description)],
         [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
         [title: 'Moms', component: new VatPeriodPanel(vatService, fiscalYearService)],
-        [title: PLACEHOLDER_TABS[1].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description)],
+        [title: 'Rapporter', component: new ReportPanel(
+            reportDataService,
+            journoReportService,
+            reportExportService,
+            reportArchiveService,
+            fiscalYearService,
+            accountingPeriodService,
+            new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)
+        )],
         [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
         [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService)],
         [title: 'Inställningar', component: buildCompanySettingsPanel()]
@@ -170,7 +186,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 6: momsperioder, momsrapport och periodstängning.',
+        'Alipsa Accounting\nFas 7: rapporter med PDF, CSV och rapportarkiv.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon
