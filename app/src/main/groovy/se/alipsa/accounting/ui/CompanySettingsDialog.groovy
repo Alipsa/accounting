@@ -3,6 +3,7 @@ package se.alipsa.accounting.ui
 import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanySettingsService
 
 import java.awt.BorderLayout
@@ -28,6 +29,7 @@ final class CompanySettingsDialog extends JDialog {
   private final JTextField organizationNumberField = new JTextField(18)
   private final JTextField defaultCurrencyField = new JTextField(6)
   private final JTextField localeTagField = new JTextField(12)
+  private final JComboBox<VatPeriodicity> vatPeriodicityComboBox = new JComboBox<>(VatPeriodicity.values())
   private final JTextArea validationArea = new JTextArea(4, 30)
 
   CompanySettingsDialog(Frame owner, CompanySettingsService companySettingsService, Runnable onSave) {
@@ -87,6 +89,11 @@ final class CompanySettingsDialog extends JDialog {
     panel.add(new JLabel('Locale'), labelConstraints)
     panel.add(localeTagField, fieldConstraints)
 
+    labelConstraints.gridy = 4
+    fieldConstraints.gridy = 4
+    panel.add(new JLabel('Momsperiod'), labelConstraints)
+    panel.add(vatPeriodicityComboBox, fieldConstraints)
+
     panel
   }
 
@@ -116,12 +123,14 @@ final class CompanySettingsDialog extends JDialog {
     if (settings == null) {
       defaultCurrencyField.text = 'SEK'
       localeTagField.text = 'sv-SE'
+      vatPeriodicityComboBox.selectedItem = VatPeriodicity.MONTHLY
       return
     }
     companyNameField.text = settings.companyName
     organizationNumberField.text = settings.organizationNumber
     defaultCurrencyField.text = settings.defaultCurrency
     localeTagField.text = settings.localeTag
+    vatPeriodicityComboBox.selectedItem = settings.vatPeriodicity ?: VatPeriodicity.MONTHLY
   }
 
   private void saveRequested() {
@@ -136,7 +145,8 @@ final class CompanySettingsDialog extends JDialog {
         companyNameField.text.trim(),
         organizationNumberField.text.trim(),
         defaultCurrencyField.text.trim().toUpperCase(Locale.ROOT),
-        localeTagField.text.trim()
+        localeTagField.text.trim(),
+        vatPeriodicityComboBox.selectedItem as VatPeriodicity
     )
     companySettingsService.save(settings)
     onSave.run()

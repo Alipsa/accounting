@@ -12,6 +12,7 @@ import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
 
@@ -51,6 +52,7 @@ final class MainFrame {
   private final ChartOfAccountsImportService chartOfAccountsImportService = new ChartOfAccountsImportService()
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService, auditLogService)
   private final VoucherService voucherService = new VoucherService(DatabaseService.instance, auditLogService)
+  private final VatService vatService = new VatService(DatabaseService.instance, voucherService)
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private final JFrame frame
@@ -151,6 +153,7 @@ final class MainFrame {
     [
         [title: PLACEHOLDER_TABS[0].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description)],
         [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
+        [title: 'Moms', component: new VatPeriodPanel(vatService, fiscalYearService)],
         [title: PLACEHOLDER_TABS[1].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description)],
         [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
         [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService)],
@@ -167,7 +170,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 5: revisionsspår, bilagor och behandlingshistorik.',
+        'Alipsa Accounting\nFas 6: momsperioder, momsrapport och periodstängning.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon
@@ -201,6 +204,7 @@ final class MainFrame {
             <p>Organisationsnummer: ${escapeHtml(settings.organizationNumber)}</p>
             <p>Valuta: ${escapeHtml(settings.defaultCurrency)}</p>
             <p>Locale: ${escapeHtml(settings.localeTag)}</p>
+            <p>Momsperiod: ${escapeHtml(settings.vatPeriodicity?.label ?: 'Månadsvis')}</p>
             </html>
         """.stripIndent().trim()
   }

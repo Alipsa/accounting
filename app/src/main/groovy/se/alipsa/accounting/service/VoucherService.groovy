@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -85,9 +86,34 @@ final class VoucherService {
       List<VoucherLine> lines
   ) {
     databaseService.withTransaction { Sql sql ->
-      Voucher draft = insertDraft(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
-      bookVoucher(sql, draft.id, VoucherStatus.BOOKED)
+      createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, false)
     }
+  }
+
+  @PackageScope
+  Voucher createAndBook(
+      Sql sql,
+      long fiscalYearId,
+      String seriesCode,
+      LocalDate accountingDate,
+      String description,
+      List<VoucherLine> lines
+  ) {
+    createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, false)
+  }
+
+  @PackageScope
+  Voucher createAndBook(
+      Sql sql,
+      long fiscalYearId,
+      String seriesCode,
+      LocalDate accountingDate,
+      String description,
+      List<VoucherLine> lines,
+      boolean allowReportedVatPeriod
+  ) {
+    Voucher draft = insertDraft(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
+    bookVoucher(sql, draft.id, VoucherStatus.BOOKED, allowReportedVatPeriod)
   }
 
   Voucher updateDraft(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
@@ -114,7 +140,7 @@ final class VoucherService {
 
   Voucher bookDraft(long voucherId) {
     databaseService.withTransaction { Sql sql ->
-      bookVoucher(sql, voucherId, VoucherStatus.BOOKED)
+      bookVoucher(sql, voucherId, VoucherStatus.BOOKED, false)
     }
   }
 
@@ -175,7 +201,7 @@ final class VoucherService {
           reversingLines,
           original.id
       )
-      bookVoucher(sql, draft.id, VoucherStatus.CORRECTION)
+      bookVoucher(sql, draft.id, VoucherStatus.CORRECTION, false)
     }
   }
 
@@ -285,7 +311,7 @@ final class VoucherService {
     draft
   }
 
-  private Voucher bookVoucher(Sql sql, long voucherId, VoucherStatus targetStatus) {
+  private Voucher bookVoucher(Sql sql, long voucherId, VoucherStatus targetStatus, boolean allowReportedVatPeriod) {
     Voucher current = requireVoucher(sql, voucherId)
     if (current.status != VoucherStatus.DRAFT) {
       throw new IllegalStateException('Endast utkast kan bokföras.')
@@ -296,7 +322,7 @@ final class VoucherService {
 
     validateVoucherEnvelope(sql, current.fiscalYearId, current.accountingDate, current.description)
     List<VoucherLine> safeLines = normalizeLines(sql, current.lines, true, targetStatus == VoucherStatus.BOOKED)
-    ensurePeriodUnlocked(sql, current.fiscalYearId, current.accountingDate)
+    ensurePostingAllowed(sql, current.fiscalYearId, current.accountingDate, targetStatus, allowReportedVatPeriod)
 
     int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
     String voucherNumber = "${current.seriesCode}-${runningNumber}"
@@ -539,7 +565,13 @@ final class VoucherService {
     safeAmount
   }
 
-  private static void ensurePeriodUnlocked(Sql sql, long fiscalYearId, LocalDate accountingDate) {
+  private static void ensurePostingAllowed(
+      Sql sql,
+      long fiscalYearId,
+      LocalDate accountingDate,
+      VoucherStatus targetStatus,
+      boolean allowReportedVatPeriod
+  ) {
     GroovyRowResult row = sql.firstRow('''
         select locked
           from accounting_period
@@ -551,6 +583,23 @@ final class VoucherService {
     }
     if (Boolean.TRUE == row.get('locked')) {
       throw new IllegalStateException('Perioden är låst och kan inte bokföras på.')
+    }
+    VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
+    GroovyRowResult vatRow = sql.firstRow('''
+        select status
+          from vat_period
+         where fiscal_year_id = ?
+           and ? between start_date and end_date
+    ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
+    if (vatRow == null) {
+      return
+    }
+    String vatStatus = vatRow.get('status') as String
+    if (VatService.LOCKED == vatStatus) {
+      throw new IllegalStateException('Momsperioden är låst och tillåter inte fler bokningar.')
+    }
+    if (VatService.REPORTED == vatStatus && targetStatus != VoucherStatus.CORRECTION && !allowReportedVatPeriod) {
+      throw new IllegalStateException('Momsperioden är rapporterad. Använd korrigeringsflödet för ändringar.')
     }
   }
 
