@@ -156,7 +156,12 @@ final class AttachmentService {
   }
 
   private boolean verifyAttachment(AttachmentMetadata attachment) {
-    Path path = resolveStoragePath(attachment.storagePath)
+    Path path
+    try {
+      path = resolveStoragePath(attachment.storagePath)
+    } catch (SecurityException ignored) {
+      return false
+    }
     if (!Files.isRegularFile(path)) {
       return false
     }
@@ -233,7 +238,12 @@ final class AttachmentService {
   }
 
   private static Path resolveStoragePath(String storagePath) {
-    AppPaths.attachmentsDirectory().resolve(storagePath).normalize()
+    Path root = AppPaths.attachmentsDirectory().toAbsolutePath().normalize()
+    Path resolved = root.resolve(storagePath).normalize()
+    if (!resolved.startsWith(root)) {
+      throw new SecurityException("Bilagans lagringsväg ligger utanför bilagearkivet: ${storagePath}")
+    }
+    resolved
   }
 
   private static String calculateChecksum(Path file) {

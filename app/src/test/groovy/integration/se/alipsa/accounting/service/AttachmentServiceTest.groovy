@@ -3,7 +3,10 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertArrayEquals
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
+
+import groovy.sql.Sql
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -104,15 +107,40 @@ class AttachmentServiceTest {
     assertEquals([attachment.id], attachmentService.findIntegrityFailures()*.id)
   }
 
+  @Test
+  void pathTraversalAttemptInStoredMetadataIsRejected() {
+    Voucher voucher = voucherService.createDraft(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 3),
+        'Traversal test',
+        balancedLines(40.00G)
+    )
+    Path source = tempDir.resolve('note.txt')
+    Files.writeString(source, 'note', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set storage_path = '../../../etc/passwd' where id = ?", [attachment.id])
+    }
+
+    SecurityException exception = assertThrows(SecurityException) {
+      attachmentService.readAttachment(attachment.id)
+    }
+
+    assertTrue(exception.message.contains('utanför bilagearkivet'))
+    assertEquals([attachment.id], attachmentService.findIntegrityFailures()*.id)
+  }
+
   private void insertTestAccounts() {
-    databaseService.withTransaction { groovy.sql.Sql sql ->
+    databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
     }
   }
 
   private static void insertAccount(
-      groovy.sql.Sql sql,
+      Sql sql,
       String accountNumber,
       String accountName,
       String accountClass,

@@ -16,6 +16,7 @@ import java.security.MessageDigest
 import java.sql.Clob
 import java.sql.Timestamp
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * Persists immutable audit entries for business-critical operations.
@@ -36,6 +37,7 @@ final class AuditLogService {
   static final String RESTORE = 'RESTORE'
 
   private static final String DEFAULT_ACTOR = 'desktop-app'
+  private static final DateTimeFormatter HASH_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSSSSSSSS")
 
   private final DatabaseService databaseService
 
@@ -100,6 +102,7 @@ final class AuditLogService {
     databaseService.withSql { Sql sql ->
       List<String> problems = []
       String expectedPreviousHash = null
+      String actualLastHash = null
       sql.rows('''
           select id,
                  event_type as eventType,
@@ -136,6 +139,13 @@ final class AuditLogService {
           problems << ("Auditlogg ${entry.id} har ogiltig hash." as String)
         }
         expectedPreviousHash = entry.entryHash
+        actualLastHash = entry.entryHash
+      }
+      AuditChainHead chainHead = loadChainHead(sql)
+      if (chainHead == null) {
+        problems << 'Auditloggkedjans huvud saknas.'
+      } else if (chainHead.lastEntryHash != actualLastHash) {
+        problems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
       }
       problems
     }
@@ -254,6 +264,7 @@ final class AuditLogService {
     String safeEventType = requireText(eventType, 'Audit event type')
     String safeSummary = requireText(summary, 'Audit summary')
     AuditReferences safeReferences = references ?: AuditReferences.EMPTY
+    AuditChainHead chainHead = lockChainHead(sql)
     AuditEntrySeed seed = new AuditEntrySeed(
         eventType: safeEventType,
         voucherId: safeReferences.voucherId,
@@ -263,7 +274,7 @@ final class AuditLogService {
         actor: DEFAULT_ACTOR,
         summary: safeSummary,
         details: details,
-        previousHash: loadPreviousHash(sql),
+        previousHash: chainHead.lastEntryHash,
         createdAt: currentDatabaseTimestamp(sql)
     )
     String entryHash = calculateHash(seed)
@@ -295,6 +306,7 @@ final class AuditLogService {
         Timestamp.valueOf(seed.createdAt)
     ])
     long id = ((Number) keys.first().first()).longValue()
+    updateChainHead(sql, entryHash)
     findById(sql, id)
   }
 
@@ -324,14 +336,38 @@ final class AuditLogService {
     row == null ? null : mapEntry(row)
   }
 
-  private static String loadPreviousHash(Sql sql) {
+  private static AuditChainHead lockChainHead(Sql sql) {
     GroovyRowResult row = sql.firstRow('''
-        select entry_hash as entryHash
-          from audit_log
-         order by id desc
-         limit 1
+        select last_entry_hash as lastEntryHash
+          from audit_log_chain_head
+         where id = 1
+         for update
     ''') as GroovyRowResult
-    row?.get('entryHash') as String
+    if (row == null) {
+      throw new IllegalStateException('Kedjehuvudet för audit-loggen saknas.')
+    }
+    new AuditChainHead(row.get('lastEntryHash') as String)
+  }
+
+  private static AuditChainHead loadChainHead(Sql sql) {
+    GroovyRowResult row = sql.firstRow('''
+        select last_entry_hash as lastEntryHash
+          from audit_log_chain_head
+         where id = 1
+    ''') as GroovyRowResult
+    row == null ? null : new AuditChainHead(row.get('lastEntryHash') as String)
+  }
+
+  private static void updateChainHead(Sql sql, String entryHash) {
+    int updated = sql.executeUpdate('''
+        update audit_log_chain_head
+           set last_entry_hash = ?,
+               updated_at = current_timestamp
+         where id = 1
+    ''', [entryHash])
+    if (updated != 1) {
+      throw new IllegalStateException('Kedjehuvudet för audit-loggen kunde inte uppdateras.')
+    }
   }
 
   private static AuditLogEntry mapEntry(GroovyRowResult row) {
@@ -379,9 +415,13 @@ final class AuditLogService {
     payload.append(seed.actor ?: '').append('|')
     payload.append(seed.summary ?: '').append('|')
     payload.append(seed.details ?: '').append('|')
-    payload.append(seed.createdAt ?: '')
+    payload.append(formatCreatedAt(seed.createdAt))
     MessageDigest digest = MessageDigest.getInstance('SHA-256')
     HexFormat.of().formatHex(digest.digest(payload.toString().getBytes(StandardCharsets.UTF_8)))
+  }
+
+  private static String formatCreatedAt(LocalDateTime createdAt) {
+    createdAt == null ? '' : createdAt.format(HASH_TIMESTAMP_FORMAT)
   }
 
   private static String formatDetails(Map<String, Object> details) {
@@ -428,5 +468,14 @@ final class AuditLogService {
     String details
     String previousHash
     LocalDateTime createdAt
+  }
+
+  private static final class AuditChainHead {
+
+    final String lastEntryHash
+
+    private AuditChainHead(String lastEntryHash) {
+      this.lastEntryHash = lastEntryHash
+    }
   }
 }

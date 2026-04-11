@@ -25,7 +25,8 @@ final class DatabaseService {
       new MigrationDefinition(2, 'V2__company_and_fiscal_years.sql', '/db/migrations/V2__company_and_fiscal_years.sql'),
       new MigrationDefinition(3, 'V3__chart_of_accounts.sql', '/db/migrations/V3__chart_of_accounts.sql'),
       new MigrationDefinition(4, 'V4__vouchers.sql', '/db/migrations/V4__vouchers.sql'),
-      new MigrationDefinition(5, 'V5__audit_and_attachments.sql', '/db/migrations/V5__audit_and_attachments.sql')
+      new MigrationDefinition(5, 'V5__audit_and_attachments.sql', '/db/migrations/V5__audit_and_attachments.sql'),
+      new MigrationDefinition(6, 'V6__audit_log_chain_head.sql', '/db/migrations/V6__audit_log_chain_head.sql')
   ]
 
   static DatabaseService newForTesting() {
