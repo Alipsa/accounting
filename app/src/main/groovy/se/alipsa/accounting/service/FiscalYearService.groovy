@@ -61,6 +61,7 @@ final class FiscalYearService {
             ''', [safeName, Date.valueOf(startDate), Date.valueOf(endDate)])
       long fiscalYearId = ((Number) keys.first().first()).longValue()
       accountingPeriodService.createPeriods(sql, fiscalYearId, startDate, endDate)
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
       findById(sql, fiscalYearId)
     }
   }

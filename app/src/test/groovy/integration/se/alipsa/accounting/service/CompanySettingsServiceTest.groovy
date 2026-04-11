@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
@@ -39,7 +40,7 @@ class CompanySettingsServiceTest {
   @Test
   void saveCreatesAndUpdatesSingletonSettings() {
     CompanySettings created = companySettingsService.save(
-        new CompanySettings(null, 'Demo AB', '556677-8899', 'SEK', 'sv-SE')
+        new CompanySettings(null, 'Demo AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY)
     )
 
     assertNotNull(created.id)
@@ -47,13 +48,14 @@ class CompanySettingsServiceTest {
     assertEquals('556677-8899', created.organizationNumber)
 
     CompanySettings updated = companySettingsService.save(
-        new CompanySettings(null, 'Demo Holding AB', '556677-8899', 'EUR', 'en-GB')
+        new CompanySettings(null, 'Demo Holding AB', '556677-8899', 'EUR', 'en-GB', VatPeriodicity.ANNUAL)
     )
 
     assertEquals(created.id, updated.id)
     assertEquals('Demo Holding AB', updated.companyName)
     assertEquals('EUR', updated.defaultCurrency)
     assertEquals('en-GB', updated.localeTag)
+    assertEquals(VatPeriodicity.ANNUAL, updated.vatPeriodicity)
   }
 
   private static void restoreProperty(String name, String value) {

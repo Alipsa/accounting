@@ -5,6 +5,7 @@ import groovy.sql.Sql
 import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.VatPeriodicity
 
 /**
  * Persists and loads the single company configuration for the installation.
@@ -43,7 +44,8 @@ final class CompanySettingsService {
           settings.companyName.trim(),
           settings.organizationNumber.trim(),
           settings.defaultCurrency.trim().toUpperCase(Locale.ROOT),
-          settings.localeTag.trim()
+          settings.localeTag.trim(),
+          (settings.vatPeriodicity ?: VatPeriodicity.MONTHLY).name()
       ]
       if (exists) {
         sql.executeUpdate('''
@@ -52,9 +54,10 @@ final class CompanySettingsService {
                            organization_number = ?,
                            default_currency = ?,
                            locale_tag = ?,
+                           vat_periodicity = ?,
                            updated_at = current_timestamp
                      where id = ?
-                ''', [params[1], params[2], params[3], params[4], params[0]])
+                ''', [params[1], params[2], params[3], params[4], params[5], params[0]])
       } else {
         sql.executeInsert('''
                     insert into company_settings (
@@ -63,9 +66,10 @@ final class CompanySettingsService {
                         organization_number,
                         default_currency,
                         locale_tag,
+                        vat_periodicity,
                         created_at,
                         updated_at
-                    ) values (?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+                    ) values (?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
                 ''', params)
       }
       loadSettings(sql)
@@ -78,7 +82,8 @@ final class CompanySettingsService {
                    company_name as companyName,
                    organization_number as organizationNumber,
                    default_currency as defaultCurrency,
-                   locale_tag as localeTag
+                   locale_tag as localeTag,
+                   vat_periodicity as vatPeriodicity
               from company_settings
              where id = ?
         ''', [SETTINGS_ID]) as GroovyRowResult
@@ -91,7 +96,8 @@ final class CompanySettingsService {
         row.get('companyName') as String,
         row.get('organizationNumber') as String,
         row.get('defaultCurrency') as String,
-        row.get('localeTag') as String
+        row.get('localeTag') as String,
+        VatPeriodicity.fromDatabaseValue(row.get('vatPeriodicity') as String)
     )
   }
 
@@ -110,6 +116,9 @@ final class CompanySettingsService {
     }
     if (!settings.localeTag?.trim()) {
       throw new IllegalArgumentException('Locale tag is required.')
+    }
+    if (settings.vatPeriodicity == null) {
+      throw new IllegalArgumentException('VAT periodicity is required.')
     }
   }
 }

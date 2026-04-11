@@ -15,4 +15,5 @@ final class CompanySettings {
   String organizationNumber
   String defaultCurrency
   String localeTag
+  VatPeriodicity vatPeriodicity = VatPeriodicity.MONTHLY
 }

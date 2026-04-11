@@ -10,6 +10,15 @@ create index if not exists idx_accounting_period_dates
 create index if not exists idx_accounting_period_locked
     on accounting_period(locked);
 
+create index if not exists idx_vat_period_fiscal_year
+    on vat_period(fiscal_year_id, period_index);
+
+create index if not exists idx_vat_period_dates
+    on vat_period(start_date, end_date);
+
+create index if not exists idx_vat_period_status
+    on vat_period(status, reported_at);
+
 create index if not exists idx_account_class
     on account(account_class);
 
@@ -60,6 +69,9 @@ create index if not exists idx_audit_log_fiscal_year
 
 create index if not exists idx_audit_log_period
     on audit_log(accounting_period_id, created_at);
+
+create index if not exists idx_audit_log_vat_period
+    on audit_log(vat_period_id, created_at);
 
 create index if not exists idx_audit_log_event_type
     on audit_log(event_type, created_at);

@@ -26,7 +26,10 @@ final class DatabaseService {
       new MigrationDefinition(3, 'V3__chart_of_accounts.sql', '/db/migrations/V3__chart_of_accounts.sql'),
       new MigrationDefinition(4, 'V4__vouchers.sql', '/db/migrations/V4__vouchers.sql'),
       new MigrationDefinition(5, 'V5__audit_and_attachments.sql', '/db/migrations/V5__audit_and_attachments.sql'),
-      new MigrationDefinition(6, 'V6__audit_log_chain_head.sql', '/db/migrations/V6__audit_log_chain_head.sql')
+      new MigrationDefinition(6, 'V6__audit_log_chain_head.sql', '/db/migrations/V6__audit_log_chain_head.sql'),
+      new MigrationDefinition(7, 'V7__vat_periods.sql', '/db/migrations/V7__vat_periods.sql'),
+      new MigrationDefinition(8, 'V8__vat_periodicity.sql', '/db/migrations/V8__vat_periodicity.sql'),
+      new MigrationDefinition(9, 'V9__audit_log_vat_period.sql', '/db/migrations/V9__audit_log_vat_period.sql')
   ]
 
   static DatabaseService newForTesting() {

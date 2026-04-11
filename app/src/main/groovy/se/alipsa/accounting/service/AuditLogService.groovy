@@ -9,6 +9,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 
 import java.nio.charset.StandardCharsets
@@ -31,6 +32,8 @@ final class AuditLogService {
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
   static final String LOCK_PERIOD = 'LOCK_PERIOD'
   static final String CLOSE_FISCAL_YEAR = 'CLOSE_FISCAL_YEAR'
+  static final String VAT_PERIOD_REPORTED = 'VAT_PERIOD_REPORTED'
+  static final String VAT_PERIOD_LOCKED = 'VAT_PERIOD_LOCKED'
   static final String IMPORT = 'IMPORT'
   static final String EXPORT = 'EXPORT'
   static final String BACKUP = 'BACKUP'
@@ -58,6 +61,7 @@ final class AuditLogService {
                  attachment_id as attachmentId,
                  fiscal_year_id as fiscalYearId,
                  accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
                  actor,
                  summary,
                  details,
@@ -83,6 +87,7 @@ final class AuditLogService {
                  attachment_id as attachmentId,
                  fiscal_year_id as fiscalYearId,
                  accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
                  actor,
                  summary,
                  details,
@@ -110,6 +115,7 @@ final class AuditLogService {
                  attachment_id as attachmentId,
                  fiscal_year_id as fiscalYearId,
                  accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
                  actor,
                  summary,
                  details,
@@ -129,6 +135,7 @@ final class AuditLogService {
             attachmentId: entry.attachmentId,
             fiscalYearId: entry.fiscalYearId,
             accountingPeriodId: entry.accountingPeriodId,
+            vatPeriodId: entry.vatPeriodId,
             actor: entry.actor,
             summary: entry.summary,
             details: entry.details,
@@ -254,6 +261,34 @@ final class AuditLogService {
   }
 
   @PackageScope
+  AuditLogEntry recordVatPeriodReported(Sql sql, VatPeriod vatPeriod, String reportHash) {
+    recordEvent(sql, VAT_PERIOD_REPORTED, new AuditReferences(fiscalYearId: vatPeriod.fiscalYearId, vatPeriodId: vatPeriod.id),
+        "Momsperiod rapporterad: ${vatPeriod.periodName}", formatDetails([
+            vatPeriodId   : vatPeriod.id,
+            fiscalYearId  : vatPeriod.fiscalYearId,
+            periodName    : vatPeriod.periodName,
+            startDate     : vatPeriod.startDate,
+            endDate       : vatPeriod.endDate,
+            status        : vatPeriod.status,
+            reportHash    : reportHash,
+            reportedAt    : vatPeriod.reportedAt
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordVatPeriodLocked(Sql sql, VatPeriod vatPeriod) {
+    recordEvent(sql, VAT_PERIOD_LOCKED, new AuditReferences(voucherId: vatPeriod.transferVoucherId, fiscalYearId: vatPeriod.fiscalYearId, vatPeriodId: vatPeriod.id),
+        "Momsperiod låst: ${vatPeriod.periodName}", formatDetails([
+            vatPeriodId       : vatPeriod.id,
+            fiscalYearId      : vatPeriod.fiscalYearId,
+            periodName        : vatPeriod.periodName,
+            status            : vatPeriod.status,
+            transferVoucherId : vatPeriod.transferVoucherId,
+            lockedAt          : vatPeriod.lockedAt
+        ]))
+  }
+
+  @PackageScope
   AuditLogEntry recordEvent(
       Sql sql,
       String eventType,
@@ -271,6 +306,7 @@ final class AuditLogService {
         attachmentId: safeReferences.attachmentId,
         fiscalYearId: safeReferences.fiscalYearId,
         accountingPeriodId: safeReferences.accountingPeriodId,
+        vatPeriodId: safeReferences.vatPeriodId,
         actor: DEFAULT_ACTOR,
         summary: safeSummary,
         details: details,
@@ -285,19 +321,21 @@ final class AuditLogService {
             attachment_id,
             fiscal_year_id,
             accounting_period_id,
+            vat_period_id,
             actor,
             summary,
             details,
             previous_hash,
             entry_hash,
             created_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
         seed.eventType,
         seed.voucherId,
         seed.attachmentId,
         seed.fiscalYearId,
         seed.accountingPeriodId,
+        seed.vatPeriodId,
         seed.actor,
         seed.summary,
         seed.details,
@@ -324,6 +362,7 @@ final class AuditLogService {
                attachment_id as attachmentId,
                fiscal_year_id as fiscalYearId,
                accounting_period_id as accountingPeriodId,
+               vat_period_id as vatPeriodId,
                actor,
                summary,
                details,
@@ -378,6 +417,7 @@ final class AuditLogService {
         longOrNull(row.get('attachmentId')),
         longOrNull(row.get('fiscalYearId')),
         longOrNull(row.get('accountingPeriodId')),
+        longOrNull(row.get('vatPeriodId')),
         row.get('actor') as String,
         row.get('summary') as String,
         readText(row.get('details')),
@@ -412,6 +452,7 @@ final class AuditLogService {
     payload.append(seed.attachmentId ?: '').append('|')
     payload.append(seed.fiscalYearId ?: '').append('|')
     payload.append(seed.accountingPeriodId ?: '').append('|')
+    payload.append(seed.vatPeriodId ?: '').append('|')
     payload.append(seed.actor ?: '').append('|')
     payload.append(seed.summary ?: '').append('|')
     payload.append(seed.details ?: '').append('|')
@@ -454,6 +495,7 @@ final class AuditLogService {
     Long attachmentId
     Long fiscalYearId
     Long accountingPeriodId
+    Long vatPeriodId
   }
 
   private static final class AuditEntrySeed {
@@ -463,6 +505,7 @@ final class AuditLogService {
     Long attachmentId
     Long fiscalYearId
     Long accountingPeriodId
+    Long vatPeriodId
     String actor
     String summary
     String details
