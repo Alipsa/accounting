@@ -39,6 +39,9 @@ final class VatPeriodPanel extends JPanel {
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel summaryLabel = new JLabel('Välj en momsperiod för att visa rapporten.')
+  private final JLabel transferDefaultsLabel = new JLabel(
+      "Momsöverföring bokförs i serie ${VatService.DEFAULT_TRANSFER_SERIES} mot konto ${VatService.DEFAULT_SETTLEMENT_ACCOUNT}."
+  )
   private final VatPeriodTableModel periodTableModel = new VatPeriodTableModel()
   private final VatReportTableModel reportTableModel = new VatReportTableModel()
   private final JTable periodTable = new JTable(periodTableModel)
@@ -95,6 +98,7 @@ final class VatPeriodPanel extends JPanel {
     actions.add(transferButton)
 
     panel.add(filters, BorderLayout.NORTH)
+    panel.add(transferDefaultsLabel, BorderLayout.CENTER)
     panel.add(actions, BorderLayout.SOUTH)
     panel
   }

@@ -9,6 +9,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 
 import java.nio.charset.StandardCharsets
@@ -31,6 +32,8 @@ final class AuditLogService {
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
   static final String LOCK_PERIOD = 'LOCK_PERIOD'
   static final String CLOSE_FISCAL_YEAR = 'CLOSE_FISCAL_YEAR'
+  static final String VAT_PERIOD_REPORTED = 'VAT_PERIOD_REPORTED'
+  static final String VAT_PERIOD_LOCKED = 'VAT_PERIOD_LOCKED'
   static final String IMPORT = 'IMPORT'
   static final String EXPORT = 'EXPORT'
   static final String BACKUP = 'BACKUP'
@@ -250,6 +253,34 @@ final class AuditLogService {
             startDate    : fiscalYear.startDate,
             endDate      : fiscalYear.endDate,
             closedAt     : fiscalYear.closedAt
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordVatPeriodReported(Sql sql, VatPeriod vatPeriod, String reportHash) {
+    recordEvent(sql, VAT_PERIOD_REPORTED, new AuditReferences(fiscalYearId: vatPeriod.fiscalYearId),
+        "Momsperiod rapporterad: ${vatPeriod.periodName}", formatDetails([
+            vatPeriodId   : vatPeriod.id,
+            fiscalYearId  : vatPeriod.fiscalYearId,
+            periodName    : vatPeriod.periodName,
+            startDate     : vatPeriod.startDate,
+            endDate       : vatPeriod.endDate,
+            status        : vatPeriod.status,
+            reportHash    : reportHash,
+            reportedAt    : vatPeriod.reportedAt
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordVatPeriodLocked(Sql sql, VatPeriod vatPeriod) {
+    recordEvent(sql, VAT_PERIOD_LOCKED, new AuditReferences(voucherId: vatPeriod.transferVoucherId, fiscalYearId: vatPeriod.fiscalYearId),
+        "Momsperiod låst: ${vatPeriod.periodName}", formatDetails([
+            vatPeriodId       : vatPeriod.id,
+            fiscalYearId      : vatPeriod.fiscalYearId,
+            periodName        : vatPeriod.periodName,
+            status            : vatPeriod.status,
+            transferVoucherId : vatPeriod.transferVoucherId,
+            lockedAt          : vatPeriod.lockedAt
         ]))
   }
 

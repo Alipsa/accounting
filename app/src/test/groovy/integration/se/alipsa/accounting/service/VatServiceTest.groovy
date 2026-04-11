@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriod
@@ -82,13 +83,37 @@ class VatServiceTest {
   }
 
   @Test
+  void vatReportComputesOutputVatWhenTaxLineIsMissing() {
+    voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 15),
+        'Försäljning utan momsrad',
+        [
+            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertVatRow(report, VatCode.OUTPUT_25, 1000.00G, 250.00G, 0.00G)
+    assertEquals(250.00G, report.outputVatTotal)
+  }
+
+  @Test
   void reportedPeriodBlocksRegularBookingsButAllowsCorrections() {
     Voucher saleVoucher = bookSaleVoucher()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
 
     VatPeriod reportedPeriod = vatService.reportPeriod(january.id)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
 
     assertEquals(VatService.REPORTED, reportedPeriod.status)
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.VAT_PERIOD_REPORTED && entry.details.contains(reportedPeriod.reportHash)
+    })
     Voucher draft = voucherService.createDraft(
         fiscalYear.id,
         'A',
@@ -118,6 +143,7 @@ class VatServiceTest {
 
     Voucher transferVoucher = vatService.bookTransfer(january.id)
     VatPeriod lockedPeriod = vatService.findPeriod(january.id)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
 
     assertEquals(VatService.LOCKED, lockedPeriod.status)
     assertEquals(transferVoucher.id, lockedPeriod.transferVoucherId)
@@ -128,6 +154,9 @@ class VatServiceTest {
     assertTransferLine(transferVoucher, '2641', 0.00G, 50.00G)
     assertTransferLine(transferVoucher, '2645', 0.00G, 25.00G)
     assertTransferLine(transferVoucher, '2650', 0.00G, 200.00G)
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.VAT_PERIOD_LOCKED && entry.voucherId == transferVoucher.id
+    })
 
     Executable correctionAction = {
       voucherService.createCorrectionVoucher(saleVoucher.id)
@@ -135,6 +164,51 @@ class VatServiceTest {
 
     IllegalStateException exception = assertThrows(IllegalStateException, correctionAction)
     assertTrue(exception.message.contains('Momsperioden är låst'))
+  }
+
+  @Test
+  void bookingTransferWithoutNetSettlementCreatesBalancedVoucherWithout2650() {
+    bookSaleVoucher()
+    bookPurchaseVoucher(1000.00G)
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    vatService.reportPeriod(january.id)
+
+    Voucher transferVoucher = vatService.bookTransfer(january.id)
+
+    assertEquals(2, transferVoucher.lines.size())
+    assertTransferLine(transferVoucher, '2611', 250.00G, 0.00G)
+    assertTransferLine(transferVoucher, '2641', 0.00G, 250.00G)
+    assertTrue(transferVoucher.lines.every { VoucherLine line -> line.accountNumber != '2650' })
+  }
+
+  @Test
+  void validateReportDetectsTamperedVoucherLinesAfterReporting() {
+    bookVatFixtures()
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    vatService.reportPeriod(january.id)
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update voucher_line set credit_amount = 1200.00 where account_number = '3010'")
+    }
+
+    List<String> problems = vatService.validateReport(january.id)
+
+    assertEquals(1, problems.size())
+    assertTrue(problems.first().contains('avvikande rapporthash'))
+  }
+
+  @Test
+  void transferInLockedAccountingPeriodShowsPedagogicError() {
+    bookVatFixtures()
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    vatService.reportPeriod(january.id)
+    accountingPeriodService.lockPeriod(accountingPeriodService.listPeriods(fiscalYear.id).first().id, 'Avstämd.')
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.bookTransfer(january.id)
+    }
+
+    assertTrue(exception.message.contains('redovisningsperioden är låst'))
   }
 
   @Test
@@ -172,25 +246,34 @@ class VatServiceTest {
   }
 
   private Voucher bookSaleVoucher() {
+    bookSaleVoucher(1000.00G)
+  }
+
+  private Voucher bookSaleVoucher(BigDecimal baseAmount) {
     voucherService.createAndBook(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
         'Försäljning januari',
-        saleLines(1000.00G)
+        saleLines(baseAmount)
     )
   }
 
   private Voucher bookPurchaseVoucher() {
+    bookPurchaseVoucher(200.00G)
+  }
+
+  private Voucher bookPurchaseVoucher(BigDecimal baseAmount) {
+    BigDecimal vatAmount = (baseAmount * 0.25G).setScale(2, RoundingMode.HALF_UP)
     voucherService.createAndBook(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 18),
         'Leverantörsfaktura',
         [
-            new VoucherLine(null, null, 0, '4010', null, 'Varuinköp', 200.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2641', null, 'Ingående moms', 50.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
+            new VoucherLine(null, null, 0, '4010', null, 'Varuinköp', baseAmount, 0.00G),
+            new VoucherLine(null, null, 0, '2641', null, 'Ingående moms', vatAmount, 0.00G),
+            new VoucherLine(null, null, 0, '2440', null, 'Leverantörsskuld', 0.00G, baseAmount + vatAmount)
         ]
     )
   }

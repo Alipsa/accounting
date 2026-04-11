@@ -28,25 +28,31 @@ final class VatService {
   static final String LOCKED = 'LOCKED'
 
   private static final int AMOUNT_SCALE = 2
-  private static final String DEFAULT_TRANSFER_SERIES = 'M'
-  private static final String DEFAULT_SETTLEMENT_ACCOUNT = '2650'
+  private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = ['ASSET', 'LIABILITY'] as Set<String>
+  static final String DEFAULT_TRANSFER_SERIES = 'M'
+  static final String DEFAULT_SETTLEMENT_ACCOUNT = '2650'
   private static final Set<String> BASE_ACCOUNT_CLASSES = ['INCOME', 'EXPENSE'] as Set<String>
-  private static final Set<String> VAT_ACCOUNT_CLASSES = ['ASSET', 'LIABILITY', 'EQUITY'] as Set<String>
 
   private final DatabaseService databaseService
   private final VoucherService voucherService
+  private final AuditLogService auditLogService
 
   VatService() {
     this(DatabaseService.instance)
   }
 
   VatService(DatabaseService databaseService) {
-    this(databaseService, new VoucherService(databaseService))
+    this(databaseService, new VoucherService(databaseService), new AuditLogService(databaseService))
   }
 
   VatService(DatabaseService databaseService, VoucherService voucherService) {
+    this(databaseService, voucherService, new AuditLogService(databaseService))
+  }
+
+  VatService(DatabaseService databaseService, VoucherService voucherService, AuditLogService auditLogService) {
     this.databaseService = databaseService
     this.voucherService = voucherService
+    this.auditLogService = auditLogService
   }
 
   List<VatPeriod> listPeriods(long fiscalYearId) {
@@ -63,9 +69,26 @@ final class VatService {
   }
 
   VatReport calculateReport(long vatPeriodId) {
-    databaseService.withTransaction { Sql sql ->
+    databaseService.withSql { Sql sql ->
       VatPeriod period = requirePeriod(sql, vatPeriodId)
       buildReport(sql, period)
+    }
+  }
+
+  List<String> validateReport(long vatPeriodId) {
+    databaseService.withSql { Sql sql ->
+      VatPeriod period = requirePeriod(sql, vatPeriodId)
+      if (period.status == OPEN) {
+        return noProblems()
+      }
+      if (!period.reportHash) {
+        return singleProblem("Momsperiod ${period.periodName} saknar sparad rapporthash.")
+      }
+      VatReport report = buildReport(sql, period)
+      String currentHash = calculateReportHash(report)
+      currentHash == period.reportHash
+          ? noProblems()
+          : singleProblem("Momsperiod ${period.periodName} har avvikande rapporthash.")
     }
   }
 
@@ -92,7 +115,9 @@ final class VatService {
       if (updated != 1) {
         throw new IllegalStateException("Momsperiod ${period.periodName} kunde inte rapporteras.")
       }
-      requirePeriod(sql, vatPeriodId)
+      VatPeriod reportedPeriod = requirePeriod(sql, vatPeriodId)
+      auditLogService.recordVatPeriodReported(sql, reportedPeriod, reportHash)
+      reportedPeriod
     }
   }
 
@@ -113,7 +138,7 @@ final class VatService {
       requireSettlementAccount(sql, settlementAccount)
       List<VoucherLine> lines = buildTransferLines(balances, settlementAccount)
       String description = "Momsöverföring ${period.periodName}"
-      Voucher voucher = voucherService.createAndBook(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines, true)
+      Voucher voucher = bookTransferVoucher(sql, period, seriesCode, description, lines)
       int updated = sql.executeUpdate('''
           update vat_period
              set status = ?,
@@ -126,6 +151,8 @@ final class VatService {
       if (updated != 1) {
         throw new IllegalStateException("Momsperiod ${period.periodName} kunde inte låsas efter momsöverföring.")
       }
+      VatPeriod lockedPeriod = requirePeriod(sql, vatPeriodId)
+      auditLogService.recordVatPeriodLocked(sql, lockedPeriod)
       voucher
     }
   }
@@ -314,7 +341,7 @@ final class VatService {
 
       if (accountClass in BASE_ACCOUNT_CLASSES) {
         baseAmount = signedAmount
-      } else if (accountClass in VAT_ACCOUNT_CLASSES) {
+      } else if (accountClass in VAT_BALANCE_ACCOUNT_CLASSES) {
         if (isOutputVatAccount(vatCode, accountClass, row.get('normalBalanceSide') as String)) {
           postedOutputVat = signedAmount
           outputPostingCount = 1
@@ -322,6 +349,8 @@ final class VatService {
           postedInputVat = signedAmount
           inputPostingCount = 1
         }
+      } else {
+        throw new IllegalStateException("Momskod ${vatCode.name()} får inte användas på kontoklass ${accountClass}.")
       }
 
       new ReportSeed(vatCode, baseAmount, postedOutputVat, postedInputVat, outputPostingCount, inputPostingCount)
@@ -343,7 +372,7 @@ final class VatService {
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
            and a.vat_code is not null
-           and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
+           and a.account_class in ('ASSET', 'LIABILITY')
          group by vl.account_number, a.account_name, a.account_class, a.normal_balance_side
          having sum(vl.debit_amount) <> sum(vl.credit_amount)
          order by vl.account_number
@@ -398,21 +427,20 @@ final class VatService {
     }
 
     BigDecimal delta = scale(totalDebit - totalCredit)
-    if (delta == BigDecimal.ZERO) {
-      throw new IllegalStateException('Momsöverföringen saknar nettobelopp att boka mot redovisningskonto.')
+    if (delta != BigDecimal.ZERO) {
+      BigDecimal settlementDebit = delta < BigDecimal.ZERO ? delta.abs() : BigDecimal.ZERO
+      BigDecimal settlementCredit = delta > BigDecimal.ZERO ? delta : BigDecimal.ZERO
+      lines << new VoucherLine(
+          null,
+          null,
+          lines.size() + 1,
+          settlementAccount,
+          null,
+          'Momsredovisning',
+          scale(settlementDebit),
+          scale(settlementCredit)
+      )
     }
-    BigDecimal settlementDebit = delta < BigDecimal.ZERO ? delta.abs() : BigDecimal.ZERO
-    BigDecimal settlementCredit = delta > BigDecimal.ZERO ? delta : BigDecimal.ZERO
-    lines << new VoucherLine(
-        null,
-        null,
-        lines.size() + 1,
-        settlementAccount,
-        null,
-        'Momsredovisning',
-        scale(settlementDebit),
-        scale(settlementCredit)
-    )
     lines
   }
 
@@ -426,7 +454,7 @@ final class VatService {
     if (row == null) {
       throw new IllegalArgumentException("Momsredovisningskonto saknas: ${accountNumber}")
     }
-    if (!(row.get('accountClass') as String in VAT_ACCOUNT_CLASSES)) {
+    if (!(row.get('accountClass') as String in VAT_BALANCE_ACCOUNT_CLASSES)) {
       throw new IllegalArgumentException("Momsredovisningskonto måste vara ett balanskonto: ${accountNumber}")
     }
   }
@@ -435,20 +463,14 @@ final class VatService {
     if (vatCode.outputRate == BigDecimal.ZERO) {
       return false
     }
-    if (accountClass == 'LIABILITY') {
-      return true
-    }
-    normalBalanceSide == 'CREDIT' && vatCode.inputRate == BigDecimal.ZERO
+    accountClass == 'LIABILITY' || (accountClass == 'ASSET' && normalBalanceSide == 'CREDIT' && vatCode.inputRate == BigDecimal.ZERO)
   }
 
   private static boolean isInputVatAccount(VatCode vatCode, String accountClass, String normalBalanceSide) {
     if (vatCode.inputRate == BigDecimal.ZERO) {
       return false
     }
-    if (accountClass == 'ASSET') {
-      return true
-    }
-    normalBalanceSide == 'DEBIT' && vatCode.outputRate == BigDecimal.ZERO
+    accountClass == 'ASSET' || (accountClass == 'LIABILITY' && normalBalanceSide == 'DEBIT' && vatCode.outputRate == BigDecimal.ZERO)
   }
 
   private static VatCode parseVatCode(String value) {
@@ -477,6 +499,14 @@ final class VatService {
     (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
   }
 
+  private static List<String> noProblems() {
+    []
+  }
+
+  private static List<String> singleProblem(String message) {
+    [message]
+  }
+
   private static String calculateReportHash(VatReport report) {
     StringBuilder payload = new StringBuilder()
     payload.append(report.period.id).append('|')
@@ -501,8 +531,24 @@ final class VatService {
     if (period == null) {
       throw new IllegalArgumentException("Okänd momsperiod: ${vatPeriodId}")
     }
-    ensurePeriodsForFiscalYear(sql, period.fiscalYearId)
-    findPeriod(sql, vatPeriodId)
+    period
+  }
+
+  private Voucher bookTransferVoucher(
+      Sql sql,
+      VatPeriod period,
+      String seriesCode,
+      String description,
+      List<VoucherLine> lines
+  ) {
+    try {
+      return voucherService.createAndBook(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines, true)
+    } catch (IllegalStateException exception) {
+      if (exception.message?.contains('Perioden är låst')) {
+        throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom redovisningsperioden är låst.', exception)
+      }
+      throw exception
+    }
   }
 
   private static VatPeriod findPeriod(Sql sql, long vatPeriodId) {
