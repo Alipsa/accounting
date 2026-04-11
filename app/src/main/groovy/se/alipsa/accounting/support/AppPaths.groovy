@@ -45,12 +45,16 @@ final class AppPaths {
     applicationHome().resolve('logs')
   }
 
+  static Path attachmentsDirectory() {
+    applicationHome().resolve('attachments')
+  }
+
   static Path databaseBasePath() {
     dataDirectory().resolve('accounting')
   }
 
   static void ensureDirectoryStructure() {
-    [applicationHome(), dataDirectory(), logDirectory()].each { Path path ->
+    [applicationHome(), dataDirectory(), logDirectory(), attachmentsDirectory()].each { Path path ->
       Files.createDirectories(path)
       tightenPermissions(path)
     }

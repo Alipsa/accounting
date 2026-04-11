@@ -3,16 +3,21 @@ package se.alipsa.accounting.ui
 import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.AttachmentMetadata
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
+import se.alipsa.accounting.service.AttachmentService
+import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -28,6 +33,7 @@ import javax.swing.JDialog
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
@@ -41,9 +47,34 @@ import javax.swing.table.AbstractTableModel
 @CompileStatic
 final class VoucherEditor extends JDialog {
 
+  static final class Dependencies {
+
+    final VoucherService voucherService
+    final FiscalYearService fiscalYearService
+    final AccountService accountService
+    final AttachmentService attachmentService
+    final AuditLogService auditLogService
+
+    Dependencies(
+        VoucherService voucherService,
+        FiscalYearService fiscalYearService,
+        AccountService accountService,
+        AttachmentService attachmentService,
+        AuditLogService auditLogService
+    ) {
+      this.voucherService = voucherService
+      this.fiscalYearService = fiscalYearService
+      this.accountService = accountService
+      this.attachmentService = attachmentService
+      this.auditLogService = auditLogService
+    }
+  }
+
   private final VoucherService voucherService
   private final FiscalYearService fiscalYearService
   private final AccountService accountService
+  private final AttachmentService attachmentService
+  private final AuditLogService auditLogService
   private final Runnable onSave
   private final JComboBox<FiscalYear> fiscalYearComboBox
   private final JTextField seriesField = new JTextField(6)
@@ -53,21 +84,27 @@ final class VoucherEditor extends JDialog {
   private final JLabel totalsLabel = new JLabel('')
   private final LineTableModel lineTableModel
   private final JTable lineTable
+  private final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
+  private final JTable attachmentTable = new JTable(attachmentTableModel)
+  private final AuditLogTableModel auditLogTableModel = new AuditLogTableModel()
+  private final JTable auditLogTable = new JTable(auditLogTableModel)
+  private final JButton addAttachmentButton = new JButton('Lägg till bilaga...')
+  private final JButton openAttachmentButton = new JButton('Öppna bilaga...')
   private Voucher voucher
   private boolean readOnly
 
   VoucherEditor(
       Frame owner,
-      VoucherService voucherService,
-      FiscalYearService fiscalYearService,
-      AccountService accountService,
+      Dependencies dependencies,
       Long voucherId,
       Runnable onSave
   ) {
     super(owner, voucherId == null ? 'Ny verifikation' : 'Verifikation', true)
-    this.voucherService = voucherService
-    this.fiscalYearService = fiscalYearService
-    this.accountService = accountService
+    this.voucherService = dependencies.voucherService
+    this.fiscalYearService = dependencies.fiscalYearService
+    this.accountService = dependencies.accountService
+    this.attachmentService = dependencies.attachmentService
+    this.auditLogService = dependencies.auditLogService
     this.onSave = onSave
     voucher = voucherId == null ? null : voucherService.findVoucher(voucherId)
     readOnly = voucher != null && voucher.status != VoucherStatus.DRAFT
@@ -80,13 +117,11 @@ final class VoucherEditor extends JDialog {
 
   static void showDialog(
       Frame owner,
-      VoucherService voucherService,
-      FiscalYearService fiscalYearService,
-      AccountService accountService,
+      Dependencies dependencies,
       Long voucherId,
       Runnable onSave
   ) {
-    VoucherEditor editor = new VoucherEditor(owner, voucherService, fiscalYearService, accountService, voucherId, onSave)
+    VoucherEditor editor = new VoucherEditor(owner, dependencies, voucherId, onSave)
     editor.setVisible(true)
   }
 
@@ -94,11 +129,19 @@ final class VoucherEditor extends JDialog {
     setLayout(new BorderLayout(12, 12))
     ((JPanel) contentPane).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12))
     add(buildHeaderPanel(), BorderLayout.NORTH)
-    add(buildLinePanel(), BorderLayout.CENTER)
+    add(buildCenterTabs(), BorderLayout.CENTER)
     add(buildFooterPanel(), BorderLayout.SOUTH)
     pack()
     setMinimumSize(new java.awt.Dimension(840, 520))
     setLocationRelativeTo(owner)
+  }
+
+  private JTabbedPane buildCenterTabs() {
+    JTabbedPane tabs = new JTabbedPane()
+    tabs.addTab('Rader', buildLinePanel())
+    tabs.addTab('Bilagor', buildAttachmentPanel())
+    tabs.addTab('Historik', buildAuditPanel())
+    tabs
   }
 
   private JPanel buildHeaderPanel() {
@@ -173,6 +216,36 @@ final class VoucherEditor extends JDialog {
     panel
   }
 
+  private JPanel buildAttachmentPanel() {
+    attachmentTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
+    attachmentTable.selectionModel.addListSelectionListener {
+      updateAttachmentButtons()
+    }
+    addAttachmentButton.addActionListener {
+      addAttachmentRequested()
+    }
+    openAttachmentButton.addActionListener {
+      openSelectedAttachment()
+    }
+    updateAttachmentButtons()
+
+    JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    actions.add(addAttachmentButton)
+    actions.add(openAttachmentButton)
+
+    JPanel panel = new JPanel(new BorderLayout(0, 8))
+    panel.add(actions, BorderLayout.NORTH)
+    panel.add(new JScrollPane(attachmentTable), BorderLayout.CENTER)
+    panel
+  }
+
+  private JPanel buildAuditPanel() {
+    auditLogTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
+    JPanel panel = new JPanel(new BorderLayout())
+    panel.add(new JScrollPane(auditLogTable), BorderLayout.CENTER)
+    panel
+  }
+
   private JPanel buildFooterPanel() {
     validationArea.editable = false
     validationArea.lineWrap = true
@@ -216,6 +289,7 @@ final class VoucherEditor extends JDialog {
       }
       descriptionField.text = ''
       lineTableModel.addBlankRows(2)
+      refreshAttachmentAndHistory()
       refreshTotals()
       return
     }
@@ -230,6 +304,7 @@ final class VoucherEditor extends JDialog {
     dateField.enabled = !readOnly
     descriptionField.enabled = !readOnly
     lineTableModel.setRows(voucher.lines)
+    refreshAttachmentAndHistory()
     refreshTotals()
   }
 
@@ -238,6 +313,8 @@ final class VoucherEditor extends JDialog {
       Voucher saved = saveDraft()
       voucher = saved
       lineTableModel.setRows(saved.lines)
+      setTitle((voucher.voucherNumber ?: "Utkast ${voucher.id}") as String)
+      refreshAttachmentAndHistory()
       showInfo('Utkastet sparades.')
       onSave.run()
     } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -319,6 +396,69 @@ final class VoucherEditor extends JDialog {
     }
   }
 
+  private void refreshAttachmentAndHistory() {
+    if (voucher == null) {
+      attachmentTableModel.setRows([])
+      auditLogTableModel.setRows([])
+      updateAttachmentButtons()
+      return
+    }
+    attachmentTableModel.setRows(attachmentService.listAttachments(voucher.id))
+    auditLogTableModel.setRows(auditLogService.listEntriesForVoucher(voucher.id))
+    updateAttachmentButtons()
+  }
+
+  private void addAttachmentRequested() {
+    if (voucher == null) {
+      showError('Spara verifikationen som utkast innan du lägger till bilagor.')
+      return
+    }
+    javax.swing.JFileChooser chooser = new javax.swing.JFileChooser()
+    int result = chooser.showOpenDialog(this)
+    if (result != javax.swing.JFileChooser.APPROVE_OPTION || chooser.selectedFile == null) {
+      return
+    }
+    try {
+      attachmentService.addAttachment(voucher.id, chooser.selectedFile.toPath())
+      refreshAttachmentAndHistory()
+      showInfo("Bilagan ${chooser.selectedFile.name} registrerades.")
+    } catch (IllegalArgumentException | IllegalStateException exception) {
+      showError(exception.message ?: 'Bilagan kunde inte registreras.')
+    }
+  }
+
+  private void openSelectedAttachment() {
+    AttachmentMetadata selected = selectedAttachment()
+    if (selected == null) {
+      showError('Välj en bilaga först.')
+      return
+    }
+    if (!Desktop.isDesktopSupported()) {
+      showError('Systemet kan inte öppna bilagor från applikationen.')
+      return
+    }
+    Desktop desktop = Desktop.getDesktop()
+    if (!desktop.isSupported(Desktop.Action.OPEN)) {
+      showError('Systemet saknar stöd för att öppna bilagor.')
+      return
+    }
+    try {
+      desktop.open(attachmentService.resolveStoredPath(selected).toFile())
+    } catch (IOException exception) {
+      showError(exception.message ?: 'Bilagan kunde inte öppnas.')
+    }
+  }
+
+  private AttachmentMetadata selectedAttachment() {
+    int selectedRow = attachmentTable.selectedRow
+    selectedRow < 0 ? null : attachmentTableModel.rowAt(selectedRow)
+  }
+
+  private void updateAttachmentButtons() {
+    addAttachmentButton.enabled = voucher != null
+    openAttachmentButton.enabled = selectedAttachment() != null
+  }
+
   private static LocalDate parseDate(String value) {
     try {
       LocalDate.parse(value?.trim())
@@ -355,6 +495,20 @@ final class VoucherEditor extends JDialog {
 
   private static boolean hasText(String value) {
     value != null && !value.isBlank()
+  }
+
+  private static String shortHash(String hash) {
+    hash == null || hash.length() <= 12 ? hash ?: '' : hash.substring(0, 12)
+  }
+
+  private static String formatFileSize(long bytes) {
+    if (bytes < 1024) {
+      return "${bytes} B"
+    }
+    if (bytes < 1024L * 1024L) {
+      return String.format(Locale.ROOT, '%.1f kB', bytes / 1024.0d)
+    }
+    String.format(Locale.ROOT, '%.1f MB', bytes / (1024.0d * 1024.0d))
   }
 
   private static final class LineEntry {
@@ -523,6 +677,102 @@ final class VoucherEditor extends JDialog {
 
     private static String amountText(BigDecimal amount) {
       amount == null || amount == BigDecimal.ZERO ? '' : amount.setScale(2).toPlainString()
+    }
+  }
+
+  private static final class AttachmentTableModel extends AbstractTableModel {
+
+    private static final List<String> COLUMNS = ['Filnamn', 'Typ', 'Storlek', 'Checksumma', 'Sparad']
+
+    private List<AttachmentMetadata> rows = []
+
+    void setRows(List<AttachmentMetadata> attachments) {
+      rows = new ArrayList<>(attachments)
+      fireTableDataChanged()
+    }
+
+    AttachmentMetadata rowAt(int rowIndex) {
+      rows[rowIndex]
+    }
+
+    @Override
+    int getRowCount() {
+      rows.size()
+    }
+
+    @Override
+    int getColumnCount() {
+      COLUMNS.size()
+    }
+
+    @Override
+    String getColumnName(int column) {
+      COLUMNS[column]
+    }
+
+    @Override
+    Object getValueAt(int rowIndex, int columnIndex) {
+      AttachmentMetadata attachment = rows[rowIndex]
+      switch (columnIndex) {
+        case 0:
+          return attachment.originalFileName
+        case 1:
+          return attachment.contentType ?: ''
+        case 2:
+          return formatFileSize(attachment.fileSize)
+        case 3:
+          return shortHash(attachment.checksumSha256)
+        case 4:
+          return attachment.createdAt
+        default:
+          return ''
+      }
+    }
+  }
+
+  private static final class AuditLogTableModel extends AbstractTableModel {
+
+    private static final List<String> COLUMNS = ['Tid', 'Händelse', 'Sammanfattning', 'Aktör', 'Hash']
+
+    private List<AuditLogEntry> rows = []
+
+    void setRows(List<AuditLogEntry> entries) {
+      rows = new ArrayList<>(entries)
+      fireTableDataChanged()
+    }
+
+    @Override
+    int getRowCount() {
+      rows.size()
+    }
+
+    @Override
+    int getColumnCount() {
+      COLUMNS.size()
+    }
+
+    @Override
+    String getColumnName(int column) {
+      COLUMNS[column]
+    }
+
+    @Override
+    Object getValueAt(int rowIndex, int columnIndex) {
+      AuditLogEntry entry = rows[rowIndex]
+      switch (columnIndex) {
+        case 0:
+          return entry.createdAt
+        case 1:
+          return entry.eventType
+        case 2:
+          return entry.summary
+        case 3:
+          return entry.actor
+        case 4:
+          return shortHash(entry.entryHash)
+        default:
+          return ''
+      }
     }
   }
 }

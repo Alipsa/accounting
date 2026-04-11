@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
+import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AccountingPeriod
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -30,6 +32,7 @@ class VoucherServiceTest {
   Path tempDir
 
   private DatabaseService databaseService
+  private AuditLogService auditLogService
   private AccountingPeriodService accountingPeriodService
   private FiscalYearService fiscalYearService
   private VoucherService voucherService
@@ -42,9 +45,10 @@ class VoucherServiceTest {
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
-    accountingPeriodService = new AccountingPeriodService(databaseService)
-    fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService)
-    voucherService = new VoucherService(databaseService)
+    auditLogService = new AuditLogService(databaseService)
+    accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
+    voucherService = new VoucherService(databaseService, auditLogService)
     fiscalYear = fiscalYearService.createFiscalYear(
         '2026',
         LocalDate.of(2026, 1, 1),
@@ -304,6 +308,38 @@ class VoucherServiceTest {
 
     IllegalStateException exception = assertThrows(IllegalStateException, action)
     assertEquals('Perioden är låst och kan inte bokföras på.', exception.message)
+  }
+
+  @Test
+  void voucherLifecycleIsLoggedInAuditTrail() {
+    Voucher draft = voucherService.createDraft(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 5, 1),
+        'Audit utkast',
+        balancedLines(100.00G)
+    )
+    voucherService.cancelDraft(draft.id)
+
+    Voucher booked = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 5, 2),
+        'Audit bokförd',
+        balancedLines(200.00G)
+    )
+    Voucher correction = voucherService.createCorrectionVoucher(booked.id)
+
+    List<AuditLogEntry> draftEntries = auditLogService.listEntriesForVoucher(draft.id)
+    List<AuditLogEntry> bookedEntries = auditLogService.listEntriesForVoucher(booked.id)
+    List<AuditLogEntry> correctionEntries = auditLogService.listEntriesForVoucher(correction.id)
+
+    assertTrue(draftEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
+    assertTrue(draftEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CANCEL_VOUCHER })
+    assertTrue(bookedEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
+    assertTrue(bookedEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.BOOK_VOUCHER })
+    assertTrue(correctionEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CORRECTION_VOUCHER })
+    assertEquals([], auditLogService.validateIntegrity())
   }
 
   private void insertTestAccounts() {
