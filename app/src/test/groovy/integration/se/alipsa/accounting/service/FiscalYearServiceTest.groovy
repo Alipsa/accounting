@@ -9,6 +9,7 @@ import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AccountingPeriod
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.support.AppPaths
 
@@ -21,6 +22,7 @@ class FiscalYearServiceTest {
   Path tempDir
 
   private DatabaseService databaseService
+  private AuditLogService auditLogService
   private AccountingPeriodService accountingPeriodService
   private FiscalYearService fiscalYearService
   private String previousHome
@@ -31,8 +33,9 @@ class FiscalYearServiceTest {
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
-    accountingPeriodService = new AccountingPeriodService(databaseService)
-    fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService)
+    auditLogService = new AuditLogService(databaseService)
+    accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
   }
 
   @AfterEach
@@ -94,9 +97,16 @@ class FiscalYearServiceTest {
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
     List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
 
     assertTrue(closedYear.closed)
     assertTrue(closedPeriods.every { AccountingPeriod period -> period.locked })
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.LOCK_PERIOD && entry.accountingPeriodId == january.id
+    })
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == year.id
+    })
   }
 
   @Test

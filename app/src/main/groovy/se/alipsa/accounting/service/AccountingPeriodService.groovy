@@ -17,9 +17,19 @@ import java.time.LocalDate
 final class AccountingPeriodService {
 
   private final DatabaseService databaseService
+  private final AuditLogService auditLogService
 
-  AccountingPeriodService(DatabaseService databaseService = DatabaseService.instance) {
+  AccountingPeriodService() {
+    this(DatabaseService.instance)
+  }
+
+  AccountingPeriodService(DatabaseService databaseService) {
+    this(databaseService, new AuditLogService(databaseService))
+  }
+
+  AccountingPeriodService(DatabaseService databaseService, AuditLogService auditLogService) {
     this.databaseService = databaseService
+    this.auditLogService = auditLogService
   }
 
   List<AccountingPeriod> listPeriods(long fiscalYearId) {
@@ -69,7 +79,9 @@ final class AccountingPeriodService {
       if (updated != 1) {
         throw new IllegalStateException("Failed to lock accounting period id: ${periodId}")
       }
-      findPeriod(sql, periodId)
+      AccountingPeriod lockedPeriod = findPeriod(sql, periodId)
+      auditLogService.recordPeriodLocked(sql, lockedPeriod)
+      lockedPeriod
     }
   }
 

@@ -6,6 +6,8 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
+import se.alipsa.accounting.service.AttachmentService
+import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 
@@ -43,6 +45,9 @@ final class VoucherListPanel extends JPanel {
   private final VoucherService voucherService
   private final FiscalYearService fiscalYearService
   private final AccountService accountService
+  private final AttachmentService attachmentService
+  private final AuditLogService auditLogService
+  private final VoucherEditor.Dependencies editorDependencies
   private final Timer searchDebounceTimer
   private final JComboBox<Object> fiscalYearComboBox = new JComboBox<>()
   private final JComboBox<String> statusComboBox = new JComboBox<>(
@@ -57,11 +62,22 @@ final class VoucherListPanel extends JPanel {
   VoucherListPanel(
       VoucherService voucherService,
       FiscalYearService fiscalYearService,
-      AccountService accountService
+      AccountService accountService,
+      AttachmentService attachmentService,
+      AuditLogService auditLogService
   ) {
     this.voucherService = voucherService
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
+    this.attachmentService = attachmentService
+    this.auditLogService = auditLogService
+    editorDependencies = new VoucherEditor.Dependencies(
+        voucherService,
+        fiscalYearService,
+        accountService,
+        attachmentService,
+        auditLogService
+    )
     searchDebounceTimer = new Timer(SEARCH_DEBOUNCE_MILLIS, { reloadVouchers() } as ActionListener)
     searchDebounceTimer.repeats = false
     buildUi()
@@ -223,7 +239,7 @@ final class VoucherListPanel extends JPanel {
   }
 
   private void openEditor(Long voucherId) {
-    VoucherEditor.showDialog(ownerFrame(), voucherService, fiscalYearService, accountService, voucherId, {
+    VoucherEditor.showDialog(ownerFrame(), editorDependencies, voucherId, {
       refreshData()
     } as Runnable)
   }

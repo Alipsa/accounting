@@ -27,9 +27,19 @@ final class VoucherService {
   private static final int DEFAULT_SEARCH_LIMIT = 500
 
   private final DatabaseService databaseService
+  private final AuditLogService auditLogService
 
-  VoucherService(DatabaseService databaseService = DatabaseService.instance) {
+  VoucherService() {
+    this(DatabaseService.instance)
+  }
+
+  VoucherService(DatabaseService databaseService) {
+    this(databaseService, new AuditLogService(databaseService))
+  }
+
+  VoucherService(DatabaseService databaseService, AuditLogService auditLogService) {
     this.databaseService = databaseService
+    this.auditLogService = auditLogService
   }
 
   VoucherSeries ensureSeries(long fiscalYearId, String seriesCode, String seriesName = null) {
@@ -124,7 +134,9 @@ final class VoucherService {
       if (updated != 1) {
         throw new IllegalStateException("Verifikationen kunde inte makuleras: ${voucherId}")
       }
-      requireVoucher(sql, voucherId)
+      Voucher cancelledVoucher = requireVoucher(sql, voucherId)
+      auditLogService.recordVoucherCancelled(sql, cancelledVoucher)
+      cancelledVoucher
     }
   }
 
@@ -266,7 +278,11 @@ final class VoucherService {
     ])
     long voucherId = ((Number) keys.first().first()).longValue()
     replaceLines(sql, voucherId, safeLines)
-    requireVoucher(sql, voucherId)
+    Voucher draft = requireVoucher(sql, voucherId)
+    if (originalVoucherId == null) {
+      auditLogService.recordVoucherCreated(sql, draft)
+    }
+    draft
   }
 
   private Voucher bookVoucher(Sql sql, long voucherId, VoucherStatus targetStatus) {
@@ -313,7 +329,13 @@ final class VoucherService {
       throw new IllegalStateException("Verifikationen kunde inte bokföras: ${voucherId}")
     }
     updateChainHead(sql, contentHash)
-    requireVoucher(sql, voucherId)
+    Voucher bookedVoucher = requireVoucher(sql, voucherId)
+    if (targetStatus == VoucherStatus.CORRECTION) {
+      auditLogService.recordCorrectionVoucher(sql, bookedVoucher)
+    } else {
+      auditLogService.recordVoucherBooked(sql, bookedVoucher)
+    }
+    bookedVoucher
   }
 
   private VoucherSeries ensureSeries(Sql sql, long fiscalYearId, String seriesCode, String seriesName) {

@@ -42,3 +42,24 @@ create index if not exists idx_voucher_line_voucher
 
 create index if not exists idx_voucher_line_account
     on voucher_line(account_number);
+
+create index if not exists idx_attachment_voucher
+    on attachment(voucher_id, created_at);
+
+create index if not exists idx_attachment_checksum
+    on attachment(checksum_sha256);
+
+create index if not exists idx_audit_log_voucher
+    on audit_log(voucher_id, created_at);
+
+create index if not exists idx_audit_log_attachment
+    on audit_log(attachment_id, created_at);
+
+create index if not exists idx_audit_log_fiscal_year
+    on audit_log(fiscal_year_id, created_at);
+
+create index if not exists idx_audit_log_period
+    on audit_log(accounting_period_id, created_at);
+
+create index if not exists idx_audit_log_event_type
+    on audit_log(event_type, created_at);

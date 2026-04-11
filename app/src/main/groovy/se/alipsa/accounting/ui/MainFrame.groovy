@@ -6,6 +6,8 @@ import groovy.transform.CompileDynamic
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.AttachmentService
+import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
@@ -42,11 +44,13 @@ final class MainFrame {
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanySettingsService companySettingsService = new CompanySettingsService()
+  private final AuditLogService auditLogService = new AuditLogService()
   private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
   private final AccountService accountService = new AccountService()
+  private final AttachmentService attachmentService = new AttachmentService(DatabaseService.instance, auditLogService)
   private final ChartOfAccountsImportService chartOfAccountsImportService = new ChartOfAccountsImportService()
-  private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService)
-  private final VoucherService voucherService = new VoucherService()
+  private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService, auditLogService)
+  private final VoucherService voucherService = new VoucherService(DatabaseService.instance, auditLogService)
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private final JFrame frame
@@ -146,7 +150,7 @@ final class MainFrame {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: PLACEHOLDER_TABS[0].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description)],
-        [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService)],
+        [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
         [title: PLACEHOLDER_TABS[1].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[1].title, PLACEHOLDER_TABS[1].description)],
         [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
         [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService)],
@@ -163,7 +167,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 4: verifikationer, nummerserier och korrigeringar.',
+        'Alipsa Accounting\nFas 5: revisionsspår, bilagor och behandlingshistorik.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon

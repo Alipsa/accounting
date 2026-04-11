@@ -55,11 +55,14 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.tables where table_name = 'VOUCHER_CHAIN_HEAD') as voucherChainHead,
               (select count(*) from information_schema.tables where table_name = 'VOUCHER_SERIES') as voucherSeries,
               (select count(*) from information_schema.tables where table_name = 'VOUCHER') as voucher,
-              (select count(*) from information_schema.tables where table_name = 'VOUCHER_LINE') as voucherLine
+              (select count(*) from information_schema.tables where table_name = 'VOUCHER_LINE') as voucherLine,
+              (select count(*) from information_schema.tables where table_name = 'ATTACHMENT') as attachment,
+              (select count(*) from information_schema.tables where table_name = 'AUDIT_LOG') as auditLog,
+              (select count(*) from information_schema.tables where table_name = 'AUDIT_LOG_CHAIN_HEAD') as auditLogChainHead
       ''') as GroovyRowResult
     }
 
-    assertEquals(4, ((Number) result.version).intValue())
+    assertEquals(6, ((Number) result.version).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())
     assertEquals(1, ((Number) result.accountingPeriod).intValue())
@@ -69,6 +72,9 @@ class DatabaseServiceTest {
     assertEquals(1, ((Number) result.voucherSeries).intValue())
     assertEquals(1, ((Number) result.voucher).intValue())
     assertEquals(1, ((Number) result.voucherLine).intValue())
+    assertEquals(1, ((Number) result.attachment).intValue())
+    assertEquals(1, ((Number) result.auditLog).intValue())
+    assertEquals(1, ((Number) result.auditLogChainHead).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 

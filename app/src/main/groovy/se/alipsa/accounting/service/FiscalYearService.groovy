@@ -19,18 +19,28 @@ final class FiscalYearService {
 
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
+  private final AuditLogService auditLogService
 
   FiscalYearService() {
-    this(DatabaseService.instance, new AccountingPeriodService(DatabaseService.instance))
+    this(DatabaseService.instance, new AccountingPeriodService(DatabaseService.instance), new AuditLogService(DatabaseService.instance))
   }
 
   FiscalYearService(DatabaseService databaseService) {
-    this(databaseService, new AccountingPeriodService(databaseService))
+    this(databaseService, new AccountingPeriodService(databaseService), new AuditLogService(databaseService))
   }
 
   FiscalYearService(DatabaseService databaseService, AccountingPeriodService accountingPeriodService) {
+    this(databaseService, accountingPeriodService, new AuditLogService(databaseService))
+  }
+
+  FiscalYearService(
+      DatabaseService databaseService,
+      AccountingPeriodService accountingPeriodService,
+      AuditLogService auditLogService
+  ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
+    this.auditLogService = auditLogService
   }
 
   FiscalYear createFiscalYear(String name, LocalDate startDate, LocalDate endDate) {
@@ -92,6 +102,9 @@ final class FiscalYearService {
                      where id = ?
                 ''', [fiscalYearId])
         accountingPeriodService.lockUnlockedPeriods(sql, fiscalYearId, YEAR_CLOSE_REASON)
+        FiscalYear closedYear = findById(sql, fiscalYearId)
+        auditLogService.recordFiscalYearClosed(sql, closedYear)
+        return closedYear
       }
       findById(sql, fiscalYearId)
     }
