@@ -167,6 +167,26 @@ class VatServiceTest {
   }
 
   @Test
+  void lockedPeriodStillValidatesAgainstOriginalReportedHash() {
+    bookVatFixtures()
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport reportBeforeTransfer = vatService.calculateReport(january.id)
+    vatService.reportPeriod(january.id)
+    vatService.bookTransfer(january.id)
+
+    List<String> problems = vatService.validateReport(january.id)
+    VatService.VatReport reportAfterTransfer = vatService.calculateReport(january.id)
+
+    assertEquals([], problems)
+    assertEquals(reportBeforeTransfer.outputVatTotal, reportAfterTransfer.outputVatTotal)
+    assertEquals(reportBeforeTransfer.inputVatTotal, reportAfterTransfer.inputVatTotal)
+    assertEquals(reportBeforeTransfer.netVatToPay, reportAfterTransfer.netVatToPay)
+    assertVatRow(reportAfterTransfer, VatCode.OUTPUT_25, 1000.00G, 250.00G, 0.00G)
+    assertVatRow(reportAfterTransfer, VatCode.INPUT_25, 200.00G, 0.00G, 50.00G)
+    assertVatRow(reportAfterTransfer, VatCode.EU_ACQUISITION_GOODS, 100.00G, 25.00G, 25.00G)
+  }
+
+  @Test
   void bookingTransferWithoutNetSettlementCreatesBalancedVoucherWithout2650() {
     bookSaleVoucher()
     bookPurchaseVoucher(1000.00G)

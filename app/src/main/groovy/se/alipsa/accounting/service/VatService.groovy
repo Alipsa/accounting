@@ -318,13 +318,16 @@ final class VatService {
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
+           and (? is null or v.id <> ?)
            and a.vat_code is not null
          group by a.vat_code, a.account_class, a.normal_balance_side
          order by a.vat_code, a.account_class
     ''', [
         period.fiscalYearId,
         Date.valueOf(period.startDate),
-        Date.valueOf(period.endDate)
+        Date.valueOf(period.endDate),
+        period.transferVoucherId,
+        period.transferVoucherId
     ]).collect { GroovyRowResult row ->
       VatCode vatCode = parseVatCode(row.get('vatCode') as String)
       BigDecimal signedAmount = signedAmount(
