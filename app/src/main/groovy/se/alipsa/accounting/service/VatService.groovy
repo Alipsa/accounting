@@ -345,10 +345,10 @@ final class VatService {
       if (accountClass in BASE_ACCOUNT_CLASSES) {
         baseAmount = signedAmount
       } else if (accountClass in VAT_BALANCE_ACCOUNT_CLASSES) {
-        if (isOutputVatAccount(vatCode, accountClass, row.get('normalBalanceSide') as String)) {
+        if (isOutputVatAccount(vatCode, accountClass)) {
           postedOutputVat = signedAmount
           outputPostingCount = 1
-        } else if (isInputVatAccount(vatCode, accountClass, row.get('normalBalanceSide') as String)) {
+        } else if (isInputVatAccount(vatCode, accountClass)) {
           postedInputVat = signedAmount
           inputPostingCount = 1
         }
@@ -462,18 +462,18 @@ final class VatService {
     }
   }
 
-  private static boolean isOutputVatAccount(VatCode vatCode, String accountClass, String normalBalanceSide) {
+  private static boolean isOutputVatAccount(VatCode vatCode, String accountClass) {
     if (vatCode.outputRate == BigDecimal.ZERO) {
       return false
     }
-    accountClass == 'LIABILITY' || (accountClass == 'ASSET' && normalBalanceSide == 'CREDIT' && vatCode.inputRate == BigDecimal.ZERO)
+    accountClass == 'LIABILITY'
   }
 
-  private static boolean isInputVatAccount(VatCode vatCode, String accountClass, String normalBalanceSide) {
+  private static boolean isInputVatAccount(VatCode vatCode, String accountClass) {
     if (vatCode.inputRate == BigDecimal.ZERO) {
       return false
     }
-    accountClass == 'ASSET' || (accountClass == 'LIABILITY' && normalBalanceSide == 'DEBIT' && vatCode.outputRate == BigDecimal.ZERO)
+    accountClass == 'ASSET'
   }
 
   private static VatCode parseVatCode(String value) {
@@ -546,11 +546,8 @@ final class VatService {
   ) {
     try {
       return voucherService.createAndBook(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines, true)
-    } catch (IllegalStateException exception) {
-      if (exception.message?.contains('Perioden är låst')) {
-        throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom redovisningsperioden är låst.', exception)
-      }
-      throw exception
+    } catch (LockedAccountingPeriodException exception) {
+      throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom redovisningsperioden är låst.', exception)
     }
   }
 

@@ -112,7 +112,9 @@ class VatServiceTest {
 
     assertEquals(VatService.REPORTED, reportedPeriod.status)
     assertTrue(auditEntries.any { AuditLogEntry entry ->
-      entry.eventType == AuditLogService.VAT_PERIOD_REPORTED && entry.details.contains(reportedPeriod.reportHash)
+      entry.eventType == AuditLogService.VAT_PERIOD_REPORTED &&
+          entry.vatPeriodId == reportedPeriod.id &&
+          entry.details.contains(reportedPeriod.reportHash)
     })
     Voucher draft = voucherService.createDraft(
         fiscalYear.id,
@@ -155,7 +157,9 @@ class VatServiceTest {
     assertTransferLine(transferVoucher, '2645', 0.00G, 25.00G)
     assertTransferLine(transferVoucher, '2650', 0.00G, 200.00G)
     assertTrue(auditEntries.any { AuditLogEntry entry ->
-      entry.eventType == AuditLogService.VAT_PERIOD_LOCKED && entry.voucherId == transferVoucher.id
+      entry.eventType == AuditLogService.VAT_PERIOD_LOCKED &&
+          entry.voucherId == transferVoucher.id &&
+          entry.vatPeriodId == lockedPeriod.id
     })
 
     Executable correctionAction = {
@@ -229,6 +233,7 @@ class VatServiceTest {
     }
 
     assertTrue(exception.message.contains('redovisningsperioden är låst'))
+    assertTrue(exception.cause instanceof LockedAccountingPeriodException)
   }
 
   @Test

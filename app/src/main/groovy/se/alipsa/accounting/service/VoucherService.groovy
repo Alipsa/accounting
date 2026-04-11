@@ -582,7 +582,7 @@ final class VoucherService {
       throw new IllegalStateException('Bokföringsdatumet saknar bokföringsperiod.')
     }
     if (Boolean.TRUE == row.get('locked')) {
-      throw new IllegalStateException('Perioden är låst och kan inte bokföras på.')
+      throw new LockedAccountingPeriodException('Perioden är låst och kan inte bokföras på.')
     }
     VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
     GroovyRowResult vatRow = sql.firstRow('''

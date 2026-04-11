@@ -59,11 +59,12 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.tables where table_name = 'ATTACHMENT') as attachment,
               (select count(*) from information_schema.tables where table_name = 'AUDIT_LOG') as auditLog,
               (select count(*) from information_schema.tables where table_name = 'AUDIT_LOG_CHAIN_HEAD') as auditLogChainHead,
-              (select count(*) from information_schema.tables where table_name = 'VAT_PERIOD') as vatPeriod
+              (select count(*) from information_schema.tables where table_name = 'VAT_PERIOD') as vatPeriod,
+              (select count(*) from information_schema.columns where table_name = 'AUDIT_LOG' and column_name = 'VAT_PERIOD_ID') as auditLogVatPeriodColumn
       ''') as GroovyRowResult
     }
 
-    assertEquals(8, ((Number) result.version).intValue())
+    assertEquals(9, ((Number) result.version).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())
     assertEquals(1, ((Number) result.accountingPeriod).intValue())
@@ -77,6 +78,7 @@ class DatabaseServiceTest {
     assertEquals(1, ((Number) result.auditLog).intValue())
     assertEquals(1, ((Number) result.auditLogChainHead).intValue())
     assertEquals(1, ((Number) result.vatPeriod).intValue())
+    assertEquals(1, ((Number) result.auditLogVatPeriodColumn).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 

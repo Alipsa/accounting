@@ -70,5 +70,8 @@ create index if not exists idx_audit_log_fiscal_year
 create index if not exists idx_audit_log_period
     on audit_log(accounting_period_id, created_at);
 
+create index if not exists idx_audit_log_vat_period
+    on audit_log(vat_period_id, created_at);
+
 create index if not exists idx_audit_log_event_type
     on audit_log(event_type, created_at);

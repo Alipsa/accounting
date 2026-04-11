@@ -18,6 +18,7 @@ final class AuditLogEntry {
   Long attachmentId
   Long fiscalYearId
   Long accountingPeriodId
+  Long vatPeriodId
   String actor
   String summary
   String details
