@@ -6,6 +6,7 @@ import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 /**
  * Shared conversion helpers for JDBC values returned by Groovy SQL.
@@ -38,6 +39,12 @@ final class SqlValueMapper {
     }
     if (value instanceof Timestamp) {
       return ((Timestamp) value).toLocalDateTime()
+    }
+    if (value instanceof OffsetDateTime) {
+      // The app treats database timestamps as local wall-clock values.
+      // When H2 returns OffsetDateTime for current_timestamp we intentionally
+      // drop the offset instead of converting across zones.
+      return ((OffsetDateTime) value).toLocalDateTime()
     }
     throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
   }

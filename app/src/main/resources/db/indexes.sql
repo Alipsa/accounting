@@ -24,3 +24,21 @@ create index if not exists idx_account_name
 
 create index if not exists idx_opening_balance_fiscal_year
     on opening_balance(fiscal_year_id);
+
+create index if not exists idx_voucher_series_fiscal_year
+    on voucher_series(fiscal_year_id, series_code);
+
+create index if not exists idx_voucher_fiscal_year
+    on voucher(fiscal_year_id, accounting_date);
+
+create index if not exists idx_voucher_status
+    on voucher(status);
+
+create index if not exists idx_voucher_original
+    on voucher(original_voucher_id);
+
+create index if not exists idx_voucher_line_voucher
+    on voucher_line(voucher_id, line_index);
+
+create index if not exists idx_voucher_line_account
+    on voucher_line(account_number);
