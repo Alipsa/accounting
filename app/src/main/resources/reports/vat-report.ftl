@@ -1,11 +1,20 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
   <h2>Momsrapport</h2>
-  <ul class="summary">
-    <#list summaryLines as line>
-      <li>${line}</li>
-    </#list>
-  </ul>
+  <div class="metrics">
+    <div class="metric">
+      <span class="metric-label">Utgående moms</span>
+      <span class="metric-value">${outputTotal}</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">Ingående moms</span>
+      <span class="metric-value">${inputTotal}</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">Netto</span>
+      <span class="metric-value">${netTotal}</span>
+    </div>
+  </div>
   <table>
     <thead>
       <tr>

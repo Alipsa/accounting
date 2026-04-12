@@ -123,7 +123,6 @@ final class ReportDataService {
     BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.creditAmount } as BigDecimal
     createResult(
         effective,
-        true,
         [
             "Antal verifikationer: ${rows.size()}".toString(),
             "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
@@ -199,7 +198,6 @@ final class ReportDataService {
       }
       createResult(
           effective,
-          true,
           ["Antal rader: ${rows.size()}".toString()],
           headers,
           tableRows,
@@ -234,7 +232,6 @@ final class ReportDataService {
       BigDecimal closingTotal = rows.sum(BigDecimal.ZERO) { TrialBalanceRow row -> row.closingBalance } as BigDecimal
       createResult(
           effective,
-          true,
           [
               "Ingående saldo: ${formatAmount(scale(openingTotal))}".toString(),
               "Periodens debet: ${formatAmount(scale(debitTotal))}".toString(),
@@ -281,7 +278,6 @@ final class ReportDataService {
       BigDecimal result = scale(incomeTotal - expenseTotal)
       createResult(
           effective,
-          false,
           [
               "Intäkter: ${formatAmount(scale(incomeTotal))}".toString(),
               "Kostnader: ${formatAmount(scale(expenseTotal))}".toString(),
@@ -332,7 +328,6 @@ final class ReportDataService {
           .sum(BigDecimal.ZERO) { BalanceSheetRow row -> row.amount } as BigDecimal
       createResult(
           effective,
-          false,
           [
               "Tillgångar: ${formatAmount(scale(assetTotal))}".toString(),
               "Skulder: ${formatAmount(scale(liabilityTotal))}".toString(),
@@ -373,14 +368,13 @@ final class ReportDataService {
     BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { TransactionReportRow row -> row.creditAmount } as BigDecimal
     createResult(
         effective,
-      true,
-      [
-          "Antal transaktioner: ${rows.size()}".toString(),
-          "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
-          "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
-      ],
-      ['Datum', 'Verifikation', 'Konto', 'Kontonamn', 'Verifikationstext', 'Radtext', 'Debet', 'Kredit', 'Status'],
-      rows.collect { TransactionReportRow row ->
+        [
+            "Antal transaktioner: ${rows.size()}".toString(),
+            "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
+            "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
+        ],
+        ['Datum', 'Verifikation', 'Konto', 'Kontonamn', 'Verifikationstext', 'Radtext', 'Debet', 'Kredit', 'Status'],
+        rows.collect { TransactionReportRow row ->
           stringRow(
               row.accountingDate.toString(),
               row.voucherNumber,
@@ -431,7 +425,6 @@ final class ReportDataService {
       BigDecimal netTotal = scale(outputTotal - inputTotal)
       createResult(
           effective,
-          false,
           [
               "Utgående moms: ${formatAmount(scale(outputTotal))}".toString(),
               "Ingående moms: ${formatAmount(scale(inputTotal))}".toString(),
@@ -595,7 +588,6 @@ final class ReportDataService {
 
   private ReportResult createResult(
       EffectiveSelection effective,
-      boolean csvSupported,
       List<String> summaryLines,
       List<String> headers,
       List<List<String>> tableRows,
@@ -620,7 +612,6 @@ final class ReportDataService {
         effective.selection.accountingPeriodId,
         effective.startDate,
         effective.endDate,
-        csvSupported,
         summaryLines,
         headers,
         tableRows,

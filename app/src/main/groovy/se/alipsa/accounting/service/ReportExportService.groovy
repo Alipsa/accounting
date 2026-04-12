@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Exports tabular reports as CSV using the same selection and row order as the UI preview.
+ * The export intentionally uses ';' as separator because Swedish Excel defaults expect it.
  */
 @CompileStatic
 final class ReportExportService {
@@ -45,10 +46,11 @@ final class ReportExportService {
   }
 
   byte[] renderCsv(ReportResult report) {
-    if (!report.csvSupported) {
+    if (!report.reportType.csvSupported) {
       throw new IllegalArgumentException("CSV-export stöds inte för ${report.reportType.label}.")
     }
     StringBuilder builder = new StringBuilder('\uFEFF')
+    // Swedish locale users commonly open these files in Excel, which expects semicolon-separated UTF-8 with BOM.
     builder.append(report.tableHeaders.collect { String value -> escapeCsv(value) }.join(';')).append('\n')
     report.tableRows.each { List<String> row ->
       builder.append(row.collect { String value -> escapeCsv(value) }.join(';')).append('\n')

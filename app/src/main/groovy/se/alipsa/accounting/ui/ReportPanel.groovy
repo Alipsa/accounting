@@ -336,7 +336,6 @@ final class ReportPanel extends JPanel {
   private void openSelectedVoucher() {
     Long voucherId = selectedVoucherId()
     if (voucherId == null) {
-      showError('Den valda rapportraden saknar drill-down till verifikation.')
       return
     }
     VoucherEditor.showDialog(ownerFrame(), voucherEditorDependencies, voucherId, {
@@ -424,9 +423,17 @@ final class ReportPanel extends JPanel {
   }
 
   private void updateActionButtons() {
-    exportCsvButton.enabled = currentReport?.csvSupported ?: false
+    exportCsvButton.enabled = currentReport?.reportType?.csvSupported ?: false
     generatePdfButton.enabled = currentReport != null && !pdfGenerationInProgress
-    openVoucherButton.enabled = selectedVoucherId() != null
+    Long voucherId = selectedVoucherId()
+    openVoucherButton.enabled = voucherId != null
+    if (voucherId != null) {
+      openVoucherButton.toolTipText = 'Öppna verifikationen för vald rapportrad.'
+    } else if (previewTable.selectedRow >= 0) {
+      openVoucherButton.toolTipText = 'Den valda raden är en sammanfattning och kan inte öppnas som verifikation.'
+    } else {
+      openVoucherButton.toolTipText = 'Välj en rapportrad med koppling till en verifikation för drill-down.'
+    }
     openArchiveButton.enabled = selectedArchive() != null
   }
 

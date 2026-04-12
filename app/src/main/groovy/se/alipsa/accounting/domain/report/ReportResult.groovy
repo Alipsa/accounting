@@ -19,7 +19,6 @@ final class ReportResult {
   Long accountingPeriodId
   LocalDate startDate
   LocalDate endDate
-  boolean csvSupported
   List<String> summaryLines
   List<String> tableHeaders
   List<List<String>> tableRows

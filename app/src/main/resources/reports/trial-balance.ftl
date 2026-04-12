@@ -1,11 +1,14 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
   <h2>Provbalans</h2>
-  <ul class="summary">
+  <div class="metrics">
     <#list summaryLines as line>
-      <li>${line}</li>
+      <div class="metric">
+        <span class="metric-label">${line?keep_before(':')}</span>
+        <span class="metric-value">${line?keep_after(': ')}</span>
+      </div>
     </#list>
-  </ul>
+  </div>
   <table>
     <thead>
       <tr>

@@ -26,9 +26,53 @@ h2 {
   color: #475569;
 }
 
+.lead {
+  margin: 0 0 12px 0;
+  color: #334155;
+}
+
 ul.summary {
   margin: 0 0 16px 18px;
   padding: 0;
+}
+
+.metrics {
+  display: table;
+  width: 100%;
+  margin: 0 0 16px 0;
+}
+
+.metric {
+  display: table-cell;
+  width: 1%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.metric + .metric {
+  border-left: none;
+}
+
+.metric-label {
+  display: block;
+  font-size: 9pt;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 14pt;
+  font-weight: bold;
+  color: #0f172a;
+}
+
+.note {
+  margin: 12px 0 0 0;
+  font-size: 9pt;
+  color: #64748b;
 }
 
 table {

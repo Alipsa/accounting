@@ -24,6 +24,7 @@ import se.alipsa.accounting.support.AppPaths
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.LocalDate
 
 class ReportServicesTest {
@@ -116,6 +117,7 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 31)
     )
 
+    ReportResult preview = reportDataService.generate(selection)
     ReportArchive archive = journoReportService.generatePdf(selection)
     byte[] pdf = reportArchiveService.readArchive(archive.id)
 
@@ -123,6 +125,39 @@ class ReportServicesTest {
     assertEquals(ReportType.INCOME_STATEMENT, archive.reportType)
     assertTrue(new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith('%PDF-'))
     assertTrue(Files.size(reportArchiveService.resolveStoredPath(archive)) > 500L)
+    assertEquals('c662c635ccea3d6d722d49ae996ea40edcdae8cf4f20c0aab7f8a176c52b560c', sha256(journoReportService.renderHtml(preview).getBytes(StandardCharsets.UTF_8)))
+  }
+
+  @Test
+  void generalLedgerCsvMatchesGoldenMaster() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.GENERAL_LEDGER,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    ReportArchive archive = reportExportService.exportCsv(selection)
+    String csv = new String(reportArchiveService.readArchive(archive.id), StandardCharsets.UTF_8)
+
+    assertEquals(
+        '''﻿Konto;Namn;Datum;Verifikation;Text;Debet;Kredit;Saldo
+1510;Kundfordringar;;;Ingående balans;0.00;0.00;0.00
+1510;Kundfordringar;2026-01-10;A-1;Kundfordran;1250.00;0.00;1250.00
+2440;Leverantörsskulder;;;Ingående balans;0.00;0.00;0.00
+2440;Leverantörsskulder;2026-01-18;A-2;Leverantörsskuld;0.00;250.00;250.00
+2611;Utgående moms 25%;;;Ingående balans;0.00;0.00;0.00
+2611;Utgående moms 25%;2026-01-10;A-1;Utgående moms;0.00;250.00;250.00
+2641;Debiterad ingående moms;;;Ingående balans;0.00;0.00;0.00
+2641;Debiterad ingående moms;2026-01-18;A-2;Ingående moms;50.00;0.00;50.00
+3010;Försäljning;;;Ingående balans;0.00;0.00;0.00
+3010;Försäljning;2026-01-10;A-1;Försäljning;0.00;1000.00;1000.00
+4010;Varuinköp;;;Ingående balans;0.00;0.00;0.00
+4010;Varuinköp;2026-01-18;A-2;Varuinköp;200.00;0.00;200.00
+''',
+        csv
+    )
   }
 
   @Test
@@ -349,6 +384,11 @@ class ReportServicesTest {
     }.sum(BigDecimal.ZERO) { List<String> row ->
       new BigDecimal(row[3])
     } as BigDecimal
+  }
+
+  private static String sha256(byte[] content) {
+    MessageDigest digest = MessageDigest.getInstance('SHA-256')
+    HexFormat.of().formatHex(digest.digest(content))
   }
 
   private static void insertAccount(
