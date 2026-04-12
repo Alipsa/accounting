@@ -19,6 +19,12 @@ create index if not exists idx_vat_period_dates
 create index if not exists idx_vat_period_status
     on vat_period(status, reported_at);
 
+create index if not exists idx_report_archive_fiscal_year
+    on report_archive(fiscal_year_id, created_at);
+
+create index if not exists idx_report_archive_type
+    on report_archive(report_type, created_at);
+
 create index if not exists idx_account_class
     on account(account_class);
 
