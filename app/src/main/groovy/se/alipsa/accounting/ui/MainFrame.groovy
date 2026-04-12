@@ -17,6 +17,7 @@ import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.ReportIntegrityService
+import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
@@ -67,6 +68,14 @@ final class MainFrame {
       reportIntegrityService,
       auditLogService
   )
+  private final SieImportExportService sieImportExportService = new SieImportExportService(
+      DatabaseService.instance,
+      accountingPeriodService,
+      voucherService,
+      companySettingsService,
+      reportIntegrityService,
+      auditLogService
+  )
   private final JournoReportService journoReportService = new JournoReportService(
       reportDataService,
       reportArchiveService,
@@ -110,6 +119,7 @@ final class MainFrame {
       menuBar {
         menu(text: 'Arkiv') {
           menuItem(text: 'Företagsuppgifter...', actionPerformed: { showCompanySettingsDialog() })
+          menuItem(text: 'SIE import/export...', actionPerformed: { showSieExchangeDialog() })
           menuItem(text: 'Avsluta', actionPerformed: { exitRequested() })
         }
         menu(text: 'Hjälp') {
@@ -199,7 +209,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 7: rapporter med PDF, CSV och rapportarkiv.',
+        'Alipsa Accounting\nFas 8: SIE-import, export och datautbyte.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon
@@ -211,6 +221,11 @@ final class MainFrame {
       refreshCompanySettingsSummary()
       setStatus('Företagsinställningarna sparades.')
     } as Runnable)
+  }
+
+  private void showSieExchangeDialog() {
+    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService)
+    setStatus('SIE-import/export stängdes.')
   }
 
   private void refreshCompanySettingsSummary() {
