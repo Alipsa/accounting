@@ -9,6 +9,7 @@ import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
+import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
@@ -62,6 +63,13 @@ final class MainFrame {
   private final ReportDataService reportDataService = new ReportDataService(DatabaseService.instance, fiscalYearService, accountingPeriodService)
   private final ReportArchiveService reportArchiveService = new ReportArchiveService(DatabaseService.instance)
   private final ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+  private final ClosingService closingService = new ClosingService(
+      DatabaseService.instance,
+      accountingPeriodService,
+      fiscalYearService,
+      voucherService,
+      reportIntegrityService
+  )
   private final ReportExportService reportExportService = new ReportExportService(
       reportDataService,
       reportArchiveService,
@@ -195,7 +203,7 @@ final class MainFrame {
             new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)
         )],
         [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
-        [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService)],
+        [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService)],
         [title: 'Inställningar', component: buildCompanySettingsPanel()]
     ]
   }
@@ -209,7 +217,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 8: SIE-import, export och datautbyte.',
+        'Alipsa Accounting\nFas 9: bokslut och nästa års ingående balanser.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon

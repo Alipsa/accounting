@@ -28,19 +28,29 @@ final class ReportIntegrityService {
     this.auditLogService = auditLogService
   }
 
-  void ensureReportingAllowed() {
+  List<String> listCriticalProblems() {
     List<String> problems = []
     problems.addAll(voucherService.validateIntegrity())
     attachmentService.findIntegrityFailures().each { AttachmentMetadata attachment ->
       problems << ("Bilaga ${attachment.id} har avvikande checksumma eller saknas på disk." as String)
     }
     problems.addAll(auditLogService.validateIntegrity())
+    problems
+  }
+
+  void ensureOperationAllowed(String operationLabel) {
+    String safeOperationLabel = operationLabel?.trim() ?: 'Operationen'
+    List<String> problems = listCriticalProblems()
     if (!problems.isEmpty()) {
       String summary = problems.take(5).join('\n')
       if (problems.size() > 5) {
         summary = "${summary}\n... samt ${problems.size() - 5} ytterligare problem."
       }
-      throw new IllegalStateException("Rapportexport blockeras eftersom integritetskontrollerna har fel:\n${summary}")
+      throw new IllegalStateException("${safeOperationLabel} blockeras eftersom integritetskontrollerna har fel:\n${summary}")
     }
+  }
+
+  void ensureReportingAllowed() {
+    ensureOperationAllowed('Rapportexport')
   }
 }

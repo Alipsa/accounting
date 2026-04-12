@@ -91,9 +91,12 @@ class FiscalYearServiceTest {
     AccountingPeriod january = periods.first()
 
     accountingPeriodService.lockPeriod(january.id, 'Månaden är avstämd.')
+    accountingPeriodService.listPeriods(year.id).findAll { AccountingPeriod period -> period.id != january.id }.each { AccountingPeriod period ->
+      accountingPeriodService.lockPeriod(period.id, 'Årsslut.')
+    }
 
     assertTrue(accountingPeriodService.isDateLocked(LocalDate.of(2026, 1, 15)))
-    assertFalse(accountingPeriodService.isDateLocked(LocalDate.of(2026, 2, 15)))
+    assertTrue(accountingPeriodService.isDateLocked(LocalDate.of(2026, 2, 15)))
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
     List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)
@@ -107,6 +110,21 @@ class FiscalYearServiceTest {
     assertTrue(auditEntries.any { AuditLogEntry entry ->
       entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == year.id
     })
+  }
+
+  @Test
+  void closingYearWithOpenPeriodsIsRejected() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        '2026',
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 12, 31)
+    )
+
+    Executable action = {
+      fiscalYearService.closeFiscalYear(year.id)
+    } as Executable
+
+    assertThrows(IllegalStateException, action)
   }
 
   @Test

@@ -5,6 +5,7 @@ import groovy.transform.CompileStatic
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.FiscalYearService
 
 import java.awt.BorderLayout
@@ -29,6 +30,7 @@ final class FiscalYearPanel extends JPanel {
 
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
+  private final ClosingService closingService
 
   private final JTextField nameField = new JTextField(20)
   private final JTextField startDateField = new JTextField(10)
@@ -39,9 +41,14 @@ final class FiscalYearPanel extends JPanel {
   private final JTable fiscalYearTable = new JTable(fiscalYearTableModel)
   private final JTable periodTable = new JTable(periodTableModel)
 
-  FiscalYearPanel(FiscalYearService fiscalYearService, AccountingPeriodService accountingPeriodService) {
+  FiscalYearPanel(
+      FiscalYearService fiscalYearService,
+      AccountingPeriodService accountingPeriodService,
+      ClosingService closingService
+  ) {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
+    this.closingService = closingService
     buildUi()
     reloadData()
   }
@@ -68,7 +75,7 @@ final class FiscalYearPanel extends JPanel {
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     JButton createButton = new JButton('Skapa räkenskapsår')
     createButton.addActionListener { createFiscalYearRequested() }
-    JButton closeButton = new JButton('Stäng valt år')
+    JButton closeButton = new JButton('Årsbokslut...')
     closeButton.addActionListener { closeSelectedFiscalYear() }
     JButton lockButton = new JButton('Lås vald period')
     lockButton.addActionListener { lockSelectedPeriod() }
@@ -159,19 +166,11 @@ final class FiscalYearPanel extends JPanel {
       showValidation([ValidationSupport.fieldError('', 'Välj ett räkenskapsår att stänga.')])
       return
     }
-    int choice = JOptionPane.showConfirmDialog(
-        this,
-        "Stäng ${year.name} och lås alla olåsta perioder?",
-        'Stäng räkenskapsår',
-        JOptionPane.OK_CANCEL_OPTION
-    )
-    if (choice != JOptionPane.OK_OPTION) {
-      return
-    }
-    fiscalYearService.closeFiscalYear(year.id)
-    reloadData()
-    selectFiscalYear(year.id)
-    showInfo("Räkenskapsåret ${year.name} är stängt.")
+    YearEndClosingDialog.showDialog(ownerFrame(), closingService, year, {
+      reloadData()
+      selectFiscalYear(year.id)
+      showInfo("Årsbokslut genomfört för ${year.name}.")
+    } as Runnable)
   }
 
   private void lockSelectedPeriod() {

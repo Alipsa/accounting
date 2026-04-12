@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.FiscalYear
 
@@ -14,8 +15,6 @@ import java.time.LocalDate
  */
 @CompileStatic
 final class FiscalYearService {
-
-  private static final String YEAR_CLOSE_REASON = 'Räkenskapsåret har stängts.'
 
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
@@ -74,23 +73,7 @@ final class FiscalYearService {
 
   FiscalYear closeFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
-      FiscalYear year = findById(sql, fiscalYearId)
-      if (year == null) {
-        throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
-      }
-      if (!year.closed) {
-        sql.executeUpdate('''
-                    update fiscal_year
-                       set closed = true,
-                           closed_at = current_timestamp
-                     where id = ?
-                ''', [fiscalYearId])
-        accountingPeriodService.lockUnlockedPeriods(sql, fiscalYearId, YEAR_CLOSE_REASON)
-        FiscalYear closedYear = findById(sql, fiscalYearId)
-        auditLogService.recordFiscalYearClosed(sql, closedYear)
-        return closedYear
-      }
-      findById(sql, fiscalYearId)
+      closeFiscalYear(sql, fiscalYearId)
     }
   }
 
@@ -133,6 +116,35 @@ final class FiscalYearService {
     accountingPeriodService.createPeriods(sql, fiscalYearId, startDate, endDate)
     VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
     findById(sql, fiscalYearId)
+  }
+
+  @PackageScope
+  FiscalYear closeFiscalYear(Sql sql, long fiscalYearId) {
+    FiscalYear year = findById(sql, fiscalYearId)
+    if (year == null) {
+      throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+    }
+    if (year.closed) {
+      return findById(sql, fiscalYearId)
+    }
+    GroovyRowResult row = sql.firstRow('''
+        select count(*) as total
+          from accounting_period
+         where fiscal_year_id = ?
+           and locked = false
+    ''', [fiscalYearId]) as GroovyRowResult
+    if (((Number) row.get('total')).intValue() > 0) {
+      throw new IllegalStateException('Räkenskapsåret kan inte stängas förrän alla perioder är låsta.')
+    }
+    sql.executeUpdate('''
+                update fiscal_year
+                   set closed = true,
+                       closed_at = current_timestamp
+                 where id = ?
+            ''', [fiscalYearId])
+    FiscalYear closedYear = findById(sql, fiscalYearId)
+    auditLogService.recordFiscalYearClosed(sql, closedYear)
+    closedYear
   }
 
   private static void ensureNoOverlap(Sql sql, LocalDate startDate, LocalDate endDate, String overlapMessage) {

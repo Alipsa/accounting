@@ -99,7 +99,7 @@ final class VoucherService {
       String description,
       List<VoucherLine> lines
   ) {
-    createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, false)
+    createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, PostingPermissions.DEFAULT)
   }
 
   @PackageScope
@@ -112,8 +112,36 @@ final class VoucherService {
       List<VoucherLine> lines,
       boolean allowReportedVatPeriod
   ) {
+    createAndBook(
+        sql,
+        fiscalYearId,
+        seriesCode,
+        accountingDate,
+        description,
+        lines,
+        new PostingPermissions(allowReportedVatPeriod, false)
+    )
+  }
+
+  @PackageScope
+  Voucher createAndBook(
+      Sql sql,
+      long fiscalYearId,
+      String seriesCode,
+      LocalDate accountingDate,
+      String description,
+      List<VoucherLine> lines,
+      PostingPermissions postingPermissions
+  ) {
+    PostingPermissions safePermissions = postingPermissions ?: PostingPermissions.DEFAULT
     Voucher draft = insertDraft(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
-    bookVoucher(sql, draft.id, VoucherStatus.BOOKED, allowReportedVatPeriod)
+    bookVoucher(
+        sql,
+        draft.id,
+        VoucherStatus.BOOKED,
+        safePermissions.allowReportedVatPeriod,
+        safePermissions.allowLockedPeriod
+    )
   }
 
   Voucher updateDraft(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
@@ -140,7 +168,7 @@ final class VoucherService {
 
   Voucher bookDraft(long voucherId) {
     databaseService.withTransaction { Sql sql ->
-      bookVoucher(sql, voucherId, VoucherStatus.BOOKED, false)
+      bookVoucher(sql, voucherId, VoucherStatus.BOOKED, false, false)
     }
   }
 
@@ -201,7 +229,7 @@ final class VoucherService {
           reversingLines,
           original.id
       )
-      bookVoucher(sql, draft.id, VoucherStatus.CORRECTION, false)
+      bookVoucher(sql, draft.id, VoucherStatus.CORRECTION, false, false)
     }
   }
 
@@ -366,7 +394,13 @@ final class VoucherService {
     draft
   }
 
-  private Voucher bookVoucher(Sql sql, long voucherId, VoucherStatus targetStatus, boolean allowReportedVatPeriod) {
+  private Voucher bookVoucher(
+      Sql sql,
+      long voucherId,
+      VoucherStatus targetStatus,
+      boolean allowReportedVatPeriod,
+      boolean allowLockedPeriod
+  ) {
     Voucher current = requireVoucher(sql, voucherId)
     if (current.status != VoucherStatus.DRAFT) {
       throw new IllegalStateException('Endast utkast kan bokföras.')
@@ -377,7 +411,7 @@ final class VoucherService {
 
     validateVoucherEnvelope(sql, current.fiscalYearId, current.accountingDate, current.description)
     List<VoucherLine> safeLines = normalizeLines(sql, current.lines, true, targetStatus == VoucherStatus.BOOKED)
-    ensurePostingAllowed(sql, current.fiscalYearId, current.accountingDate, targetStatus, allowReportedVatPeriod)
+    ensurePostingAllowed(sql, current.fiscalYearId, current.accountingDate, targetStatus, allowReportedVatPeriod, allowLockedPeriod)
 
     int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
     String voucherNumber = "${current.seriesCode}-${runningNumber}"
@@ -625,7 +659,8 @@ final class VoucherService {
       long fiscalYearId,
       LocalDate accountingDate,
       VoucherStatus targetStatus,
-      boolean allowReportedVatPeriod
+      boolean allowReportedVatPeriod,
+      boolean allowLockedPeriod
   ) {
     GroovyRowResult row = sql.firstRow('''
         select locked
@@ -636,7 +671,7 @@ final class VoucherService {
     if (row == null) {
       throw new IllegalStateException('Bokföringsdatumet saknar bokföringsperiod.')
     }
-    if (Boolean.TRUE == row.get('locked')) {
+    if (Boolean.TRUE == row.get('locked') && !allowLockedPeriod) {
       throw new LockedAccountingPeriodException('Perioden är låst och kan inte bokföras på.')
     }
     VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
@@ -650,7 +685,7 @@ final class VoucherService {
       return
     }
     String vatStatus = vatRow.get('status') as String
-    if (VatService.LOCKED == vatStatus) {
+    if (VatService.LOCKED == vatStatus && !allowLockedPeriod) {
       throw new IllegalStateException('Momsperioden är låst och tillåter inte fler bokningar.')
     }
     if (VatService.REPORTED == vatStatus && targetStatus != VoucherStatus.CORRECTION && !allowReportedVatPeriod) {
@@ -873,6 +908,20 @@ final class VoucherService {
     private ChainHead(long id, String lastContentHash) {
       this.id = id
       this.lastContentHash = lastContentHash
+    }
+  }
+
+  @CompileStatic
+  static final class PostingPermissions {
+
+    static final PostingPermissions DEFAULT = new PostingPermissions(false, false)
+
+    final boolean allowReportedVatPeriod
+    final boolean allowLockedPeriod
+
+    PostingPermissions(boolean allowReportedVatPeriod, boolean allowLockedPeriod) {
+      this.allowReportedVatPeriod = allowReportedVatPeriod
+      this.allowLockedPeriod = allowLockedPeriod
     }
   }
 }
