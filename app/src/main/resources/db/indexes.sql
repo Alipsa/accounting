@@ -25,6 +25,15 @@ create index if not exists idx_report_archive_fiscal_year
 create index if not exists idx_report_archive_type
     on report_archive(report_type, created_at);
 
+create index if not exists idx_import_job_checksum
+    on import_job(checksum_sha256);
+
+create index if not exists idx_import_job_status
+    on import_job(status, started_at);
+
+create index if not exists idx_import_job_fiscal_year
+    on import_job(fiscal_year_id, started_at);
+
 create index if not exists idx_account_class
     on account(account_class);
 
