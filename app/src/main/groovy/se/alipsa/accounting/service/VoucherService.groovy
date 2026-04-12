@@ -212,7 +212,7 @@ final class VoucherService {
   }
 
   List<String> validateIntegrity() {
-    databaseService.withSql { Sql sql ->
+    databaseService.withTransaction { Sql sql ->
       List<String> problems = []
       String expectedPreviousHash = null
       String actualLastHash = null
@@ -256,7 +256,7 @@ final class VoucherService {
         expectedPreviousHash = voucher.contentHash
         actualLastHash = voucher.contentHash
       }
-      ChainHead chainHead = loadChainHead(sql)
+      ChainHead chainHead = lockChainHead(sql)
       if (chainHead == null) {
         problems << 'Verifikationskedjans huvud saknas.'
       } else if (chainHead.lastContentHash != actualLastHash) {
@@ -715,7 +715,8 @@ final class VoucherService {
 
   private static ChainHead lockChainHead(Sql sql) {
     GroovyRowResult row = sql.firstRow('''
-        select last_content_hash as lastContentHash
+        select id,
+               last_content_hash as lastContentHash
           from voucher_chain_head
          where id = 1
          for update
@@ -724,17 +725,9 @@ final class VoucherService {
       throw new IllegalStateException('Kedjehuvudet för verifikationer saknas.')
     }
     new ChainHead(
+        ((Number) row.get('id')).longValue(),
         row.get('lastContentHash') as String
     )
-  }
-
-  private static ChainHead loadChainHead(Sql sql) {
-    GroovyRowResult row = sql.firstRow('''
-        select last_content_hash as lastContentHash
-          from voucher_chain_head
-         where id = 1
-    ''') as GroovyRowResult
-    row == null ? null : new ChainHead(row.get('lastContentHash') as String)
   }
 
   private static void updateChainHead(Sql sql, String contentHash) {
@@ -874,9 +867,11 @@ final class VoucherService {
 
   private static final class ChainHead {
 
+    final long id
     final String lastContentHash
 
-    private ChainHead(String lastContentHash) {
+    private ChainHead(long id, String lastContentHash) {
+      this.id = id
       this.lastContentHash = lastContentHash
     }
   }

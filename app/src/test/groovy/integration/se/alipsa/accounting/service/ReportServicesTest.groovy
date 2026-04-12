@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
@@ -96,7 +97,7 @@ class ReportServicesTest {
     assertEquals('CSV', archive.reportFormat)
     assertEquals(ReportType.VOUCHER_LIST, archive.reportType)
     assertEquals(
-        '''Datum;Verifikation;Serie;Text;Status;Debet;Kredit
+        '''﻿Datum;Verifikation;Serie;Text;Status;Debet;Kredit
 2026-01-10;A-1;A;Försäljning januari;BOOKED;1250.00;1250.00
 2026-01-18;A-2;A;Leverantörsfaktura;BOOKED;250.00;250.00
 ''',
@@ -122,6 +123,172 @@ class ReportServicesTest {
     assertEquals(ReportType.INCOME_STATEMENT, archive.reportType)
     assertTrue(new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith('%PDF-'))
     assertTrue(Files.size(reportArchiveService.resolveStoredPath(archive)) > 500L)
+  }
+
+  @Test
+  void csvExportAddsBomAndEscapesFormulaLookingCells() {
+    voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 20),
+        '=2+2',
+        [
+            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 10.00G, 0.00G),
+            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 8.00G),
+            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 2.00G)
+        ]
+    )
+    ReportSelection selection = new ReportSelection(
+        ReportType.VOUCHER_LIST,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    String csv = new String(reportExportService.renderCsv(reportDataService.generate(selection)), StandardCharsets.UTF_8)
+
+    assertTrue(csv.startsWith('\uFEFF'))
+    assertTrue(csv.contains("2026-01-20;A-3;A;'=2+2;BOOKED;10.00;10.00"))
+  }
+
+  @Test
+  void tamperedVoucherBlocksCsvExport() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.VOUCHER_LIST,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?', [9999.00G, 1L, '1510'])
+    }
+
+    assertThrows(IllegalStateException) {
+      reportExportService.exportCsv(selection)
+    }
+  }
+
+  @Test
+  void generalLedgerUsesPriorBalancesForMidYearSelections() {
+    insertOpeningBalance('1510', 100.00G)
+    voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 10),
+        'Försäljning februari',
+        [
+            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 125.00G, 0.00G),
+            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G),
+            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 25.00G)
+        ]
+    )
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.GENERAL_LEDGER,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 2, 1),
+        LocalDate.of(2026, 2, 28)
+    ))
+
+    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '', '', 'Ingående balans', '0.00', '0.00', '1350.00']))
+    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '2026-02-10', 'A-3', 'Kundfordran', '125.00', '0.00', '1475.00']))
+  }
+
+  @Test
+  void trialBalanceKeepsDebitAndCreditTotalsBalanced() {
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.TRIAL_BALANCE,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    BigDecimal debitTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> new BigDecimal(row[3]) } as BigDecimal
+    BigDecimal creditTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> new BigDecimal(row[4]) } as BigDecimal
+
+    assertEquals(1500.00G, debitTotal)
+    assertEquals(debitTotal, creditTotal)
+  }
+
+  @Test
+  void balanceSheetBalancesAssetsAgainstLiabilitiesAndEquityWhenSelectionHasOnlyOpeningBalances() {
+    insertOpeningBalance('1510', 1000.00G)
+    insertOpeningBalance('2010', 1000.00G)
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.BALANCE_SHEET,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 1)
+    ))
+
+    BigDecimal assets = sumSection(report, 'Tillgångar')
+    BigDecimal liabilities = sumSection(report, 'Skulder')
+    BigDecimal equity = sumSection(report, 'Eget kapital')
+
+    assertEquals(1000.00G, assets)
+    assertEquals(1000.00G, liabilities + equity)
+  }
+
+  @Test
+  void vatReportExcludesTransferVoucherRowsAfterVatPeriodIsLocked() {
+    VatService vatService = new VatService(databaseService, voucherService)
+    def january = vatService.listPeriods(fiscalYear.id).first()
+    vatService.reportPeriod(january.id)
+    vatService.bookTransfer(january.id)
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.VAT_REPORT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    assertEquals(2, report.tableRows.size())
+    assertTrue(report.tableRows.contains(['OUTPUT_25', 'Utgående moms 25 %', '1000.00', '250.00', '0.00']))
+    assertTrue(report.tableRows.contains(['INPUT_25', 'Ingående moms 25 %', '200.00', '0.00', '50.00']))
+  }
+
+  @Test
+  void reportSelectionOutsideFiscalYearIsRejected() {
+    assertThrows(IllegalArgumentException) {
+      reportDataService.generate(new ReportSelection(
+          ReportType.VOUCHER_LIST,
+          fiscalYear.id,
+          null,
+          LocalDate.of(2025, 12, 31),
+          LocalDate.of(2026, 1, 31)
+      ))
+    }
+  }
+
+  @Test
+  void pathTraversalAttemptInArchivedMetadataIsRejected() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.VOUCHER_LIST,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+    ReportArchive archive = reportExportService.exportCsv(selection)
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update report_archive set storage_path = '../../../etc/passwd' where id = ?", [archive.id])
+    }
+
+    SecurityException exception = assertThrows(SecurityException) {
+      reportArchiveService.readArchive(archive.id)
+    }
+
+    assertTrue(exception.message.contains('utanför rapportarkivet'))
   }
 
   private void bookFixtures() {
@@ -151,13 +318,37 @@ class ReportServicesTest {
 
   private void insertTestAccounts() {
     databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT', null)
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
+      insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name())
     }
+  }
+
+  private void insertOpeningBalance(String accountNumber, BigDecimal amount) {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeInsert('''
+          insert into opening_balance (
+              fiscal_year_id,
+              account_number,
+              amount,
+              created_at,
+              updated_at
+          ) values (?, ?, ?, current_timestamp, current_timestamp)
+      ''', [fiscalYear.id, accountNumber, amount])
+    }
+  }
+
+  private static BigDecimal sumSection(ReportResult report, String section) {
+    report.tableRows.findAll { List<String> row ->
+      row[0] == section
+    }.sum(BigDecimal.ZERO) { List<String> row ->
+      new BigDecimal(row[3])
+    } as BigDecimal
   }
 
   private static void insertAccount(

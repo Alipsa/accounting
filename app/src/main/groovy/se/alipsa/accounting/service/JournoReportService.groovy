@@ -20,7 +20,6 @@ final class JournoReportService {
   private final ReportIntegrityService reportIntegrityService
   private final CompanySettingsService companySettingsService
   private final AuditLogService auditLogService
-  private final JournoEngine journoEngine = new JournoEngine(JournoReportService, '/reports')
 
   JournoReportService() {
     this(
@@ -52,7 +51,7 @@ final class JournoReportService {
 
   String renderHtml(ReportResult report) {
     try {
-      journoEngine.renderHtml(report.reportType.templateName, buildTemplateModel(report))
+      createJournoEngine().renderHtml(report.reportType.templateName, buildTemplateModel(report))
     } catch (JournoException exception) {
       throw new IllegalStateException("PDF-förhandsvisningen kunde inte renderas för ${report.reportType.label}.", exception)
     }
@@ -60,7 +59,7 @@ final class JournoReportService {
 
   byte[] renderPdf(ReportResult report) {
     try {
-      journoEngine.renderPdf(report.reportType.templateName, buildTemplateModel(report))
+      createJournoEngine().renderPdf(report.reportType.templateName, buildTemplateModel(report))
     } catch (JournoException exception) {
       throw new IllegalStateException("PDF kunde inte skapas för ${report.reportType.label}.", exception)
     }
@@ -89,5 +88,9 @@ final class JournoReportService {
         organizationNumber: settings?.organizationNumber ?: '',
         report            : report
     ] + report.templateModel
+  }
+
+  private static JournoEngine createJournoEngine() {
+    new JournoEngine(JournoReportService, '/reports')
   }
 }

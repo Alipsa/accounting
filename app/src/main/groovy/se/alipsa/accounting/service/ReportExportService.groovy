@@ -48,7 +48,7 @@ final class ReportExportService {
     if (!report.csvSupported) {
       throw new IllegalArgumentException("CSV-export stöds inte för ${report.reportType.label}.")
     }
-    StringBuilder builder = new StringBuilder()
+    StringBuilder builder = new StringBuilder('\uFEFF')
     builder.append(report.tableHeaders.collect { String value -> escapeCsv(value) }.join(';')).append('\n')
     report.tableRows.each { List<String> row ->
       builder.append(row.collect { String value -> escapeCsv(value) }.join(';')).append('\n')
@@ -74,9 +74,23 @@ final class ReportExportService {
 
   private static String escapeCsv(String value) {
     String safeValue = value ?: ''
+    if (startsFormula(safeValue)) {
+      safeValue = "'${safeValue}"
+    }
     if (!safeValue.contains(';') && !safeValue.contains('"') && !safeValue.contains('\n')) {
       return safeValue
     }
     "\"${safeValue.replace('"', '""')}\""
+  }
+
+  private static boolean startsFormula(String value) {
+    if (!value) {
+      return false
+    }
+    String first = value.substring(0, 1)
+    if (first in ['=', '+', '@']) {
+      return true
+    }
+    first == '-' && !(value ==~ /-\d+(\.\d+)?/)
   }
 }

@@ -31,7 +31,6 @@ final class VatService {
   private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = ['ASSET', 'LIABILITY'] as Set<String>
   static final String DEFAULT_TRANSFER_SERIES = 'M'
   static final String DEFAULT_SETTLEMENT_ACCOUNT = '2650'
-  private static final Set<String> BASE_ACCOUNT_CLASSES = ['INCOME', 'EXPENSE'] as Set<String>
 
   private final DatabaseService databaseService
   private final VoucherService voucherService
@@ -277,7 +276,13 @@ final class VatService {
 
   private VatReport buildReport(Sql sql, VatPeriod period) {
     Map<VatCode, VatBucket> buckets = [:]
-    loadReportRows(sql, period).each { ReportSeed seed ->
+    VatReportSupport.loadSeeds(
+        sql,
+        period.fiscalYearId,
+        period.startDate,
+        period.endDate,
+        period.transferVoucherId == null ? [] : [period.transferVoucherId]
+    ).each { VatReportSupport.VatSeed seed ->
       VatBucket bucket = buckets.computeIfAbsent(seed.vatCode) { VatCode ignored ->
         new VatBucket()
       }
@@ -303,61 +308,6 @@ final class VatService {
     BigDecimal outputVatTotal = rows.sum(BigDecimal.ZERO) { VatReportRow row -> row.outputVatAmount } as BigDecimal
     BigDecimal inputVatTotal = rows.sum(BigDecimal.ZERO) { VatReportRow row -> row.inputVatAmount } as BigDecimal
     new VatReport(period, rows, scale(outputVatTotal), scale(inputVatTotal), scale(outputVatTotal - inputVatTotal))
-  }
-
-  private static List<ReportSeed> loadReportRows(Sql sql, VatPeriod period) {
-    sql.rows('''
-        select a.vat_code as vatCode,
-               a.account_class as accountClass,
-               a.normal_balance_side as normalBalanceSide,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
-         where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
-           and v.accounting_date between ? and ?
-           and (? is null or v.id <> ?)
-           and a.vat_code is not null
-         group by a.vat_code, a.account_class, a.normal_balance_side
-         order by a.vat_code, a.account_class
-    ''', [
-        period.fiscalYearId,
-        Date.valueOf(period.startDate),
-        Date.valueOf(period.endDate),
-        period.transferVoucherId,
-        period.transferVoucherId
-    ]).collect { GroovyRowResult row ->
-      VatCode vatCode = parseVatCode(row.get('vatCode') as String)
-      BigDecimal signedAmount = signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          row.get('normalBalanceSide') as String
-      )
-      String accountClass = row.get('accountClass') as String
-      BigDecimal baseAmount = BigDecimal.ZERO
-      BigDecimal postedOutputVat = BigDecimal.ZERO
-      BigDecimal postedInputVat = BigDecimal.ZERO
-      int outputPostingCount = 0
-      int inputPostingCount = 0
-
-      if (accountClass in BASE_ACCOUNT_CLASSES) {
-        baseAmount = signedAmount
-      } else if (accountClass in VAT_BALANCE_ACCOUNT_CLASSES) {
-        if (isOutputVatAccount(vatCode, accountClass)) {
-          postedOutputVat = signedAmount
-          outputPostingCount = 1
-        } else if (isInputVatAccount(vatCode, accountClass)) {
-          postedInputVat = signedAmount
-          inputPostingCount = 1
-        }
-      } else {
-        throw new IllegalStateException("Momskod ${vatCode.name()} får inte användas på kontoklass ${accountClass}.")
-      }
-
-      new ReportSeed(vatCode, baseAmount, postedOutputVat, postedInputVat, outputPostingCount, inputPostingCount)
-    }
   }
 
   private static List<TransferBalance> loadTransferBalances(Sql sql, VatPeriod period) {
@@ -459,32 +409,6 @@ final class VatService {
     }
     if (!(row.get('accountClass') as String in VAT_BALANCE_ACCOUNT_CLASSES)) {
       throw new IllegalArgumentException("Momsredovisningskonto måste vara ett balanskonto: ${accountNumber}")
-    }
-  }
-
-  private static boolean isOutputVatAccount(VatCode vatCode, String accountClass) {
-    if (vatCode.outputRate == BigDecimal.ZERO) {
-      return false
-    }
-    accountClass == 'LIABILITY'
-  }
-
-  private static boolean isInputVatAccount(VatCode vatCode, String accountClass) {
-    if (vatCode.inputRate == BigDecimal.ZERO) {
-      return false
-    }
-    accountClass == 'ASSET'
-  }
-
-  private static VatCode parseVatCode(String value) {
-    try {
-      VatCode vatCode = VatCode.fromDatabaseValue(value)
-      if (vatCode == null) {
-        throw new IllegalStateException('Momskod saknas för momsrad.')
-      }
-      return vatCode
-    } catch (IllegalArgumentException exception) {
-      throw new IllegalStateException("Okänd momskod i databasen: ${value}", exception)
     }
   }
 
@@ -606,18 +530,6 @@ final class VatService {
     BigDecimal baseAmount
     BigDecimal outputVatAmount
     BigDecimal inputVatAmount
-  }
-
-  @Canonical
-  @CompileStatic
-  private static final class ReportSeed {
-
-    VatCode vatCode
-    BigDecimal baseAmount
-    BigDecimal postedOutputVat
-    BigDecimal postedInputVat
-    int outputPostingCount
-    int inputPostingCount
   }
 
   @Canonical

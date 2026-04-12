@@ -80,7 +80,7 @@ final class ReportDataService {
       sql.rows('''
           select v.id as voucherId,
                  v.accounting_date as accountingDate,
-                 coalesce(v.voucher_number, concat(s.series_code, '-UTKAST')) as voucherNumber,
+                 v.voucher_number as voucherNumber,
                  s.series_code as seriesCode,
                  v.description,
                  v.status,
@@ -403,7 +403,8 @@ final class ReportDataService {
     databaseService.withSql { Sql sql ->
       Set<Long> transferVoucherIds = loadVatTransferVoucherIds(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
       Map<VatCode, VatBucket> buckets = [:]
-      loadVatLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate, transferVoucherIds).each { VatSeed seed ->
+      VatReportSupport.loadSeeds(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate, transferVoucherIds)
+          .each { VatReportSupport.VatSeed seed ->
         VatBucket bucket = buckets.computeIfAbsent(seed.vatCode) { VatCode ignored ->
           new VatBucket()
         }
@@ -606,54 +607,6 @@ final class ReportDataService {
     } as Set<Long>
   }
 
-  private static List<VatSeed> loadVatLines(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate, Set<Long> excludedVoucherIds) {
-    sql.rows('''
-        select v.id as voucherId,
-               a.vat_code as vatCode,
-               a.account_class as accountClass,
-               a.normal_balance_side as normalBalanceSide,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
-         where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
-           and v.accounting_date between ? and ?
-           and a.vat_code is not null
-         group by v.id, a.vat_code, a.account_class, a.normal_balance_side
-         order by a.vat_code, a.account_class
-    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).collect { GroovyRowResult row ->
-      Long voucherId = Long.valueOf(row.get('voucherId').toString())
-      if (excludedVoucherIds.contains(voucherId)) {
-        return null
-      }
-      VatCode vatCode = VatCode.fromDatabaseValue(row.get('vatCode') as String)
-      String accountClass = row.get('accountClass') as String
-      String normalBalanceSide = row.get('normalBalanceSide') as String
-      BigDecimal signed = signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          normalBalanceSide
-      )
-      BigDecimal baseAmount = BigDecimal.ZERO
-      BigDecimal postedOutputVat = BigDecimal.ZERO
-      BigDecimal postedInputVat = BigDecimal.ZERO
-      int outputPostingCount = 0
-      int inputPostingCount = 0
-      if (accountClass in ['INCOME', 'EXPENSE']) {
-        baseAmount = signed
-      } else if (accountClass == 'LIABILITY' && vatCode.outputRate > BigDecimal.ZERO) {
-        postedOutputVat = signed
-        outputPostingCount = 1
-      } else if (accountClass == 'ASSET' && vatCode.inputRate > BigDecimal.ZERO) {
-        postedInputVat = signed
-        inputPostingCount = 1
-      }
-      new VatSeed(vatCode, scale(baseAmount), scale(postedOutputVat), scale(postedInputVat), outputPostingCount, inputPostingCount)
-    }.findAll { VatSeed seed -> seed != null }
-  }
-
   private ReportResult createResult(
       EffectiveSelection effective,
       boolean csvSupported,
@@ -778,17 +731,6 @@ final class ReportDataService {
 
     BigDecimal debitAmount
     BigDecimal creditAmount
-  }
-
-  @Canonical
-  private static final class VatSeed {
-
-    VatCode vatCode
-    BigDecimal baseAmount
-    BigDecimal postedOutputVat
-    BigDecimal postedInputVat
-    int outputPostingCount
-    int inputPostingCount
   }
 
   private static final class VatBucket {

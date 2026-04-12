@@ -342,6 +342,46 @@ class VoucherServiceTest {
     assertEquals([], auditLogService.validateIntegrity())
   }
 
+  @Test
+  void validateIntegrityDetectsTamperedVoucherDescription() {
+    Voucher voucher = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 10),
+        'Originaltext',
+        balancedLines(100.00G)
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update voucher set description = ? where id = ?', ['Manipulerad text', voucher.id])
+    }
+
+    List<String> problems = voucherService.validateIntegrity()
+
+    assertEquals(1, problems.size())
+    assertEquals("Verifikation ${voucher.id} har ogiltig innehållshash.", problems.first())
+  }
+
+  @Test
+  void validateIntegrityDetectsTamperedVoucherLineAmounts() {
+    Voucher voucher = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 11),
+        'Originalrader',
+        balancedLines(100.00G)
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?', [125.00G, voucher.id, '1510'])
+    }
+
+    List<String> problems = voucherService.validateIntegrity()
+
+    assertEquals(1, problems.size())
+    assertEquals("Verifikation ${voucher.id} har ogiltig innehållshash.", problems.first())
+  }
+
   private void insertTestAccounts() {
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')

@@ -38,7 +38,7 @@ final class ReportArchiveService {
     AppPaths.ensureDirectoryStructure()
     String fileName = buildFileName(safeSelection, safeFormat)
     String storagePath = buildStoragePath(fileName)
-    Path targetPath = AppPaths.reportsDirectory().resolve(storagePath).normalize()
+    Path targetPath = resolveStoragePath(storagePath)
     Files.createDirectories(targetPath.parent)
     Files.write(targetPath, content)
     String checksum = calculateChecksum(content)
@@ -108,7 +108,7 @@ final class ReportArchiveService {
   }
 
   Path resolveStoredPath(ReportArchive archive) {
-    AppPaths.reportsDirectory().resolve(archive.storagePath).normalize()
+    resolveStoragePath(archive.storagePath)
   }
 
   byte[] readArchive(long archiveId) {
@@ -186,6 +186,15 @@ final class ReportArchiveService {
     LocalDateTime now = LocalDateTime.now()
     String safeFileName = fileName.replaceAll(/[^A-Za-z0-9._-]/, '_')
     "${now.year}/${String.format('%02d', now.monthValue)}/${safeFileName}"
+  }
+
+  private static Path resolveStoragePath(String storagePath) {
+    Path root = AppPaths.reportsDirectory().toAbsolutePath().normalize()
+    Path resolved = root.resolve(storagePath).normalize()
+    if (!resolved.startsWith(root)) {
+      throw new SecurityException("Rapportens lagringsväg ligger utanför rapportarkivet: ${storagePath}")
+    }
+    resolved
   }
 
   private static String formatParameters(ReportSelection selection) {
