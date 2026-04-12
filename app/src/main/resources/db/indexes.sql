@@ -34,6 +34,18 @@ create index if not exists idx_import_job_status
 create index if not exists idx_import_job_fiscal_year
     on import_job(fiscal_year_id, started_at);
 
+create index if not exists idx_closing_entry_fiscal_year
+    on closing_entry(fiscal_year_id, created_at);
+
+create index if not exists idx_closing_entry_next_fiscal_year
+    on closing_entry(next_fiscal_year_id, created_at);
+
+create index if not exists idx_closing_entry_voucher
+    on closing_entry(voucher_id);
+
+create index if not exists idx_closing_entry_type
+    on closing_entry(entry_type, created_at);
+
 create index if not exists idx_account_class
     on account(account_class);
 
