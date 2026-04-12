@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.GroovyRowResult
@@ -143,6 +144,25 @@ class ClosingServiceTest {
 
     assertTrue(preview.blockingIssues.any { String issue -> issue.contains('Alla perioder måste vara låsta') })
     assertTrue(preview.warnings.any { String warning -> warning.contains('Bokslutsfristen passerade') })
+  }
+
+  @Test
+  void reClosingAnAlreadyClosedYearIsBlocked() {
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
+      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
+    }
+
+    closingService.closeFiscalYear(fiscalYear.id)
+
+    def preview = closingService.previewClosing(fiscalYear.id)
+
+    assertTrue(preview.blockingIssues.any { String issue -> issue.contains('redan stängt') })
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      closingService.closeFiscalYear(fiscalYear.id)
+    }
+    assertTrue(exception.message.contains('redan stängt'))
   }
 
   private void seedClosingAccounts() {

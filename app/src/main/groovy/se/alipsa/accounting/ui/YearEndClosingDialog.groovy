@@ -137,13 +137,14 @@ final class YearEndClosingDialog extends JDialog {
   }
 
   private void reloadPreview() {
+    String closingAccountNumber = closingAccountField.text
     setWorkingState(true)
     summaryArea.text = 'Kör förhandskontroller...'
     messageArea.text = ''
     new SwingWorker<YearEndClosingPreview, Void>() {
       @Override
       protected YearEndClosingPreview doInBackground() {
-        closingService.previewClosing(fiscalYear.id, closingAccountField.text)
+        closingService.previewClosing(fiscalYear.id, closingAccountNumber)
       }
 
       @Override
@@ -202,12 +203,13 @@ final class YearEndClosingDialog extends JDialog {
       return
     }
 
+    String closingAccountNumber = closingAccountField.text
     setWorkingState(true)
     summaryArea.text = 'Genomför årsbokslut...'
     new SwingWorker<YearEndClosingResult, Void>() {
       @Override
       protected YearEndClosingResult doInBackground() {
-        closingService.closeFiscalYear(fiscalYear.id, closingAccountField.text)
+        closingService.closeFiscalYear(fiscalYear.id, closingAccountNumber)
       }
 
       @Override

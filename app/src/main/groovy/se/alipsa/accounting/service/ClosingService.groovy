@@ -82,6 +82,8 @@ final class ClosingService {
   YearEndClosingResult closeFiscalYear(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
     reportIntegrityService.ensureOperationAllowed('Årsstängning')
     databaseService.withTransaction { Sql sql ->
+      // Integrity is checked before opening the transaction so we do not re-run the
+      // expensive cross-system validation while holding DB locks during closing.
       YearEndClosingPreview preview = buildPreview(sql, fiscalYearId, closingAccountNumber, [])
       if (!preview.blockingIssues.isEmpty()) {
         throw new IllegalStateException(preview.blockingIssues.join('\n'))
