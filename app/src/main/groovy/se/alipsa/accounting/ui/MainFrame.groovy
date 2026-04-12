@@ -16,6 +16,7 @@ import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
+import se.alipsa.accounting.service.ReportIntegrityService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
@@ -59,8 +60,20 @@ final class MainFrame {
   private final VatService vatService = new VatService(DatabaseService.instance, voucherService)
   private final ReportDataService reportDataService = new ReportDataService(DatabaseService.instance, fiscalYearService, accountingPeriodService)
   private final ReportArchiveService reportArchiveService = new ReportArchiveService(DatabaseService.instance)
-  private final ReportExportService reportExportService = new ReportExportService()
-  private final JournoReportService journoReportService = new JournoReportService()
+  private final ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+  private final ReportExportService reportExportService = new ReportExportService(
+      reportDataService,
+      reportArchiveService,
+      reportIntegrityService,
+      auditLogService
+  )
+  private final JournoReportService journoReportService = new JournoReportService(
+      reportDataService,
+      reportArchiveService,
+      reportIntegrityService,
+      companySettingsService,
+      auditLogService
+  )
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private final JFrame frame

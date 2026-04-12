@@ -401,9 +401,8 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildVatReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Set<Long> transferVoucherIds = loadVatTransferVoucherIds(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
       Map<VatCode, VatBucket> buckets = [:]
-      VatReportSupport.loadSeeds(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate, transferVoucherIds)
+      VatReportSupport.loadSeeds(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate, true)
           .each { VatReportSupport.VatSeed seed ->
         VatBucket bucket = buckets.computeIfAbsent(seed.vatCode) { VatCode ignored ->
           new VatBucket()
@@ -592,19 +591,6 @@ final class ReportDataService {
           scale(new BigDecimal(row.get('creditAmount').toString()))
       )
     }
-  }
-
-  private static Set<Long> loadVatTransferVoucherIds(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-    sql.rows('''
-        select transfer_voucher_id as transferVoucherId
-          from vat_period
-         where fiscal_year_id = ?
-           and transfer_voucher_id is not null
-           and start_date <= ?
-           and end_date >= ?
-    ''', [fiscalYearId, Date.valueOf(endDate), Date.valueOf(startDate)]).collect { GroovyRowResult row ->
-      Long.valueOf(row.get('transferVoucherId').toString())
-    } as Set<Long>
   }
 
   private ReportResult createResult(

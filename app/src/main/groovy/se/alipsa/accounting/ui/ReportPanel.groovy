@@ -26,6 +26,7 @@ import java.awt.Insets
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
+import java.util.concurrent.ExecutionException
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -39,6 +40,7 @@ import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
 import javax.swing.table.AbstractTableModel
 
 /**
@@ -68,9 +70,11 @@ final class ReportPanel extends JPanel {
   private final ArchiveTableModel archiveTableModel = new ArchiveTableModel()
   private final JTable archiveTable = new JTable(archiveTableModel)
   private final JButton exportCsvButton = new JButton('Exportera CSV')
+  private final JButton generatePdfButton = new JButton('Skapa PDF')
   private final JButton openVoucherButton = new JButton('Öppna verifikation')
   private final JButton openArchiveButton = new JButton('Öppna arkivfil')
   private ReportResult currentReport
+  private boolean pdfGenerationInProgress
 
   ReportPanel(
       ReportDataService reportDataService,
@@ -162,7 +166,6 @@ final class ReportPanel extends JPanel {
     exportCsvButton.addActionListener {
       exportCsv()
     }
-    JButton generatePdfButton = new JButton('Skapa PDF')
     generatePdfButton.addActionListener {
       generatePdf()
     }
@@ -290,13 +293,39 @@ final class ReportPanel extends JPanel {
   }
 
   private void generatePdf() {
+    ReportSelection selection
     try {
-      ReportArchive archive = journoReportService.generatePdf(currentSelection())
-      reloadArchives()
-      showInfo("PDF skapades och arkiverades som ${archive.fileName}.")
-    } catch (IllegalArgumentException | IllegalStateException exception) {
+      selection = currentSelection()
+    } catch (IllegalArgumentException exception) {
       showError(exception.message)
+      return
     }
+    pdfGenerationInProgress = true
+    updateActionButtons()
+    showInfo('PDF skapas, vänta...')
+    new SwingWorker<ReportArchive, Void>() {
+      @Override
+      protected ReportArchive doInBackground() {
+        journoReportService.generatePdf(selection)
+      }
+
+      @Override
+      protected void done() {
+        pdfGenerationInProgress = false
+        updateActionButtons()
+        try {
+          ReportArchive archive = get()
+          reloadArchives()
+          showInfo("PDF skapades och arkiverades som ${archive.fileName}.")
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          showError('PDF-genereringen avbröts.')
+        } catch (ExecutionException exception) {
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: 'PDF kunde inte skapas.')
+        }
+      }
+    }.execute()
   }
 
   private void reloadArchives() {
@@ -396,6 +425,7 @@ final class ReportPanel extends JPanel {
 
   private void updateActionButtons() {
     exportCsvButton.enabled = currentReport?.csvSupported ?: false
+    generatePdfButton.enabled = currentReport != null && !pdfGenerationInProgress
     openVoucherButton.enabled = selectedVoucherId() != null
     openArchiveButton.enabled = selectedArchive() != null
   }

@@ -281,7 +281,7 @@ final class VatService {
         period.fiscalYearId,
         period.startDate,
         period.endDate,
-        period.transferVoucherId == null ? [] : [period.transferVoucherId]
+        true
     ).each { VatReportSupport.VatSeed seed ->
       VatBucket bucket = buckets.computeIfAbsent(seed.vatCode) { VatCode ignored ->
         new VatBucket()

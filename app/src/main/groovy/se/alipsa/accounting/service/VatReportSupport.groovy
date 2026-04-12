@@ -29,16 +29,8 @@ final class VatReportSupport {
       long fiscalYearId,
       LocalDate startDate,
       LocalDate endDate,
-      Collection<Long> excludedVoucherIds = []
+      boolean excludeVatTransferVouchers = false
   ) {
-    List<Long> excludedIds = []
-    excludedVoucherIds?.each { Long voucherId ->
-      if (voucherId != null) {
-        excludedIds << voucherId
-      }
-    }
-    excludedIds.sort()
-
     StringBuilder query = new StringBuilder('''
         select a.vat_code as vatCode,
                a.account_class as accountClass,
@@ -54,13 +46,20 @@ final class VatReportSupport {
            and a.vat_code is not null
     ''')
     List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
-    if (!excludedIds.isEmpty()) {
-      query.append('\n           and v.id not in (')
-      query.append(excludedIds.collect { Long ignored -> '?' }.join(', '))
-      query.append(')')
-      excludedIds.each { Long voucherId ->
-        params << voucherId
-      }
+    if (excludeVatTransferVouchers) {
+      query.append('''
+           and not exists (
+                 select 1
+                   from vat_period vp
+                  where vp.fiscal_year_id = ?
+                    and vp.transfer_voucher_id = v.id
+                    and vp.start_date <= ?
+                    and vp.end_date >= ?
+           )
+      ''')
+      params << fiscalYearId
+      params << Date.valueOf(endDate)
+      params << Date.valueOf(startDate)
     }
     query.append('''
          group by a.vat_code, a.account_class, a.normal_balance_side
