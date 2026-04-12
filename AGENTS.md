@@ -53,6 +53,7 @@ Recent history favors short, descriptive commit messages, often in Swedish imper
 - Do not edit generated build output under `app/build/`.
 
 ## Agent-Specific Notes
+- After finishing an implementation or code fix, always run `./gradlew spotlessApply` to auto-format before committing.
 - For Swing work, preserve the existing desktop patterns in `ui/`; prefer small, targeted dialog/panel changes over broad rewrites.
 - Verify UI-related changes with at least `./gradlew build`, even when behavior is mostly visual.
 - For SQL work, update migrations first and keep `schema.sql` readable and aligned with the intended bootstrap state.
