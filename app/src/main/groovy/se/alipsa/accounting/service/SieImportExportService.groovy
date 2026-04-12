@@ -22,24 +22,23 @@ import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.ImportJobStatus
 import se.alipsa.accounting.domain.VoucherLine
 
+import java.math.RoundingMode
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Date
 import java.text.Normalizer
 import java.time.LocalDate
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Imports and exports SIE4 files and records import job outcomes.
  */
 @CompileStatic
 final class SieImportExportService {
-
   private static final int AMOUNT_SCALE = 2
+  private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L
   private static final String PROGRAM_NAME = 'Alipsa Accounting'
   private static final String PROGRAM_VERSION = '1.0.0'
   private static final String GENERATOR_NAME = 'desktop-app'
-
   private static final Set<String> INCOME_KEYWORDS = [
       'INTAKT', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
       'BIDRAG', 'OVERSKOTT', 'ATERFORING', 'RABATT'
@@ -49,14 +48,12 @@ final class SieImportExportService {
       'RANTEKOSTNADER', 'SKATT', 'NEDSKRIVNING', 'NEDSKRIVNINGAR',
       'AVSATTNING', 'LAMNADE', 'UTGIFT', 'UTGIFTER'
   ] as Set<String>
-
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
   private final VoucherService voucherService
   private final CompanySettingsService companySettingsService
   private final ReportIntegrityService reportIntegrityService
   private final AuditLogService auditLogService
-
   SieImportExportService() {
     this(
         DatabaseService.instance,
@@ -67,7 +64,6 @@ final class SieImportExportService {
         new AuditLogService(DatabaseService.instance)
     )
   }
-
   SieImportExportService(
       DatabaseService databaseService,
       AccountingPeriodService accountingPeriodService,
@@ -83,18 +79,15 @@ final class SieImportExportService {
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
   }
-
   SieImportResult importFile(Path filePath) {
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
     long jobId = createImportJob(safePath.fileName.toString(), checksum)
-
     ImportJob duplicate = markDuplicateIfNeeded(jobId, checksum)
     if (duplicate != null) {
       return new SieImportResult(duplicate, null, true, 0, 0, 0, 0, [])
     }
-
     try {
       ParsedSie parsed = parseDocument(safePath)
       SieImportResult result = databaseService.withTransaction { Sql sql ->
@@ -126,7 +119,6 @@ final class SieImportExportService {
       throw exception
     }
   }
-
   SieExportResult exportFiscalYear(long fiscalYearId, Path targetPath) {
     Path safeTarget = normalizeExportPath(targetPath)
     reportIntegrityService.ensureReportingAllowed()
@@ -159,7 +151,6 @@ final class SieImportExportService {
         payload.voucherCount
     )
   }
-
   List<ImportJob> listImportJobs(int limit = 20) {
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
@@ -181,7 +172,6 @@ final class SieImportExportService {
       }
     }
   }
-
   private static Path validateImportPath(Path filePath) {
     if (filePath == null) {
       throw new IllegalArgumentException('En SIE-fil måste väljas.')
@@ -190,9 +180,11 @@ final class SieImportExportService {
     if (!Files.isRegularFile(normalized)) {
       throw new IllegalArgumentException("SIE-filen hittades inte: ${normalized}")
     }
+    if (Files.size(normalized) > MAX_IMPORT_FILE_SIZE_BYTES) {
+      throw new IllegalArgumentException('SIE-filen är för stor att importera. Max 50 MB stöds.')
+    }
     normalized
   }
-
   private static Path normalizeExportPath(Path targetPath) {
     if (targetPath == null) {
       throw new IllegalArgumentException('En målfil måste väljas för export.')
@@ -203,7 +195,6 @@ final class SieImportExportService {
     }
     normalized
   }
-
   private CompanySettings requireCompanySettings() {
     CompanySettings settings = companySettingsService.getSettings()
     if (settings == null) {
@@ -211,7 +202,6 @@ final class SieImportExportService {
     }
     settings
   }
-
   private long createImportJob(String fileName, String checksum) {
     databaseService.withTransaction { Sql sql ->
       List<List<Object>> keys = sql.executeInsert('''
@@ -228,7 +218,6 @@ final class SieImportExportService {
       ((Number) keys.first().first()).longValue()
     }
   }
-
   private ImportJob markDuplicateIfNeeded(long jobId, String checksum) {
     databaseService.withTransaction { Sql sql ->
       GroovyRowResult existing = sql.firstRow('''
@@ -248,7 +237,6 @@ final class SieImportExportService {
       completeImportJob(sql, jobId, null, ImportJobStatus.DUPLICATE, summary, [])
     }
   }
-
   private static ParsedSie parseDocument(Path filePath) {
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
@@ -292,7 +280,9 @@ final class SieImportExportService {
          where start_date = ?
            and end_date = ?
     ''', [Date.valueOf(bookingYear.start), Date.valueOf(bookingYear.end)]) as GroovyRowResult
-    FiscalYear fiscalYear = existing == null ? createFiscalYear(sql, bookingYear) : mapFiscalYear(existing)
+    FiscalYear fiscalYear = existing == null
+        ? createFiscalYear(sql, bookingYear.start, bookingYear.end)
+        : mapFiscalYear(existing)
     ensureFiscalYearImportable(sql, fiscalYear)
     fiscalYear
   }
@@ -308,37 +298,18 @@ final class SieImportExportService {
     document.getRars().values().sort { SieBookingYear year -> year.id }.first()
   }
 
-  private FiscalYear createFiscalYear(Sql sql, SieBookingYear bookingYear) {
-    ensureNoOverlap(sql, bookingYear.start, bookingYear.end)
-    String name = bookingYear.start.year == bookingYear.end.year
-        ? bookingYear.start.year.toString()
-        : "${bookingYear.start} - ${bookingYear.end}"
-    List<List<Object>> keys = sql.executeInsert('''
-        insert into fiscal_year (
-            name,
-            start_date,
-            end_date,
-            closed,
-            closed_at,
-            created_at
-        ) values (?, ?, ?, false, null, current_timestamp)
-    ''', [name, Date.valueOf(bookingYear.start), Date.valueOf(bookingYear.end)])
-    long fiscalYearId = ((Number) keys.first().first()).longValue()
-    accountingPeriodService.createPeriods(sql, fiscalYearId, bookingYear.start, bookingYear.end)
-    VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
-    findFiscalYear(sql, fiscalYearId)
-  }
-
-  private static void ensureNoOverlap(Sql sql, LocalDate startDate, LocalDate endDate) {
-    GroovyRowResult row = sql.firstRow('''
-        select count(*) as total
-          from fiscal_year
-         where start_date <= ?
-           and end_date >= ?
-    ''', [Date.valueOf(endDate), Date.valueOf(startDate)]) as GroovyRowResult
-    if (((Number) row.get('total')).intValue() > 0) {
-      throw new IllegalStateException('SIE-filen överlappar ett befintligt räkenskapsår men matchar det inte exakt.')
-    }
+  private FiscalYear createFiscalYear(Sql sql, LocalDate startDate, LocalDate endDate) {
+    String name = startDate.year == endDate.year
+        ? startDate.year.toString()
+        : "${startDate} - ${endDate}"
+    FiscalYearService.createFiscalYear(
+        sql,
+        accountingPeriodService,
+        name,
+        startDate,
+        endDate,
+        'SIE-filen överlappar ett befintligt räkenskapsår men matchar det inte exakt.'
+    )
   }
 
   private static void ensureFiscalYearImportable(Sql sql, FiscalYear fiscalYear) {
@@ -387,9 +358,15 @@ final class SieImportExportService {
     sortedAccounts.sort { SieAccount account -> account.number }
     sortedAccounts.each { SieAccount account ->
       String accountNumber = normalizeAccountNumber(account.number)
+      String accountName = normalizeAccountName(account.name) ?: accountNumber
       AccountClassification classification = classifyAccount(accountNumber, normalizeAccountName(account.name))
       GroovyRowResult existing = sql.firstRow(
-          'select account_number from account where account_number = ?',
+          '''
+          select account_number as accountNumber,
+                 manual_review_required as manualReviewRequired
+            from account
+           where account_number = ?
+          ''',
           [accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
@@ -408,7 +385,7 @@ final class SieImportExportService {
             ) values (?, ?, ?, ?, ?, true, ?, ?, current_timestamp, current_timestamp)
         ''', [
             accountNumber,
-            normalizeAccountName(account.name) ?: accountNumber,
+            accountName,
             classification.accountClass,
             classification.normalBalanceSide,
             null,
@@ -416,23 +393,32 @@ final class SieImportExportService {
             classification.note
         ])
         created++
-      } else {
+      } else if (Boolean.TRUE == existing.get('manualReviewRequired')) {
         sql.executeUpdate('''
             update account
                set account_name = ?,
                    account_class = ?,
                    normal_balance_side = ?,
-                   active = true,
                    manual_review_required = ?,
                    classification_note = ?,
                    updated_at = current_timestamp
              where account_number = ?
         ''', [
-            normalizeAccountName(account.name) ?: accountNumber,
+            accountName,
             classification.accountClass,
             classification.normalBalanceSide,
             classification.manualReviewRequired,
             classification.note,
+            accountNumber
+        ])
+      } else {
+        sql.executeUpdate('''
+            update account
+               set account_name = ?,
+                   updated_at = current_timestamp
+             where account_number = ?
+        ''', [
+            accountName,
             accountNumber
         ])
       }
@@ -468,13 +454,13 @@ final class SieImportExportService {
   }
 
   private VoucherImportSummary persistVouchers(Sql sql, long fiscalYearId, List<SieVoucher> vouchers) {
-    AtomicInteger voucherCount = new AtomicInteger()
-    AtomicInteger lineCount = new AtomicInteger()
     List<SieVoucher> sortedVouchers = new ArrayList<>(vouchers ?: [])
     sortedVouchers.sort { SieVoucher left, SieVoucher right ->
       compareVoucherKey(left, right)
     }
-    sortedVouchers.each { SieVoucher voucher ->
+    int voucherCount = 0
+    int lineCount = 0
+    for (SieVoucher voucher : sortedVouchers) {
       List<VoucherLine> lines = buildVoucherLines(voucher)
       voucherService.createAndBook(
           sql,
@@ -485,10 +471,10 @@ final class SieImportExportService {
           lines,
           false
       )
-      voucherCount.incrementAndGet()
-      lineCount.addAndGet(lines.size())
+      voucherCount++
+      lineCount += lines.size()
     }
-    new VoucherImportSummary(voucherCount.get(), lineCount.get())
+    new VoucherImportSummary(voucherCount, lineCount)
   }
 
   private static int compareVoucherKey(SieVoucher left, SieVoucher right) {
@@ -951,7 +937,7 @@ final class SieImportExportService {
   }
 
   private static BigDecimal scale(BigDecimal amount) {
-    (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, BigDecimal.ROUND_HALF_UP)
+    (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
   }
 
   private static String sha256(byte[] content) {
@@ -972,7 +958,7 @@ final class SieImportExportService {
       case 1:
         return new AccountClassification('ASSET', 'DEBIT', false, null)
       case 2:
-        if (subgroup <= 21) {
+        if (subgroup <= 20) {
           return new AccountClassification('EQUITY', 'CREDIT', false, null)
         }
         return new AccountClassification('LIABILITY', 'CREDIT', false, null)

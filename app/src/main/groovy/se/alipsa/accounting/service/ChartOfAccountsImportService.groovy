@@ -189,7 +189,7 @@ final class ChartOfAccountsImportService {
       case 1:
         return new Classification('ASSET', 'DEBIT', false, null)
       case 2:
-        if (subgroup <= 21) {
+        if (subgroup <= 20) {
           return new Classification('EQUITY', 'CREDIT', false, null)
         }
         return new Classification('LIABILITY', 'CREDIT', false, null)

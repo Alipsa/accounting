@@ -106,6 +106,115 @@ class SieImportExportServiceTest {
     assertTrue(exception.message.contains('integritetskontrollerna'))
   }
 
+  @Test
+  void malformedSieFileIsRejectedAndRecordedAsFailedJob() {
+    switchHome(tempDir.resolve('malformed-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path malformed = tempDir.resolve('malformed.sie')
+    malformed.toFile().text = 'this is not a sie file'
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      service.importFile(malformed)
+    }
+
+    assertTrue(exception.message.contains('SIE'))
+    assertEquals(ImportJobStatus.FAILED, service.listImportJobs(1).first().status)
+  }
+
+  @Test
+  void oversizedSieFileIsRejectedBeforeReadingContent() {
+    switchHome(tempDir.resolve('oversized-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path oversized = tempDir.resolve('oversized.sie')
+    oversized.toFile().createNewFile()
+    new RandomAccessFile(oversized.toFile(), 'rw').withCloseable { RandomAccessFile file ->
+      file.setLength(50L * 1024L * 1024L + 1L)
+    }
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      service.importFile(oversized)
+    }
+
+    assertTrue(exception.message.contains('Max 50 MB'))
+    assertTrue(service.listImportJobs().isEmpty())
+  }
+
+  @Test
+  void importIntoFiscalYearWithLockedPeriodsIsRejectedAndRecordedAsFailedJob() {
+    Path exportPath = tempDir.resolve('locked-period.sie')
+    createExportFixture(tempDir.resolve('source-db'), exportPath)
+
+    switchHome(tempDir.resolve('locked-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(targetDatabaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(targetDatabaseService, accountingPeriodService, auditLogService)
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    accountingPeriodService.lockPeriod(accountingPeriodService.listPeriods(fiscalYear.id).first().id, 'låst för test')
+    SieImportExportService targetService = createSieService(targetDatabaseService)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      targetService.importFile(exportPath)
+    }
+
+    assertTrue(exception.message.contains('låsta perioder'))
+    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(1).first().status)
+  }
+
+  @Test
+  void importClassifiesGroup21AccountsAsLiabilities() {
+    switchHome(tempDir.resolve('group21-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = writeSimpleSie(tempDir.resolve('group21.sie'), '2120', 'Periodiseringsfonder')
+
+    service.importFile(filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select account_class as accountClass, manual_review_required as manualReviewRequired from account where account_number = ?',
+          ['2120']
+      ) as GroovyRowResult
+      assertEquals('LIABILITY', row.get('accountClass'))
+      assertEquals(false, row.get('manualReviewRequired'))
+    }
+  }
+
+  @Test
+  void importPreservesTrustedExistingAccountClassification() {
+    switchHome(tempDir.resolve('preserve-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '2120', 'Egen klassning', 'EQUITY', 'CREDIT')
+    }
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = writeSimpleSie(tempDir.resolve('preserve.sie'), '2120', 'Periodiseringsfonder')
+
+    service.importFile(filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select account_name as accountName,
+                 account_class as accountClass,
+                 normal_balance_side as normalBalanceSide,
+                 manual_review_required as manualReviewRequired
+            from account
+           where account_number = ?
+      ''', ['2120']) as GroovyRowResult
+      assertEquals('Periodiseringsfonder', row.get('accountName'))
+      assertEquals('EQUITY', row.get('accountClass'))
+      assertEquals('CREDIT', row.get('normalBalanceSide'))
+      assertEquals(false, row.get('manualReviewRequired'))
+    }
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()
@@ -188,6 +297,21 @@ class SieImportExportServiceTest {
         reportIntegrityService,
         auditLogService
     )
+  }
+
+  private Path writeSimpleSie(Path filePath, String accountNumber, String accountName) {
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO ${accountNumber} "${accountName}"
+#IB 0 ${accountNumber} 100.00
+"""
+    filePath
   }
 
   private static int countRows(DatabaseService databaseService, String tableName) {
