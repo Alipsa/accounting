@@ -2,12 +2,14 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.support.AppPaths
@@ -21,6 +23,7 @@ class CompanySettingsServiceTest {
 
   private DatabaseService databaseService
   private CompanySettingsService companySettingsService
+  private CompanyService companyService
   private String previousHome
 
   @BeforeEach
@@ -30,6 +33,7 @@ class CompanySettingsServiceTest {
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     companySettingsService = new CompanySettingsService(databaseService)
+    companyService = new CompanyService(databaseService)
   }
 
   @AfterEach
@@ -56,6 +60,33 @@ class CompanySettingsServiceTest {
     assertEquals('EUR', updated.defaultCurrency)
     assertEquals('en-GB', updated.localeTag)
     assertEquals(VatPeriodicity.ANNUAL, updated.vatPeriodicity)
+  }
+
+  @Test
+  void saveKeepsLegacyCompanyRowInSync() {
+    companySettingsService.save(
+        new CompanySettings(null, 'Demo AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY)
+    )
+
+    List<Company> companies = companyService.listCompanies()
+
+    assertEquals(1, companies.size())
+    assertEquals(CompanyService.LEGACY_COMPANY_ID, companies.first().id)
+    assertEquals('Demo AB', companies.first().companyName)
+    assertEquals('556677-8899', companies.first().organizationNumber)
+    assertEquals(VatPeriodicity.MONTHLY, companies.first().vatPeriodicity)
+
+    companySettingsService.save(
+        new CompanySettings(null, 'Demo Holding AB', '556677-8899', 'EUR', 'en-GB', VatPeriodicity.ANNUAL)
+    )
+
+    Company company = companyService.findById(CompanyService.LEGACY_COMPANY_ID)
+    assertNotNull(company)
+    assertEquals('Demo Holding AB', company.companyName)
+    assertEquals('EUR', company.defaultCurrency)
+    assertEquals('en-GB', company.localeTag)
+    assertEquals(VatPeriodicity.ANNUAL, company.vatPeriodicity)
+    assertTrue(company.active)
   }
 
   private static void restoreProperty(String name, String value) {

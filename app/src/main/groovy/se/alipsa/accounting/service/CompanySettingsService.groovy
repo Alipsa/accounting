@@ -14,9 +14,15 @@ final class CompanySettingsService {
   private static final long SETTINGS_ID = 1L
 
   private final DatabaseService databaseService
+  private final CompanyService companyService
 
   CompanySettingsService(DatabaseService databaseService = DatabaseService.instance) {
+    this(databaseService, new CompanyService(databaseService))
+  }
+
+  CompanySettingsService(DatabaseService databaseService, CompanyService companyService) {
     this.databaseService = databaseService
+    this.companyService = companyService
   }
 
   CompanySettings getSettings() {
@@ -70,7 +76,9 @@ final class CompanySettingsService {
                     ) values (?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
                 ''', params)
       }
-      loadSettings(sql)
+      CompanySettings persistedSettings = loadSettings(sql)
+      companyService.upsertLegacyCompany(sql, persistedSettings)
+      persistedSettings
     }
   }
 

@@ -36,7 +36,8 @@ final class DatabaseService {
       new MigrationDefinition(9, 'V9__audit_log_vat_period.sql', '/db/migrations/V9__audit_log_vat_period.sql'),
       new MigrationDefinition(10, 'V10__report_archive.sql', '/db/migrations/V10__report_archive.sql'),
       new MigrationDefinition(11, 'V11__import_job.sql', '/db/migrations/V11__import_job.sql'),
-      new MigrationDefinition(12, 'V12__closing_entry.sql', '/db/migrations/V12__closing_entry.sql')
+      new MigrationDefinition(12, 'V12__closing_entry.sql', '/db/migrations/V12__closing_entry.sql'),
+      new MigrationDefinition(13, 'V13__multi_company_foundation.sql', '/db/migrations/V13__multi_company_foundation.sql')
   ]
 
   static DatabaseService newForTesting() {
