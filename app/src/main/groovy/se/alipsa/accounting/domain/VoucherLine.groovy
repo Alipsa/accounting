@@ -6,7 +6,6 @@ import groovy.transform.Canonical
  * One debit or credit line in a voucher.
  */
 @Canonical
-@SuppressWarnings('ParameterCount')
 final class VoucherLine {
 
   Long id

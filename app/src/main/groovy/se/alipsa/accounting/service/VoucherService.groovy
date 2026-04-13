@@ -150,8 +150,8 @@ final class VoucherService {
       }
 
       String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
-      List<VoucherLine> safeLines = normalizeLines(sql, lines, false, true)
       long companyId = resolveCompanyId(sql, current.fiscalYearId)
+      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, true)
       replaceLines(sql, voucherId, companyId, safeLines)
       sql.executeUpdate('''
           update voucher
@@ -370,9 +370,9 @@ final class VoucherService {
   ) {
     String safeDescription = validateVoucherEnvelope(sql, fiscalYearId, accountingDate, description)
     boolean requireActiveAccounts = originalVoucherId == null
-    List<VoucherLine> safeLines = normalizeLines(sql, lines, false, requireActiveAccounts)
-    VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
     long companyId = resolveCompanyId(sql, fiscalYearId)
+    List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, requireActiveAccounts)
+    VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
     List<List<Object>> keys = sql.executeInsert('''
         insert into voucher (
             fiscal_year_id,
@@ -423,12 +423,12 @@ final class VoucherService {
     }
 
     validateVoucherEnvelope(sql, current.fiscalYearId, current.accountingDate, current.description)
-    List<VoucherLine> safeLines = normalizeLines(sql, current.lines, true, targetStatus == VoucherStatus.BOOKED)
+    long companyId = resolveCompanyId(sql, current.fiscalYearId)
+    List<VoucherLine> safeLines = normalizeLines(sql, companyId, current.lines, true, targetStatus == VoucherStatus.BOOKED)
     ensurePostingAllowed(sql, current.fiscalYearId, current.accountingDate, targetStatus, allowReportedVatPeriod, allowLockedPeriod)
 
     int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
     String voucherNumber = "${current.seriesCode}-${runningNumber}"
-    long companyId = resolveCompanyId(sql, current.fiscalYearId)
     ChainHead chainHead = lockChainHead(sql, companyId)
     String previousHash = chainHead.lastContentHash
     LocalDateTime bookedAt = currentDatabaseTimestamp(sql)
@@ -555,6 +555,7 @@ final class VoucherService {
 
   private static List<VoucherLine> normalizeLines(
       Sql sql,
+      long companyId,
       List<VoucherLine> lines,
       boolean requireBalanced,
       boolean requireActiveAccounts
@@ -565,7 +566,7 @@ final class VoucherService {
 
     List<VoucherLine> safeLines = []
     lines.eachWithIndex { VoucherLine line, int index ->
-      safeLines << normalizeLine(sql, line, index + 1, requireActiveAccounts)
+      safeLines << normalizeLine(sql, companyId, line, index + 1, requireActiveAccounts)
     }
 
     if (requireBalanced) {
@@ -576,6 +577,7 @@ final class VoucherService {
 
   private static VoucherLine normalizeLine(
       Sql sql,
+      long companyId,
       VoucherLine line,
       int lineIndex,
       boolean requireActiveAccount
@@ -590,8 +592,9 @@ final class VoucherService {
                account_name as accountName,
                active
           from account
-         where account_number = ?
-    ''', [accountNumber]) as GroovyRowResult
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber]) as GroovyRowResult
     if (account == null) {
       throw new IllegalArgumentException("Okänt konto på rad ${lineIndex}: ${accountNumber}")
     }
@@ -812,6 +815,9 @@ final class VoucherService {
   private static void replaceLines(Sql sql, long voucherId, long companyId, List<VoucherLine> lines) {
     sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
     lines.eachWithIndex { VoucherLine line, int index ->
+      if (line.accountId == null) {
+        throw new IllegalStateException("Verifikationsrad ${index + 1} saknar account_id för konto ${line.accountNumber}.")
+      }
       sql.executeInsert('''
           insert into voucher_line (
               voucher_id,
@@ -882,12 +888,11 @@ final class VoucherService {
                vl.line_index as lineIndex,
                vl.account_id as accountId,
                vl.account_number as accountNumber,
-               a.account_name as accountName,
+               vl.account_name as accountName,
                vl.line_description as lineDescription,
                vl.debit_amount as debitAmount,
                vl.credit_amount as creditAmount
           from voucher_line vl
-          join account a on a.id = vl.account_id
          where vl.voucher_id = ?
          order by vl.line_index
     ''', [voucherId]).collect { GroovyRowResult row ->

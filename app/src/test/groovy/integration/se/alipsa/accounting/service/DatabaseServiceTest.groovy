@@ -69,7 +69,9 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.columns where table_name = 'ACCOUNT' and column_name = 'COMPANY_ID') as accountCompanyColumn,
               (select count(*) from information_schema.columns where table_name = 'ACCOUNT' and column_name = 'ID') as accountIdColumn,
               (select count(*) from information_schema.columns where table_name = 'VOUCHER_LINE' and column_name = 'ACCOUNT_ID') as voucherLineAccountIdColumn,
-              (select count(*) from information_schema.columns where table_name = 'OPENING_BALANCE' and column_name = 'ACCOUNT_ID') as openingBalanceAccountIdColumn
+              (select count(*) from information_schema.columns where table_name = 'OPENING_BALANCE' and column_name = 'ACCOUNT_ID') as openingBalanceAccountIdColumn,
+              (select count(*) from information_schema.columns where table_name = 'CLOSING_ENTRY' and column_name = 'ACCOUNT_ID') as closingEntryAccountIdColumn,
+              (select count(*) from information_schema.columns where table_name = 'CLOSING_ENTRY' and column_name = 'COUNTER_ACCOUNT_ID') as closingEntryCounterAccountIdColumn
       ''') as GroovyRowResult
     }
 
@@ -97,6 +99,8 @@ class DatabaseServiceTest {
     assertEquals(1, ((Number) result.accountIdColumn).intValue())
     assertEquals(1, ((Number) result.voucherLineAccountIdColumn).intValue())
     assertEquals(1, ((Number) result.openingBalanceAccountIdColumn).intValue())
+    assertEquals(1, ((Number) result.closingEntryAccountIdColumn).intValue())
+    assertEquals(1, ((Number) result.closingEntryCounterAccountIdColumn).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 

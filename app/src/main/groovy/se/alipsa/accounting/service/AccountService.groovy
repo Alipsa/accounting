@@ -126,9 +126,10 @@ final class AccountService {
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
+      long companyId = resolveCompanyId(sql, fiscalYearId)
       GroovyRowResult accountRow = sql.firstRow(
-          'select id from account where account_number = ?',
-          [normalized]
+          'select id from account where company_id = ? and account_number = ?',
+          [companyId, normalized]
       ) as GroovyRowResult
       if (accountRow == null) {
         throw new IllegalArgumentException("Konto ${normalized} finns inte i kontoplanen.")
@@ -142,11 +143,14 @@ final class AccountService {
            where fiscal_year_id = ?
              and account_id = ?
       ''', [fiscalYearId, accountId]) as GroovyRowResult
-      OpeningBalance balance = row == null
+      row == null
           ? new OpeningBalance(fiscalYearId, accountId, normalized, BigDecimal.ZERO)
-          : mapOpeningBalance(row)
-      balance.accountNumber = normalized
-      balance
+          : new OpeningBalance(
+              Long.valueOf(row.get('fiscalYearId').toString()),
+              row.get('accountId') as Long,
+              normalized,
+              new BigDecimal(row.get('amount').toString())
+          )
     }
   }
 
@@ -253,13 +257,15 @@ final class AccountService {
     )
   }
 
-  private static OpeningBalance mapOpeningBalance(GroovyRowResult row) {
-    new OpeningBalance(
-        Long.valueOf(row.get('fiscalYearId').toString()),
-        row.get('accountId') as Long,
-        null,
-        new BigDecimal(row.get('amount').toString())
-    )
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
   }
 
   @Canonical

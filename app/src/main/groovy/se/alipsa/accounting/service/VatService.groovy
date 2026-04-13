@@ -338,8 +338,9 @@ final class VatService {
           new BigDecimal(row.get('creditAmount').toString()),
           row.get('normalBalanceSide') as String
       )
+      Long accountId = ((Number) row.get('accountId')).longValue()
       new TransferBalance(
-          row.get('accountId') == null ? null : Long.valueOf(row.get('accountId').toString()),
+          accountId,
           row.get('accountNumber') as String,
           row.get('accountName') as String,
           row.get('normalBalanceSide') as String,

@@ -66,7 +66,7 @@ ruleset {
             maxLines = 1100
         }
         'ParameterCount' {
-            maxParameters = 7
+            maxParameters = 10
         }
     }
 

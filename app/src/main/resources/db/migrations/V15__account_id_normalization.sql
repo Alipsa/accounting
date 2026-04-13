@@ -123,6 +123,14 @@ update closing_entry ce
 alter table closing_entry
     alter column account_id set not null;
 
+-- guard: fail if any non-null counter_account_number was not resolved
+alter table closing_entry
+    add constraint chk_counter_resolved
+        check (counter_account_number is null or counter_account_id is not null);
+
+alter table closing_entry
+    drop constraint chk_counter_resolved;
+
 alter table closing_entry
     drop constraint fk_closing_entry_account;
 
