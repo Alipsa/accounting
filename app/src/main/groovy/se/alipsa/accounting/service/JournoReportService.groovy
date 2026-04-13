@@ -1,5 +1,8 @@
 package se.alipsa.accounting.service
 
+import groovy.sql.GroovyRowResult
+import groovy.sql.Sql
+
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
@@ -17,6 +20,7 @@ final class JournoReportService {
   private final ReportIntegrityService reportIntegrityService
   private final CompanySettingsService companySettingsService
   private final AuditLogService auditLogService
+  private final DatabaseService databaseService
 
   JournoReportService() {
     this(
@@ -24,7 +28,8 @@ final class JournoReportService {
         new ReportArchiveService(),
         new ReportIntegrityService(),
         new CompanySettingsService(),
-        new AuditLogService()
+        new AuditLogService(),
+        DatabaseService.instance
     )
   }
 
@@ -33,13 +38,15 @@ final class JournoReportService {
       ReportArchiveService reportArchiveService,
       ReportIntegrityService reportIntegrityService,
       CompanySettingsService companySettingsService,
-      AuditLogService auditLogService
+      AuditLogService auditLogService,
+      DatabaseService databaseService
   ) {
     this.reportDataService = reportDataService
     this.reportArchiveService = reportArchiveService
     this.reportIntegrityService = reportIntegrityService
     this.companySettingsService = companySettingsService
     this.auditLogService = auditLogService
+    this.databaseService = databaseService
   }
 
   ReportResult preview(ReportSelection selection) {
@@ -71,9 +78,11 @@ final class JournoReportService {
         'PDF',
         pdf
     )
+    long companyId = resolveCompanyId(report.fiscalYearId)
     auditLogService.logExport(
         "PDF-rapport skapad: ${report.reportType.displayName}",
-        "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}"
+        "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}",
+        companyId
     )
     archive
   }
@@ -85,6 +94,19 @@ final class JournoReportService {
         organizationNumber: settings?.organizationNumber ?: '',
         report            : report
     ] + report.templateModel
+  }
+
+  private long resolveCompanyId(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from fiscal_year where id = ?',
+          [fiscalYearId]
+      ) as GroovyRowResult
+      if (row == null) {
+        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+      }
+      ((Number) row.get('companyId')).longValue()
+    }
   }
 
   private static JournoEngine createJournoEngine() {

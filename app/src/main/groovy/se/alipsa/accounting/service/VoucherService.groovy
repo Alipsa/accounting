@@ -151,7 +151,8 @@ final class VoucherService {
 
       String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
       List<VoucherLine> safeLines = normalizeLines(sql, lines, false, true)
-      replaceLines(sql, voucherId, safeLines)
+      long companyId = resolveCompanyId(sql, current.fiscalYearId)
+      replaceLines(sql, voucherId, companyId, safeLines)
       sql.executeUpdate('''
           update voucher
              set accounting_date = ?,
@@ -240,56 +241,66 @@ final class VoucherService {
   List<String> validateIntegrity() {
     databaseService.withTransaction { Sql sql ->
       List<String> problems = []
-      String expectedPreviousHash = null
-      String actualLastHash = null
-      sql.rows('''
-          select v.id,
-                 v.fiscal_year_id as fiscalYearId,
-                 v.voucher_series_id as voucherSeriesId,
-                 s.series_code as seriesCode,
-                 s.series_name as seriesName,
-                 v.running_number as runningNumber,
-                 v.voucher_number as voucherNumber,
-                 v.accounting_date as accountingDate,
-                 v.description,
-                 v.status,
-                 v.original_voucher_id as originalVoucherId,
-                 v.previous_hash as previousHash,
-                 v.content_hash as contentHash,
-                 v.booked_at as bookedAt
-            from voucher v
-            join voucher_series s on s.id = v.voucher_series_id
-           where v.status in ('BOOKED', 'CORRECTION')
-           order by v.id
-      ''').each { GroovyRowResult row ->
-        Voucher voucher = mapVoucher(row)
-        voucher.lines = loadLines(sql, voucher.id)
-        if (voucher.previousHash != expectedPreviousHash) {
-          problems << ("Verifikation ${voucher.id} har fel föregående hash." as String)
-        }
-        VoucherStatus status = VoucherStatus.valueOf(row.get('status') as String)
-        String calculated = calculateContentHash(
-            voucher,
-            voucher.lines,
-            status,
-            voucher.runningNumber,
-            voucher.voucherNumber,
-            voucher.previousHash
-        )
-        if (voucher.contentHash != calculated) {
-          problems << ("Verifikation ${voucher.id} har ogiltig innehållshash." as String)
-        }
-        expectedPreviousHash = voucher.contentHash
-        actualLastHash = voucher.contentHash
-      }
-      ChainHead chainHead = lockChainHead(sql)
-      if (chainHead == null) {
-        problems << 'Verifikationskedjans huvud saknas.'
-      } else if (chainHead.lastContentHash != actualLastHash) {
-        problems << 'Verifikationskedjans huvud pekar inte på sista bokförda verifikation.'
+      sql.rows('select distinct company_id as companyId from voucher').each { GroovyRowResult companyRow ->
+        long companyId = ((Number) companyRow.get('companyId')).longValue()
+        problems.addAll(validateIntegrityForCompany(sql, companyId))
       }
       problems
     }
+  }
+
+  private static List<String> validateIntegrityForCompany(Sql sql, long companyId) {
+    List<String> problems = []
+    String expectedPreviousHash = null
+    String actualLastHash = null
+    sql.rows('''
+        select v.id,
+               v.fiscal_year_id as fiscalYearId,
+               v.voucher_series_id as voucherSeriesId,
+               s.series_code as seriesCode,
+               s.series_name as seriesName,
+               v.running_number as runningNumber,
+               v.voucher_number as voucherNumber,
+               v.accounting_date as accountingDate,
+               v.description,
+               v.status,
+               v.original_voucher_id as originalVoucherId,
+               v.previous_hash as previousHash,
+               v.content_hash as contentHash,
+               v.booked_at as bookedAt
+          from voucher v
+          join voucher_series s on s.id = v.voucher_series_id
+         where v.status in ('BOOKED', 'CORRECTION')
+           and v.company_id = ?
+         order by v.id
+    ''', [companyId]).each { GroovyRowResult row ->
+      Voucher voucher = mapVoucher(row)
+      voucher.lines = loadLines(sql, voucher.id)
+      if (voucher.previousHash != expectedPreviousHash) {
+        problems << ("Verifikation ${voucher.id} har fel föregående hash." as String)
+      }
+      VoucherStatus status = VoucherStatus.valueOf(row.get('status') as String)
+      String calculated = calculateContentHash(
+          voucher,
+          voucher.lines,
+          status,
+          voucher.runningNumber,
+          voucher.voucherNumber,
+          voucher.previousHash
+      )
+      if (voucher.contentHash != calculated) {
+        problems << ("Verifikation ${voucher.id} har ogiltig innehållshash." as String)
+      }
+      expectedPreviousHash = voucher.contentHash
+      actualLastHash = voucher.contentHash
+    }
+    ChainHead chainHead = lockChainHead(sql, companyId)
+    if (chainHead == null) {
+      problems << 'Verifikationskedjans huvud saknas.'
+    } else if (chainHead.lastContentHash != actualLastHash) {
+      problems << 'Verifikationskedjans huvud pekar inte på sista bokförda verifikation.'
+    }
+    problems
   }
 
   List<Voucher> listVouchers(Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
@@ -360,6 +371,7 @@ final class VoucherService {
     boolean requireActiveAccounts = originalVoucherId == null
     List<VoucherLine> safeLines = normalizeLines(sql, lines, false, requireActiveAccounts)
     VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     List<List<Object>> keys = sql.executeInsert('''
         insert into voucher (
             fiscal_year_id,
@@ -373,18 +385,20 @@ final class VoucherService {
             previous_hash,
             content_hash,
             booked_at,
+            company_id,
             created_at,
             updated_at
-        ) values (?, ?, null, null, ?, ?, 'DRAFT', ?, null, null, null, current_timestamp, current_timestamp)
+        ) values (?, ?, null, null, ?, ?, 'DRAFT', ?, null, null, null, ?, current_timestamp, current_timestamp)
     ''', [
         fiscalYearId,
         series.id,
         Date.valueOf(accountingDate),
         safeDescription,
-        originalVoucherId
+        originalVoucherId,
+        companyId
     ])
     long voucherId = ((Number) keys.first().first()).longValue()
-    replaceLines(sql, voucherId, safeLines)
+    replaceLines(sql, voucherId, companyId, safeLines)
     Voucher draft = requireVoucher(sql, voucherId)
     if (originalVoucherId == null) {
       auditLogService.recordVoucherCreated(sql, draft)
@@ -413,7 +427,8 @@ final class VoucherService {
 
     int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
     String voucherNumber = "${current.seriesCode}-${runningNumber}"
-    ChainHead chainHead = lockChainHead(sql)
+    long companyId = resolveCompanyId(sql, current.fiscalYearId)
+    ChainHead chainHead = lockChainHead(sql, companyId)
     String previousHash = chainHead.lastContentHash
     LocalDateTime bookedAt = currentDatabaseTimestamp(sql)
     String contentHash = calculateContentHash(current, safeLines, targetStatus, runningNumber, voucherNumber, previousHash)
@@ -441,7 +456,7 @@ final class VoucherService {
     if (updated != 1) {
       throw new IllegalStateException("Verifikationen kunde inte bokföras: ${voucherId}")
     }
-    updateChainHead(sql, contentHash)
+    updateChainHead(sql, companyId, contentHash)
     Voucher bookedVoucher = requireVoucher(sql, voucherId)
     if (targetStatus == VoucherStatus.CORRECTION) {
       auditLogService.recordCorrectionVoucher(sql, bookedVoucher)
@@ -746,14 +761,25 @@ final class VoucherService {
     HexFormat.of().formatHex(hash)
   }
 
-  private static ChainHead lockChainHead(Sql sql) {
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
+  }
+
+  private static ChainHead lockChainHead(Sql sql, long companyId) {
     GroovyRowResult row = sql.firstRow('''
-        select id,
+        select company_id as id,
                last_content_hash as lastContentHash
           from voucher_chain_head
-         where id = 1
+         where company_id = ?
          for update
-    ''') as GroovyRowResult
+    ''', [companyId]) as GroovyRowResult
     if (row == null) {
       throw new IllegalStateException('Kedjehuvudet för verifikationer saknas.')
     }
@@ -763,13 +789,13 @@ final class VoucherService {
     )
   }
 
-  private static void updateChainHead(Sql sql, String contentHash) {
+  private static void updateChainHead(Sql sql, long companyId, String contentHash) {
     int updated = sql.executeUpdate('''
         update voucher_chain_head
            set last_content_hash = ?,
                updated_at = current_timestamp
-         where id = 1
-    ''', [contentHash])
+         where company_id = ?
+    ''', [contentHash, companyId])
     if (updated != 1) {
       throw new IllegalStateException('Kedjehuvudet för verifikationer kunde inte uppdateras.')
     }
@@ -780,7 +806,7 @@ final class VoucherService {
     SqlValueMapper.toLocalDateTime(row.get('bookedAt'))
   }
 
-  private static void replaceLines(Sql sql, long voucherId, List<VoucherLine> lines) {
+  private static void replaceLines(Sql sql, long voucherId, long companyId, List<VoucherLine> lines) {
     sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
     lines.eachWithIndex { VoucherLine line, int index ->
       sql.executeInsert('''
@@ -791,15 +817,17 @@ final class VoucherService {
               line_description,
               debit_amount,
               credit_amount,
+              company_id,
               created_at
-          ) values (?, ?, ?, ?, ?, ?, current_timestamp)
+          ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
       ''', [
           voucherId,
           index + 1,
           line.accountNumber,
           line.description,
           line.debitAmount,
-          line.creditAmount
+          line.creditAmount,
+          companyId
       ])
     }
   }

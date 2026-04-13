@@ -64,14 +64,16 @@ class ReportServicesTest {
         reportDataService,
         reportArchiveService,
         new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
-        auditLogService
+        auditLogService,
+        databaseService
     )
     journoReportService = new JournoReportService(
         reportDataService,
         reportArchiveService,
         new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
         new CompanySettingsService(databaseService),
-        auditLogService
+        auditLogService,
+        databaseService
     )
     fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     insertTestAccounts()

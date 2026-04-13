@@ -37,7 +37,8 @@ final class DatabaseService {
       new MigrationDefinition(10, 'V10__report_archive.sql', '/db/migrations/V10__report_archive.sql'),
       new MigrationDefinition(11, 'V11__import_job.sql', '/db/migrations/V11__import_job.sql'),
       new MigrationDefinition(12, 'V12__closing_entry.sql', '/db/migrations/V12__closing_entry.sql'),
-      new MigrationDefinition(13, 'V13__multi_company_foundation.sql', '/db/migrations/V13__multi_company_foundation.sql')
+      new MigrationDefinition(13, 'V13__multi_company_foundation.sql', '/db/migrations/V13__multi_company_foundation.sql'),
+      new MigrationDefinition(14, 'V14__company_chain_heads.sql', '/db/migrations/V14__company_chain_heads.sql')
   ]
 
   static DatabaseService newForTesting() {

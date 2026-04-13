@@ -246,9 +246,10 @@ class AcceptanceCriteriaTest {
             reportArchiveService,
             reportIntegrityService,
             companySettingsService,
-            auditLogService
+            auditLogService,
+            databaseService
         ),
-        reportExportService: new ReportExportService(reportDataService, reportArchiveService, reportIntegrityService, auditLogService),
+        reportExportService: new ReportExportService(reportDataService, reportArchiveService, reportIntegrityService, auditLogService, databaseService),
         vatService: new VatService(databaseService, voucherService),
         sieService: new SieImportExportService(
             databaseService,

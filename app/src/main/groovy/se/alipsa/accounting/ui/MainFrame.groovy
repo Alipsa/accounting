@@ -114,7 +114,8 @@ final class MainFrame implements PropertyChangeListener {
       reportDataService,
       reportArchiveService,
       reportIntegrityService,
-      auditLogService
+      auditLogService,
+      DatabaseService.instance
   )
   private final SieImportExportService sieImportExportService = new SieImportExportService(
       DatabaseService.instance,
@@ -129,7 +130,8 @@ final class MainFrame implements PropertyChangeListener {
       reportArchiveService,
       reportIntegrityService,
       companySettingsService,
-      auditLogService
+      auditLogService,
+      DatabaseService.instance
   )
   private JLabel statusLabel
   private JLabel companySummaryLabel

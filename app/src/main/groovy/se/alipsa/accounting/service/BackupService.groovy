@@ -105,7 +105,8 @@ final class BackupService {
               "attachments=${summary.attachmentCount}",
               "reports=${summary.reportCount}",
               "checksum=${summary.checksumSha256}"
-          ].join('\n')
+          ].join('\n'),
+          CompanyService.LEGACY_COMPANY_ID
       )
       new BackupResult(summary, [])
     } finally {
@@ -134,7 +135,8 @@ final class BackupService {
       if (safeHome == AppPaths.applicationHome()) {
         new AuditLogService().logRestore(
             "Backup återställd: ${safeBackup.fileName}",
-            "path=${safeBackup.toAbsolutePath()}\nschemaVersion=${manifest.schemaVersion}"
+            "path=${safeBackup.toAbsolutePath()}\nschemaVersion=${manifest.schemaVersion}",
+            CompanyService.LEGACY_COMPANY_ID
         )
       }
       new RestoreResult(
