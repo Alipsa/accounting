@@ -12,7 +12,9 @@ final class I18n {
 
   private static final Logger log = Logger.getLogger(I18n.name)
   private static final String BUNDLE_BASE_NAME = 'i18n.messages'
-  static final I18n INSTANCE = new I18n()
+
+  @SuppressWarnings('PropertyName')
+  static final I18n instance = new I18n()
 
   private final PropertyChangeSupport changeSupport = new PropertyChangeSupport(this)
   private Locale currentLocale

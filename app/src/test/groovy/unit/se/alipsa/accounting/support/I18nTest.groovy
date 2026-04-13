@@ -32,8 +32,24 @@ final class I18nTest {
   }
 
   @Test
-  void getStringWithParametersFormatsCorrectly() {
+  void getStringReturnsSameValueForSharedKey() {
     assertEquals('Alipsa Accounting', i18n.getString('app.name'))
+  }
+
+  @Test
+  void formatInterpolatesParameters() {
+    assertEquals('Hello World', i18n.format('test.greeting', 'World'))
+  }
+
+  @Test
+  void formatReturnsSwedishWithParameters() {
+    i18n.setLocale(Locale.forLanguageTag('sv'))
+    assertEquals('Hej World', i18n.format('test.greeting', 'World'))
+  }
+
+  @Test
+  void formatReturnsBracketedKeyWhenMissing() {
+    assertEquals('[no.such.key]', i18n.format('no.such.key', 'arg'))
   }
 
   @Test
