@@ -24,8 +24,6 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
 
   private final CompanySettingsService companySettingsService
   private final Runnable onSave
-  private final Locale originalLocale
-
   private boolean saved = false
 
   private final JTextField companyNameField = new JTextField(28)
@@ -40,17 +38,13 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
   private JLabel currencyLabel
   private JLabel localeLabel
   private JLabel vatPeriodLabel
-  private JLabel languageLabel
   private JButton cancelButton
   private JButton saveButton
-  private JButton englishButton
-  private JButton swedishButton
 
   CompanySettingsDialog(Frame owner, CompanySettingsService companySettingsService, Runnable onSave) {
     super(owner, I18n.instance.getString('companySettingsDialog.title'), true)
     this.companySettingsService = companySettingsService
     this.onSave = onSave
-    originalLocale = I18n.instance.locale
     I18n.instance.addLocaleChangeListener(this)
     buildUi()
     populate(companySettingsService.getSettings())
@@ -71,9 +65,6 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
   @Override
   void dispose() {
     I18n.instance.removeLocaleChangeListener(this)
-    if (!saved) {
-      I18n.instance.setLocale(originalLocale)
-    }
     super.dispose()
   }
 
@@ -84,7 +75,6 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
     currencyLabel.text = I18n.instance.getString('companySettingsDialog.label.currency')
     localeLabel.text = I18n.instance.getString('companySettingsDialog.label.locale')
     vatPeriodLabel.text = I18n.instance.getString('companySettingsDialog.label.vatPeriod')
-    languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
     cancelButton.text = I18n.instance.getString('companySettingsDialog.button.cancel')
     saveButton.text = I18n.instance.getString('companySettingsDialog.button.save')
     pack()
@@ -143,21 +133,6 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
     vatPeriodLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.vatPeriod'))
     panel.add(vatPeriodLabel, labelConstraints)
     panel.add(vatPeriodicityComboBox, fieldConstraints)
-
-    labelConstraints.gridy = 5
-    fieldConstraints.gridy = 5
-    languageLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.language'))
-    panel.add(languageLabel, labelConstraints)
-
-    JPanel languagePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0))
-    englishButton = new JButton(loadFlagIcon('/icons/UK.png'))
-    swedishButton = new JButton(loadFlagIcon('/icons/sweden.png'))
-    englishButton.addActionListener { switchLanguage(Locale.ENGLISH) }
-    swedishButton.addActionListener { switchLanguage(Locale.forLanguageTag('sv')) }
-    updateLanguageButtonBorders()
-    languagePanel.add(englishButton)
-    languagePanel.add(swedishButton)
-    panel.add(languagePanel, fieldConstraints)
 
     panel
   }
@@ -262,21 +237,4 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
     pack()
   }
 
-  private void switchLanguage(Locale locale) {
-    I18n.instance.setLocale(locale)
-    updateLanguageButtonBorders()
-  }
-
-  private void updateLanguageButtonBorders() {
-    boolean isSwedish = I18n.instance.locale.language == 'sv'
-    swedishButton.border = isSwedish ?
-        BorderFactory.createLoweredBevelBorder() : BorderFactory.createRaisedBevelBorder()
-    englishButton.border = isSwedish ?
-        BorderFactory.createRaisedBevelBorder() : BorderFactory.createLoweredBevelBorder()
-  }
-
-  private static ImageIcon loadFlagIcon(String path) {
-    URL resource = CompanySettingsDialog.getResource(path)
-    resource != null ? new ImageIcon(resource) : null
-  }
 }
