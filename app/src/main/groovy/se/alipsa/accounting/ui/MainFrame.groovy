@@ -8,17 +8,23 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
+import se.alipsa.accounting.service.MigrationService
 import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.ReportIntegrityService
 import se.alipsa.accounting.service.SieImportExportService
+import se.alipsa.accounting.service.StartupVerificationService
+import se.alipsa.accounting.service.SystemDiagnosticsService
+import se.alipsa.accounting.service.SystemDocumentationService
+import se.alipsa.accounting.service.UserManualService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.LoggingConfigurer
@@ -60,15 +66,43 @@ final class MainFrame {
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService, auditLogService)
   private final VoucherService voucherService = new VoucherService(DatabaseService.instance, auditLogService)
   private final VatService vatService = new VatService(DatabaseService.instance, voucherService)
+  private final MigrationService migrationService = new MigrationService(DatabaseService.instance)
   private final ReportDataService reportDataService = new ReportDataService(DatabaseService.instance, fiscalYearService, accountingPeriodService)
   private final ReportArchiveService reportArchiveService = new ReportArchiveService(DatabaseService.instance)
   private final ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+  private final BackupService backupService = new BackupService(
+      DatabaseService.instance,
+      attachmentService,
+      reportArchiveService,
+      auditLogService,
+      migrationService,
+      reportIntegrityService
+  )
   private final ClosingService closingService = new ClosingService(
       DatabaseService.instance,
       accountingPeriodService,
       fiscalYearService,
       voucherService,
       reportIntegrityService
+  )
+  private final StartupVerificationService startupVerificationService = new StartupVerificationService(
+      DatabaseService.instance,
+      reportIntegrityService,
+      reportArchiveService
+  )
+  private final SystemDiagnosticsService diagnosticsService = new SystemDiagnosticsService(
+      migrationService,
+      startupVerificationService,
+      backupService,
+      auditLogService
+  )
+  private final UserManualService userManualService = new UserManualService()
+  private final SystemDocumentationService systemDocumentationService = new SystemDocumentationService(
+      migrationService,
+      diagnosticsService,
+      attachmentService,
+      reportArchiveService,
+      auditLogService
   )
   private final ReportExportService reportExportService = new ReportExportService(
       reportDataService,
@@ -131,6 +165,7 @@ final class MainFrame {
           menuItem(text: 'Avsluta', actionPerformed: { exitRequested() })
         }
         menu(text: 'Hjälp') {
+          menuItem(text: 'Användarmanual', actionPerformed: { showUserManualDialog() })
           menuItem(text: 'Om', actionPerformed: { showAboutDialog() })
         }
       }
@@ -204,6 +239,12 @@ final class MainFrame {
         )],
         [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
         [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService)],
+        [title: 'System', component: new SystemDocumentationPanel(
+            systemDocumentationService,
+            diagnosticsService,
+            backupService,
+            userManualService
+        )],
         [title: 'Inställningar', component: buildCompanySettingsPanel()]
     ]
   }
@@ -217,7 +258,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 9: bokslut och nästa års ingående balanser.',
+        'Alipsa Accounting\nFas 10: drift, backup, återställning och systemdokumentation.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon
@@ -234,6 +275,11 @@ final class MainFrame {
   private void showSieExchangeDialog() {
     SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService)
     setStatus('SIE-import/export stängdes.')
+  }
+
+  private void showUserManualDialog() {
+    UserManualDialog.showDialog(frame, userManualService)
+    setStatus('Användarmanualen visades.')
   }
 
   private void refreshCompanySettingsSummary() {

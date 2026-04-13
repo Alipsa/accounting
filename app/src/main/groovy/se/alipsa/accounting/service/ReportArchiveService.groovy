@@ -23,13 +23,19 @@ import java.time.LocalDateTime
 final class ReportArchiveService {
 
   private final DatabaseService databaseService
+  private final RetentionPolicyService retentionPolicyService
 
   ReportArchiveService() {
     this(DatabaseService.instance)
   }
 
   ReportArchiveService(DatabaseService databaseService) {
+    this(databaseService, new RetentionPolicyService())
+  }
+
+  ReportArchiveService(DatabaseService databaseService, RetentionPolicyService retentionPolicyService) {
     this.databaseService = databaseService
+    this.retentionPolicyService = retentionPolicyService
   }
 
   ReportArchive archiveReport(ReportSelection selection, String reportFormat, byte[] content) {
@@ -119,10 +125,39 @@ final class ReportArchiveService {
     Files.readAllBytes(resolveStoredPath(archive))
   }
 
+  boolean verifyArchive(long archiveId) {
+    ReportArchive archive = findArchive(archiveId)
+    if (archive == null) {
+      throw new IllegalArgumentException("Okänt rapportarkiv: ${archiveId}")
+    }
+    verifyArchive(archive)
+  }
+
+  List<ReportArchive> findIntegrityFailures() {
+    listArchives(500).findAll { ReportArchive archive ->
+      !verifyArchive(archive)
+    }
+  }
+
   ReportArchive findArchive(long archiveId) {
     databaseService.withSql { Sql sql ->
       findArchive(sql, archiveId)
     }
+  }
+
+  void deleteArchive(long archiveId) {
+    ReportArchive archive = findArchive(archiveId)
+    if (archive == null) {
+      throw new IllegalArgumentException("Okänt rapportarkiv: ${archiveId}")
+    }
+    retentionPolicyService.ensureDeletionAllowed(archive.createdAt, "Rapportarkiv ${archive.fileName}")
+    databaseService.withTransaction { Sql sql ->
+      int deleted = sql.executeUpdate('delete from report_archive where id = ?', [archiveId])
+      if (deleted != 1) {
+        throw new IllegalStateException("Rapportarkivet kunde inte raderas: ${archiveId}")
+      }
+    }
+    Files.deleteIfExists(resolveStoredPath(archive))
   }
 
   private static ReportArchive findArchive(Sql sql, long archiveId) {
@@ -215,5 +250,18 @@ final class ReportArchiveService {
   private static String calculateChecksum(byte[] content) {
     MessageDigest digest = MessageDigest.getInstance('SHA-256')
     HexFormat.of().formatHex(digest.digest(content))
+  }
+
+  private static boolean verifyArchive(ReportArchive archive) {
+    Path path
+    try {
+      path = resolveStoragePath(archive.storagePath)
+    } catch (SecurityException ignored) {
+      return false
+    }
+    if (!Files.isRegularFile(path)) {
+      return false
+    }
+    calculateChecksum(Files.readAllBytes(path)) == archive.checksumSha256
   }
 }

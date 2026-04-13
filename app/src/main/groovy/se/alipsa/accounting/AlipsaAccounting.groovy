@@ -3,14 +3,17 @@ package se.alipsa.accounting
 import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.service.DatabaseService
+import se.alipsa.accounting.service.StartupVerificationReport
+import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
 
-import java.awt.*
+import java.awt.GraphicsEnvironment
 import java.util.logging.Level
 import java.util.logging.Logger
 
-import javax.swing.*
+import javax.swing.JOptionPane
+import javax.swing.SwingUtilities
 
 /**
  * Application entry point for Alipsa Accounting.
@@ -27,6 +30,10 @@ final class AlipsaAccounting {
     try {
       LoggingConfigurer.configure()
       DatabaseService.instance.initialize()
+      StartupVerificationReport startupReport = new StartupVerificationService().verify()
+      if (!startupReport.ok || !startupReport.warnings.isEmpty()) {
+        showStartupVerificationWarning(startupReport)
+      }
       SwingUtilities.invokeLater {
         MainFrame mainFrame = new MainFrame()
         mainFrame.display()
@@ -54,6 +61,29 @@ Se loggfilen för mer information."""
     }
     SwingUtilities.invokeAndWait {
       JOptionPane.showMessageDialog(null, message, 'Alipsa Accounting', JOptionPane.ERROR_MESSAGE)
+    }
+  }
+
+  private static void showStartupVerificationWarning(StartupVerificationReport report) {
+    if (GraphicsEnvironment.headless) {
+      return
+    }
+    List<String> rows = []
+    if (!report.errors.isEmpty()) {
+      rows << 'Kritiska verifieringsfel:'
+      rows.addAll(report.errors.take(5).collect { String error -> "- ${error}".toString() })
+    }
+    if (!report.warnings.isEmpty()) {
+      rows << 'Varningar:'
+      rows.addAll(report.warnings.take(5).collect { String warning -> "- ${warning}".toString() })
+    }
+    String message = """Alipsa Accounting startade, men verifieringen hittade avvikelser.
+
+${rows.join('\n')}
+
+Öppna fliken System för detaljer."""
+    SwingUtilities.invokeLater {
+      JOptionPane.showMessageDialog(null, message, 'Startup-verifiering', JOptionPane.WARNING_MESSAGE)
     }
   }
 }
