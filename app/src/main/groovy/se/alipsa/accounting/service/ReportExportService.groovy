@@ -1,5 +1,8 @@
 package se.alipsa.accounting.service
 
+import groovy.sql.GroovyRowResult
+import groovy.sql.Sql
+
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -16,13 +19,15 @@ final class ReportExportService {
   private final ReportArchiveService reportArchiveService
   private final ReportIntegrityService reportIntegrityService
   private final AuditLogService auditLogService
+  private final DatabaseService databaseService
 
   ReportExportService() {
     this(
         new ReportDataService(),
         new ReportArchiveService(),
         new ReportIntegrityService(),
-        new AuditLogService()
+        new AuditLogService(),
+        DatabaseService.instance
     )
   }
 
@@ -30,12 +35,14 @@ final class ReportExportService {
       ReportDataService reportDataService,
       ReportArchiveService reportArchiveService,
       ReportIntegrityService reportIntegrityService,
-      AuditLogService auditLogService
+      AuditLogService auditLogService,
+      DatabaseService databaseService
   ) {
     this.reportDataService = reportDataService
     this.reportArchiveService = reportArchiveService
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
+    this.databaseService = databaseService
   }
 
   ReportResult preview(ReportSelection selection) {
@@ -64,11 +71,26 @@ final class ReportExportService {
         'CSV',
         csv
     )
+    long companyId = resolveCompanyId(report.fiscalYearId)
     auditLogService.logExport(
         "CSV-rapport exporterad: ${report.reportType.displayName}",
-        "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}"
+        "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}",
+        companyId
     )
     archive
+  }
+
+  private long resolveCompanyId(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from fiscal_year where id = ?',
+          [fiscalYearId]
+      ) as GroovyRowResult
+      if (row == null) {
+        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+      }
+      ((Number) row.get('companyId')).longValue()
+    }
   }
 
   private static String escapeCsv(String value) {
