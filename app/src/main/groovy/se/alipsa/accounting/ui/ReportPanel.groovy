@@ -12,6 +12,7 @@ import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -21,6 +22,8 @@ import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -44,9 +47,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
-final class ReportPanel extends JPanel {
-
-  private static final String FULL_YEAR_OPTION = 'Hela året'
+final class ReportPanel extends JPanel implements PropertyChangeListener {
 
   private final ReportDataService reportDataService
   private final JournoReportService journoReportService
@@ -61,15 +62,21 @@ final class ReportPanel extends JPanel {
   private final JTextField startDateField = new JTextField(10)
   private final JTextField endDateField = new JTextField(10)
   private final JTextArea feedbackArea = new JTextArea(3, 40)
-  private final JLabel summaryLabel = new JLabel('Välj rapport och urval för att visa förhandsgranskning.')
+  private final JLabel summaryLabel = new JLabel(I18n.instance.getString('reportPanel.summary.initial'))
   private final PreviewTableModel previewTableModel = new PreviewTableModel()
   private final JTable previewTable = new JTable(previewTableModel)
   private final ArchiveTableModel archiveTableModel = new ArchiveTableModel()
   private final JTable archiveTable = new JTable(archiveTableModel)
-  private final JButton exportCsvButton = new JButton('Exportera CSV')
-  private final JButton generatePdfButton = new JButton('Skapa PDF')
-  private final JButton openVoucherButton = new JButton('Öppna verifikation')
-  private final JButton openArchiveButton = new JButton('Öppna arkivfil')
+  private final JButton exportCsvButton = new JButton(I18n.instance.getString('reportPanel.button.exportCsv'))
+  private final JButton generatePdfButton = new JButton(I18n.instance.getString('reportPanel.button.generatePdf'))
+  private final JButton openVoucherButton = new JButton(I18n.instance.getString('reportPanel.button.openVoucher'))
+  private final JButton openArchiveButton = new JButton(I18n.instance.getString('reportPanel.button.openArchive'))
+  private JLabel reportLabel
+  private JLabel fiscalYearLabel
+  private JLabel periodLabel
+  private JLabel fromLabel
+  private JLabel toLabel
+  private JButton previewButton
   private ReportResult currentReport
   private boolean pdfGenerationInProgress
 
@@ -89,10 +96,32 @@ final class ReportPanel extends JPanel {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.voucherEditorDependencies = voucherEditorDependencies
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     reloadFiscalYears()
     reloadArchives()
     reloadReport()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    reportLabel.text = I18n.instance.getString('reportPanel.label.report')
+    fiscalYearLabel.text = I18n.instance.getString('reportPanel.label.fiscalYear')
+    periodLabel.text = I18n.instance.getString('reportPanel.label.period')
+    fromLabel.text = I18n.instance.getString('reportPanel.label.from')
+    toLabel.text = I18n.instance.getString('reportPanel.label.to')
+    previewButton.text = I18n.instance.getString('reportPanel.button.preview')
+    exportCsvButton.text = I18n.instance.getString('reportPanel.button.exportCsv')
+    generatePdfButton.text = I18n.instance.getString('reportPanel.button.generatePdf')
+    openVoucherButton.text = I18n.instance.getString('reportPanel.button.openVoucher')
+    openArchiveButton.text = I18n.instance.getString('reportPanel.button.openArchive')
+    archiveTable.tableHeader.repaint()
   }
 
   private void buildUi() {
@@ -117,7 +146,19 @@ final class ReportPanel extends JPanel {
 
   private JPanel buildToolbar() {
     JPanel panel = new JPanel(new BorderLayout(0, 8))
+    panel.add(buildFilterGrid(), BorderLayout.NORTH)
+    panel.add(summaryLabel, BorderLayout.CENTER)
+    panel.add(buildActionButtons(), BorderLayout.SOUTH)
+    fiscalYearComboBox.addActionListener {
+      reloadAccountingPeriods()
+    }
+    accountingPeriodComboBox.addActionListener {
+      applySelectedPeriodDates()
+    }
+    panel
+  }
 
+  private JPanel buildFilterGrid() {
     JPanel filters = new JPanel(new GridBagLayout())
     GridBagConstraints labelConstraints = new GridBagConstraints(
         0, 0, 1, 1, 0.0d, 0.0d,
@@ -130,33 +171,41 @@ final class ReportPanel extends JPanel {
         new Insets(0, 0, 8, 16), 0, 0
     )
 
-    filters.add(new JLabel('Rapport'), labelConstraints)
+    reportLabel = new JLabel(I18n.instance.getString('reportPanel.label.report'))
+    filters.add(reportLabel, labelConstraints)
     filters.add(reportTypeComboBox, fieldConstraints)
 
     labelConstraints.gridx = 2
     fieldConstraints.gridx = 3
-    filters.add(new JLabel('Räkenskapsår'), labelConstraints)
+    fiscalYearLabel = new JLabel(I18n.instance.getString('reportPanel.label.fiscalYear'))
+    filters.add(fiscalYearLabel, labelConstraints)
     filters.add(fiscalYearComboBox, fieldConstraints)
 
     labelConstraints.gridx = 4
     fieldConstraints.gridx = 5
-    filters.add(new JLabel('Period'), labelConstraints)
+    periodLabel = new JLabel(I18n.instance.getString('reportPanel.label.period'))
+    filters.add(periodLabel, labelConstraints)
     filters.add(accountingPeriodComboBox, fieldConstraints)
 
     labelConstraints.gridx = 0
     labelConstraints.gridy = 1
     fieldConstraints.gridx = 1
     fieldConstraints.gridy = 1
-    filters.add(new JLabel('Från'), labelConstraints)
+    fromLabel = new JLabel(I18n.instance.getString('reportPanel.label.from'))
+    filters.add(fromLabel, labelConstraints)
     filters.add(startDateField, fieldConstraints)
 
     labelConstraints.gridx = 2
     fieldConstraints.gridx = 3
-    filters.add(new JLabel('Till'), labelConstraints)
+    toLabel = new JLabel(I18n.instance.getString('reportPanel.label.to'))
+    filters.add(toLabel, labelConstraints)
     filters.add(endDateField, fieldConstraints)
+    filters
+  }
 
+  private JPanel buildActionButtons() {
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton previewButton = new JButton('Förhandsgranska')
+    previewButton = new JButton(I18n.instance.getString('reportPanel.button.preview'))
     previewButton.addActionListener {
       reloadReport()
     }
@@ -177,18 +226,7 @@ final class ReportPanel extends JPanel {
     actions.add(generatePdfButton)
     actions.add(openVoucherButton)
     actions.add(openArchiveButton)
-
-    fiscalYearComboBox.addActionListener {
-      reloadAccountingPeriods()
-    }
-    accountingPeriodComboBox.addActionListener {
-      applySelectedPeriodDates()
-    }
-
-    panel.add(filters, BorderLayout.NORTH)
-    panel.add(summaryLabel, BorderLayout.CENTER)
-    panel.add(actions, BorderLayout.SOUTH)
-    panel
+    actions
   }
 
   private JSplitPane buildCenter() {
@@ -226,7 +264,7 @@ final class ReportPanel extends JPanel {
     Object selected = accountingPeriodComboBox.selectedItem
     FiscalYear fiscalYear = selectedFiscalYear()
     accountingPeriodComboBox.removeAllItems()
-    accountingPeriodComboBox.addItem(FULL_YEAR_OPTION)
+    accountingPeriodComboBox.addItem(I18n.instance.getString('reportPanel.fullYearOption'))
     if (fiscalYear != null) {
       accountingPeriodService.listPeriods(fiscalYear.id).each { AccountingPeriod period ->
         accountingPeriodComboBox.addItem(period)
@@ -263,17 +301,17 @@ final class ReportPanel extends JPanel {
       summaryLabel.text = "<html><b>${escapeHtml(currentReport.title)}</b><br/>${escapeHtml(currentReport.selectionLabel)}" +
           "<br/>${escapeHtml(currentReport.summaryLines.join(' | '))}</html>"
       updateActionButtons()
-      showInfo("Förhandsgranskning uppdaterad för ${currentReport.title}.")
+      showInfo(I18n.instance.format('reportPanel.message.previewUpdated', currentReport.title))
     } catch (IllegalArgumentException exception) {
       currentReport = null
       previewTableModel.clear()
-      summaryLabel.text = 'Rapporten kan inte visas med valt urval.'
+      summaryLabel.text = I18n.instance.getString('reportPanel.summary.cannotShow')
       updateActionButtons()
       showError(exception.message)
     } catch (IllegalStateException exception) {
       currentReport = null
       previewTableModel.clear()
-      summaryLabel.text = 'Rapporten kunde inte byggas.'
+      summaryLabel.text = I18n.instance.getString('reportPanel.summary.buildFailed')
       updateActionButtons()
       showError(exception.message)
     }
@@ -283,7 +321,7 @@ final class ReportPanel extends JPanel {
     try {
       ReportArchive archive = reportExportService.exportCsv(currentSelection())
       reloadArchives()
-      showInfo("CSV exporterades och arkiverades som ${archive.fileName}.")
+      showInfo(I18n.instance.format('reportPanel.message.csvExported', archive.fileName))
     } catch (IllegalArgumentException | IllegalStateException exception) {
       showError(exception.message)
     }
@@ -299,7 +337,7 @@ final class ReportPanel extends JPanel {
     }
     pdfGenerationInProgress = true
     updateActionButtons()
-    showInfo('PDF skapas, vänta...')
+    showInfo(I18n.instance.getString('reportPanel.message.pdfGenerating'))
     new SwingWorker<ReportArchive, Void>() {
       @Override
       protected ReportArchive doInBackground() {
@@ -313,13 +351,13 @@ final class ReportPanel extends JPanel {
         try {
           ReportArchive archive = get()
           reloadArchives()
-          showInfo("PDF skapades och arkiverades som ${archive.fileName}.")
+          showInfo(I18n.instance.format('reportPanel.message.pdfCreated', archive.fileName))
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('PDF-genereringen avbröts.')
+          showError(I18n.instance.getString('reportPanel.error.pdfInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          showError(cause.message ?: 'PDF kunde inte skapas.')
+          showError(cause.message ?: I18n.instance.getString('reportPanel.error.pdfFailed'))
         }
       }
     }.execute()
@@ -343,7 +381,7 @@ final class ReportPanel extends JPanel {
   private void openSelectedArchive() {
     ReportArchive archive = selectedArchive()
     if (archive == null) {
-      showError('Välj en arkiverad rapport att öppna.')
+      showError(I18n.instance.getString('reportPanel.error.selectArchive'))
       return
     }
     try {
@@ -351,20 +389,20 @@ final class ReportPanel extends JPanel {
       if (Desktop.isDesktopSupported()) {
         Desktop.desktop.open(path.toFile())
       } else {
-        showInfo("Arkivfilen finns på ${path.toAbsolutePath()}.")
+        showInfo(I18n.instance.format('reportPanel.message.archivePath', path.toAbsolutePath()))
       }
     } catch (Exception exception) {
-      showError(exception.message ?: 'Rapportfilen kunde inte öppnas.')
+      showError(exception.message ?: I18n.instance.getString('reportPanel.error.archiveOpenFailed'))
     }
   }
 
   private ReportSelection currentSelection() {
     FiscalYear fiscalYear = selectedFiscalYear()
     if (fiscalYear == null) {
-      throw new IllegalArgumentException('Välj ett räkenskapsår.')
+      throw new IllegalArgumentException(I18n.instance.getString('reportPanel.error.selectFiscalYear'))
     }
-    LocalDate startDate = parseDate(startDateField.text, 'Från-datum')
-    LocalDate endDate = parseDate(endDateField.text, 'Till-datum')
+    LocalDate startDate = parseDate(startDateField.text, I18n.instance.getString('reportPanel.label.from'))
+    LocalDate endDate = parseDate(endDateField.text, I18n.instance.getString('reportPanel.label.to'))
     AccountingPeriod period = selectedAccountingPeriod()
     boolean usesSelectedPeriod = period != null && startDate == period.startDate && endDate == period.endDate
     new ReportSelection(
@@ -425,11 +463,11 @@ final class ReportPanel extends JPanel {
     Long voucherId = selectedVoucherId()
     openVoucherButton.enabled = voucherId != null
     if (voucherId != null) {
-      openVoucherButton.toolTipText = 'Öppna verifikationen för vald rapportrad.'
+      openVoucherButton.toolTipText = I18n.instance.getString('reportPanel.tooltip.openVoucher')
     } else if (previewTable.selectedRow >= 0) {
-      openVoucherButton.toolTipText = 'Den valda raden är en sammanfattning och kan inte öppnas som verifikation.'
+      openVoucherButton.toolTipText = I18n.instance.getString('reportPanel.tooltip.noVoucher')
     } else {
-      openVoucherButton.toolTipText = 'Välj en rapportrad med koppling till en verifikation för drill-down.'
+      openVoucherButton.toolTipText = I18n.instance.getString('reportPanel.tooltip.selectRow')
     }
     openArchiveButton.enabled = selectedArchive() != null
   }
@@ -443,7 +481,7 @@ final class ReportPanel extends JPanel {
     try {
       return LocalDate.parse(value?.trim())
     } catch (DateTimeParseException exception) {
-      throw new IllegalArgumentException("${label} måste anges som yyyy-MM-dd.")
+      throw new IllegalArgumentException(I18n.instance.format('reportPanel.error.dateFormat', label))
     }
   }
 
@@ -454,7 +492,7 @@ final class ReportPanel extends JPanel {
 
   private void showError(String message) {
     feedbackArea.foreground = new Color(153, 27, 27)
-    feedbackArea.text = message ?: 'Ett oväntat fel uppstod.'
+    feedbackArea.text = message ?: I18n.instance.getString('reportPanel.error.unexpected')
   }
 
   private static String escapeHtml(String text) {
@@ -511,7 +549,6 @@ final class ReportPanel extends JPanel {
 
   private static final class ArchiveTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Tid', 'Rapport', 'Format', 'Intervall', 'Fil']
     private List<ReportArchive> rows = []
 
     void setRows(List<ReportArchive> rows) {
@@ -528,14 +565,18 @@ final class ReportPanel extends JPanel {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 5
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('reportPanel.table.archive.time')
+        case 1: return I18n.instance.getString('reportPanel.table.archive.report')
+        case 2: return I18n.instance.getString('reportPanel.table.archive.format')
+        case 3: return I18n.instance.getString('reportPanel.table.archive.interval')
+        case 4: return I18n.instance.getString('reportPanel.table.archive.file')
+        default: return ''
+      }
     }
 
     @Override

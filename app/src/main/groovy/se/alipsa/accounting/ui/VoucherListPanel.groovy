@@ -8,12 +8,15 @@ import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.event.ActionListener
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -34,9 +37,8 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists vouchers and opens registration or correction flows.
  */
-final class VoucherListPanel extends JPanel {
+final class VoucherListPanel extends JPanel implements PropertyChangeListener {
 
-  private static final String ALL = 'Alla'
   private static final int SEARCH_DEBOUNCE_MILLIS = 250
 
   private final VoucherService voucherService
@@ -48,12 +50,20 @@ final class VoucherListPanel extends JPanel {
   private final Timer searchDebounceTimer
   private final JComboBox<Object> fiscalYearComboBox = new JComboBox<>()
   private final JComboBox<String> statusComboBox = new JComboBox<>(
-      ([ALL] + VoucherStatus.values()*.name()) as String[]
+      ([I18n.instance.getString('voucherListPanel.filter.all')] + VoucherStatus.values()*.name()) as String[]
   )
   private final JTextField searchField = new JTextField(18)
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final VoucherTableModel tableModel = new VoucherTableModel()
   private final JTable voucherTable = new JTable(tableModel)
+  private JLabel fiscalYearLabel
+  private JLabel statusLabel
+  private JLabel searchLabel
+  private JButton refreshButton
+  private JButton newButton
+  private JButton openButton
+  private JButton correctionButton
+  private String allFilterValue
   private boolean reloadingFilters = false
 
   VoucherListPanel(
@@ -75,12 +85,33 @@ final class VoucherListPanel extends JPanel {
         attachmentService,
         auditLogService
     )
+    allFilterValue = I18n.instance.getString('voucherListPanel.filter.all')
     searchDebounceTimer = new Timer(SEARCH_DEBOUNCE_MILLIS, { reloadVouchers() } as ActionListener)
     searchDebounceTimer.repeats = false
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     reloadFiscalYears()
     installFilterListeners()
     reloadVouchers()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    allFilterValue = I18n.instance.getString('voucherListPanel.filter.all')
+    fiscalYearLabel.text = I18n.instance.getString('voucherListPanel.label.fiscalYear')
+    statusLabel.text = I18n.instance.getString('voucherListPanel.label.status')
+    searchLabel.text = I18n.instance.getString('voucherListPanel.label.search')
+    refreshButton.text = I18n.instance.getString('voucherListPanel.button.refresh')
+    newButton.text = I18n.instance.getString('voucherListPanel.button.newVoucher')
+    openButton.text = I18n.instance.getString('voucherListPanel.button.openVoucher')
+    correctionButton.text = I18n.instance.getString('voucherListPanel.button.createCorrection')
+    voucherTable.tableHeader.repaint()
   }
 
   private void buildUi() {
@@ -95,23 +126,26 @@ final class VoucherListPanel extends JPanel {
   private JPanel buildToolbar() {
     JPanel panel = new JPanel(new BorderLayout(0, 8))
     JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    filters.add(new JLabel('Räkenskapsår'))
+    fiscalYearLabel = new JLabel(I18n.instance.getString('voucherListPanel.label.fiscalYear'))
+    filters.add(fiscalYearLabel)
     filters.add(fiscalYearComboBox)
-    filters.add(new JLabel('Status'))
+    statusLabel = new JLabel(I18n.instance.getString('voucherListPanel.label.status'))
+    filters.add(statusLabel)
     filters.add(statusComboBox)
-    filters.add(new JLabel('Sök'))
+    searchLabel = new JLabel(I18n.instance.getString('voucherListPanel.label.search'))
+    filters.add(searchLabel)
     filters.add(searchField)
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton refreshButton = new JButton('Uppdatera')
+    refreshButton = new JButton(I18n.instance.getString('voucherListPanel.button.refresh'))
     refreshButton.addActionListener {
       refreshData()
     }
-    JButton newButton = new JButton('Ny verifikation...')
+    newButton = new JButton(I18n.instance.getString('voucherListPanel.button.newVoucher'))
     newButton.addActionListener { openEditor(null) }
-    JButton openButton = new JButton('Öppna/visa...')
+    openButton = new JButton(I18n.instance.getString('voucherListPanel.button.openVoucher'))
     openButton.addActionListener { openSelectedVoucher() }
-    JButton correctionButton = new JButton('Skapa korrigering')
+    correctionButton = new JButton(I18n.instance.getString('voucherListPanel.button.createCorrection'))
     correctionButton.addActionListener { correctSelectedVoucher() }
 
     actions.add(refreshButton)
@@ -169,7 +203,7 @@ final class VoucherListPanel extends JPanel {
     try {
       Object selected = fiscalYearComboBox.selectedItem
       fiscalYearComboBox.removeAllItems()
-      fiscalYearComboBox.addItem(ALL)
+      fiscalYearComboBox.addItem(allFilterValue)
       fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
         fiscalYearComboBox.addItem(fiscalYear)
       }
@@ -199,7 +233,7 @@ final class VoucherListPanel extends JPanel {
     VoucherStatus status = selectedStatus()
     List<Voucher> vouchers = voucherService.listVouchers(fiscalYearId, status, searchField.text)
     tableModel.setRows(vouchers)
-    showInfo("Visar ${vouchers.size()} verifikationer.")
+    showInfo(I18n.instance.format('voucherListPanel.message.showing', vouchers.size()))
   }
 
   private void scheduleVoucherReload() {
@@ -218,7 +252,7 @@ final class VoucherListPanel extends JPanel {
 
   private VoucherStatus selectedStatus() {
     String selected = statusComboBox.selectedItem as String
-    selected == null || selected == ALL ? null : VoucherStatus.valueOf(selected)
+    selected == null || selected == allFilterValue ? null : VoucherStatus.valueOf(selected)
   }
 
   private Voucher selectedVoucher() {
@@ -229,7 +263,7 @@ final class VoucherListPanel extends JPanel {
   private void openSelectedVoucher() {
     Voucher selected = selectedVoucher()
     if (selected == null) {
-      showError('Välj en verifikation först.')
+      showError(I18n.instance.getString('voucherListPanel.error.selectVoucher'))
       return
     }
     openEditor(selected.id)
@@ -244,15 +278,15 @@ final class VoucherListPanel extends JPanel {
   private void correctSelectedVoucher() {
     Voucher selected = selectedVoucher()
     if (selected == null) {
-      showError('Välj en bokförd verifikation först.')
+      showError(I18n.instance.getString('voucherListPanel.error.selectBooked'))
       return
     }
     try {
       Voucher correction = voucherService.createCorrectionVoucher(selected.id, null)
       reloadVouchers()
-      showInfo("Korrigering skapad som ${correction.voucherNumber}.")
+      showInfo(I18n.instance.format('voucherListPanel.message.correctionCreated', correction.voucherNumber))
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Korrigeringen kunde inte skapas på originalets bokföringsdatum.')
+      showError(exception.message ?: I18n.instance.getString('voucherListPanel.error.correctionFailed'))
     }
   }
 
@@ -277,16 +311,6 @@ final class VoucherListPanel extends JPanel {
 
   private static final class VoucherTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = [
-        'Nummer',
-        'Datum',
-        'Text',
-        'Status',
-        'Debet',
-        'Kredit',
-        'Korrigerar',
-        'Hash'
-    ]
     private List<Voucher> rows = []
 
     void setRows(List<Voucher> rows) {
@@ -303,14 +327,21 @@ final class VoucherListPanel extends JPanel {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 8
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('voucherListPanel.table.number')
+        case 1: return I18n.instance.getString('voucherListPanel.table.date')
+        case 2: return I18n.instance.getString('voucherListPanel.table.description')
+        case 3: return I18n.instance.getString('voucherListPanel.table.status')
+        case 4: return I18n.instance.getString('voucherListPanel.table.debit')
+        case 5: return I18n.instance.getString('voucherListPanel.table.credit')
+        case 6: return I18n.instance.getString('voucherListPanel.table.corrects')
+        case 7: return I18n.instance.getString('voucherListPanel.table.hash')
+        default: return ''
+      }
     }
 
     @Override
@@ -318,7 +349,8 @@ final class VoucherListPanel extends JPanel {
       Voucher voucher = rows[rowIndex]
       switch (columnIndex) {
         case 0:
-          return voucher.voucherNumber ?: "Utkast ${voucher.id}"
+          return voucher.voucherNumber
+              ?: I18n.instance.format('voucherListPanel.table.draft', voucher.id)
         case 1:
           return voucher.accountingDate
         case 2:

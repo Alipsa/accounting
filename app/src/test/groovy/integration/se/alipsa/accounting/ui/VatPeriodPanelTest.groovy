@@ -22,6 +22,7 @@ import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.awt.Component
 import java.awt.Container
@@ -47,9 +48,12 @@ class VatPeriodPanelTest {
   private VatService vatService
   private FiscalYear fiscalYear
   private String previousHome
+  private Locale previousLocale
 
   @BeforeEach
   void setUp() {
+    previousLocale = I18n.instance.locale
+    I18n.instance.setLocale(Locale.forLanguageTag('sv'))
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
@@ -69,6 +73,7 @@ class VatPeriodPanelTest {
 
   @AfterEach
   void tearDown() {
+    I18n.instance.setLocale(previousLocale)
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
   }
 
