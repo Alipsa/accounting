@@ -5,6 +5,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -13,6 +14,8 @@ import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -23,7 +26,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists fiscal years and their periods, and provides create and lock actions.
  */
-final class FiscalYearPanel extends JPanel {
+final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
 
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
@@ -38,6 +41,13 @@ final class FiscalYearPanel extends JPanel {
   private final JTable fiscalYearTable = new JTable(fiscalYearTableModel)
   private final JTable periodTable = new JTable(periodTableModel)
 
+  private JLabel nameLabel
+  private JLabel startDateLabel
+  private JLabel endDateLabel
+  private JButton createButton
+  private JButton closeButton
+  private JButton lockButton
+
   FiscalYearPanel(
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
@@ -46,8 +56,29 @@ final class FiscalYearPanel extends JPanel {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.closingService = closingService
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     reloadData()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    nameLabel.text = I18n.instance.getString('fiscalYearPanel.label.name')
+    startDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.startDate')
+    endDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.endDate')
+    startDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
+    endDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
+    createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
+    closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
+    lockButton.text = I18n.instance.getString('fiscalYearPanel.button.lockPeriod')
+    fiscalYearTable.tableHeader.repaint()
+    periodTable.tableHeader.repaint()
   }
 
   private void buildUi() {
@@ -70,11 +101,11 @@ final class FiscalYearPanel extends JPanel {
     panel.add(buildInputGrid(), BorderLayout.CENTER)
 
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton createButton = new JButton('Skapa räkenskapsår')
+    createButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.create'))
     createButton.addActionListener { createFiscalYearRequested() }
-    JButton closeButton = new JButton('Årsbokslut...')
+    closeButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.yearEndClosing'))
     closeButton.addActionListener { closeSelectedFiscalYear() }
-    JButton lockButton = new JButton('Lås vald period')
+    lockButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.lockPeriod'))
     lockButton.addActionListener { lockSelectedPeriod() }
     actionPanel.add(createButton)
     actionPanel.add(closeButton)
@@ -97,21 +128,24 @@ final class FiscalYearPanel extends JPanel {
         new Insets(0, 0, 8, 0), 0, 0
     )
 
-    panel.add(new JLabel('Namn'), labelConstraints)
+    nameLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.name'))
+    panel.add(nameLabel, labelConstraints)
     panel.add(nameField, fieldConstraints)
 
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
-    panel.add(new JLabel('Startdatum'), labelConstraints)
+    startDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.startDate'))
+    panel.add(startDateLabel, labelConstraints)
     panel.add(startDateField, fieldConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
-    panel.add(new JLabel('Slutdatum'), labelConstraints)
+    endDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.endDate'))
+    panel.add(endDateLabel, labelConstraints)
     panel.add(endDateField, fieldConstraints)
 
-    startDateField.toolTipText = 'Ange datum som yyyy-MM-dd'
-    endDateField.toolTipText = 'Ange datum som yyyy-MM-dd'
+    startDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
+    endDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
     panel
   }
 
@@ -139,8 +173,16 @@ final class FiscalYearPanel extends JPanel {
 
   private void createFiscalYearRequested() {
     List<ValidationMessage> messages = []
-    LocalDate startDate = parseDate(startDateField.text, 'Startdatum', messages)
-    LocalDate endDate = parseDate(endDateField.text, 'Slutdatum', messages)
+    LocalDate startDate = parseDate(
+        startDateField.text,
+        I18n.instance.getString('fiscalYearPanel.label.startDate'),
+        messages
+    )
+    LocalDate endDate = parseDate(
+        endDateField.text,
+        I18n.instance.getString('fiscalYearPanel.label.endDate'),
+        messages
+    )
     if (!messages.isEmpty()) {
       showValidation(messages)
       return
@@ -151,7 +193,7 @@ final class FiscalYearPanel extends JPanel {
       clearInputs()
       reloadData()
       selectFiscalYear(year.id)
-      showInfo("Räkenskapsåret ${year.name} skapades.")
+      showInfo(I18n.instance.format('fiscalYearPanel.message.created', year.name))
     } catch (IllegalArgumentException exception) {
       showValidation([ValidationSupport.fieldError('', exception.message)])
     }
@@ -160,25 +202,29 @@ final class FiscalYearPanel extends JPanel {
   private void closeSelectedFiscalYear() {
     FiscalYear year = selectedFiscalYear()
     if (year == null) {
-      showValidation([ValidationSupport.fieldError('', 'Välj ett räkenskapsår att stänga.')])
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.getString('fiscalYearPanel.error.selectFiscalYear')
+      )])
       return
     }
     YearEndClosingDialog.showDialog(ownerFrame(), closingService, year, {
       reloadData()
       selectFiscalYear(year.id)
-      showInfo("Årsbokslut genomfört för ${year.name}.")
+      showInfo(I18n.instance.format('fiscalYearPanel.message.closed', year.name))
     } as Runnable)
   }
 
   private void lockSelectedPeriod() {
     AccountingPeriod period = selectedPeriod()
     if (period == null) {
-      showValidation([ValidationSupport.fieldError('', 'Välj en period att låsa.')])
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.getString('fiscalYearPanel.error.selectPeriod')
+      )])
       return
     }
     PeriodLockDialog.showDialog(ownerFrame(), accountingPeriodService, period, {
       reloadPeriodsForSelection()
-      showInfo("Period ${period.periodName} är låst.")
+      showInfo(I18n.instance.format('fiscalYearPanel.message.periodLocked', period.periodName))
     } as Runnable)
   }
 
@@ -223,14 +269,22 @@ final class FiscalYearPanel extends JPanel {
   private static LocalDate parseDate(String raw, String fieldName, List<ValidationMessage> messages) {
     String text = raw?.trim()
     if (!text) {
-      messages << ValidationSupport.fieldError(fieldName, 'måste anges', 'format yyyy-MM-dd')
+      messages << ValidationSupport.fieldError(
+          fieldName,
+          I18n.instance.getString('fiscalYearPanel.error.dateRequired'),
+          I18n.instance.getString('fiscalYearPanel.error.dateHint')
+      )
       return null
     }
     LocalDate parsedDate = null
     try {
       parsedDate = LocalDate.parse(text)
     } catch (DateTimeParseException ignored) {
-      messages << ValidationSupport.fieldError(fieldName, 'har ogiltigt datumformat', 'format yyyy-MM-dd')
+      messages << ValidationSupport.fieldError(
+          fieldName,
+          I18n.instance.getString('fiscalYearPanel.error.dateInvalid'),
+          I18n.instance.getString('fiscalYearPanel.error.dateHint')
+      )
     }
     parsedDate
   }
@@ -258,7 +312,7 @@ final class FiscalYearPanel extends JPanel {
 
   private static final class FiscalYearTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Namn', 'Start', 'Slut', 'Status']
+    final int columnCount = 4
     private List<FiscalYear> rows = []
 
     void setRows(List<FiscalYear> rows) {
@@ -280,13 +334,14 @@ final class FiscalYearPanel extends JPanel {
     }
 
     @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
-
-    @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('fiscalYearPanel.table.fiscalYear.name')
+        case 1: return I18n.instance.getString('fiscalYearPanel.table.fiscalYear.start')
+        case 2: return I18n.instance.getString('fiscalYearPanel.table.fiscalYear.end')
+        case 3: return I18n.instance.getString('fiscalYearPanel.table.fiscalYear.status')
+        default: return ''
+      }
     }
 
     @Override
@@ -300,7 +355,9 @@ final class FiscalYearPanel extends JPanel {
         case 2:
           return year.endDate
         case 3:
-          return year.closed ? 'Stängt' : 'Öppet'
+          return year.closed
+              ? I18n.instance.getString('fiscalYearPanel.table.fiscalYear.closed')
+              : I18n.instance.getString('fiscalYearPanel.table.fiscalYear.open')
         default:
           return ''
       }
@@ -309,7 +366,7 @@ final class FiscalYearPanel extends JPanel {
 
   private static final class AccountingPeriodTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Period', 'Start', 'Slut', 'Låst', 'Låsorsak']
+    final int columnCount = 5
     private List<AccountingPeriod> rows = []
 
     void setRows(List<AccountingPeriod> rows) {
@@ -327,13 +384,15 @@ final class FiscalYearPanel extends JPanel {
     }
 
     @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
-
-    @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('fiscalYearPanel.table.period.name')
+        case 1: return I18n.instance.getString('fiscalYearPanel.table.period.start')
+        case 2: return I18n.instance.getString('fiscalYearPanel.table.period.end')
+        case 3: return I18n.instance.getString('fiscalYearPanel.table.period.locked')
+        case 4: return I18n.instance.getString('fiscalYearPanel.table.period.lockReason')
+        default: return ''
+      }
     }
 
     @Override
@@ -347,7 +406,9 @@ final class FiscalYearPanel extends JPanel {
         case 2:
           return period.endDate
         case 3:
-          return period.locked ? 'Ja' : 'Nej'
+          return period.locked
+              ? I18n.instance.getString('fiscalYearPanel.table.value.yes')
+              : I18n.instance.getString('fiscalYearPanel.table.value.no')
         case 4:
           return period.lockReason ?: ''
         default:
