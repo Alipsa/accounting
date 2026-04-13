@@ -340,8 +340,7 @@ tasks.register('releaseCheck') {
 
 signing {
   if (project.properties['signing.keyId'] != null) {
-    sign distZip, distTar
-    sign tasks.named('packageLinuxReleaseZip')
+    sign distZip, distTar, tasks.named('packageLinuxReleaseZip').get()
   } else {
     project.logger.debug("signing.keyId is not defined, skipping signing of artifacts...")
   }

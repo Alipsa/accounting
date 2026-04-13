@@ -229,11 +229,11 @@ final class UpdateService {
 timeout /t 3 /nobreak >nul
 if exist "${backupDir}" rd /s /q "${backupDir}"
 mkdir "${backupDir}"
-move "${installDir}\\*.jar" "${backupDir}\\"
-copy /y "${extractedDir}\\*.jar" "${installDir}\\"
+for %%f in ("${installDir}\\*.jar") do move "%%f" "${backupDir}\\"
+for %%f in ("${extractedDir}\\*.jar") do copy /y "%%f" "${installDir}\\"
 if errorlevel 1 (
   echo Update failed, restoring backup...
-  move "${backupDir}\\*.jar" "${installDir}\\"
+  for %%f in ("${backupDir}\\*.jar") do move "%%f" "${installDir}\\"
   rd /s /q "${backupDir}"
   echo Update failed. Please try again.
   pause

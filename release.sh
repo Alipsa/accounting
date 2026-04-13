@@ -76,6 +76,14 @@ if [ "$BUILD" = true ]; then
   find "$DIST_DIR" -mindepth 1 -type d -empty -delete
 
   echo ""
+  echo "Generating SHA-256 checksums..."
+  for file in "$DIST_DIR"/*; do
+    [ -f "$file" ] || continue
+    shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
+    echo "  Checksum: $(basename "$file").sha256"
+  done
+
+  echo ""
   echo "Downloaded artifacts:"
   ls -lh "$DIST_DIR/"
 fi
