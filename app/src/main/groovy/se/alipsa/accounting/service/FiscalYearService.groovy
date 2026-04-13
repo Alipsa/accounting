@@ -19,17 +19,28 @@ final class FiscalYearService {
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
   private final AuditLogService auditLogService
+  private final RetentionPolicyService retentionPolicyService
 
   FiscalYearService() {
-    this(DatabaseService.instance, new AccountingPeriodService(DatabaseService.instance), new AuditLogService(DatabaseService.instance))
+    this(
+        DatabaseService.instance,
+        new AccountingPeriodService(DatabaseService.instance),
+        new AuditLogService(DatabaseService.instance),
+        new RetentionPolicyService()
+    )
   }
 
   FiscalYearService(DatabaseService databaseService) {
-    this(databaseService, new AccountingPeriodService(databaseService), new AuditLogService(databaseService))
+    this(
+        databaseService,
+        new AccountingPeriodService(databaseService),
+        new AuditLogService(databaseService),
+        new RetentionPolicyService()
+    )
   }
 
   FiscalYearService(DatabaseService databaseService, AccountingPeriodService accountingPeriodService) {
-    this(databaseService, accountingPeriodService, new AuditLogService(databaseService))
+    this(databaseService, accountingPeriodService, new AuditLogService(databaseService), new RetentionPolicyService())
   }
 
   FiscalYearService(
@@ -37,9 +48,19 @@ final class FiscalYearService {
       AccountingPeriodService accountingPeriodService,
       AuditLogService auditLogService
   ) {
+    this(databaseService, accountingPeriodService, auditLogService, new RetentionPolicyService())
+  }
+
+  FiscalYearService(
+      DatabaseService databaseService,
+      AccountingPeriodService accountingPeriodService,
+      AuditLogService auditLogService,
+      RetentionPolicyService retentionPolicyService
+  ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
     this.auditLogService = auditLogService
+    this.retentionPolicyService = retentionPolicyService
   }
 
   FiscalYear createFiscalYear(String name, LocalDate startDate, LocalDate endDate) {
@@ -74,6 +95,20 @@ final class FiscalYearService {
   FiscalYear closeFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       closeFiscalYear(sql, fiscalYearId)
+    }
+  }
+
+  void deleteFiscalYear(long fiscalYearId) {
+    databaseService.withTransaction { Sql sql ->
+      FiscalYear year = findById(sql, fiscalYearId)
+      if (year == null) {
+        throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+      }
+      retentionPolicyService.ensureDeletionAllowed(year.endDate, "Räkenskapsår ${year.name}")
+      int deleted = sql.executeUpdate('delete from fiscal_year where id = ?', [fiscalYearId])
+      if (deleted != 1) {
+        throw new IllegalStateException("Räkenskapsåret kunde inte raderas: ${fiscalYearId}")
+      }
     }
   }
 

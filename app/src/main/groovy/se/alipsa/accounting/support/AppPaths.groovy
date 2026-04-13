@@ -38,27 +38,75 @@ final class AppPaths {
   }
 
   static Path dataDirectory() {
-    applicationHome().resolve('data')
+    dataDirectory(applicationHome())
   }
 
   static Path logDirectory() {
-    applicationHome().resolve('logs')
+    logDirectory(applicationHome())
   }
 
   static Path attachmentsDirectory() {
-    applicationHome().resolve('attachments')
+    attachmentsDirectory(applicationHome())
   }
 
   static Path reportsDirectory() {
-    applicationHome().resolve('reports')
+    reportsDirectory(applicationHome())
+  }
+
+  static Path backupsDirectory() {
+    backupsDirectory(applicationHome())
+  }
+
+  static Path docsDirectory() {
+    docsDirectory(applicationHome())
   }
 
   static Path databaseBasePath() {
-    dataDirectory().resolve('accounting')
+    databaseBasePath(applicationHome())
+  }
+
+  static Path dataDirectory(Path applicationHome) {
+    applicationHome.resolve('data')
+  }
+
+  static Path logDirectory(Path applicationHome) {
+    applicationHome.resolve('logs')
+  }
+
+  static Path attachmentsDirectory(Path applicationHome) {
+    applicationHome.resolve('attachments')
+  }
+
+  static Path reportsDirectory(Path applicationHome) {
+    applicationHome.resolve('reports')
+  }
+
+  static Path backupsDirectory(Path applicationHome) {
+    applicationHome.resolve('backups')
+  }
+
+  static Path docsDirectory(Path applicationHome) {
+    applicationHome.resolve('docs')
+  }
+
+  static Path databaseBasePath(Path applicationHome) {
+    dataDirectory(applicationHome).resolve('accounting')
   }
 
   static void ensureDirectoryStructure() {
-    [applicationHome(), dataDirectory(), logDirectory(), attachmentsDirectory(), reportsDirectory()].each { Path path ->
+    ensureDirectoryStructure(applicationHome())
+  }
+
+  static void ensureDirectoryStructure(Path applicationHome) {
+    [
+        applicationHome,
+        dataDirectory(applicationHome),
+        logDirectory(applicationHome),
+        attachmentsDirectory(applicationHome),
+        reportsDirectory(applicationHome),
+        backupsDirectory(applicationHome),
+        docsDirectory(applicationHome)
+    ].each { Path path ->
       Files.createDirectories(path)
       tightenPermissions(path)
     }

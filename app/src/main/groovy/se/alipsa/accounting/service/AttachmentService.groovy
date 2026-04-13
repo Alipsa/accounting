@@ -24,18 +24,28 @@ final class AttachmentService {
 
   private final DatabaseService databaseService
   private final AuditLogService auditLogService
+  private final RetentionPolicyService retentionPolicyService
 
   AttachmentService() {
     this(DatabaseService.instance)
   }
 
   AttachmentService(DatabaseService databaseService) {
-    this(databaseService, new AuditLogService(databaseService))
+    this(databaseService, new AuditLogService(databaseService), new RetentionPolicyService())
   }
 
   AttachmentService(DatabaseService databaseService, AuditLogService auditLogService) {
+    this(databaseService, auditLogService, new RetentionPolicyService())
+  }
+
+  AttachmentService(
+      DatabaseService databaseService,
+      AuditLogService auditLogService,
+      RetentionPolicyService retentionPolicyService
+  ) {
     this.databaseService = databaseService
     this.auditLogService = auditLogService
+    this.retentionPolicyService = retentionPolicyService
   }
 
   AttachmentMetadata addAttachment(long voucherId, Path sourceFile) {
@@ -106,6 +116,25 @@ final class AttachmentService {
     }
   }
 
+  List<AttachmentMetadata> listAllAttachments() {
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 voucher_id as voucherId,
+                 original_file_name as originalFileName,
+                 content_type as contentType,
+                 storage_path as storagePath,
+                 checksum_sha256 as checksumSha256,
+                 file_size as fileSize,
+                 created_at as createdAt
+            from attachment
+           order by id
+      ''').collect { GroovyRowResult row ->
+        mapAttachment(row)
+      }
+    }
+  }
+
   AttachmentMetadata findAttachment(long attachmentId) {
     databaseService.withSql { Sql sql ->
       findAttachment(sql, attachmentId)
@@ -120,6 +149,18 @@ final class AttachmentService {
   boolean verifyAttachment(long attachmentId) {
     AttachmentMetadata attachment = requireAttachment(attachmentId)
     verifyAttachment(attachment)
+  }
+
+  void deleteAttachment(long attachmentId) {
+    AttachmentMetadata attachment = requireAttachment(attachmentId)
+    retentionPolicyService.ensureDeletionAllowed(attachment.createdAt, "Bilaga ${attachment.originalFileName}")
+    databaseService.withTransaction { Sql sql ->
+      int deleted = sql.executeUpdate('delete from attachment where id = ?', [attachmentId])
+      if (deleted != 1) {
+        throw new IllegalStateException("Bilagan kunde inte raderas: ${attachmentId}")
+      }
+    }
+    Files.deleteIfExists(resolveStoragePath(attachment.storagePath))
   }
 
   List<AttachmentMetadata> findIntegrityFailures() {

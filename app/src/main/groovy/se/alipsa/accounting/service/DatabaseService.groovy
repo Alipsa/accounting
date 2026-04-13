@@ -39,6 +39,28 @@ final class DatabaseService {
     new DatabaseService()
   }
 
+  int expectedSchemaVersion() {
+    MIGRATIONS.last().version
+  }
+
+  List<Map<String, Object>> knownMigrations() {
+    List<Map<String, Object>> migrations = []
+    MIGRATIONS.each { MigrationDefinition migration ->
+      Map<String, Object> row = [:]
+      row.put('version', migration.version)
+      row.put('name', migration.name)
+      row.put('resource', migration.resource)
+      migrations << row
+    }
+    migrations
+  }
+
+  int currentSchemaVersion() {
+    withSql { Sql sql ->
+      currentSchemaVersion(sql)
+    }
+  }
+
   void initialize() {
     AppPaths.ensureDirectoryStructure()
     withTransaction { Sql sql ->
