@@ -134,6 +134,7 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem exitMenuItem
   private JMenu helpMenu
   private JMenuItem manualMenuItem
+  private JMenuItem updateMenuItem
   private JMenuItem aboutMenuItem
   private JButton editCompanySettingsButton
   private JTabbedPane tabbedPane
@@ -179,6 +180,7 @@ final class MainFrame implements PropertyChangeListener {
 
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
     manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
+    updateMenuItem.text = I18n.instance.getString('mainFrame.menu.help.checkForUpdates')
     aboutMenuItem.text = I18n.instance.getString('mainFrame.menu.help.about')
 
     tabbedPane.setTitleAt(0, I18n.instance.getString('mainFrame.tab.overview'))
@@ -216,6 +218,7 @@ final class MainFrame implements PropertyChangeListener {
         }
         helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
           manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
+          updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: { showUpdateDialog() })
           aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
         }
       }
@@ -331,6 +334,10 @@ final class MainFrame implements PropertyChangeListener {
   private void showUserManualDialog() {
     UserManualDialog.showDialog(frame, userManualService)
     setStatus(I18n.instance.getString('mainFrame.status.manualShown'))
+  }
+
+  private void showUpdateDialog() {
+    UpdateDialog.showDialog(frame)
   }
 
   private void refreshCompanySettingsSummary() {
