@@ -35,6 +35,7 @@ import se.alipsa.accounting.support.LoggingConfigurer
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Cursor
+import java.awt.Desktop
 import java.awt.Font
 import java.awt.Image
 import java.beans.PropertyChangeEvent
@@ -139,6 +140,7 @@ final class MainFrame implements PropertyChangeListener {
   private JMenu helpMenu
   private JMenuItem manualMenuItem
   private JMenuItem updateMenuItem
+  private JMenuItem reportIssueMenuItem
   private JMenuItem aboutMenuItem
   private JButton editCompanySettingsButton
   private JButton updateNotificationButton
@@ -197,6 +199,7 @@ final class MainFrame implements PropertyChangeListener {
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
     manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
     updateMenuItem.text = I18n.instance.getString('mainFrame.menu.help.checkForUpdates')
+    reportIssueMenuItem.text = I18n.instance.getString('mainFrame.menu.help.reportIssue')
     aboutMenuItem.text = I18n.instance.getString('mainFrame.menu.help.about')
   }
 
@@ -232,6 +235,8 @@ final class MainFrame implements PropertyChangeListener {
         helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
           manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
           updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: { showUpdateDialog() })
+          reportIssueMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.reportIssue'), actionPerformed: { openIssueTracker() })
+          separator()
           aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
         }
       }
@@ -365,6 +370,20 @@ final class MainFrame implements PropertyChangeListener {
 
   private void showUpdateDialog() {
     UpdateDialog.showDialog(frame)
+  }
+
+  private void openIssueTracker() {
+    try {
+      Desktop.desktop.browse(URI.create('https://github.com/Alipsa/accounting/issues'))
+    } catch (Exception exception) {
+      log.log(Level.WARNING, 'Could not open issue tracker.', exception)
+      JOptionPane.showMessageDialog(
+          frame,
+          I18n.instance.getString('mainFrame.issueTracker.error'),
+          I18n.instance.getString('mainFrame.menu.help.reportIssue'),
+          JOptionPane.ERROR_MESSAGE
+      )
+    }
   }
 
   private void checkForUpdateInBackground() {
