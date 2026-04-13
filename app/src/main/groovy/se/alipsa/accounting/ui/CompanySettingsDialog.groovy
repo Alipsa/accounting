@@ -1,8 +1,11 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.CompileDynamic
+
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanySettingsService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -11,13 +14,16 @@ import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 
 import javax.swing.*
 
 /**
  * Modal dialog for initial company setup and later edits.
  */
-final class CompanySettingsDialog extends JDialog {
+@CompileDynamic
+final class CompanySettingsDialog extends JDialog implements PropertyChangeListener {
 
   private final CompanySettingsService companySettingsService
   private final Runnable onSave
@@ -29,10 +35,22 @@ final class CompanySettingsDialog extends JDialog {
   private final JComboBox<VatPeriodicity> vatPeriodicityComboBox = new JComboBox<>(VatPeriodicity.values())
   private final JTextArea validationArea = new JTextArea(4, 30)
 
+  private JLabel companyNameLabel
+  private JLabel orgNumberLabel
+  private JLabel currencyLabel
+  private JLabel localeLabel
+  private JLabel vatPeriodLabel
+  private JLabel languageLabel
+  private JButton cancelButton
+  private JButton saveButton
+  private JButton englishButton
+  private JButton swedishButton
+
   CompanySettingsDialog(Frame owner, CompanySettingsService companySettingsService, Runnable onSave) {
-    super(owner, 'Företagsinställningar', true)
+    super(owner, I18n.instance.getString('companySettingsDialog.title'), true)
     this.companySettingsService = companySettingsService
     this.onSave = onSave
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     populate(companySettingsService.getSettings())
   }
@@ -40,6 +58,32 @@ final class CompanySettingsDialog extends JDialog {
   static void showDialog(Frame owner, CompanySettingsService companySettingsService, Runnable onSave) {
     CompanySettingsDialog dialog = new CompanySettingsDialog(owner, companySettingsService, onSave)
     dialog.setVisible(true)
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  @Override
+  void dispose() {
+    I18n.instance.removeLocaleChangeListener(this)
+    super.dispose()
+  }
+
+  private void applyLocale() {
+    title = I18n.instance.getString('companySettingsDialog.title')
+    companyNameLabel.text = I18n.instance.getString('companySettingsDialog.label.companyName')
+    orgNumberLabel.text = I18n.instance.getString('companySettingsDialog.label.orgNumber')
+    currencyLabel.text = I18n.instance.getString('companySettingsDialog.label.currency')
+    localeLabel.text = I18n.instance.getString('companySettingsDialog.label.locale')
+    vatPeriodLabel.text = I18n.instance.getString('companySettingsDialog.label.vatPeriod')
+    languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
+    cancelButton.text = I18n.instance.getString('companySettingsDialog.button.cancel')
+    saveButton.text = I18n.instance.getString('companySettingsDialog.button.save')
+    pack()
   }
 
   private void buildUi() {
@@ -68,28 +112,48 @@ final class CompanySettingsDialog extends JDialog {
         new Insets(4, 0, 4, 0), 0, 0
     )
 
-    panel.add(new JLabel('Företagsnamn'), labelConstraints)
+    companyNameLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.companyName'))
+    panel.add(companyNameLabel, labelConstraints)
     panel.add(companyNameField, fieldConstraints)
 
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
-    panel.add(new JLabel('Organisationsnummer'), labelConstraints)
+    orgNumberLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.orgNumber'))
+    panel.add(orgNumberLabel, labelConstraints)
     panel.add(organizationNumberField, fieldConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
-    panel.add(new JLabel('Valuta'), labelConstraints)
+    currencyLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.currency'))
+    panel.add(currencyLabel, labelConstraints)
     panel.add(defaultCurrencyField, fieldConstraints)
 
     labelConstraints.gridy = 3
     fieldConstraints.gridy = 3
-    panel.add(new JLabel('Locale'), labelConstraints)
+    localeLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.locale'))
+    panel.add(localeLabel, labelConstraints)
     panel.add(localeTagField, fieldConstraints)
 
     labelConstraints.gridy = 4
     fieldConstraints.gridy = 4
-    panel.add(new JLabel('Momsperiod'), labelConstraints)
+    vatPeriodLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.vatPeriod'))
+    panel.add(vatPeriodLabel, labelConstraints)
     panel.add(vatPeriodicityComboBox, fieldConstraints)
+
+    labelConstraints.gridy = 5
+    fieldConstraints.gridy = 5
+    languageLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.language'))
+    panel.add(languageLabel, labelConstraints)
+
+    JPanel languagePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0))
+    englishButton = new JButton(loadFlagIcon('/icons/UK.png'))
+    swedishButton = new JButton(loadFlagIcon('/icons/sweden.png'))
+    englishButton.addActionListener { switchLanguage(Locale.ENGLISH) }
+    swedishButton.addActionListener { switchLanguage(Locale.forLanguageTag('sv')) }
+    updateLanguageButtonBorders()
+    languagePanel.add(englishButton)
+    languagePanel.add(swedishButton)
+    panel.add(languagePanel, fieldConstraints)
 
     panel
   }
@@ -107,9 +171,9 @@ final class CompanySettingsDialog extends JDialog {
 
   private JPanel buildButtonPanel() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton cancelButton = new JButton('Avbryt')
+    cancelButton = new JButton(I18n.instance.getString('companySettingsDialog.button.cancel'))
     cancelButton.addActionListener { dispose() }
-    JButton saveButton = new JButton('Spara')
+    saveButton = new JButton(I18n.instance.getString('companySettingsDialog.button.save'))
     saveButton.addActionListener { saveRequested() }
     panel.add(cancelButton)
     panel.add(saveButton)
@@ -153,22 +217,36 @@ final class CompanySettingsDialog extends JDialog {
   private List<ValidationMessage> validateInput() {
     List<ValidationMessage> messages = []
     if (!companyNameField.text?.trim()) {
-      messages << ValidationSupport.fieldError('Företagsnamn', 'måste anges')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.companyName'),
+          I18n.instance.getString('companySettingsDialog.error.companyNameRequired'))
     }
     if (!organizationNumberField.text?.trim()) {
-      messages << ValidationSupport.fieldError('Organisationsnummer', 'måste anges')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.orgNumber'),
+          I18n.instance.getString('companySettingsDialog.error.orgNumberRequired'))
     }
     String currency = defaultCurrencyField.text?.trim()
     if (!currency) {
-      messages << ValidationSupport.fieldError('Valuta', 'måste anges')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.currency'),
+          I18n.instance.getString('companySettingsDialog.error.currencyRequired'))
     } else if (currency.length() != 3) {
-      messages << ValidationSupport.fieldError('Valuta', 'ska vara en ISO-kod med tre bokstäver', 't.ex. SEK')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.currency'),
+          I18n.instance.getString('companySettingsDialog.error.currencyFormat'),
+          I18n.instance.getString('companySettingsDialog.error.currencyHint'))
     }
     String localeTag = localeTagField.text?.trim()
     if (!localeTag) {
-      messages << ValidationSupport.fieldError('Locale', 'måste anges')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.locale'),
+          I18n.instance.getString('companySettingsDialog.error.localeRequired'))
     } else if (Locale.forLanguageTag(localeTag).toLanguageTag() == 'und') {
-      messages << ValidationSupport.fieldError('Locale', 'är inte en giltig språk-tag', 't.ex. sv-SE')
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('companySettingsDialog.label.locale'),
+          I18n.instance.getString('companySettingsDialog.error.localeInvalid'),
+          I18n.instance.getString('companySettingsDialog.error.localeHint'))
     }
     messages
   }
@@ -177,5 +255,23 @@ final class CompanySettingsDialog extends JDialog {
     validationArea.text = ValidationSupport.summaryText(messages)
     validationArea.visible = true
     pack()
+  }
+
+  private void switchLanguage(Locale locale) {
+    I18n.instance.setLocale(locale)
+    updateLanguageButtonBorders()
+  }
+
+  private void updateLanguageButtonBorders() {
+    boolean isSwedish = I18n.instance.locale.language == 'sv'
+    swedishButton.border = isSwedish ?
+        BorderFactory.createLoweredBevelBorder() : BorderFactory.createRaisedBevelBorder()
+    englishButton.border = isSwedish ?
+        BorderFactory.createRaisedBevelBorder() : BorderFactory.createLoweredBevelBorder()
+  }
+
+  private static ImageIcon loadFlagIcon(String path) {
+    URL resource = CompanySettingsDialog.getResource(path)
+    resource != null ? new ImageIcon(resource) : null
   }
 }
