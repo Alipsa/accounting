@@ -8,6 +8,8 @@ import groovy.transform.Canonical
 @Canonical
 final class Account {
 
+  Long id
+  Long companyId
   String accountNumber
   String accountName
   String accountClass

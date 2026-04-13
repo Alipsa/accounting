@@ -15,8 +15,8 @@ final class ClosingEntry {
   Long nextFiscalYearId
   Long voucherId
   String entryType
-  String accountNumber
-  String counterAccountNumber
+  Long accountId
+  Long counterAccountId
   BigDecimal amount
   LocalDateTime createdAt
 }

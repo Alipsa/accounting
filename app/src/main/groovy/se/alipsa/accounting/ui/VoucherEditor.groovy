@@ -642,6 +642,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
             null,
             null,
             0,
+            null,
             row.accountNumber,
             row.accountName,
             row.description,

@@ -72,15 +72,16 @@ class ClosingServiceTest {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()
     databaseService.withTransaction { Sql sql ->
+      def accountId = sql.firstRow('select id from account where account_number = ?', ['1930']).get('id')
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
           ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [fiscalYear.id, '1930', 500.00G])
+      ''', [fiscalYear.id, accountId, 500.00G])
     }
     voucherService.createAndBook(
         fiscalYear.id,
@@ -178,6 +179,7 @@ class ClosingServiceTest {
   private static void insertAccount(Sql sql, String accountNumber, String accountName, String accountClass, String normalBalanceSide) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -188,7 +190,7 @@ class ClosingServiceTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide])
   }
 
@@ -198,10 +200,11 @@ class ClosingServiceTest {
 
   private static BigDecimal openingBalanceFor(Sql sql, long fiscalYearId, String accountNumber) {
     GroovyRowResult row = sql.firstRow('''
-        select amount
-          from opening_balance
-         where fiscal_year_id = ?
-           and account_number = ?
+        select ob.amount
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
+           and a.account_number = ?
     ''', [fiscalYearId, accountNumber]) as GroovyRowResult
     new BigDecimal(row.get('amount').toString())
   }

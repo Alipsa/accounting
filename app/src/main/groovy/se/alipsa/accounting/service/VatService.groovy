@@ -310,7 +310,8 @@ final class VatService {
 
   private static List<TransferBalance> loadTransferBalances(Sql sql, VatPeriod period) {
     sql.rows('''
-        select vl.account_number as accountNumber,
+        select a.id as accountId,
+               vl.account_number as accountNumber,
                a.account_name as accountName,
                a.account_class as accountClass,
                a.normal_balance_side as normalBalanceSide,
@@ -318,7 +319,7 @@ final class VatService {
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
@@ -337,7 +338,9 @@ final class VatService {
           new BigDecimal(row.get('creditAmount').toString()),
           row.get('normalBalanceSide') as String
       )
+      Long accountId = ((Number) row.get('accountId')).longValue()
       new TransferBalance(
+          accountId,
           row.get('accountNumber') as String,
           row.get('accountName') as String,
           row.get('normalBalanceSide') as String,
@@ -369,6 +372,7 @@ final class VatService {
           null,
           null,
           index + 1,
+          balance.accountId,
           balance.accountNumber,
           balance.accountName,
           "Momsöverföring ${balance.accountNumber}",
@@ -385,6 +389,7 @@ final class VatService {
           null,
           null,
           lines.size() + 1,
+          null,
           settlementAccount,
           null,
           'Momsredovisning',
@@ -541,6 +546,7 @@ final class VatService {
   @Canonical
   private static final class TransferBalance {
 
+    Long accountId
     String accountNumber
     String accountName
     String normalBalanceSide

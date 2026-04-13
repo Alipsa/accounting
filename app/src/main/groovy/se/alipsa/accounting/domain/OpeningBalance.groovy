@@ -9,6 +9,7 @@ import groovy.transform.Canonical
 final class OpeningBalance {
 
   Long fiscalYearId
+  Long accountId
   String accountNumber
   BigDecimal amount = BigDecimal.ZERO
 }

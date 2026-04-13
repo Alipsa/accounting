@@ -76,7 +76,7 @@ class BackupServiceTest {
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
-      assertEquals(14, countSchemaVersion(sql))
+      assertEquals(15, countSchemaVersion(sql))
     }
   }
 
@@ -152,6 +152,7 @@ class BackupServiceTest {
   private static void insertAccount(Sql sql, String accountNumber, String accountName, String accountClass, String normalBalanceSide) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -162,7 +163,7 @@ class BackupServiceTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide])
   }
 

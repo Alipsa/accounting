@@ -124,8 +124,8 @@ final class ClosingService {
                  next_fiscal_year_id as nextFiscalYearId,
                  voucher_id as voucherId,
                  entry_type as entryType,
-                 account_number as accountNumber,
-                 counter_account_number as counterAccountNumber,
+                 account_id as accountId,
+                 counter_account_id as counterAccountId,
                  amount,
                  created_at as createdAt
             from closing_entry
@@ -222,6 +222,7 @@ final class ClosingService {
         ? null
         : createClosingVoucher(sql, preview.fiscalYear, preview.closingAccountNumber, resultBalances)
 
+    long companyId = resolveCompanyId(sql, preview.fiscalYear.id)
     int closingEntryCount = persistResultClosingEntries(
         sql,
         preview.fiscalYear.id,
@@ -230,8 +231,8 @@ final class ClosingService {
         resultBalances
     )
     Map<String, BigDecimal> closingBalances = loadBalanceClosingBalances(sql, preview.fiscalYear.id)
-    int openingBalanceCount = persistOpeningBalances(sql, preview.nextFiscalYear.id, closingBalances)
-    closingEntryCount += persistOpeningBalanceEntries(sql, preview.fiscalYear.id, preview.nextFiscalYear.id, closingBalances)
+    int openingBalanceCount = persistOpeningBalances(sql, preview.nextFiscalYear.id, companyId, closingBalances)
+    closingEntryCount += persistOpeningBalanceEntries(sql, preview.fiscalYear.id, preview.nextFiscalYear.id, companyId, closingBalances)
     new ClosingExecution(closingVoucher, openingBalanceCount, closingEntryCount)
   }
 
@@ -289,6 +290,7 @@ final class ClosingService {
           null,
           null,
           lineIndex++,
+          null,
           balance.accountNumber,
           balance.accountName,
           "Årsbokslut ${balance.accountNumber}",
@@ -303,6 +305,7 @@ final class ClosingService {
           null,
           null,
           lineIndex,
+          null,
           closingAccountNumber,
           null,
           "Årets resultat ${closingAccountNumber}",
@@ -321,24 +324,27 @@ final class ClosingService {
       Map<String, ResultAccountBalance> resultBalances
   ) {
     int created = 0
+    long companyId = resolveCompanyId(sql, fiscalYearId)
+    long counterAccountId = resolveAccountId(sql, companyId, closingAccountNumber)
     resultBalances.keySet().sort().each { String accountNumber ->
       ResultAccountBalance balance = resultBalances[accountNumber]
       BigDecimal amount = scale(balance.amount)
       if (amount == BigDecimal.ZERO) {
         return
       }
+      long accountId = resolveAccountId(sql, companyId, balance.accountNumber)
       sql.executeInsert('''
           insert into closing_entry (
               fiscal_year_id,
               next_fiscal_year_id,
               voucher_id,
               entry_type,
-              account_number,
-              counter_account_number,
+              account_id,
+              counter_account_id,
               amount,
               created_at
           ) values (?, null, ?, ?, ?, ?, ?, current_timestamp)
-      ''', [fiscalYearId, voucherId, RESULT_CLOSING, balance.accountNumber, closingAccountNumber, amount])
+      ''', [fiscalYearId, voucherId, RESULT_CLOSING, accountId, counterAccountId, amount])
       created++
     }
     created
@@ -347,6 +353,7 @@ final class ClosingService {
   private static int persistOpeningBalances(
       Sql sql,
       long nextFiscalYearId,
+      long companyId,
       Map<String, BigDecimal> closingBalances
   ) {
     int created = 0
@@ -355,15 +362,16 @@ final class ClosingService {
       if (amount == BigDecimal.ZERO) {
         return
       }
+      long accountId = resolveAccountId(sql, companyId, accountNumber)
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
           ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [nextFiscalYearId, accountNumber, amount])
+      ''', [nextFiscalYearId, accountId, amount])
       created++
     }
     created
@@ -373,6 +381,7 @@ final class ClosingService {
       Sql sql,
       long fiscalYearId,
       long nextFiscalYearId,
+      long companyId,
       Map<String, BigDecimal> closingBalances
   ) {
     int created = 0
@@ -381,18 +390,19 @@ final class ClosingService {
       if (amount == BigDecimal.ZERO) {
         return
       }
+      long accountId = resolveAccountId(sql, companyId, accountNumber)
       sql.executeInsert('''
           insert into closing_entry (
               fiscal_year_id,
               next_fiscal_year_id,
               voucher_id,
               entry_type,
-              account_number,
-              counter_account_number,
+              account_id,
+              counter_account_id,
               amount,
               created_at
           ) values (?, ?, null, ?, ?, null, ?, current_timestamp)
-      ''', [fiscalYearId, nextFiscalYearId, OPENING_BALANCE, accountNumber, amount])
+      ''', [fiscalYearId, nextFiscalYearId, OPENING_BALANCE, accountId, amount])
       created++
     }
     created
@@ -409,7 +419,7 @@ final class ClosingService {
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and a.account_class in ('INCOME', 'EXPENSE')
@@ -436,10 +446,10 @@ final class ClosingService {
   private static Map<String, BigDecimal> loadBalanceClosingBalances(Sql sql, long fiscalYearId) {
     Map<String, BigDecimal> openings = [:]
     sql.rows('''
-        select ob.account_number as accountNumber,
+        select a.account_number as accountNumber,
                ob.amount
           from opening_balance ob
-          join account a on a.account_number = ob.account_number
+          join account a on a.id = ob.account_id
          where ob.fiscal_year_id = ?
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
     ''', [fiscalYearId]).each { GroovyRowResult row ->
@@ -454,7 +464,7 @@ final class ClosingService {
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
@@ -604,6 +614,28 @@ final class ClosingService {
     )
   }
 
+  private static long resolveAccountId(Sql sql, long companyId, String accountNumber) {
+    GroovyRowResult row = sql.firstRow(
+        'select id from account where company_id = ? and account_number = ?',
+        [companyId, accountNumber]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Kan inte hitta konto ${accountNumber} vid bokslut.")
+    }
+    ((Number) row.get('id')).longValue()
+  }
+
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
+  }
+
   private static String normalizeAccountNumber(String accountNumber) {
     String normalized = accountNumber?.trim()
     if (!(normalized ==~ /\d{4}/)) {
@@ -644,8 +676,8 @@ final class ClosingService {
         row.get('nextFiscalYearId') == null ? null : ((Number) row.get('nextFiscalYearId')).longValue(),
         row.get('voucherId') == null ? null : ((Number) row.get('voucherId')).longValue(),
         row.get('entryType') as String,
-        row.get('accountNumber') as String,
-        row.get('counterAccountNumber') as String,
+        row.get('accountId') == null ? null : ((Number) row.get('accountId')).longValue(),
+        row.get('counterAccountId') == null ? null : ((Number) row.get('counterAccountId')).longValue(),
         new BigDecimal(row.get('amount').toString()),
         SqlValueMapper.toLocalDateTime(row.get('createdAt'))
     )

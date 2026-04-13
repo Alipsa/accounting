@@ -37,7 +37,7 @@ final class VatReportSupport {
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?

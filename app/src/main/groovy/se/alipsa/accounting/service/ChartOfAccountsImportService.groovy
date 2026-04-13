@@ -54,17 +54,19 @@ final class ChartOfAccountsImportService {
   }
 
   private ImportSummary persistAccounts(Sql sql, List<Account> accounts) {
+    long companyId = resolveDefaultCompanyId(sql)
     int created = 0
     int updated = 0
 
     accounts.each { Account account ->
       GroovyRowResult existing = sql.firstRow(
-          'select account_number from account where account_number = ?',
-          [account.accountNumber]
+          'select account_number from account where company_id = ? and account_number = ?',
+          [companyId, account.accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
         sql.executeInsert('''
             insert into account (
+                company_id,
                 account_number,
                 account_name,
                 account_class,
@@ -75,8 +77,9 @@ final class ChartOfAccountsImportService {
                 classification_note,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
+            companyId,
             account.accountNumber,
             account.accountName,
             account.accountClass,
@@ -97,13 +100,15 @@ final class ChartOfAccountsImportService {
                    manual_review_required = ?,
                    classification_note = ?,
                    updated_at = current_timestamp
-             where account_number = ?
+             where company_id = ?
+               and account_number = ?
         ''', [
             account.accountName,
             account.accountClass,
             account.normalBalanceSide,
             account.manualReviewRequired,
             account.classificationNote,
+            companyId,
             account.accountNumber
         ])
         updated++
@@ -154,14 +159,14 @@ final class ChartOfAccountsImportService {
     String accountName = normalizeAccountName(formatter.formatCellValue(row.getCell(nameColumn)))
     Classification classification = classifyAccount(accountNumber, accountName)
     accounts[accountNumber] = new Account(
-        accountNumber,
-        accountName,
-        classification.accountClass,
-        classification.normalBalanceSide,
-        null,
-        true,
-        classification.manualReviewRequired,
-        classification.note
+        accountNumber: accountNumber,
+        accountName: accountName,
+        accountClass: classification.accountClass,
+        normalBalanceSide: classification.normalBalanceSide,
+        vatCode: null,
+        active: true,
+        manualReviewRequired: classification.manualReviewRequired,
+        classificationNote: classification.note
     )
   }
 
@@ -236,6 +241,16 @@ final class ChartOfAccountsImportService {
     }
     String normalized = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
     normalized.replaceAll(/\p{M}+/, '')
+  }
+
+  private static long resolveDefaultCompanyId(Sql sql) {
+    GroovyRowResult row = sql.firstRow(
+        'select id from company order by id limit 1'
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalStateException('Inget företag finns i databasen.')
+    }
+    ((Number) row.get('id')).longValue()
   }
 
   @Canonical
