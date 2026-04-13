@@ -1,6 +1,7 @@
 plugins {
   id 'groovy'
   id 'application'
+  id 'signing'
   id 'codenarc'
   id 'com.diffplug.spotless' version '8.4.0'
 }
@@ -15,6 +16,7 @@ repositories {
 dependencies {
   implementation libs.groovy.core
   implementation libs.groovy.swing
+  implementation libs.groovy.json
   implementation libs.groovy.sql
 
   implementation libs.h2
@@ -334,6 +336,14 @@ tasks.register('verifyCurrentPlatformRelease') {
 
 tasks.register('releaseCheck') {
   dependsOn 'verifyPackagingResources', 'verifyCurrentPlatformRelease'
+}
+
+signing {
+  if (project.properties['signing.keyId'] != null) {
+    sign distZip, distTar, tasks.named('packageLinuxReleaseZip').get()
+  } else {
+    project.logger.debug("signing.keyId is not defined, skipping signing of artifacts...")
+  }
 }
 
 tasks.withType(GroovyCompile).configureEach {
