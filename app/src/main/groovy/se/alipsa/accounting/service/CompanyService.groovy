@@ -54,19 +54,21 @@ final class CompanyService {
   Company save(Company company) {
     validate(company)
     databaseService.withTransaction { Sql sql ->
-      if (company.id == null) {
-        create(sql, company)
-      } else {
-        update(sql, company)
-      }
+      save(sql, company)
     }
   }
 
   Company upsertLegacyCompany(CompanySettings settings) {
+    databaseService.withTransaction { Sql sql ->
+      upsertLegacyCompany(sql, settings)
+    }
+  }
+
+  Company upsertLegacyCompany(Sql sql, CompanySettings settings) {
     if (settings == null) {
       throw new IllegalArgumentException('Company settings are required.')
     }
-    save(new Company(
+    save(sql, new Company(
         LEGACY_COMPANY_ID,
         settings.companyName,
         settings.organizationNumber,
@@ -77,6 +79,15 @@ final class CompanyService {
         null,
         null
     ))
+  }
+
+  Company save(Sql sql, Company company) {
+    validate(company)
+    if (company.id == null) {
+      create(sql, company)
+    } else {
+      update(sql, company)
+    }
   }
 
   private Company create(Sql sql, Company company) {

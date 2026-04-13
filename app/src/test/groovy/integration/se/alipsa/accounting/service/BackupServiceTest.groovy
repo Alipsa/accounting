@@ -71,11 +71,12 @@ class BackupServiceTest {
     DatabaseService restoredDatabase = DatabaseService.newForTesting()
     restoredDatabase.initialize()
     restoredDatabase.withSql { Sql sql ->
+      assertEquals(1, count(sql, 'company'))
       assertEquals(1, count(sql, 'company_settings'))
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
-      assertEquals(12, countSchemaVersion(sql))
+      assertEquals(13, countSchemaVersion(sql))
     }
   }
 
