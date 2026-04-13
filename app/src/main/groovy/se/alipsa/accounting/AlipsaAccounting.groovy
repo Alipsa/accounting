@@ -1,7 +1,5 @@
 package se.alipsa.accounting
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
@@ -19,7 +17,6 @@ import javax.swing.SwingUtilities
 /**
  * Application entry point for Alipsa Accounting.
  */
-@CompileStatic
 final class AlipsaAccounting {
 
   private static final Logger log = Logger.getLogger(AlipsaAccounting.name)
@@ -123,7 +120,6 @@ ${rows.join('\n')}
     }
   }
 
-  @CompileStatic
   private static final class StartupOptions {
 
     final boolean verifyLaunchRequested

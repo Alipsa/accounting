@@ -1,7 +1,6 @@
 package se.alipsa.accounting.service
 
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import org.h2.tools.RunScript
 import org.h2.tools.Script
@@ -25,7 +24,6 @@ import java.util.zip.ZipOutputStream
 /**
  * Creates and restores verified backups containing an H2 script dump and archived files.
  */
-@CompileStatic
 final class BackupService {
 
   private static final int BACKUP_FORMAT_VERSION = 1

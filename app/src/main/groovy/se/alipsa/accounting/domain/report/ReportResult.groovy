@@ -1,7 +1,6 @@
 package se.alipsa.accounting.domain.report
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDate
 
@@ -9,7 +8,6 @@ import java.time.LocalDate
  * Unified report payload used by preview, CSV export and PDF rendering.
  */
 @Canonical
-@CompileStatic
 final class ReportResult {
 
   ReportType reportType

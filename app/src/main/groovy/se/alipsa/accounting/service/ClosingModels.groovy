@@ -1,13 +1,11 @@
 package se.alipsa.accounting.service
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 
 @Canonical
-@CompileStatic
 final class YearEndClosingPreview {
 
   FiscalYear fiscalYear
@@ -23,7 +21,6 @@ final class YearEndClosingPreview {
 }
 
 @Canonical
-@CompileStatic
 final class YearEndClosingResult {
 
   FiscalYear closedFiscalYear
@@ -37,7 +34,6 @@ final class YearEndClosingResult {
 }
 
 @Canonical
-@CompileStatic
 final class NextFiscalYearPlan {
 
   FiscalYear fiscalYear
@@ -46,7 +42,6 @@ final class NextFiscalYearPlan {
 }
 
 @Canonical
-@CompileStatic
 final class ResultAccountBalance {
 
   String accountNumber
@@ -57,7 +52,6 @@ final class ResultAccountBalance {
 }
 
 @Canonical
-@CompileStatic
 final class BalanceAccountSeed {
 
   String accountNumber
@@ -68,7 +62,6 @@ final class BalanceAccountSeed {
 }
 
 @Canonical
-@CompileStatic
 final class ClosingExecution {
 
   Voucher closingVoucher

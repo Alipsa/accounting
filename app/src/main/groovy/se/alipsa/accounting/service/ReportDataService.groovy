@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
@@ -26,7 +25,6 @@ import java.time.LocalDate
 /**
  * Builds reusable report data for UI previews, CSV export and Journo PDF rendering.
  */
-@CompileStatic
 final class ReportDataService {
 
   private static final int AMOUNT_SCALE = 2

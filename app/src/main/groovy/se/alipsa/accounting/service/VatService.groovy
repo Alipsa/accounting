@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.VatCode
@@ -20,7 +19,6 @@ import java.sql.Date
 /**
  * Calculates VAT reports, manages VAT periods and books VAT transfer vouchers.
  */
-@CompileStatic
 final class VatService {
 
   static final String OPEN = 'OPEN'
@@ -511,7 +509,6 @@ final class VatService {
   }
 
   @Canonical
-  @CompileStatic
   static final class VatReport {
 
     VatPeriod period
@@ -522,7 +519,6 @@ final class VatService {
   }
 
   @Canonical
-  @CompileStatic
   static final class VatReportRow {
 
     VatCode vatCode
@@ -533,7 +529,6 @@ final class VatService {
   }
 
   @Canonical
-  @CompileStatic
   private static final class VatBucket {
 
     BigDecimal baseAmount = BigDecimal.ZERO
@@ -544,7 +539,6 @@ final class VatService {
   }
 
   @Canonical
-  @CompileStatic
   private static final class TransferBalance {
 
     String accountNumber

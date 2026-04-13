@@ -1,11 +1,8 @@
 package se.alipsa.accounting.domain.report
 
-import groovy.transform.CompileStatic
-
 /**
  * Supported report categories for preview, PDF generation and CSV export.
  */
-@CompileStatic
 enum ReportType {
 
   VOUCHER_LIST('Verifikationslista', 'voucher-list.ftl', true),

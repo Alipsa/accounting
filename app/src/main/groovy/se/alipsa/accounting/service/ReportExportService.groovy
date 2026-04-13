@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -12,7 +10,6 @@ import java.nio.charset.StandardCharsets
  * Exports tabular reports as CSV using the same selection and row order as the UI preview.
  * The export intentionally uses ';' as separator because Swedish Excel defaults expect it.
  */
-@CompileStatic
 final class ReportExportService {
 
   private final ReportDataService reportDataService

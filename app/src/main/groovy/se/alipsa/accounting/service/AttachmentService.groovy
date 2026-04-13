@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.support.AppPaths
@@ -17,7 +16,6 @@ import java.time.LocalDateTime
 /**
  * Stores voucher attachments on disk and keeps metadata plus checksums in the database.
  */
-@CompileStatic
 final class AttachmentService {
 
   private static final String DEFAULT_CONTENT_TYPE = 'application/octet-stream'

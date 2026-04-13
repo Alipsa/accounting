@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -9,7 +7,6 @@ import java.time.LocalDateTime
 /**
  * Guards deletion of accounting records, attachments and archives within the retention window.
  */
-@CompileStatic
 final class RetentionPolicyService {
 
   static final int RETENTION_YEARS = 7

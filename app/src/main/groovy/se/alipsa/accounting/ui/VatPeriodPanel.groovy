@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.service.FiscalYearService
@@ -29,7 +27,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
-@CompileStatic
 final class VatPeriodPanel extends JPanel {
 
   private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat('#,##0.00')

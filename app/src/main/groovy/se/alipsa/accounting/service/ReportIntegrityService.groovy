@@ -1,13 +1,10 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AttachmentMetadata
 
 /**
  * Blocks reporting exports when integrity checks reveal critical problems.
  */
-@CompileStatic
 final class ReportIntegrityService {
 
   private final VoucherService voucherService

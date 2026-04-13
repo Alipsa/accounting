@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
@@ -44,7 +42,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Voucher registration dialog with row editing, account lookup and totals.
  */
-@CompileStatic
 final class VoucherEditor extends JDialog {
 
   static final class Dependencies {

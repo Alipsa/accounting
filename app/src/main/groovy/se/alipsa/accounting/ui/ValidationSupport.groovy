@@ -1,11 +1,8 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 /**
  * Shared helpers for presenting validation feedback consistently in the UI.
  */
-@CompileStatic
 final class ValidationSupport {
 
   private ValidationSupport() {

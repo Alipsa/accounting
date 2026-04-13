@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.service.BackupResult
 import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.RestoreResult
@@ -31,7 +29,6 @@ import javax.swing.filechooser.FileNameExtensionFilter
 /**
  * Shows diagnostics, system documentation and backup/restore actions.
  */
-@CompileStatic
 final class SystemDocumentationPanel extends JPanel {
 
   private final SystemDocumentationService documentationService
@@ -272,7 +269,6 @@ final class SystemDocumentationPanel extends JPanel {
     messageArea.text = text
   }
 
-  @CompileStatic
   private static final class RefreshPayload {
 
     final String diagnostics

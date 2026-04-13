@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.Row
@@ -19,7 +18,6 @@ import java.nio.file.Path
 /**
  * Imports BAS chart of accounts from Excel using Apache POI.
  */
-@CompileStatic
 final class ChartOfAccountsImportService {
 
   private static final Set<String> INCOME_KEYWORDS = [
@@ -241,7 +239,6 @@ final class ChartOfAccountsImportService {
   }
 
   @Canonical
-  @CompileStatic
   static final class ImportSummary {
 
     int importedCount
@@ -251,7 +248,6 @@ final class ChartOfAccountsImportService {
   }
 
   @Canonical
-  @CompileStatic
   private static final class Classification {
 
     String accountClass

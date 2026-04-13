@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.service.UserManualService
 
 import java.awt.BorderLayout
@@ -18,7 +16,6 @@ import javax.swing.JTextArea
 /**
  * Displays the bundled end-user manual.
  */
-@CompileStatic
 final class UserManualDialog extends JDialog {
 
   UserManualDialog(Frame owner, UserManualService userManualService) {

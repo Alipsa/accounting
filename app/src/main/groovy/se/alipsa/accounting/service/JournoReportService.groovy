@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
@@ -12,7 +10,6 @@ import se.alipsa.journo.JournoException
 /**
  * Renders PDF reports from Freemarker templates through Journo.
  */
-@CompileStatic
 final class JournoReportService {
 
   private final ReportDataService reportDataService

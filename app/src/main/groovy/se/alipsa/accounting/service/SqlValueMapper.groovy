@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDate
@@ -11,7 +9,6 @@ import java.time.OffsetDateTime
 /**
  * Shared conversion helpers for JDBC values returned by Groovy SQL.
  */
-@CompileStatic
 final class SqlValueMapper {
 
   private SqlValueMapper() {

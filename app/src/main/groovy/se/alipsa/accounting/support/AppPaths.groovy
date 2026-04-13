@@ -1,7 +1,5 @@
 package se.alipsa.accounting.support
 
-import groovy.transform.CompileStatic
-
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -10,7 +8,6 @@ import java.nio.file.attribute.PosixFilePermission
 /**
  * Resolves application directories in a platform-aware way.
  */
-@CompileStatic
 final class AppPaths {
 
   static final String HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.home'

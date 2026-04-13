@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
@@ -37,7 +35,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Imports, displays and filters the chart of accounts.
  */
-@CompileStatic
 final class ChartOfAccountsPanel extends JPanel {
 
   private static final String ALL_CLASSES = 'Alla'

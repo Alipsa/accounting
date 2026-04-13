@@ -1,13 +1,11 @@
 package se.alipsa.accounting.domain
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 /**
  * Number series for vouchers within one fiscal year.
  */
 @Canonical
-@CompileStatic
 final class VoucherSeries {
 
   Long id

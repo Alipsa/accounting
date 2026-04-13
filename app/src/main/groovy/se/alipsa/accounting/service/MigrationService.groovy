@@ -3,14 +3,12 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDateTime
 
 /**
  * Exposes applied and expected forward-only schema migrations.
  */
-@CompileStatic
 final class MigrationService {
 
   private final DatabaseService databaseService
@@ -50,7 +48,6 @@ final class MigrationService {
   }
 
   @Canonical
-  @CompileStatic
   static final class AppliedMigration {
 
     int version

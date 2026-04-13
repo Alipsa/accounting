@@ -1,14 +1,11 @@
 package se.alipsa.accounting.support
 
-import groovy.transform.CompileStatic
-
 import java.nio.file.Path
 import java.util.logging.*
 
 /**
  * Configures application logging for startup and runtime diagnostics.
  */
-@CompileStatic
 final class LoggingConfigurer {
 
   private static final Logger log = Logger.getLogger(LoggingConfigurer.name)

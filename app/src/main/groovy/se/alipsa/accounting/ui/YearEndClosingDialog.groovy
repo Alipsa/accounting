@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.YearEndClosingPreview
@@ -29,7 +27,6 @@ import javax.swing.SwingWorker
 /**
  * Runs preview checks and confirmation for year-end closing.
  */
-@CompileStatic
 final class YearEndClosingDialog extends JDialog {
 
   private final ClosingService closingService

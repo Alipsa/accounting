@@ -1,13 +1,10 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import java.nio.charset.StandardCharsets
 
 /**
  * Loads the bundled end-user manual.
  */
-@CompileStatic
 final class UserManualService {
 
   String loadManual() {
