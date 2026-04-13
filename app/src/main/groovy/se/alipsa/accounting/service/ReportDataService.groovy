@@ -412,7 +412,7 @@ final class ReportDataService {
         BigDecimal computedInputVat = scale(bucket.baseAmount * vatCode.inputRate)
         new VatReportEntry(
             vatCode.name(),
-            vatCode.label,
+            vatCode.displayName,
             bucket.baseAmount,
             bucket.outputPostingCount > 0 ? bucket.postedOutputVat : computedOutputVat,
             bucket.inputPostingCount > 0 ? bucket.postedInputVat : computedInputVat
@@ -593,7 +593,7 @@ final class ReportDataService {
       Map<String, Object> extraModel
   ) {
     Map<String, Object> templateModel = [
-        title         : effective.selection.reportType.label,
+        title         : effective.selection.reportType.displayName,
         selectionLabel: effective.selectionLabel,
         reportType    : effective.selection.reportType,
         startDate     : effective.startDate,
@@ -604,7 +604,7 @@ final class ReportDataService {
     ] + (extraModel ?: [:])
     new ReportResult(
         effective.selection.reportType,
-        effective.selection.reportType.label,
+        effective.selection.reportType.displayName,
         effective.selectionLabel,
         effective.selection.fiscalYearId,
         effective.selection.accountingPeriodId,

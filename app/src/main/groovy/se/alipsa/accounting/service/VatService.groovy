@@ -300,7 +300,7 @@ final class VatService {
           BigDecimal computedInputVat = scale(bucket.baseAmount * vatCode.inputRate)
           BigDecimal outputVat = bucket.outputPostingCount > 0 ? bucket.postedOutputVat : computedOutputVat
           BigDecimal inputVat = bucket.inputPostingCount > 0 ? bucket.postedInputVat : computedInputVat
-          new VatReportRow(vatCode, vatCode.label, bucket.baseAmount, outputVat, inputVat)
+          new VatReportRow(vatCode, vatCode.displayName, bucket.baseAmount, outputVat, inputVat)
         }
 
     BigDecimal outputVatTotal = rows.sum(BigDecimal.ZERO) { VatReportRow row -> row.outputVatAmount } as BigDecimal

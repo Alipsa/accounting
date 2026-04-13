@@ -545,7 +545,7 @@ final class ReportPanel extends JPanel {
         case 0:
           return row.createdAt
         case 1:
-          return row.reportType.label
+          return row.reportType.displayName
         case 2:
           return row.reportFormat
         case 3:

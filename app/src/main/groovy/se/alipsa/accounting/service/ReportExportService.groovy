@@ -44,7 +44,7 @@ final class ReportExportService {
 
   byte[] renderCsv(ReportResult report) {
     if (!report.reportType.csvSupported) {
-      throw new IllegalArgumentException("CSV-export stöds inte för ${report.reportType.label}.")
+      throw new IllegalArgumentException("CSV-export stöds inte för ${report.reportType.displayName}.")
     }
     StringBuilder builder = new StringBuilder('\uFEFF')
     // Swedish locale users commonly open these files in Excel, which expects semicolon-separated UTF-8 with BOM.
@@ -65,7 +65,7 @@ final class ReportExportService {
         csv
     )
     auditLogService.logExport(
-        "CSV-rapport exporterad: ${report.reportType.label}",
+        "CSV-rapport exporterad: ${report.reportType.displayName}",
         "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}"
     )
     archive

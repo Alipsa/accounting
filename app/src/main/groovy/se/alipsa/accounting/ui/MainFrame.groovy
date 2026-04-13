@@ -303,7 +303,7 @@ final class MainFrame {
             <p>Organisationsnummer: ${escapeHtml(settings.organizationNumber)}</p>
             <p>Valuta: ${escapeHtml(settings.defaultCurrency)}</p>
             <p>Locale: ${escapeHtml(settings.localeTag)}</p>
-            <p>Momsperiod: ${escapeHtml(settings.vatPeriodicity?.label ?: 'Månadsvis')}</p>
+            <p>Momsperiod: ${escapeHtml(settings.vatPeriodicity?.displayName ?: 'Monthly')}</p>
             </html>
         """.stripIndent().trim()
   }
