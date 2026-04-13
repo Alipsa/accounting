@@ -155,3 +155,13 @@ alter table closing_entry
 alter table closing_entry
     add constraint fk_closing_entry_counter_account
         foreign key (counter_account_id) references account(id) on delete restrict;
+
+alter table account
+    rename constraint uq_account_company_number_v15 to uq_account_company_number;
+
+alter table account
+    drop constraint fk_account_company_v15;
+
+alter table account
+    add constraint fk_account_company
+        foreign key (company_id) references company(id) on delete restrict;

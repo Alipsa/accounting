@@ -41,6 +41,7 @@ final class VoucherLine {
     this.creditAmount = creditAmount
   }
 
+  @Deprecated
   VoucherLine(
       Long id,
       Long voucherId,

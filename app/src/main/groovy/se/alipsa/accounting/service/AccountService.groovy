@@ -131,7 +131,7 @@ final class AccountService {
           [normalized]
       ) as GroovyRowResult
       if (accountRow == null) {
-        return new OpeningBalance(fiscalYearId, null, normalized, BigDecimal.ZERO)
+        throw new IllegalArgumentException("Konto ${normalized} finns inte i kontoplanen.")
       }
       long accountId = ((Number) accountRow.get('id')).longValue()
       GroovyRowResult row = sql.firstRow('''

@@ -31,7 +31,6 @@ import java.time.LocalDate
 /**
  * Imports and exports SIE4 files and records import job outcomes.
  */
-@SuppressWarnings('ClassSize')
 final class SieImportExportService {
   private static final int AMOUNT_SCALE = 2
   private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L
@@ -445,11 +444,17 @@ final class SieImportExportService {
       }
       normalizedBalances[accountNumber] = scale(value.amount)
     }
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     normalizedBalances.each { String accountNumber, BigDecimal amount ->
       GroovyRowResult account = sql.firstRow(
-          'select id from account where account_number = ?',
-          [accountNumber]
+          'select id from account where company_id = ? and account_number = ?',
+          [companyId, accountNumber]
       ) as GroovyRowResult
+      if (account == null) {
+        throw new IllegalStateException(
+            "Kan inte hitta konto ${accountNumber} vid import av ingående balanser."
+        )
+      }
       long accountId = ((Number) account.get('id')).longValue()
       sql.executeInsert('''
           insert into opening_balance (

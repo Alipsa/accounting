@@ -222,6 +222,7 @@ final class ClosingService {
         ? null
         : createClosingVoucher(sql, preview.fiscalYear, preview.closingAccountNumber, resultBalances)
 
+    long companyId = resolveCompanyId(sql, preview.fiscalYear.id)
     int closingEntryCount = persistResultClosingEntries(
         sql,
         preview.fiscalYear.id,
@@ -230,8 +231,8 @@ final class ClosingService {
         resultBalances
     )
     Map<String, BigDecimal> closingBalances = loadBalanceClosingBalances(sql, preview.fiscalYear.id)
-    int openingBalanceCount = persistOpeningBalances(sql, preview.nextFiscalYear.id, closingBalances)
-    closingEntryCount += persistOpeningBalanceEntries(sql, preview.fiscalYear.id, preview.nextFiscalYear.id, closingBalances)
+    int openingBalanceCount = persistOpeningBalances(sql, preview.nextFiscalYear.id, companyId, closingBalances)
+    closingEntryCount += persistOpeningBalanceEntries(sql, preview.fiscalYear.id, preview.nextFiscalYear.id, companyId, closingBalances)
     new ClosingExecution(closingVoucher, openingBalanceCount, closingEntryCount)
   }
 
@@ -323,14 +324,15 @@ final class ClosingService {
       Map<String, ResultAccountBalance> resultBalances
   ) {
     int created = 0
-    Long counterAccountId = resolveAccountId(sql, closingAccountNumber)
+    long companyId = resolveCompanyId(sql, fiscalYearId)
+    long counterAccountId = resolveAccountId(sql, companyId, closingAccountNumber)
     resultBalances.keySet().sort().each { String accountNumber ->
       ResultAccountBalance balance = resultBalances[accountNumber]
       BigDecimal amount = scale(balance.amount)
       if (amount == BigDecimal.ZERO) {
         return
       }
-      Long accountId = resolveAccountId(sql, balance.accountNumber)
+      long accountId = resolveAccountId(sql, companyId, balance.accountNumber)
       sql.executeInsert('''
           insert into closing_entry (
               fiscal_year_id,
@@ -351,6 +353,7 @@ final class ClosingService {
   private static int persistOpeningBalances(
       Sql sql,
       long nextFiscalYearId,
+      long companyId,
       Map<String, BigDecimal> closingBalances
   ) {
     int created = 0
@@ -359,7 +362,7 @@ final class ClosingService {
       if (amount == BigDecimal.ZERO) {
         return
       }
-      Long accountId = resolveAccountId(sql, accountNumber)
+      long accountId = resolveAccountId(sql, companyId, accountNumber)
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
@@ -378,6 +381,7 @@ final class ClosingService {
       Sql sql,
       long fiscalYearId,
       long nextFiscalYearId,
+      long companyId,
       Map<String, BigDecimal> closingBalances
   ) {
     int created = 0
@@ -386,7 +390,7 @@ final class ClosingService {
       if (amount == BigDecimal.ZERO) {
         return
       }
-      Long accountId = resolveAccountId(sql, accountNumber)
+      long accountId = resolveAccountId(sql, companyId, accountNumber)
       sql.executeInsert('''
           insert into closing_entry (
               fiscal_year_id,
@@ -610,9 +614,26 @@ final class ClosingService {
     )
   }
 
-  private static Long resolveAccountId(Sql sql, String accountNumber) {
-    GroovyRowResult row = sql.firstRow('select id from account where account_number = ?', [accountNumber]) as GroovyRowResult
-    row == null ? null : ((Number) row.get('id')).longValue()
+  private static long resolveAccountId(Sql sql, long companyId, String accountNumber) {
+    GroovyRowResult row = sql.firstRow(
+        'select id from account where company_id = ? and account_number = ?',
+        [companyId, accountNumber]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Kan inte hitta konto ${accountNumber} vid bokslut.")
+    }
+    ((Number) row.get('id')).longValue()
+  }
+
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
   }
 
   private static String normalizeAccountNumber(String accountNumber) {

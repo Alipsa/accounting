@@ -100,6 +100,21 @@ class VoucherServiceTest {
   }
 
   @Test
+  void bookedVoucherLinesHaveNonNullAccountId() {
+    Voucher booked = voucherService.createAndBook(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 15),
+        'Kontroll av account_id',
+        balancedLines(100.00G)
+    )
+
+    booked.lines.each { VoucherLine line ->
+      assertNotNull(line.accountId, "accountId ska inte vara null för rad ${line.accountNumber}")
+    }
+  }
+
+  @Test
   void unbalancedBookingDoesNotAdvanceNumberSeries() {
     Voucher first = voucherService.createAndBook(
         fiscalYear.id,
