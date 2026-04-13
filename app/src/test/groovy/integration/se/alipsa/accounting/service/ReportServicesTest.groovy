@@ -175,9 +175,9 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 20),
         '=2+2',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 10.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 8.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 2.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 10.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 8.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 2.00G)
         ]
     )
     ReportSelection selection = new ReportSelection(
@@ -205,7 +205,10 @@ class ReportServicesTest {
     )
 
     databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?', [9999.00G, 1L, '1510'])
+      sql.executeUpdate(
+          'update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?',
+          [9999.00G, 1L, '1510']
+      )
     }
 
     assertThrows(IllegalStateException) {
@@ -222,9 +225,9 @@ class ReportServicesTest {
         LocalDate.of(2026, 2, 10),
         'Försäljning februari',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 125.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 25.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 125.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 100.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 25.00G)
         ]
     )
 
@@ -340,9 +343,9 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 10),
         'Försäljning januari',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1250.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 1000.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 250.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1250.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 250.00G)
         ]
     )
     voucherService.createAndBook(
@@ -351,9 +354,9 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 18),
         'Leverantörsfaktura',
         [
-            new VoucherLine(null, null, 0, '4010', null, 'Varuinköp', 200.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2641', null, 'Ingående moms', 50.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
+            new VoucherLine(null, null, 0, null, '4010', null, 'Varuinköp', 200.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2641', null, 'Ingående moms', 50.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
         ]
     )
   }
@@ -373,15 +376,16 @@ class ReportServicesTest {
 
   private void insertOpeningBalance(String accountNumber, BigDecimal amount) {
     databaseService.withTransaction { Sql sql ->
+      def accountRow = sql.firstRow('select id from account where account_number = ?', [accountNumber])
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
           ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [fiscalYear.id, accountNumber, amount])
+      ''', [fiscalYear.id, accountRow.id, amount])
     }
   }
 
@@ -408,6 +412,7 @@ class ReportServicesTest {
   ) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -418,7 +423,7 @@ class ReportServicesTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 

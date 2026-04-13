@@ -96,7 +96,7 @@ class SieImportExportServiceTest {
     Path exportPath = tempDir.resolve('blocked.sie')
 
     databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = 1 and account_number = ?', [999.00G, '1510'])
+      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = 1 and account_id = (select id from account where account_number = ?)', [999.00G, '1510'])
     }
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
@@ -241,20 +241,20 @@ class SieImportExportServiceTest {
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
-          ) values (?, ?, ?, current_timestamp, current_timestamp)
+          ) values (?, (select id from account where account_number = ?), ?, current_timestamp, current_timestamp)
       ''', [fiscalYear.id, '1510', 100.00G])
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
-          ) values (?, ?, ?, current_timestamp, current_timestamp)
+          ) values (?, (select id from account where account_number = ?), ?, current_timestamp, current_timestamp)
       ''', [fiscalYear.id, '2010', 100.00G])
     }
 
@@ -324,6 +324,7 @@ class SieImportExportServiceTest {
   private static void insertAccount(Sql sql, String accountNumber, String accountName, String accountClass, String normalBalanceSide) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -334,7 +335,7 @@ class SieImportExportServiceTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide])
   }
 

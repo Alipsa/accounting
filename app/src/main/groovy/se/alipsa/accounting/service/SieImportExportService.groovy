@@ -31,6 +31,7 @@ import java.time.LocalDate
 /**
  * Imports and exports SIE4 files and records import job outcomes.
  */
+@SuppressWarnings('ClassSize')
 final class SieImportExportService {
   private static final int AMOUNT_SCALE = 2
   private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L
@@ -341,7 +342,7 @@ final class SieImportExportService {
   }
 
   private ImportCounts importDocument(Sql sql, long fiscalYearId, SieDocument document, List<String> warnings) {
-    int accountsCreated = upsertAccounts(sql, document.getKONTO().values() as Collection<SieAccount>)
+    int accountsCreated = upsertAccounts(sql, fiscalYearId, document.getKONTO().values() as Collection<SieAccount>)
     int openingBalanceCount = persistOpeningBalances(sql, fiscalYearId, document.getIB(), warnings)
     VoucherImportSummary voucherSummary = persistVouchers(sql, fiscalYearId, document.getVER())
     warnings.addAll(validateClosingBalances(sql, fiscalYearId, document.getUB()))
@@ -354,7 +355,8 @@ final class SieImportExportService {
     warnings.isEmpty() ? base : "${base} ${warnings.size()} varningar registrerades."
   }
 
-  private int upsertAccounts(Sql sql, Collection<SieAccount> accounts) {
+  private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts) {
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     int created = 0
     List<SieAccount> sortedAccounts = new ArrayList<>(accounts ?: [])
     sortedAccounts.sort { SieAccount account -> account.number }
@@ -374,6 +376,7 @@ final class SieImportExportService {
       if (existing == null) {
         sql.executeInsert('''
             insert into account (
+                company_id,
                 account_number,
                 account_name,
                 account_class,
@@ -384,8 +387,9 @@ final class SieImportExportService {
                 classification_note,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, true, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, current_timestamp, current_timestamp)
         ''', [
+            companyId,
             accountNumber,
             accountName,
             classification.accountClass,
@@ -442,15 +446,20 @@ final class SieImportExportService {
       normalizedBalances[accountNumber] = scale(value.amount)
     }
     normalizedBalances.each { String accountNumber, BigDecimal amount ->
+      GroovyRowResult account = sql.firstRow(
+          'select id from account where account_number = ?',
+          [accountNumber]
+      ) as GroovyRowResult
+      long accountId = ((Number) account.get('id')).longValue()
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
-              account_number,
+              account_id,
               amount,
               created_at,
               updated_at
           ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [fiscalYearId, accountNumber, amount])
+      ''', [fiscalYearId, accountId, amount])
     }
     normalizedBalances.size()
   }
@@ -517,6 +526,7 @@ final class SieImportExportService {
           null,
           null,
           lineIndex++,
+          null,
           accountNumber,
           null,
           normalizeLineText(row.text ?: voucher.text ?: ''),
@@ -554,10 +564,10 @@ final class SieImportExportService {
   private static Map<String, BigDecimal> loadClosingBalances(Sql sql, long fiscalYearId) {
     Map<String, BigDecimal> openings = [:]
     sql.rows('''
-        select ob.account_number as accountNumber,
+        select a.account_number as accountNumber,
                ob.amount
           from opening_balance ob
-          join account a on a.account_number = ob.account_number
+          join account a on a.id = ob.account_id
          where ob.fiscal_year_id = ?
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
     ''', [fiscalYearId]).each { GroovyRowResult row ->
@@ -572,7 +582,7 @@ final class SieImportExportService {
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
@@ -669,10 +679,11 @@ final class SieImportExportService {
   private static Map<String, BigDecimal> loadOpeningBalances(Sql sql, long fiscalYearId) {
     Map<String, BigDecimal> balances = [:]
     sql.rows('''
-        select account_number as accountNumber,
-               amount
-          from opening_balance
-         where fiscal_year_id = ?
+        select a.account_number as accountNumber,
+               ob.amount
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
     ''', [fiscalYearId]).each { GroovyRowResult row ->
       balances[row.get('accountNumber') as String] = scale(new BigDecimal(row.get('amount').toString()))
     }
@@ -903,16 +914,20 @@ final class SieImportExportService {
         : scale(creditAmount - debitAmount)
   }
 
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
+  }
+
   private long resolveCompanyId(long fiscalYearId) {
     databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select company_id as companyId from fiscal_year where id = ?',
-          [fiscalYearId]
-      ) as GroovyRowResult
-      if (row == null) {
-        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-      }
-      ((Number) row.get('companyId')).longValue()
+      resolveCompanyId(sql, fiscalYearId)
     }
   }
 

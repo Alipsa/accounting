@@ -116,8 +116,8 @@ class VoucherServiceTest {
           LocalDate.of(2026, 1, 16),
           'Obalanserad verifikation',
           [
-              new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 100.00G, 0.00G),
-              new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 90.00G)
+              new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 100.00G, 0.00G),
+              new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 90.00G)
           ]
       )
     } as Executable
@@ -207,8 +207,8 @@ class VoucherServiceTest {
         LocalDate.of(2026, 2, 16),
         'Uppdaterat utkast',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 125.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 125.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 125.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 125.00G)
         ]
     )
 
@@ -239,8 +239,8 @@ class VoucherServiceTest {
           LocalDate.of(2026, 3, 1),
           'Okänt konto',
           [
-              new VoucherLine(null, null, 0, '9999', null, 'Okänt konto', 100.00G, 0.00G),
-              new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G)
+              new VoucherLine(null, null, 0, null, '9999', null, 'Okänt konto', 100.00G, 0.00G),
+              new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 100.00G)
           ]
       )
     } as Executable
@@ -373,7 +373,12 @@ class VoucherServiceTest {
     )
 
     databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?', [125.00G, voucher.id, '1510'])
+      sql.executeUpdate('''
+          update voucher_line
+             set debit_amount = ?
+           where voucher_id = ?
+             and account_id = (select id from account where account_number = ?)
+      ''', [125.00G, voucher.id, '1510'])
     }
 
     List<String> problems = voucherService.validateIntegrity()
@@ -398,6 +403,7 @@ class VoucherServiceTest {
   ) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -408,14 +414,14 @@ class VoucherServiceTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide])
   }
 
   private static List<VoucherLine> balancedLines(BigDecimal amount) {
     [
-        new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', amount, 0.00G),
-        new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, amount)
+        new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', amount, 0.00G),
+        new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, amount)
     ]
   }
 

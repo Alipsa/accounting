@@ -464,7 +464,8 @@ final class ReportDataService {
   private static Map<String, AccountInfo> loadAccountInfos(Sql sql) {
     Map<String, AccountInfo> accounts = [:]
     sql.rows('''
-        select account_number as accountNumber,
+        select id as accountId,
+               account_number as accountNumber,
                account_name as accountName,
                account_class as accountClass,
                normal_balance_side as normalBalanceSide
@@ -472,6 +473,7 @@ final class ReportDataService {
          order by account_number
     ''').each { GroovyRowResult row ->
       accounts.put(row.get('accountNumber') as String, new AccountInfo(
+          ((Number) row.get('accountId')).longValue(),
           row.get('accountName') as String,
           row.get('accountClass') as String,
           row.get('normalBalanceSide') as String
@@ -483,10 +485,11 @@ final class ReportDataService {
   private static Map<String, BigDecimal> loadOpeningBalances(Sql sql, long fiscalYearId) {
     Map<String, BigDecimal> balances = [:]
     sql.rows('''
-        select account_number as accountNumber,
-               amount
-          from opening_balance
-         where fiscal_year_id = ?
+        select a.account_number as accountNumber,
+               ob.amount
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
     ''', [fiscalYearId]).each { GroovyRowResult row ->
       balances.put(row.get('accountNumber') as String, scale(new BigDecimal(row.get('amount').toString())))
     }
@@ -499,17 +502,17 @@ final class ReportDataService {
     }
     Map<String, BigDecimal> movements = [:]
     sql.rows('''
-        select vl.account_number as accountNumber,
+        select a.account_number as accountNumber,
                a.normal_balance_side as normalBalanceSide,
                sum(vl.debit_amount) as debitAmount,
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
-         group by vl.account_number, a.normal_balance_side
+         group by a.account_number, a.normal_balance_side
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
       movements.put(
           row.get('accountNumber') as String,
@@ -526,15 +529,16 @@ final class ReportDataService {
   private static Map<String, Totals> loadPeriodTotals(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
     Map<String, Totals> totals = [:]
     sql.rows('''
-        select vl.account_number as accountNumber,
+        select a.account_number as accountNumber,
                sum(vl.debit_amount) as debitAmount,
                sum(vl.credit_amount) as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
-         group by vl.account_number
+         group by vl.account_id, a.account_number
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
       totals.put(row.get('accountNumber') as String, new Totals(
           scale(new BigDecimal(row.get('debitAmount').toString())),
@@ -561,7 +565,7 @@ final class ReportDataService {
                vl.credit_amount as creditAmount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
            and v.status in ('BOOKED', 'CORRECTION')
            and v.accounting_date between ? and ?
@@ -694,6 +698,7 @@ final class ReportDataService {
   @Canonical
   private static final class AccountInfo {
 
+    Long accountId
     String accountName
     String accountClass
     String normalBalanceSide

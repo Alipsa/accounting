@@ -212,6 +212,7 @@ final class VoucherService {
             null,
             null,
             line.lineIndex,
+            line.accountId,
             line.accountNumber,
             line.accountName,
             line.description,
@@ -584,7 +585,8 @@ final class VoucherService {
     }
     String accountNumber = normalizeAccountNumber(line.accountNumber)
     GroovyRowResult account = sql.firstRow('''
-        select account_number as accountNumber,
+        select id,
+               account_number as accountNumber,
                account_name as accountName,
                active
           from account
@@ -610,6 +612,7 @@ final class VoucherService {
         null,
         line.voucherId,
         lineIndex,
+        ((Number) account.get('id')).longValue(),
         accountNumber,
         account.get('accountName') as String,
         normalizeLineDescription(line.description),
@@ -813,17 +816,21 @@ final class VoucherService {
           insert into voucher_line (
               voucher_id,
               line_index,
+              account_id,
               account_number,
+              account_name,
               line_description,
               debit_amount,
               credit_amount,
               company_id,
               created_at
-          ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+          ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
       ''', [
           voucherId,
           index + 1,
+          line.accountId,
           line.accountNumber,
+          line.accountName,
           line.description,
           line.debitAmount,
           line.creditAmount,
@@ -873,13 +880,14 @@ final class VoucherService {
         select vl.id,
                vl.voucher_id as voucherId,
                vl.line_index as lineIndex,
+               vl.account_id as accountId,
                vl.account_number as accountNumber,
                a.account_name as accountName,
                vl.line_description as lineDescription,
                vl.debit_amount as debitAmount,
                vl.credit_amount as creditAmount
           from voucher_line vl
-          join account a on a.account_number = vl.account_number
+          join account a on a.id = vl.account_id
          where vl.voucher_id = ?
          order by vl.line_index
     ''', [voucherId]).collect { GroovyRowResult row ->
@@ -887,6 +895,7 @@ final class VoucherService {
           Long.valueOf(row.get('id').toString()),
           Long.valueOf(row.get('voucherId').toString()),
           ((Number) row.get('lineIndex')).intValue(),
+          Long.valueOf(row.get('accountId').toString()),
           row.get('accountNumber') as String,
           row.get('accountName') as String,
           row.get('lineDescription') as String,

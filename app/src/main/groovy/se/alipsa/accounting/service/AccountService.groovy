@@ -46,7 +46,9 @@ final class AccountService {
   List<Account> searchAccounts(String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
-          select account_number as accountNumber,
+          select id,
+                 company_id as companyId,
+                 account_number as accountNumber,
                  account_name as accountName,
                  account_class as accountClass,
                  normal_balance_side as normalBalanceSide,
@@ -89,7 +91,9 @@ final class AccountService {
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
-          select account_number as accountNumber,
+          select id,
+                 company_id as companyId,
+                 account_number as accountNumber,
                  account_name as accountName,
                  account_class as accountClass,
                  normal_balance_side as normalBalanceSide,
@@ -122,15 +126,27 @@ final class AccountService {
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
+      GroovyRowResult accountRow = sql.firstRow(
+          'select id from account where account_number = ?',
+          [normalized]
+      ) as GroovyRowResult
+      if (accountRow == null) {
+        return new OpeningBalance(fiscalYearId, null, normalized, BigDecimal.ZERO)
+      }
+      long accountId = ((Number) accountRow.get('id')).longValue()
       GroovyRowResult row = sql.firstRow('''
           select fiscal_year_id as fiscalYearId,
-                 account_number as accountNumber,
+                 account_id as accountId,
                  amount
             from opening_balance
            where fiscal_year_id = ?
-             and account_number = ?
-      ''', [fiscalYearId, normalized]) as GroovyRowResult
-      row == null ? new OpeningBalance(fiscalYearId, normalized, BigDecimal.ZERO) : mapOpeningBalance(row)
+             and account_id = ?
+      ''', [fiscalYearId, accountId]) as GroovyRowResult
+      OpeningBalance balance = row == null
+          ? new OpeningBalance(fiscalYearId, accountId, normalized, BigDecimal.ZERO)
+          : mapOpeningBalance(row)
+      balance.accountNumber = normalized
+      balance
     }
   }
 
@@ -140,27 +156,27 @@ final class AccountService {
     databaseService.withTransaction { Sql sql ->
       Account account = requireBalanceAccount(sql, normalizedAccountNumber)
       requireFiscalYear(sql, fiscalYearId)
-      boolean exists = openingBalanceExists(sql, fiscalYearId, normalizedAccountNumber)
+      boolean exists = openingBalanceExists(sql, fiscalYearId, account.id)
       if (exists) {
         sql.executeUpdate('''
             update opening_balance
                set amount = ?,
                    updated_at = current_timestamp
              where fiscal_year_id = ?
-               and account_number = ?
-        ''', [normalizedAmount, fiscalYearId, normalizedAccountNumber])
+               and account_id = ?
+        ''', [normalizedAmount, fiscalYearId, account.id])
       } else {
         sql.executeInsert('''
             insert into opening_balance (
                 fiscal_year_id,
-                account_number,
+                account_id,
                 amount,
                 created_at,
                 updated_at
             ) values (?, ?, ?, current_timestamp, current_timestamp)
-        ''', [fiscalYearId, normalizedAccountNumber, normalizedAmount])
+        ''', [fiscalYearId, account.id, normalizedAmount])
       }
-      new OpeningBalance(fiscalYearId, account.accountNumber, normalizedAmount)
+      new OpeningBalance(fiscalYearId, account.id, account.accountNumber, normalizedAmount)
     }
   }
 
@@ -179,10 +195,10 @@ final class AccountService {
     amount.setScale(2, RoundingMode.HALF_UP)
   }
 
-  private static boolean openingBalanceExists(Sql sql, long fiscalYearId, String accountNumber) {
+  private static boolean openingBalanceExists(Sql sql, long fiscalYearId, long accountId) {
     GroovyRowResult row = sql.firstRow(
-        'select count(*) as total from opening_balance where fiscal_year_id = ? and account_number = ?',
-        [fiscalYearId, accountNumber]
+        'select count(*) as total from opening_balance where fiscal_year_id = ? and account_id = ?',
+        [fiscalYearId, accountId]
     ) as GroovyRowResult
     ((Number) row.get('total')).intValue() == 1
   }
@@ -199,7 +215,9 @@ final class AccountService {
 
   private static Account requireBalanceAccount(Sql sql, String accountNumber) {
     GroovyRowResult row = sql.firstRow('''
-        select account_number as accountNumber,
+        select id,
+               company_id as companyId,
+               account_number as accountNumber,
                account_name as accountName,
                account_class as accountClass,
                normal_balance_side as normalBalanceSide,
@@ -222,6 +240,8 @@ final class AccountService {
 
   private static Account mapAccount(GroovyRowResult row) {
     new Account(
+        row.get('id') as Long,
+        row.get('companyId') as Long,
         row.get('accountNumber') as String,
         row.get('accountName') as String,
         row.get('accountClass') as String,
@@ -236,7 +256,8 @@ final class AccountService {
   private static OpeningBalance mapOpeningBalance(GroovyRowResult row) {
     new OpeningBalance(
         Long.valueOf(row.get('fiscalYearId').toString()),
-        row.get('accountNumber') as String,
+        row.get('accountId') as Long,
+        null,
         new BigDecimal(row.get('amount').toString())
     )
   }

@@ -209,6 +209,7 @@ class AcceptanceCriteriaTest {
     }
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -219,7 +220,7 @@ class AcceptanceCriteriaTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 

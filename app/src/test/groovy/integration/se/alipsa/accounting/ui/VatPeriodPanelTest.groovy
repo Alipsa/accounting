@@ -148,9 +148,9 @@ class VatPeriodPanelTest {
         LocalDate.of(2026, 1, 18),
         'Leverantörsfaktura',
         [
-            new VoucherLine(null, null, 0, '4010', null, 'Varuinköp', 200.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2641', null, 'Ingående moms', vatAmount, 0.00G),
-            new VoucherLine(null, null, 0, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
+            new VoucherLine(null, null, 0, null, '4010', null, 'Varuinköp', 200.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2641', null, 'Ingående moms', vatAmount, 0.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
         ]
     )
   }
@@ -162,10 +162,10 @@ class VatPeriodPanelTest {
         LocalDate.of(2026, 1, 25),
         'EU-förvärv',
         [
-            new VoucherLine(null, null, 0, '4515', null, 'EU-varuinköp', 100.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2645', null, 'Beräknad ingående moms', 25.00G, 0.00G),
-            new VoucherLine(null, null, 0, '2614', null, 'Beräknad utgående moms', 0.00G, 25.00G),
-            new VoucherLine(null, null, 0, '2440', null, 'Leverantörsskuld', 0.00G, 100.00G)
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2645', null, 'Beräknad ingående moms', 25.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 25.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 100.00G)
         ]
     )
   }
@@ -173,9 +173,9 @@ class VatPeriodPanelTest {
   private static List<VoucherLine> saleLines(BigDecimal baseAmount) {
     BigDecimal vatAmount = (baseAmount * 0.25G).setScale(2, RoundingMode.HALF_UP)
     [
-        new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', baseAmount + vatAmount, 0.00G),
-        new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, baseAmount),
-        new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, vatAmount)
+        new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', baseAmount + vatAmount, 0.00G),
+        new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, baseAmount),
+        new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, vatAmount)
     ]
   }
 
@@ -204,6 +204,7 @@ class VatPeriodPanelTest {
   ) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -214,7 +215,7 @@ class VatPeriodPanelTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 

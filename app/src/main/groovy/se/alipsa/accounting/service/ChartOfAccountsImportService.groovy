@@ -65,6 +65,7 @@ final class ChartOfAccountsImportService {
       if (existing == null) {
         sql.executeInsert('''
             insert into account (
+                company_id,
                 account_number,
                 account_name,
                 account_class,
@@ -75,7 +76,7 @@ final class ChartOfAccountsImportService {
                 classification_note,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+            ) values (1, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
             account.accountNumber,
             account.accountName,
@@ -154,14 +155,14 @@ final class ChartOfAccountsImportService {
     String accountName = normalizeAccountName(formatter.formatCellValue(row.getCell(nameColumn)))
     Classification classification = classifyAccount(accountNumber, accountName)
     accounts[accountNumber] = new Account(
-        accountNumber,
-        accountName,
-        classification.accountClass,
-        classification.normalBalanceSide,
-        null,
-        true,
-        classification.manualReviewRequired,
-        classification.note
+        accountNumber: accountNumber,
+        accountName: accountName,
+        accountClass: classification.accountClass,
+        normalBalanceSide: classification.normalBalanceSide,
+        vatCode: null,
+        active: true,
+        manualReviewRequired: classification.manualReviewRequired,
+        classificationNote: classification.note
     )
   }
 

@@ -148,6 +148,7 @@ class AttachmentServiceTest {
   ) {
     sql.executeInsert('''
         insert into account (
+            company_id,
             account_number,
             account_name,
             account_class,
@@ -158,7 +159,7 @@ class AttachmentServiceTest {
             classification_note,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
+        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
     ''', [accountNumber, accountName, accountClass, normalBalanceSide])
   }
 
