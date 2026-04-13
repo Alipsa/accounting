@@ -15,11 +15,11 @@ import java.util.logging.Logger
 /**
  * Bootstraps and provides access to the embedded H2 database.
  */
-@Singleton(lazy = true)
 @CompileStatic
 final class DatabaseService {
 
   private static final Logger log = Logger.getLogger(DatabaseService.name)
+  static DatabaseService instance = new DatabaseService()
   static final String USERNAME = 'sa'
   static final String PASSWORD = ''
   private static final String DRIVER = 'org.h2.Driver'
@@ -40,6 +40,9 @@ final class DatabaseService {
 
   static DatabaseService newForTesting() {
     new DatabaseService()
+  }
+
+  private DatabaseService() {
   }
 
   int expectedSchemaVersion() {

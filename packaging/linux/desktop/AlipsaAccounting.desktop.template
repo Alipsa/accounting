@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=@DISPLAY_NAME@
+Comment=@DESCRIPTION@
+Exec=@APP_NAME@
+Icon=@PACKAGE_NAME@
+Terminal=false
+Categories=Office;Finance;
+StartupWMClass=@APP_NAME@

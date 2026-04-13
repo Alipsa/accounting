@@ -258,7 +258,7 @@ final class MainFrame {
     ImageIcon icon = loadIcon('/icons/logo64.png')
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 10: drift, backup, återställning och systemdokumentation.',
+        'Alipsa Accounting\nFas 11: distributioner och release-paketering.',
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon

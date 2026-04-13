@@ -5,6 +5,7 @@ import groovy.transform.CompileStatic
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
+import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
 
@@ -22,15 +23,34 @@ import javax.swing.SwingUtilities
 final class AlipsaAccounting {
 
   private static final Logger log = Logger.getLogger(AlipsaAccounting.name)
+  private static final String VERIFY_LAUNCH_ARGUMENT = '--verify-launch'
+  private static final String VERSION_ARGUMENT = '--version'
+  private static final String HOME_ARGUMENT_PREFIX = '--home='
 
   private AlipsaAccounting() {
   }
 
   static void main(String[] args) {
+    StartupOptions options = StartupOptions.parse(args ?: new String[0])
+    if (options.applicationHomeOverride != null) {
+      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, options.applicationHomeOverride)
+    }
+    if (options.versionRequested) {
+      System.out.println(versionLine())
+      return
+    }
     try {
       LoggingConfigurer.configure()
       DatabaseService.instance.initialize()
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
+      if (options.verifyLaunchRequested) {
+        failOnStartupErrors(startupReport)
+        if (!startupReport.warnings.isEmpty()) {
+          log.warning("Launch verification completed with warnings: ${startupReport.warnings.join(' | ')}")
+        }
+        System.out.println("Launch verification OK: ${versionLine()} [home=${AppPaths.applicationHome()}]")
+        return
+      }
       if (!startupReport.ok || !startupReport.warnings.isEmpty()) {
         showStartupVerificationWarning(startupReport)
       }
@@ -40,9 +60,25 @@ final class AlipsaAccounting {
       }
     } catch (Throwable throwable) {
       log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', throwable)
-      showStartupError(throwable)
+      if (options.interactive) {
+        showStartupError(throwable)
+      } else {
+        System.err.println("Failed to start Alipsa Accounting: ${throwable.message ?: throwable.class.simpleName}")
+      }
       throw throwable
     }
+  }
+
+  private static void failOnStartupErrors(StartupVerificationReport report) {
+    if (report.ok) {
+      return
+    }
+    throw new IllegalStateException("Startup verification failed: ${report.errors.join(' | ')}")
+  }
+
+  private static String versionLine() {
+    String version = AlipsaAccounting.package?.implementationVersion ?: 'dev'
+    "Alipsa Accounting ${version}"
   }
 
   private static void showStartupError(Throwable throwable) {
@@ -84,6 +120,50 @@ ${rows.join('\n')}
 Öppna fliken System för detaljer."""
     SwingUtilities.invokeLater {
       JOptionPane.showMessageDialog(null, message, 'Startup-verifiering', JOptionPane.WARNING_MESSAGE)
+    }
+  }
+
+  @CompileStatic
+  private static final class StartupOptions {
+
+    final boolean verifyLaunchRequested
+    final boolean versionRequested
+    final String applicationHomeOverride
+
+    private StartupOptions(boolean verifyLaunchRequested, boolean versionRequested, String applicationHomeOverride) {
+      this.verifyLaunchRequested = verifyLaunchRequested
+      this.versionRequested = versionRequested
+      this.applicationHomeOverride = applicationHomeOverride
+    }
+
+    boolean getInteractive() {
+      !verifyLaunchRequested && !versionRequested
+    }
+
+    static StartupOptions parse(String[] arguments) {
+      boolean verifyLaunchRequested = false
+      boolean versionRequested = false
+      String applicationHomeOverride = null
+      arguments.each { String argument ->
+        if (argument == VERIFY_LAUNCH_ARGUMENT) {
+          verifyLaunchRequested = true
+          return
+        }
+        if (argument == VERSION_ARGUMENT) {
+          versionRequested = true
+          return
+        }
+        if (argument.startsWith(HOME_ARGUMENT_PREFIX)) {
+          String value = argument.substring(HOME_ARGUMENT_PREFIX.length()).trim()
+          if (!value) {
+            throw new IllegalArgumentException('Tomt värde för --home är inte tillåtet.')
+          }
+          applicationHomeOverride = value
+          return
+        }
+        throw new IllegalArgumentException("Okänt startargument: ${argument}")
+      }
+      new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride)
     }
   }
 }
