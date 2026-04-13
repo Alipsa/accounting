@@ -5,6 +5,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.Color
 import java.awt.FlowLayout
@@ -43,7 +44,7 @@ final class OpeningBalanceDialog extends JDialog {
       Account account,
       Runnable onSave
   ) {
-    super(owner, 'Ingående balans', true)
+    super(owner, I18n.instance.getString('openingBalanceDialog.title'), true)
     this.accountService = accountService
     this.account = account
     this.onSave = onSave
@@ -72,9 +73,11 @@ final class OpeningBalanceDialog extends JDialog {
     setLayout(new java.awt.BorderLayout(12, 12))
     ((JPanel) contentPane).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12))
 
+    String accountClassLabel = I18n.instance.format('openingBalanceDialog.label.accountClass',
+        account.accountClass ?: I18n.instance.getString('openingBalanceDialog.label.notClassified'))
     add(new JLabel(
         "<html><b>${escapeHtml(account.accountNumber)} ${escapeHtml(account.accountName)}</b><br/>" +
-            "Kontoklass: ${escapeHtml(account.accountClass ?: 'Ej klassad')}</html>"
+            "${escapeHtml(accountClassLabel)}</html>"
     ), java.awt.BorderLayout.NORTH)
     add(buildFormPanel(), java.awt.BorderLayout.CENTER)
     add(buildFooterPanel(), java.awt.BorderLayout.SOUTH)
@@ -101,17 +104,17 @@ final class OpeningBalanceDialog extends JDialog {
         new Insets(0, 0, 8, 0), 0, 0
     )
 
-    panel.add(new JLabel('Räkenskapsår'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('openingBalanceDialog.label.fiscalYear')), labelConstraints)
     panel.add(fiscalYearComboBox, fieldConstraints)
 
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
-    panel.add(new JLabel('Nuvarande saldo'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('openingBalanceDialog.label.currentBalance')), labelConstraints)
     panel.add(currentAmountLabel, fieldConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
-    panel.add(new JLabel('Belopp'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('openingBalanceDialog.label.amount')), labelConstraints)
     panel.add(amountField, fieldConstraints)
 
     panel
@@ -126,9 +129,9 @@ final class OpeningBalanceDialog extends JDialog {
     validationArea.visible = false
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton cancelButton = new JButton('Avbryt')
+    JButton cancelButton = new JButton(I18n.instance.getString('openingBalanceDialog.button.cancel'))
     cancelButton.addActionListener { dispose() }
-    JButton saveButton = new JButton('Spara')
+    JButton saveButton = new JButton(I18n.instance.getString('openingBalanceDialog.button.save'))
     saveButton.enabled = fiscalYearComboBox.itemCount > 0
     saveButton.addActionListener { saveRequested() }
     actions.add(cancelButton)
@@ -143,7 +146,7 @@ final class OpeningBalanceDialog extends JDialog {
   private void refreshCurrentAmount() {
     FiscalYear fiscalYear = selectedFiscalYear()
     if (fiscalYear == null) {
-      currentAmountLabel.text = 'Inga räkenskapsår finns ännu.'
+      currentAmountLabel.text = I18n.instance.getString('openingBalanceDialog.error.noFiscalYears')
       amountField.text = ''
       return
     }
@@ -156,7 +159,7 @@ final class OpeningBalanceDialog extends JDialog {
   private void saveRequested() {
     FiscalYear fiscalYear = selectedFiscalYear()
     if (fiscalYear == null) {
-      showValidation('Skapa ett räkenskapsår innan ingående balans registreras.')
+      showValidation(I18n.instance.getString('openingBalanceDialog.error.createFiscalYear'))
       return
     }
 
@@ -166,7 +169,7 @@ final class OpeningBalanceDialog extends JDialog {
       onSave.run()
       dispose()
     } catch (IllegalArgumentException exception) {
-      showValidation(exception.message ?: 'Ogiltigt belopp för ingående balans.')
+      showValidation(exception.message ?: I18n.instance.getString('openingBalanceDialog.error.invalidAmountDefault'))
     }
   }
 
@@ -182,7 +185,7 @@ final class OpeningBalanceDialog extends JDialog {
     try {
       new BigDecimal(normalized.replace(',', '.'))
     } catch (NumberFormatException exception) {
-      throw new IllegalArgumentException('Beloppet måste vara ett giltigt tal.')
+      throw new IllegalArgumentException(I18n.instance.getString('openingBalanceDialog.error.invalidAmount'))
     }
   }
 

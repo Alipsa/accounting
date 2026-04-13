@@ -7,11 +7,14 @@ import se.alipsa.accounting.service.SystemDiagnosticsService
 import se.alipsa.accounting.service.SystemDiagnosticsSnapshot
 import se.alipsa.accounting.service.SystemDocumentationService
 import se.alipsa.accounting.service.UserManualService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
 import java.awt.Frame
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.nio.file.Path
 import java.util.concurrent.ExecutionException
 
@@ -29,7 +32,7 @@ import javax.swing.filechooser.FileNameExtensionFilter
 /**
  * Shows diagnostics, system documentation and backup/restore actions.
  */
-final class SystemDocumentationPanel extends JPanel {
+final class SystemDocumentationPanel extends JPanel implements PropertyChangeListener {
 
   private final SystemDocumentationService documentationService
   private final SystemDiagnosticsService diagnosticsService
@@ -39,7 +42,11 @@ final class SystemDocumentationPanel extends JPanel {
   private final JTextArea diagnosticsArea = new JTextArea(8, 48)
   private final JTextArea documentationArea = new JTextArea(24, 48)
   private final JTextArea messageArea = new JTextArea(4, 48)
-  private final JButton refreshButton = new JButton('Uppdatera')
+  private JButton refreshButton
+  private JButton exportDocsButton
+  private JButton backupButton
+  private JButton restoreButton
+  private JButton manualButton
 
   SystemDocumentationPanel(
       SystemDocumentationService documentationService,
@@ -51,8 +58,24 @@ final class SystemDocumentationPanel extends JPanel {
     this.diagnosticsService = diagnosticsService
     this.backupService = backupService
     this.userManualService = userManualService
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     refreshAll()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    refreshButton.text = I18n.instance.getString('systemDocumentationPanel.button.refresh')
+    exportDocsButton.text = I18n.instance.getString('systemDocumentationPanel.button.exportDocs')
+    backupButton.text = I18n.instance.getString('systemDocumentationPanel.button.backup')
+    restoreButton.text = I18n.instance.getString('systemDocumentationPanel.button.restore')
+    manualButton.text = I18n.instance.getString('systemDocumentationPanel.button.manual')
   }
 
   private void buildUi() {
@@ -86,14 +109,15 @@ final class SystemDocumentationPanel extends JPanel {
 
   private JPanel buildActions() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    refreshButton = new JButton(I18n.instance.getString('systemDocumentationPanel.button.refresh'))
     refreshButton.addActionListener { refreshAll() }
-    JButton exportDocsButton = new JButton('Exportera dokumentation')
+    exportDocsButton = new JButton(I18n.instance.getString('systemDocumentationPanel.button.exportDocs'))
     exportDocsButton.addActionListener { exportDocumentation(exportDocsButton) }
-    JButton backupButton = new JButton('Skapa backup...')
+    backupButton = new JButton(I18n.instance.getString('systemDocumentationPanel.button.backup'))
     backupButton.addActionListener { createBackup() }
-    JButton restoreButton = new JButton('Återställ backup...')
+    restoreButton = new JButton(I18n.instance.getString('systemDocumentationPanel.button.restore'))
     restoreButton.addActionListener { restoreBackup() }
-    JButton manualButton = new JButton('Öppna manual')
+    manualButton = new JButton(I18n.instance.getString('systemDocumentationPanel.button.manual'))
     manualButton.addActionListener { UserManualDialog.showDialog(ownerFrame(), userManualService) }
     panel.add(refreshButton)
     panel.add(exportDocsButton)
@@ -105,10 +129,10 @@ final class SystemDocumentationPanel extends JPanel {
 
   private void refreshAll() {
     refreshButton.enabled = false
-    diagnosticsArea.text = 'Laddar diagnostik...'
-    documentationArea.text = 'Laddar systemdokumentation...'
+    diagnosticsArea.text = I18n.instance.getString('systemDocumentationPanel.status.loadingDiagnostics')
+    documentationArea.text = I18n.instance.getString('systemDocumentationPanel.status.loadingDocumentation')
     messageArea.foreground = new Color(33, 33, 33)
-    messageArea.text = 'Hämtar systemdiagnostik och dokumentation...'
+    messageArea.text = I18n.instance.getString('systemDocumentationPanel.status.fetching')
     new SwingWorker<RefreshPayload, Void>() {
       @Override
       protected RefreshPayload doInBackground() {
@@ -121,15 +145,15 @@ final class SystemDocumentationPanel extends JPanel {
           RefreshPayload payload = get()
           diagnosticsArea.text = payload.diagnostics
           documentationArea.text = payload.documentation
-          showInfo('Systemdiagnostik och dokumentation uppdaterad.')
+          showInfo(I18n.instance.getString('systemDocumentationPanel.status.updated'))
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Uppdateringen av systeminformationen avbröts.')
+          showError(I18n.instance.getString('systemDocumentationPanel.status.refreshInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
           diagnosticsArea.text = ''
           documentationArea.text = ''
-          showError(cause.message ?: 'Systeminformationen kunde inte hämtas.')
+          showError(cause.message ?: I18n.instance.getString('systemDocumentationPanel.status.refreshFailed'))
         } finally {
           refreshButton.enabled = true
         }
@@ -140,24 +164,28 @@ final class SystemDocumentationPanel extends JPanel {
   private String renderDiagnostics() {
     SystemDiagnosticsSnapshot snapshot = diagnosticsService.snapshot()
     [
-        "Applikationskatalog: ${snapshot.applicationHome}",
-        "Databasfil: ${snapshot.databaseFile}",
-        "Schema-version: ${snapshot.schemaVersion}/${snapshot.expectedSchemaVersion}",
+        I18n.instance.format('systemDocumentationPanel.diagnostics.appHome', snapshot.applicationHome),
+        I18n.instance.format('systemDocumentationPanel.diagnostics.dbFile', snapshot.databaseFile),
+        I18n.instance.format('systemDocumentationPanel.diagnostics.schemaVersion',
+            snapshot.schemaVersion, snapshot.expectedSchemaVersion),
         snapshot.latestBackup == null
-            ? 'Senaste backup: ingen'
-            : "Senaste backup: ${snapshot.latestBackup.backupPath.fileName} ${snapshot.latestBackup.createdAt}",
+            ? I18n.instance.getString('systemDocumentationPanel.diagnostics.latestBackup.none')
+            : I18n.instance.format('systemDocumentationPanel.diagnostics.latestBackup',
+            snapshot.latestBackup.backupPath.fileName, snapshot.latestBackup.createdAt),
         snapshot.latestSieExportAt == null
-            ? 'Senaste SIE-export: ingen'
-            : "Senaste SIE-export: ${snapshot.latestSieExportAt}",
+            ? I18n.instance.getString('systemDocumentationPanel.diagnostics.latestSieExport.none')
+            : I18n.instance.format('systemDocumentationPanel.diagnostics.latestSieExport',
+            snapshot.latestSieExportAt),
         snapshot.verificationReport.ok
-            ? 'Startup-verifiering: OK'
-            : "Startup-verifiering: ${snapshot.verificationReport.errors.size()} fel"
+            ? I18n.instance.getString('systemDocumentationPanel.diagnostics.verification.ok')
+            : I18n.instance.format('systemDocumentationPanel.diagnostics.verification.errors',
+            snapshot.verificationReport.errors.size() as Object)
     ].join('\n')
   }
 
   private void exportDocumentation(JButton exportButton) {
     exportButton.enabled = false
-    showInfo('Exporterar systemdokumentation...')
+    showInfo(I18n.instance.getString('systemDocumentationPanel.status.exportingDocs'))
     new SwingWorker<Path, Void>() {
       @Override
       protected Path doInBackground() {
@@ -168,13 +196,13 @@ final class SystemDocumentationPanel extends JPanel {
       protected void done() {
         try {
           Path path = get()
-          showInfo("Systemdokumentationen exporterades till ${path}.")
+          showInfo(I18n.instance.format('systemDocumentationPanel.status.docsExported', path))
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Exporten av systemdokumentation avbröts.')
+          showError(I18n.instance.getString('systemDocumentationPanel.status.docsExportInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          showError(cause.message ?: 'Systemdokumentationen kunde inte exporteras.')
+          showError(cause.message ?: I18n.instance.getString('systemDocumentationPanel.status.docsExportFailed'))
         } finally {
           exportButton.enabled = true
         }
@@ -184,13 +212,14 @@ final class SystemDocumentationPanel extends JPanel {
 
   private void createBackup() {
     JFileChooser chooser = new JFileChooser()
-    chooser.fileFilter = new FileNameExtensionFilter('ZIP-backup (*.zip)', 'zip')
+    chooser.fileFilter = new FileNameExtensionFilter(
+        I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
     chooser.selectedFile = new File('alipsa-accounting-backup.zip')
     if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
       return
     }
     Path target = chooser.selectedFile.toPath()
-    showInfo('Skapar backup...')
+    showInfo(I18n.instance.getString('systemDocumentationPanel.status.creatingBackup'))
     new SwingWorker<BackupResult, Void>() {
       @Override
       protected BackupResult doInBackground() {
@@ -202,13 +231,13 @@ final class SystemDocumentationPanel extends JPanel {
         try {
           BackupResult result = get()
           refreshAll()
-          showInfo("Backup skapad: ${result.summary.backupPath}")
+          showInfo(I18n.instance.format('systemDocumentationPanel.status.backupCreated', result.summary.backupPath))
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Backup avbröts.')
+          showError(I18n.instance.getString('systemDocumentationPanel.status.backupInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          showError(cause.message ?: 'Backup kunde inte skapas.')
+          showError(cause.message ?: I18n.instance.getString('systemDocumentationPanel.status.backupFailed'))
         }
       }
     }.execute()
@@ -216,21 +245,22 @@ final class SystemDocumentationPanel extends JPanel {
 
   private void restoreBackup() {
     JFileChooser chooser = new JFileChooser()
-    chooser.fileFilter = new FileNameExtensionFilter('ZIP-backup (*.zip)', 'zip')
+    chooser.fileFilter = new FileNameExtensionFilter(
+        I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
     if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
       return
     }
     Path backupPath = chooser.selectedFile.toPath()
     int choice = javax.swing.JOptionPane.showConfirmDialog(
         this,
-        'Återställning ersätter nuvarande databas, bilagor och rapportarkiv. Fortsätt?',
-        'Bekräfta återställning',
+        I18n.instance.getString('systemDocumentationPanel.confirm.restoreMessage'),
+        I18n.instance.getString('systemDocumentationPanel.confirm.restoreTitle'),
         javax.swing.JOptionPane.OK_CANCEL_OPTION
     )
     if (choice != javax.swing.JOptionPane.OK_OPTION) {
       return
     }
-    showInfo('Återställer backup...')
+    showInfo(I18n.instance.getString('systemDocumentationPanel.status.restoring'))
     new SwingWorker<RestoreResult, Void>() {
       @Override
       protected RestoreResult doInBackground() {
@@ -242,13 +272,13 @@ final class SystemDocumentationPanel extends JPanel {
         try {
           RestoreResult result = get()
           refreshAll()
-          showInfo("Backup återställd från ${result.backupPath.fileName}.")
+          showInfo(I18n.instance.format('systemDocumentationPanel.status.restored', result.backupPath.fileName))
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Återställning avbröts.')
+          showError(I18n.instance.getString('systemDocumentationPanel.status.restoreInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          showError(cause.message ?: 'Backup kunde inte återställas.')
+          showError(cause.message ?: I18n.instance.getString('systemDocumentationPanel.status.restoreFailed'))
         }
       }
     }.execute()

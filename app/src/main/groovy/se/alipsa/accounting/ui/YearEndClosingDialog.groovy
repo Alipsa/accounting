@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.service.YearEndClosingResult
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -37,12 +38,12 @@ final class YearEndClosingDialog extends JDialog {
   private final JLabel nextFiscalYearLabel = new JLabel('-')
   private final JTextArea summaryArea = new JTextArea(8, 48)
   private final JTextArea messageArea = new JTextArea(6, 48)
-  private final JButton previewButton = new JButton('Förhandskontroll')
-  private final JButton executeButton = new JButton('Genomför bokslut')
+  private final JButton previewButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.preview'))
+  private final JButton executeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.execute'))
   private boolean workInProgress
 
   YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Runnable onClosed) {
-    super(owner, 'Årsbokslut', true)
+    super(owner, I18n.instance.getString('yearEndClosingDialog.title'), true)
     this.closingService = closingService
     this.fiscalYear = fiscalYear
     this.onClosed = onClosed ?: ({ } as Runnable)
@@ -96,17 +97,17 @@ final class YearEndClosingDialog extends JDialog {
         new Insets(0, 0, 8, 0), 0, 0
     )
 
-    panel.add(new JLabel('Räkenskapsår'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('yearEndClosingDialog.label.fiscalYear')), labelConstraints)
     panel.add(new JLabel("${fiscalYear.name} (${fiscalYear.startDate} - ${fiscalYear.endDate})"), fieldConstraints)
 
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
-    panel.add(new JLabel('Nästa räkenskapsår'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('yearEndClosingDialog.label.nextFiscalYear')), labelConstraints)
     panel.add(nextFiscalYearLabel, fieldConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
-    panel.add(new JLabel('Resultatkonto'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('yearEndClosingDialog.label.closingAccount')), labelConstraints)
     panel.add(closingAccountField, fieldConstraints)
 
     panel
@@ -121,7 +122,7 @@ final class YearEndClosingDialog extends JDialog {
 
   private JPanel buildActions() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton closeButton = new JButton('Stäng')
+    JButton closeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.close'))
     closeButton.addActionListener {
       if (!workInProgress) {
         dispose()
@@ -136,7 +137,7 @@ final class YearEndClosingDialog extends JDialog {
   private void reloadPreview() {
     String closingAccountNumber = closingAccountField.text
     setWorkingState(true)
-    summaryArea.text = 'Kör förhandskontroller...'
+    summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.runningPreview')
     messageArea.text = ''
     new SwingWorker<YearEndClosingPreview, Void>() {
       @Override
@@ -151,10 +152,11 @@ final class YearEndClosingDialog extends JDialog {
           renderPreview(get())
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          renderMessage(new Color(153, 27, 27), 'Förhandskontrollen avbröts.')
+          renderMessage(new Color(153, 27, 27), I18n.instance.getString('yearEndClosingDialog.status.previewInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          renderMessage(new Color(153, 27, 27), cause.message ?: 'Förhandskontrollen kunde inte slutföras.')
+          renderMessage(new Color(153, 27, 27),
+              cause.message ?: I18n.instance.getString('yearEndClosingDialog.status.previewFailed'))
         }
       }
     }.execute()
@@ -162,38 +164,38 @@ final class YearEndClosingDialog extends JDialog {
 
   private void renderPreview(YearEndClosingPreview preview) {
     nextFiscalYearLabel.text = preview.nextFiscalYear == null
-        ? 'Kan inte skapas automatiskt'
+        ? I18n.instance.getString('yearEndClosingDialog.status.nextFiscalYear.cannotCreate')
         : preview.nextFiscalYearWillBeCreated
-        ? "${preview.nextFiscalYear.name} (skapas nu)"
-        : "${preview.nextFiscalYear.name} (finns redan)"
+        ? I18n.instance.format('yearEndClosingDialog.status.nextFiscalYear.creating', preview.nextFiscalYear.name)
+        : I18n.instance.format('yearEndClosingDialog.status.nextFiscalYear.exists', preview.nextFiscalYear.name)
 
     List<String> rows = [
-        "Intäkter: ${preview.incomeTotal.toPlainString()}".toString(),
-        "Kostnader: ${preview.expenseTotal.toPlainString()}".toString(),
-        "Årets resultat: ${preview.netResult.toPlainString()}".toString(),
-        "Resultatkonton att stänga: ${preview.resultAccountCount}".toString()
+        I18n.instance.format('yearEndClosingDialog.summary.income', preview.incomeTotal.toPlainString()),
+        I18n.instance.format('yearEndClosingDialog.summary.expenses', preview.expenseTotal.toPlainString()),
+        I18n.instance.format('yearEndClosingDialog.summary.netResult', preview.netResult.toPlainString()),
+        I18n.instance.format('yearEndClosingDialog.summary.resultAccounts', preview.resultAccountCount as Object)
     ]
     summaryArea.text = rows.join('\n')
 
     if (!preview.blockingIssues.isEmpty()) {
       executeButton.enabled = false
-      renderMessage(new Color(153, 27, 27), preview.blockingIssues.collect { String row -> "• ${row}" }.join('\n'))
+      renderMessage(new Color(153, 27, 27), preview.blockingIssues.collect { String row -> "\u2022 ${row}" }.join('\n'))
       return
     }
 
     executeButton.enabled = true
     if (!preview.warnings.isEmpty()) {
-      renderMessage(new Color(146, 64, 14), preview.warnings.collect { String row -> "• ${row}" }.join('\n'))
+      renderMessage(new Color(146, 64, 14), preview.warnings.collect { String row -> "\u2022 ${row}" }.join('\n'))
     } else {
-      renderMessage(new Color(22, 101, 52), 'Förhandskontrollerna är godkända.')
+      renderMessage(new Color(22, 101, 52), I18n.instance.getString('yearEndClosingDialog.status.previewApproved'))
     }
   }
 
   private void executeRequested() {
     int choice = javax.swing.JOptionPane.showConfirmDialog(
         this,
-        "Genomför årsbokslut för ${fiscalYear.name} och skapa nästa års ingående balanser?",
-        'Bekräfta årsbokslut',
+        I18n.instance.format('yearEndClosingDialog.confirm.message', fiscalYear.name),
+        I18n.instance.getString('yearEndClosingDialog.confirm.title'),
         javax.swing.JOptionPane.OK_CANCEL_OPTION
     )
     if (choice != javax.swing.JOptionPane.OK_OPTION) {
@@ -202,7 +204,7 @@ final class YearEndClosingDialog extends JDialog {
 
     String closingAccountNumber = closingAccountField.text
     setWorkingState(true)
-    summaryArea.text = 'Genomför årsbokslut...'
+    summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.executing')
     new SwingWorker<YearEndClosingResult, Void>() {
       @Override
       protected YearEndClosingResult doInBackground() {
@@ -219,10 +221,11 @@ final class YearEndClosingDialog extends JDialog {
           onClosed.run()
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          renderMessage(new Color(153, 27, 27), 'Årsbokslutet avbröts.')
+          renderMessage(new Color(153, 27, 27), I18n.instance.getString('yearEndClosingDialog.status.executeInterrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          renderMessage(new Color(153, 27, 27), cause.message ?: 'Årsbokslutet kunde inte genomföras.')
+          renderMessage(new Color(153, 27, 27),
+              cause.message ?: I18n.instance.getString('yearEndClosingDialog.status.executeFailed'))
         }
       }
     }.execute()
@@ -230,19 +233,19 @@ final class YearEndClosingDialog extends JDialog {
 
   private void renderResult(YearEndClosingResult result) {
     List<String> rows = [
-        "Räkenskapsåret ${result.closedFiscalYear.name} är nu stängt.".toString(),
-        "Nästa räkenskapsår: ${result.nextFiscalYear.name}".toString(),
+        I18n.instance.format('yearEndClosingDialog.result.closed', result.closedFiscalYear.name),
+        I18n.instance.format('yearEndClosingDialog.result.nextFiscalYear', result.nextFiscalYear.name),
         result.closingVoucher == null
-            ? 'Bokslutsverifikation: ingen behövdes'
-            : "Bokslutsverifikation: ${result.closingVoucher.voucherNumber}".toString(),
-        "Skapade ingående balanser: ${result.openingBalanceCount}".toString(),
-        "Registrerade bokslutsposter: ${result.closingEntryCount}".toString()
+            ? I18n.instance.getString('yearEndClosingDialog.result.closingVoucher.none')
+            : I18n.instance.format('yearEndClosingDialog.result.closingVoucher', result.closingVoucher.voucherNumber),
+        I18n.instance.format('yearEndClosingDialog.result.openingBalances', result.openingBalanceCount as Object),
+        I18n.instance.format('yearEndClosingDialog.result.closingEntries', result.closingEntryCount as Object)
     ]
     summaryArea.text = rows.join('\n')
     if (!result.warnings.isEmpty()) {
-      renderMessage(new Color(146, 64, 14), result.warnings.collect { String row -> "• ${row}" }.join('\n'))
+      renderMessage(new Color(146, 64, 14), result.warnings.collect { String row -> "\u2022 ${row}" }.join('\n'))
     } else {
-      renderMessage(new Color(22, 101, 52), 'Årsbokslutet genomfördes utan varningar.')
+      renderMessage(new Color(22, 101, 52), I18n.instance.getString('yearEndClosingDialog.result.success'))
     }
   }
 

@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.*
 
@@ -25,7 +26,7 @@ final class PeriodLockDialog extends JDialog {
       AccountingPeriod period,
       Runnable onLock
   ) {
-    super(owner, 'Lås period', true)
+    super(owner, I18n.instance.getString('periodLockDialog.title'), true)
     this.accountingPeriodService = accountingPeriodService
     this.period = period
     this.onLock = onLock
@@ -46,10 +47,10 @@ final class PeriodLockDialog extends JDialog {
     setLayout(new BorderLayout(12, 12))
     ((JPanel) contentPane).setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12))
 
-    add(new JLabel(
-        """<html><b>${escapeHtml(period.periodName)}</b> ${period.startDate} till ${period.endDate}<br/>
-När perioden låses ska nya bokningar i datumintervallet blockeras.</html>"""
-    ), BorderLayout.NORTH)
+    String header = I18n.instance.format('periodLockDialog.header',
+        escapeHtml(period.periodName), period.startDate, period.endDate)
+    String description = I18n.instance.getString('periodLockDialog.description')
+    add(new JLabel("<html><b>${header}</b><br/>${description}</html>"), BorderLayout.NORTH)
 
     reasonArea.setLineWrap(true)
     reasonArea.setWrapStyleWord(true)
@@ -76,12 +77,15 @@ När perioden låses ska nya bokningar i datumintervallet blockeras.</html>"""
 
   private JPanel buildButtonPanel() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton closeButton = new JButton(period.locked ? 'Stäng' : 'Avbryt')
+    String closeLabel = period.locked
+        ? I18n.instance.getString('periodLockDialog.button.close')
+        : I18n.instance.getString('periodLockDialog.button.cancel')
+    JButton closeButton = new JButton(closeLabel)
     closeButton.addActionListener { dispose() }
     panel.add(closeButton)
 
     if (!period.locked) {
-      JButton lockButton = new JButton('Lås period')
+      JButton lockButton = new JButton(I18n.instance.getString('periodLockDialog.button.lock'))
       lockButton.addActionListener { lockRequested() }
       panel.add(lockButton)
     }
@@ -93,7 +97,9 @@ När perioden låses ska nya bokningar i datumintervallet blockeras.</html>"""
     String reason = reasonArea.text?.trim()
     if (!reason) {
       validationArea.text = ValidationSupport.summaryText([
-          ValidationSupport.fieldError('Låsorsak', 'måste anges för att dokumentera konsekvensen')
+          ValidationSupport.fieldError(
+              I18n.instance.getString('periodLockDialog.error.lockReasonLabel'),
+              I18n.instance.getString('periodLockDialog.error.lockReasonRequired'))
       ])
       validationArea.visible = true
       pack()

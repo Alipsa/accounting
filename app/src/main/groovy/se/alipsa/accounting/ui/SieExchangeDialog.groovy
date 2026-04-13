@@ -6,6 +6,7 @@ import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.SieImportResult
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -49,18 +50,18 @@ final class SieExchangeDialog extends JDialog {
   private final JTextArea errorLogArea = new JTextArea(8, 50)
   private final ImportJobTableModel importJobTableModel = new ImportJobTableModel()
   private final JTable importJobTable = new JTable(importJobTableModel)
-  private final JButton importButton = new JButton('Importera SIE...')
-  private final JButton exportButton = new JButton('Exportera SIE...')
+  private final JButton importButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.import'))
+  private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
   SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService) {
-    super(owner, 'SIE och Datautbyte', true)
+    super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
     buildUi()
     reloadFiscalYears()
     reloadJobs()
-    showInfo('Välj en SIE-fil för import eller ett räkenskapsår för export.')
+    showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
   static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService) {
@@ -101,7 +102,7 @@ final class SieExchangeDialog extends JDialog {
         new Insets(0, 0, 8, 0), 0, 0
     )
 
-    panel.add(new JLabel('Räkenskapsår för export'), labelConstraints)
+    panel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.fiscalYearExport')), labelConstraints)
     panel.add(fiscalYearComboBox, fieldConstraints)
     panel
   }
@@ -117,12 +118,12 @@ final class SieExchangeDialog extends JDialog {
     errorLogArea.wrapStyleWord = true
 
     JPanel resultPanel = new JPanel(new BorderLayout(0, 8))
-    resultPanel.add(new JLabel('Resultat'), BorderLayout.NORTH)
+    resultPanel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.result')), BorderLayout.NORTH)
     resultPanel.add(new JScrollPane(summaryArea), BorderLayout.CENTER)
     resultPanel.add(new JScrollPane(errorLogArea), BorderLayout.SOUTH)
 
     JPanel jobsPanel = new JPanel(new BorderLayout(0, 8))
-    jobsPanel.add(new JLabel('Senaste importjobb'), BorderLayout.NORTH)
+    jobsPanel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.recentJobs')), BorderLayout.NORTH)
     jobsPanel.add(new JScrollPane(importJobTable), BorderLayout.CENTER)
 
     JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, resultPanel, jobsPanel)
@@ -132,7 +133,7 @@ final class SieExchangeDialog extends JDialog {
 
   private JPanel buildActions() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton closeButton = new JButton('Stäng')
+    JButton closeButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.close'))
     closeButton.addActionListener {
       if (!workInProgress) {
         dispose()
@@ -163,13 +164,14 @@ final class SieExchangeDialog extends JDialog {
 
   private void importRequested() {
     JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
-    chooser.fileFilter = new FileNameExtensionFilter('SIE-filer (*.sie, *.si, *.se)', 'sie', 'si', 'se')
+    chooser.fileFilter = new FileNameExtensionFilter(
+        I18n.instance.getString('sieExchangeDialog.fileFilter.sie'), 'sie', 'si', 'se')
     if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
       return
     }
     Path selectedPath = chooser.selectedFile.toPath()
     setWorkingState(true)
-    showInfo("Importerar ${selectedPath.fileName}...")
+    showInfo(I18n.instance.format('sieExchangeDialog.status.importing', selectedPath.fileName))
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
@@ -186,11 +188,11 @@ final class SieExchangeDialog extends JDialog {
           renderImportResult(result)
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Importen avbröts.', null)
+          showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
           reloadJobs()
-          showError(cause.message ?: 'SIE-filen kunde inte importeras.', null)
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
         }
       }
     }.execute()
@@ -199,18 +201,19 @@ final class SieExchangeDialog extends JDialog {
   private void exportRequested() {
     FiscalYear fiscalYear = fiscalYearComboBox.selectedItem as FiscalYear
     if (fiscalYear == null) {
-      showError('Välj ett räkenskapsår för export.', null)
+      showError(I18n.instance.getString('sieExchangeDialog.error.selectFiscalYear'), null)
       return
     }
     JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
-    chooser.fileFilter = new FileNameExtensionFilter('SIE-filer (*.sie)', 'sie')
+    chooser.fileFilter = new FileNameExtensionFilter(
+        I18n.instance.getString('sieExchangeDialog.fileFilter.sieExport'), 'sie')
     chooser.selectedFile = new File("${sanitizeFilePart(fiscalYear.name ?: fiscalYear.startDate.toString())}.sie")
     if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
       return
     }
     Path targetPath = ensureSieExtension(chooser.selectedFile.toPath())
     setWorkingState(true)
-    showInfo("Exporterar ${fiscalYear.name}...")
+    showInfo(I18n.instance.format('sieExchangeDialog.status.exporting', fiscalYear.name))
     new SwingWorker<SieExportResult, Void>() {
       @Override
       protected SieExportResult doInBackground() {
@@ -223,32 +226,34 @@ final class SieExchangeDialog extends JDialog {
         try {
           SieExportResult result = get()
           showInfo(
-              "Export klar: ${result.fiscalYear.name}\n" +
-                  "Fil: ${result.filePath}\n" +
-                  "Checksumma: ${result.checksumSha256}\n" +
-                  "Konton: ${result.accountCount}, ingående balanser: ${result.openingBalanceCount}, verifikationer: ${result.voucherCount}"
+              I18n.instance.format('sieExchangeDialog.status.exportDone', result.fiscalYear.name) + '\n' +
+                  I18n.instance.format('sieExchangeDialog.status.exportFile', result.filePath) + '\n' +
+                  I18n.instance.format('sieExchangeDialog.status.exportChecksum', result.checksumSha256) + '\n' +
+                  I18n.instance.format('sieExchangeDialog.status.exportCounts',
+                      result.accountCount as Object, result.openingBalanceCount as Object,
+                      result.voucherCount as Object)
           )
           errorLogArea.text = ''
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
-          showError('Exporten avbröts.', null)
+          showError(I18n.instance.getString('sieExchangeDialog.status.exportInterrupted'), null)
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          showError(cause.message ?: 'SIE-filen kunde inte exporteras.', null)
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.exportFailed'), null)
         }
       }
     }.execute()
   }
 
   private void renderImportResult(SieImportResult result) {
-    String summary = result.job.summary ?: 'Importen avslutades.'
+    String summary = result.job.summary ?: I18n.instance.getString('sieExchangeDialog.status.importFinished')
     if (result.duplicate) {
       showInfo(summary)
     } else {
       showInfo(
           "${summary}\n" +
-              "Checksumma: ${result.job.checksumSha256}\n" +
-              "Räkenskapsår: ${result.fiscalYear?.name ?: '-'}"
+              I18n.instance.format('sieExchangeDialog.status.importChecksum', result.job.checksumSha256) + '\n' +
+              I18n.instance.format('sieExchangeDialog.status.importFiscalYear', result.fiscalYear?.name ?: '-')
       )
     }
     errorLogArea.text = result.job.errorLog ?: ''
@@ -262,11 +267,13 @@ final class SieExchangeDialog extends JDialog {
     }
     summaryArea.foreground = job.status.name() in ['FAILED'] ? new Color(153, 27, 27) : new Color(22, 101, 52)
     List<String> rows = [
-        "Fil: ${job.fileName}".toString(),
-        "Status: ${job.status.name()}".toString(),
-        "Start: ${formatTimestamp(job.startedAt)}".toString(),
-        "Slut: ${formatTimestamp(job.completedAt)}".toString(),
-        job.fiscalYearId == null ? null : "Räkenskapsår: ${job.fiscalYearId}".toString(),
+        I18n.instance.format('sieExchangeDialog.job.file', job.fileName),
+        I18n.instance.format('sieExchangeDialog.job.status', job.status.name()),
+        I18n.instance.format('sieExchangeDialog.job.start', formatTimestamp(job.startedAt)),
+        I18n.instance.format('sieExchangeDialog.job.end', formatTimestamp(job.completedAt)),
+        job.fiscalYearId == null
+            ? null
+            : I18n.instance.format('sieExchangeDialog.job.fiscalYear', job.fiscalYearId as Object),
         job.summary
     ].findAll { Object row -> row != null && row.toString().trim() } as List<String>
     summaryArea.text = rows.join('\n')
@@ -313,7 +320,7 @@ final class SieExchangeDialog extends JDialog {
 
   private void showError(String message, String errorLog) {
     summaryArea.foreground = new Color(153, 27, 27)
-    summaryArea.text = message ?: 'Ett oväntat fel uppstod.'
+    summaryArea.text = message ?: I18n.instance.getString('sieExchangeDialog.status.unexpectedError')
     errorLogArea.text = errorLog ?: ''
   }
 
@@ -337,7 +344,6 @@ final class SieExchangeDialog extends JDialog {
 
   private static final class ImportJobTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Start', 'Fil', 'Status', 'År', 'Sammanfattning']
     private List<ImportJob> rows = []
 
     void setRows(List<ImportJob> rows) {
@@ -355,13 +361,21 @@ final class SieExchangeDialog extends JDialog {
     }
 
     @Override
+    @SuppressWarnings('GetterMethodCouldBeProperty')
     int getColumnCount() {
-      COLUMNS.size()
+      5
     }
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('sieExchangeDialog.table.start')
+        case 1: return I18n.instance.getString('sieExchangeDialog.table.file')
+        case 2: return I18n.instance.getString('sieExchangeDialog.table.status')
+        case 3: return I18n.instance.getString('sieExchangeDialog.table.year')
+        case 4: return I18n.instance.getString('sieExchangeDialog.table.summary')
+        default: return ''
+      }
     }
 
     @Override
