@@ -218,7 +218,7 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private JFrame buildFrame() {
-    swing.frame(
+    JFrame f = swing.frame(
         title: I18n.instance.getString('mainFrame.title'),
         size: [1100, 720],
         defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
@@ -250,13 +250,13 @@ final class MainFrame implements PropertyChangeListener {
             constraints: BorderLayout.CENTER
         )
       }
-      tabbedPane = tabbedPane(constraints: BorderLayout.CENTER) {
-        buildMainTabs().each { Map<String, Object> tab ->
-          widget(tab.component, title: tab.title as String)
-        }
-      }
-      widget(buildStatusBar(), constraints: BorderLayout.SOUTH)
+      tabbedPane = tabbedPane(constraints: BorderLayout.CENTER)
     } as JFrame
+    buildMainTabs().each { Map<String, Object> tab ->
+      tabbedPane.addTab(tab.title as String, tab.component as JComponent)
+    }
+    f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
+    f
   }
 
   private JPanel buildCompanySettingsPanel() {
