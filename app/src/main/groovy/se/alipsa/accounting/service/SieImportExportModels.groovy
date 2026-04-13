@@ -1,7 +1,6 @@
 package se.alipsa.accounting.service
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import alipsa.sieparser.SieDocument
 
@@ -12,7 +11,6 @@ import java.nio.file.Path
 import java.time.LocalDate
 
 @Canonical
-@CompileStatic
 final class SieImportResult {
 
   ImportJob job
@@ -26,7 +24,6 @@ final class SieImportResult {
 }
 
 @Canonical
-@CompileStatic
 final class SieExportResult {
 
   Path filePath
@@ -39,7 +36,6 @@ final class SieExportResult {
 }
 
 @Canonical
-@CompileStatic
 final class ParsedSie {
 
   SieDocument document
@@ -47,7 +43,6 @@ final class ParsedSie {
 }
 
 @Canonical
-@CompileStatic
 final class ImportCounts {
 
   int accountsCreated
@@ -57,7 +52,6 @@ final class ImportCounts {
 }
 
 @Canonical
-@CompileStatic
 final class VoucherImportSummary {
 
   int voucherCount
@@ -65,7 +59,6 @@ final class VoucherImportSummary {
 }
 
 @Canonical
-@CompileStatic
 final class AccountClassification {
 
   String accountClass
@@ -75,7 +68,6 @@ final class AccountClassification {
 }
 
 @Canonical
-@CompileStatic
 final class AccountSeed {
 
   String accountName
@@ -84,7 +76,6 @@ final class AccountSeed {
 }
 
 @Canonical
-@CompileStatic
 final class ExportVoucherSeed {
 
   long voucherId
@@ -96,7 +87,6 @@ final class ExportVoucherSeed {
 }
 
 @Canonical
-@CompileStatic
 final class ExportLineSeed {
 
   int lineIndex
@@ -107,7 +97,6 @@ final class ExportLineSeed {
 }
 
 @Canonical
-@CompileStatic
 final class ExportPayload {
 
   SieDocument document

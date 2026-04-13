@@ -1,11 +1,8 @@
 package se.alipsa.accounting.domain
 
-import groovy.transform.CompileStatic
-
 /**
  * Supported VAT classifications used on accounts for reporting and transfer logic.
  */
-@CompileStatic
 enum VatCode {
 
   OUTPUT_25('Utgående moms 25 %', 0.25G, 0.00G),

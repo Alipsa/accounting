@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.OpeningBalance
@@ -27,7 +25,6 @@ import javax.swing.JTextField
 /**
  * Captures opening balance for one balance account and fiscal year.
  */
-@CompileStatic
 final class OpeningBalanceDialog extends JDialog {
 
   private final AccountService accountService

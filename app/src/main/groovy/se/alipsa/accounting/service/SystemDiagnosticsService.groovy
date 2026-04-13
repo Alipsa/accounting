@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.support.AppPaths
 
@@ -10,7 +8,6 @@ import java.nio.file.Path
 /**
  * Aggregates current system diagnostics for the in-app diagnostics panel.
  */
-@CompileStatic
 final class SystemDiagnosticsService {
 
   private final MigrationService migrationService

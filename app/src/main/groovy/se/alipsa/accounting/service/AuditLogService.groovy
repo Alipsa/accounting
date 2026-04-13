@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.AccountingPeriod
@@ -22,7 +21,6 @@ import java.time.format.DateTimeFormatter
 /**
  * Persists immutable audit entries for business-critical operations.
  */
-@CompileStatic
 final class AuditLogService {
 
   static final String CREATE_VOUCHER = 'CREATE_VOUCHER'

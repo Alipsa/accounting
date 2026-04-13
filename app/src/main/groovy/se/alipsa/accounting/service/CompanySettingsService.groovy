@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
@@ -10,7 +9,6 @@ import se.alipsa.accounting.domain.VatPeriodicity
 /**
  * Persists and loads the single company configuration for the installation.
  */
-@CompileStatic
 final class CompanySettingsService {
 
   private static final long SETTINGS_ID = 1L

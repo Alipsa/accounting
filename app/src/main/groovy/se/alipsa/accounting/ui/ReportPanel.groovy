@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.report.ReportArchive
@@ -46,7 +44,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
-@CompileStatic
 final class ReportPanel extends JPanel {
 
   private static final String FULL_YEAR_OPTION = 'Hela året'

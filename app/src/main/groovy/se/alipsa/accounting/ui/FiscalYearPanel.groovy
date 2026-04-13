@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -25,7 +23,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists fiscal years and their periods, and provides create and lock actions.
  */
-@CompileStatic
 final class FiscalYearPanel extends JPanel {
 
   private final FiscalYearService fiscalYearService

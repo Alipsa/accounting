@@ -1,13 +1,11 @@
 package se.alipsa.accounting.service
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.nio.file.Path
 import java.time.LocalDateTime
 
 @Canonical
-@CompileStatic
 final class BackupFileEntry {
 
   String section
@@ -17,7 +15,6 @@ final class BackupFileEntry {
 }
 
 @Canonical
-@CompileStatic
 final class BackupManifest {
 
   int formatVersion
@@ -29,7 +26,6 @@ final class BackupManifest {
 }
 
 @Canonical
-@CompileStatic
 final class BackupSummary {
 
   Path backupPath
@@ -41,7 +37,6 @@ final class BackupSummary {
 }
 
 @Canonical
-@CompileStatic
 final class BackupResult {
 
   BackupSummary summary
@@ -49,7 +44,6 @@ final class BackupResult {
 }
 
 @Canonical
-@CompileStatic
 final class RestoreResult {
 
   Path backupPath

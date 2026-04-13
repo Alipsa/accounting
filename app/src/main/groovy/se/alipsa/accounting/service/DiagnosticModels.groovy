@@ -1,13 +1,11 @@
 package se.alipsa.accounting.service
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.nio.file.Path
 import java.time.LocalDateTime
 
 @Canonical
-@CompileStatic
 final class StartupVerificationReport {
 
   LocalDateTime verifiedAt
@@ -17,7 +15,6 @@ final class StartupVerificationReport {
 }
 
 @Canonical
-@CompileStatic
 final class SystemDiagnosticsSnapshot {
 
   Path applicationHome

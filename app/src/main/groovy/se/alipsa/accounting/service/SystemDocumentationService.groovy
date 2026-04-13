@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.support.AppPaths
@@ -14,7 +12,6 @@ import java.time.LocalDateTime
 /**
  * Produces in-app system documentation and audit export material.
  */
-@CompileStatic
 final class SystemDocumentationService {
 
   private final MigrationService migrationService

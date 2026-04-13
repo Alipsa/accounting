@@ -1,4 +1,9 @@
-# Alipsa Accounting
+# <img src="app/src/main/resources/icons/logo128.png" alt="Alipsa Accounting" width="32" height="32"> Alipsa Accounting
+
+![Groovy 5.0](https://img.shields.io/badge/Groovy-5.0-blue?logo=apachegroovy)
+![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
+![Gradle 9.4](https://img.shields.io/badge/Gradle-9.4-02303A?logo=gradle)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 Desktopbaserat bokföringsprogram för små svenska företag.
 Byggt med Groovy, Swing och en inbäddad H2-databas — inga externa tjänster behövs.
@@ -33,7 +38,8 @@ Applikationen skapar sin H2-databas automatiskt vid första start.
 - `./gradlew build` kör full validering med kompilering, tester, Spotless och CodeNarc.
 - `./gradlew test` kör testsviten.
 - `./gradlew run` startar desktopapplikationen.
-- `./gradlew distZip` och `./gradlew distTar` bygger generella distributionsarkiv från `application`-pluginet.
+- `./gradlew :app:packageCurrentPlatformRelease` bygger releasepaket för aktuell plattform via `jpackage`.
+- `./gradlew :app:verifyCurrentPlatformRelease` paketerar aktuell plattform och verifierar att launchern kan starta applikationen i ett isolerat hemkatalogsläge.
 
 ## Utveckling
 
@@ -81,7 +87,7 @@ Kör alla kommandon från rotmappen.
 | SIE-parsning  | sie-reader                       |
 | Bygg          | Gradle 9.4                       |
 | Kodstil       | Spotless + CodeNarc              |
-| Tester        | JUnit 5 + groovier-junit         |
+| Tester        | JUnit 6 + groovier-junit         |
 
 ## Drift och säkerhet
 
@@ -108,5 +114,22 @@ Kör alla kommandon från rotmappen.
 
 ## Release
 
-- Plattformsspecifik paketering för Windows, Linux och macOS planeras i fas 11.
-- I nuläget produceras generella distributionsarkiv via Gradles `application`-plugin som grund för vidare releasearbete.
+Releasebyggen använder `jpackage` och kräver Java 21 med tillhörande paketeringsverktyg på respektive plattform.
+
+- Linux: `./gradlew :app:packageLinuxReleaseZip`
+- Windows: `./gradlew :app:packageWindowsInstaller`
+- macOS: `./gradlew :app:packageMacosAppImage`
+- Aktuell plattform: `./gradlew :app:packageCurrentPlatformRelease`
+- Smoke test av aktuell plattform: `./gradlew :app:verifyCurrentPlatformRelease`
+
+Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
+
+Linux-releasen producerar en `app-image` plus ett zip-arkiv som även innehåller `.desktop`-filen. Windows-releasen producerar en `exe`-installerare med meny- och skrivbordsgenväg. macOS-releasen producerar `AlipsaAccounting.app`.
+
+Applikationen använder plattformsspecifika standardvägar för data och loggar:
+
+- Linux: `~/.local/share/alipsa-accounting`
+- Windows: `%APPDATA%\\Alipsa\\Accounting`
+- macOS: `~/Library/Application Support/AlipsaAccounting`
+
+Signering av Windows-installatör och notarisering/signering av macOS-app är avsiktligt lämnade som framtida release-steg. Nuvarande buildflöde producerar signerbara artefakter men utför inte signering automatiskt.

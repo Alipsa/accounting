@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.service.FiscalYearService
@@ -39,7 +37,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Modal dialog for SIE import/export and import job inspection.
  */
-@CompileStatic
 final class SieExchangeDialog extends JDialog {
 
   private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm')

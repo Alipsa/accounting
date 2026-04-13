@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 import groovy.transform.TupleConstructor
 import groovy.transform.stc.ClosureParams
 import groovy.transform.stc.SimpleType
@@ -15,11 +14,13 @@ import java.util.logging.Logger
 /**
  * Bootstraps and provides access to the embedded H2 database.
  */
-@Singleton(lazy = true)
-@CompileStatic
 final class DatabaseService {
 
   private static final Logger log = Logger.getLogger(DatabaseService.name)
+  // Eager singleton -- construction must remain side-effect-free because the
+  // instance is created at class-loading time, before --home=... has been processed.
+  @SuppressWarnings('PropertyName')
+  static final DatabaseService instance = new DatabaseService()
   static final String USERNAME = 'sa'
   static final String PASSWORD = ''
   private static final String DRIVER = 'org.h2.Driver'
@@ -40,6 +41,9 @@ final class DatabaseService {
 
   static DatabaseService newForTesting() {
     new DatabaseService()
+  }
+
+  private DatabaseService() {
   }
 
   int expectedSchemaVersion() {

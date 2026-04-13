@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherStatus
@@ -36,7 +34,6 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists vouchers and opens registration or correction flows.
  */
-@CompileStatic
 final class VoucherListPanel extends JPanel {
 
   private static final String ALL = 'Alla'

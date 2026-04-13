@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import alipsa.sieparser.SIE
 import alipsa.sieparser.SieAccount
@@ -32,7 +31,6 @@ import java.time.LocalDate
 /**
  * Imports and exports SIE4 files and records import job outcomes.
  */
-@CompileStatic
 final class SieImportExportService {
   private static final int AMOUNT_SCALE = 2
   private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L

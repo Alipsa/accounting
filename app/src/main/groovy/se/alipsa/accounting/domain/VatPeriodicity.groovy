@@ -1,11 +1,8 @@
 package se.alipsa.accounting.domain
 
-import groovy.transform.CompileStatic
-
 /**
  * Company-level VAT reporting cadence used when VAT periods are generated.
  */
-@CompileStatic
 enum VatPeriodicity {
 
   MONTHLY('Månadsvis'),

@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.AccountingPeriod
@@ -13,7 +12,6 @@ import java.time.LocalDate
 /**
  * Handles period creation, lock status and date based lock checks.
  */
-@CompileStatic
 final class AccountingPeriodService {
 
   private final DatabaseService databaseService

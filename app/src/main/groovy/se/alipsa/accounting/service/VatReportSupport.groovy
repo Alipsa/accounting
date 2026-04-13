@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.VatCode
 
@@ -14,7 +13,6 @@ import java.time.LocalDate
 /**
  * Shared VAT aggregation rules used by both VAT periods and ad hoc report exports.
  */
-@CompileStatic
 final class VatReportSupport {
 
   private static final int AMOUNT_SCALE = 2

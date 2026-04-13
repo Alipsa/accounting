@@ -1,7 +1,6 @@
 package se.alipsa.accounting.domain.report
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDate
 
@@ -9,7 +8,6 @@ import java.time.LocalDate
  * One general-ledger posting row, optionally including an opening balance line.
  */
 @Canonical
-@CompileStatic
 final class GeneralLedgerRow {
 
   String accountNumber

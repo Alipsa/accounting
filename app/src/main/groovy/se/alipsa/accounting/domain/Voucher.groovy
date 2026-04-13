@@ -1,7 +1,6 @@
 package se.alipsa.accounting.domain
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -10,7 +9,6 @@ import java.time.LocalDateTime
  * Accounting voucher with immutable booked lines and hash-chain metadata.
  */
 @Canonical
-@CompileStatic
 final class Voucher {
 
   Long id

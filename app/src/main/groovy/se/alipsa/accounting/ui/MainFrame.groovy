@@ -256,9 +256,10 @@ final class MainFrame {
 
   private void showAboutDialog() {
     ImageIcon icon = loadIcon('/icons/logo64.png')
+    String version = MainFrame.package?.implementationVersion ?: 'utvecklingsversion'
     JOptionPane.showMessageDialog(
         frame,
-        'Alipsa Accounting\nFas 10: drift, backup, återställning och systemdokumentation.',
+        "Alipsa Accounting\nVersion: ${version}",
         'Om Alipsa Accounting',
         JOptionPane.INFORMATION_MESSAGE,
         icon

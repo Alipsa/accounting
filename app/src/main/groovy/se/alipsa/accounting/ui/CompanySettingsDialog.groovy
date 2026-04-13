@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanySettingsService
@@ -19,7 +17,6 @@ import javax.swing.*
 /**
  * Modal dialog for initial company setup and later edits.
  */
-@CompileStatic
 final class CompanySettingsDialog extends JDialog {
 
   private final CompanySettingsService companySettingsService

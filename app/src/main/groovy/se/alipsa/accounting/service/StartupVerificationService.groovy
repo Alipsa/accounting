@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.support.AppPaths
 
@@ -11,7 +9,6 @@ import java.time.LocalDateTime
 /**
  * Verifies integrity and runtime configuration during startup and diagnostics refresh.
  */
-@CompileStatic
 final class StartupVerificationService {
 
   private final DatabaseService databaseService

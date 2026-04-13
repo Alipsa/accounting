@@ -24,7 +24,7 @@ Run commands from the repository root.
 ## Coding Style & Naming Conventions
 - Use 2-space indentation in Groovy and Gradle files.
 - Keep SQL readable and manually formatted; do not reflow migrations.
-- Prefer `@CompileStatic` unless a UI class needs dynamic SwingBuilder behavior.
+- `@CompileStatic` is enforced globally via `config/groovy/compileStatic.groovy`; per-class annotations are not needed. Only add explicit `@CompileStatic` if a class must opt out and back in selectively.
 - Class names use `PascalCase`; methods and fields use `camelCase`.
 - Service classes end with `Service`, dialogs with `Dialog`, panels with `Panel`.
 - Use `apply_patch`-style minimal edits and avoid unrelated formatting churn.

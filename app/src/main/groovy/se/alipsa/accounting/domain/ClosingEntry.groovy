@@ -1,7 +1,6 @@
 package se.alipsa.accounting.domain
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDateTime
 
@@ -9,7 +8,6 @@ import java.time.LocalDateTime
  * Persisted trace entry for generated year-end closings and opening balances.
  */
 @Canonical
-@CompileStatic
 final class ClosingEntry {
 
   Long id

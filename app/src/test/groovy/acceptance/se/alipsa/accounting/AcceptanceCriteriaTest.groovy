@@ -9,7 +9,6 @@ import groovy.sql.Sql
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -159,9 +158,24 @@ class AcceptanceCriteriaTest {
   }
 
   @Test
-  @Disabled('Fas 11 verifierar plattformsspecifika release-builds.')
-  void acceptanceCriterionElevenIsVerifiedInPhaseEleven() {
-    assertTrue(true, 'Verifieras i fas 11.')
+  void acceptanceCriterionElevenCanBeDemonstrated() {
+    Path verifyHome = tempDir.resolve('verify-home')
+    ByteArrayOutputStream stdout = new ByteArrayOutputStream()
+    PrintStream previousOut = System.out
+    try {
+      System.setOut(new PrintStream(stdout, true, 'UTF-8'))
+      AlipsaAccounting.main(['--verify-launch', "--home=${verifyHome}"] as String[])
+    } finally {
+      System.setOut(previousOut)
+    }
+
+    String output = stdout.toString('UTF-8')
+    Path packagingRoot = resolveRepositoryPath('packaging')
+    assertTrue(output.contains('Launch verification OK'))
+    assertTrue(Files.isRegularFile(verifyHome.resolve('data').resolve('accounting.mv.db')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('linux').resolve('AlipsaAccounting.png')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('windows').resolve('AlipsaAccounting.ico')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('macos').resolve('AlipsaAccounting.icns')))
   }
 
   private static void lockAllAccountingPeriods(AccountingPeriodService accountingPeriodService, long fiscalYearId) {
@@ -310,6 +324,14 @@ class AcceptanceCriteriaTest {
       workbook.close()
     }
     workbookPath
+  }
+
+  private static Path resolveRepositoryPath(String name) {
+    Path current = Path.of(System.getProperty('user.dir')).toAbsolutePath().normalize()
+    if (Files.isDirectory(current.resolve(name))) {
+      return current.resolve(name)
+    }
+    current.parent.resolve(name)
   }
 
   private static final class AcceptanceServices {

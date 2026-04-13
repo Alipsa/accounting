@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
@@ -13,7 +12,6 @@ import java.math.RoundingMode
 /**
  * Queries and updates chart of accounts data and opening balances.
  */
-@CompileStatic
 final class AccountService {
 
   private final DatabaseService databaseService
@@ -244,7 +242,6 @@ final class AccountService {
   }
 
   @Canonical
-  @CompileStatic
   static final class AccountOverview {
 
     int totalCount

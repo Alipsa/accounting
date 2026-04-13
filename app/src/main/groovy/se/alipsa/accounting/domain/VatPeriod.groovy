@@ -1,7 +1,6 @@
 package se.alipsa.accounting.domain
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -10,7 +9,6 @@ import java.time.LocalDateTime
  * VAT reporting period derived from accounting periods.
  */
 @Canonical
-@CompileStatic
 final class VatPeriod {
 
   Long id

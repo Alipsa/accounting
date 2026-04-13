@@ -1,7 +1,5 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.CompileStatic
-
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.service.AccountingPeriodService
 
@@ -12,7 +10,6 @@ import javax.swing.*
 /**
  * Confirms and documents a period lock action.
  */
-@CompileStatic
 final class PeriodLockDialog extends JDialog {
 
   private final AccountingPeriodService accountingPeriodService

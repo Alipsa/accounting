@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Voucher
@@ -21,7 +20,6 @@ import java.time.LocalDateTime
 /**
  * Handles safe voucher creation, booking, correction and number allocation.
  */
-@CompileStatic
 final class VoucherService {
 
   private static final int AMOUNT_SCALE = 2
@@ -911,7 +909,6 @@ final class VoucherService {
     }
   }
 
-  @CompileStatic
   static final class PostingPermissions {
 
     static final PostingPermissions DEFAULT = new PostingPermissions(false, false)

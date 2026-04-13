@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -19,7 +18,6 @@ import java.time.LocalDateTime
 /**
  * Stores generated report artifacts on disk and keeps archive metadata in the database.
  */
-@CompileStatic
 final class ReportArchiveService {
 
   private final DatabaseService databaseService

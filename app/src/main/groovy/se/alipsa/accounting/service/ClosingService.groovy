@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.CompileStatic
 
 import se.alipsa.accounting.domain.ClosingEntry
 import se.alipsa.accounting.domain.FiscalYear
@@ -18,7 +17,6 @@ import java.time.temporal.ChronoUnit
 /**
  * Handles year-end closing, retained earnings transfer and next-year opening balances.
  */
-@CompileStatic
 final class ClosingService {
 
   static final String DEFAULT_CLOSING_ACCOUNT = '2099'

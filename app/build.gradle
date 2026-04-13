@@ -5,6 +5,9 @@ plugins {
   id 'com.diffplug.spotless' version '8.4.0'
 }
 
+group = 'se.alipsa'
+version = '1.0.0'
+
 repositories {
   mavenCentral()
 }
@@ -32,6 +35,305 @@ java {
 
 application {
   mainClass = 'se.alipsa.accounting.AlipsaAccounting'
+}
+
+def releaseConfig = [
+  appName       : 'AlipsaAccounting',
+  displayName   : 'Alipsa Accounting',
+  vendor        : 'Alipsa',
+  packageName   : 'alipsa-accounting',
+  version       : project.version.toString(),
+  description   : 'Desktop accounting for small Swedish businesses.',
+  copyright     : 'Copyright 2026 Alipsa',
+  mainClassName : application.mainClass,
+  releaseRoot   : layout.buildDirectory.dir('release'),
+  packagingRoot : rootProject.layout.projectDirectory.dir('packaging'),
+  installLibDir : layout.buildDirectory.dir('install/app/lib'),
+  generatedRoot : layout.buildDirectory.dir('generated/packaging')
+]
+
+def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file("${releaseConfig.appName}.desktop.template")
+def linuxDesktopEntry = releaseConfig.generatedRoot.map { it.file("linux-desktop/${releaseConfig.appName}.desktop") }
+
+def currentOsName = System.getProperty('os.name', 'unknown').toLowerCase(Locale.ROOT)
+def currentPlatform = currentOsName.contains('win') ? 'windows' : currentOsName.contains('mac') ? 'macos' : 'linux'
+def isWindows = currentPlatform == 'windows'
+def isMacos = currentPlatform == 'macos'
+def isLinux = currentPlatform == 'linux'
+def mainJarFileName = tasks.named('jar', Jar).flatMap { Jar jarTask -> jarTask.archiveFileName }
+
+def jpackageExecutable = javaToolchains.launcherFor {
+  languageVersion = JavaLanguageVersion.of(21)
+}.map { launcher ->
+  launcher.metadata.installationPath.file('bin/jpackage').asFile.absolutePath
+}
+
+def buildJpackageArgs = { String platform, String type, File destinationDir, List<String> extraArgs = [] ->
+  [
+    '--type',
+    type,
+    '--dest',
+    destinationDir.absolutePath,
+    '--input',
+    releaseConfig.installLibDir.get().asFile.absolutePath,
+    '--name',
+    releaseConfig.appName,
+    '--main-class',
+    releaseConfig.mainClassName.get(),
+    '--main-jar',
+    mainJarFileName.get(),
+    '--app-version',
+    releaseConfig.version,
+    '--vendor',
+    releaseConfig.vendor,
+    '--description',
+    releaseConfig.description,
+    '--copyright',
+    releaseConfig.copyright,
+    '--resource-dir',
+    releaseConfig.generatedRoot.get().dir(platform).asFile.absolutePath,
+    '--icon',
+    releaseConfig.packagingRoot.dir(platform).file("${releaseConfig.appName}.${platform == 'linux' ? 'png' : platform == 'windows' ? 'ico' : 'icns'}").asFile.absolutePath,
+    '--license-file',
+    rootProject.file('LICENSE').absolutePath,
+    '--java-options',
+    '-Dfile.encoding=UTF-8'
+  ] + extraArgs
+}
+
+def launcherPathFor = { String platform ->
+  File platformDir = releaseConfig.releaseRoot.get().dir(platform).asFile
+  if (platform == 'windows') {
+    return new File(platformDir, "${releaseConfig.appName}/${releaseConfig.appName}.exe")
+  }
+  if (platform == 'macos') {
+    return new File(platformDir, "${releaseConfig.appName}.app/Contents/MacOS/${releaseConfig.appName}")
+  }
+  new File(platformDir, "${releaseConfig.appName}/bin/${releaseConfig.appName}")
+}
+
+def clearDirectory = { File directory ->
+  if (!directory.mkdirs() && !directory.isDirectory()) {
+    throw new GradleException("Kunde inte skapa release-katalogen ${directory.absolutePath}")
+  }
+  File[] children = directory.listFiles()
+  if (children == null || children.length == 0) {
+    return
+  }
+  children.each { File child ->
+    if (java.nio.file.Files.isSymbolicLink(child.toPath())) {
+      if (!child.delete()) {
+        throw new GradleException("Kunde inte ta bort symlink ${child.absolutePath}")
+      }
+      return
+    }
+    boolean deleted = child.directory ? child.deleteDir() : child.delete()
+    if (!deleted && child.exists()) {
+      throw new GradleException("Kunde inte rensa release-katalogen ${child.absolutePath}")
+    }
+  }
+}
+
+tasks.named('jar', Jar) {
+  manifest {
+    attributes(
+        'Implementation-Title': releaseConfig.displayName,
+        'Implementation-Version': releaseConfig.version,
+        'Implementation-Vendor': releaseConfig.vendor,
+        'Main-Class': releaseConfig.mainClassName.get()
+        )
+  }
+}
+
+tasks.register('generateReleaseMetadata') {
+  outputs.file(releaseConfig.generatedRoot.map { it.file('release.properties') })
+  doLast {
+    File metadataFile = releaseConfig.generatedRoot.get().file('release.properties').asFile
+    metadataFile.parentFile.mkdirs()
+    metadataFile.text = [
+      "appName=${releaseConfig.appName}",
+      "displayName=${releaseConfig.displayName}",
+      "packageName=${releaseConfig.packageName}",
+      "vendor=${releaseConfig.vendor}",
+      "version=${releaseConfig.version}"
+    ].join('\n') + '\n'
+  }
+}
+
+tasks.register('generateLinuxDesktopEntry') {
+  inputs.file(linuxDesktopTemplate)
+  outputs.file(linuxDesktopEntry)
+  doLast {
+    File desktopFile = linuxDesktopEntry.get().asFile
+    desktopFile.parentFile.mkdirs()
+    String template = linuxDesktopTemplate.asFile.getText('UTF-8')
+    desktopFile.text = template
+        .replace('@DISPLAY_NAME@', releaseConfig.displayName)
+        .replace('@DESCRIPTION@', releaseConfig.description)
+        .replace('@APP_NAME@', releaseConfig.appName)
+        .replace('@PACKAGE_NAME@', releaseConfig.packageName)
+        .replace('@INSTALL_DIR@', "/opt/${releaseConfig.appName}")
+  }
+}
+
+tasks.register('prepareLinuxPackagingResources', Copy) {
+  dependsOn 'generateReleaseMetadata', 'generateLinuxDesktopEntry'
+  from(releaseConfig.packagingRoot.dir('linux'))
+  from(releaseConfig.generatedRoot.map { it.file('release.properties') })
+  from(linuxDesktopEntry)
+  into(releaseConfig.generatedRoot.map { it.dir('linux') })
+}
+
+tasks.register('prepareWindowsPackagingResources', Copy) {
+  dependsOn 'generateReleaseMetadata'
+  from(releaseConfig.packagingRoot.dir('windows'))
+  from(releaseConfig.generatedRoot.map { it.file('release.properties') })
+  into(releaseConfig.generatedRoot.map { it.dir('windows') })
+}
+
+tasks.register('prepareMacosPackagingResources', Copy) {
+  dependsOn 'generateReleaseMetadata'
+  from(releaseConfig.packagingRoot.dir('macos'))
+  from(releaseConfig.generatedRoot.map { it.file('release.properties') })
+  into(releaseConfig.generatedRoot.map { it.dir('macos') })
+}
+
+tasks.register('verifyPackagingResources') {
+  dependsOn 'prepareLinuxPackagingResources', 'prepareWindowsPackagingResources', 'prepareMacosPackagingResources'
+  doLast {
+    [
+      releaseConfig.packagingRoot.dir('linux').file("${releaseConfig.appName}.png").asFile,
+      releaseConfig.generatedRoot.get().file("linux/${releaseConfig.appName}.desktop").asFile,
+      releaseConfig.packagingRoot.dir('windows').file("${releaseConfig.appName}.ico").asFile,
+      releaseConfig.packagingRoot.dir('macos').file("${releaseConfig.appName}.icns").asFile
+    ].each { File required ->
+      if (!required.isFile()) {
+        throw new GradleException("Saknad release-resurs: ${required}")
+      }
+    }
+  }
+}
+
+// Packaging Exec tasks configure commandLine in doFirst because the executable
+// path is resolved lazily. This means Gradle cannot compute up-to-date status
+// and these tasks will always re-execute, which is acceptable for release builds.
+tasks.register('packageLinuxAppImage', Exec) {
+  onlyIf { isLinux }
+  dependsOn 'installDist', 'prepareLinuxPackagingResources'
+  doFirst {
+    File outputDir = releaseConfig.releaseRoot.get().dir('linux').asFile
+    clearDirectory(outputDir)
+    commandLine(
+        jpackageExecutable.get(),
+        *buildJpackageArgs('linux', 'app-image', outputDir)
+        )
+  }
+}
+
+tasks.register('packageLinuxReleaseZip', Zip) {
+  onlyIf { isLinux }
+  dependsOn 'packageLinuxAppImage', 'generateLinuxDesktopEntry'
+  archiveBaseName = releaseConfig.packageName
+  archiveVersion = releaseConfig.version
+  archiveClassifier = 'linux'
+  destinationDirectory = releaseConfig.releaseRoot.map { it.dir('linux') }
+  from(releaseConfig.releaseRoot.map { it.dir("linux/${releaseConfig.appName}") }) {
+    into(releaseConfig.appName)
+  }
+  from(linuxDesktopEntry)
+}
+
+tasks.register('packageWindowsAppImage', Exec) {
+  onlyIf { isWindows }
+  dependsOn 'installDist', 'prepareWindowsPackagingResources'
+  doFirst {
+    File outputDir = releaseConfig.releaseRoot.get().dir('windows').asFile
+    clearDirectory(outputDir)
+    commandLine(
+        jpackageExecutable.get(),
+        *buildJpackageArgs('windows', 'app-image', outputDir)
+        )
+  }
+}
+
+tasks.register('packageWindowsInstaller', Exec) {
+  onlyIf { isWindows }
+  dependsOn 'installDist', 'prepareWindowsPackagingResources'
+  doFirst {
+    File outputDir = releaseConfig.releaseRoot.get().dir('windows-installer').asFile
+    clearDirectory(outputDir)
+    commandLine(
+        jpackageExecutable.get(),
+        *buildJpackageArgs('windows', 'exe', outputDir, [
+          '--win-shortcut',
+          '--win-menu',
+          '--win-dir-chooser',
+          '--win-per-user-install'
+        ])
+        )
+  }
+}
+
+tasks.register('packageMacosAppImage', Exec) {
+  onlyIf { isMacos }
+  dependsOn 'installDist', 'prepareMacosPackagingResources'
+  doFirst {
+    File outputDir = releaseConfig.releaseRoot.get().dir('macos').asFile
+    clearDirectory(outputDir)
+    commandLine(
+        jpackageExecutable.get(),
+        *buildJpackageArgs('macos', 'app-image', outputDir)
+        )
+  }
+}
+
+tasks.register('verifyLinuxAppImage', Exec) {
+  onlyIf { isLinux }
+  dependsOn 'packageLinuxAppImage'
+  doFirst {
+    File launcher = launcherPathFor('linux')
+    File verifyHome = releaseConfig.releaseRoot.get().dir('verify/linux-home').asFile
+    verifyHome.mkdirs()
+    commandLine(launcher.absolutePath, '--verify-launch', "--home=${verifyHome.absolutePath}")
+  }
+}
+
+tasks.register('verifyWindowsAppImage', Exec) {
+  onlyIf { isWindows }
+  dependsOn 'packageWindowsAppImage'
+  doFirst {
+    File launcher = launcherPathFor('windows')
+    File verifyHome = releaseConfig.releaseRoot.get().dir('verify/windows-home').asFile
+    verifyHome.mkdirs()
+    commandLine(launcher.absolutePath, '--verify-launch', "--home=${verifyHome.absolutePath}")
+  }
+}
+
+tasks.register('verifyMacosAppImage', Exec) {
+  onlyIf { isMacos }
+  dependsOn 'packageMacosAppImage'
+  doFirst {
+    File launcher = launcherPathFor('macos')
+    File verifyHome = releaseConfig.releaseRoot.get().dir('verify/macos-home').asFile
+    verifyHome.mkdirs()
+    commandLine(launcher.absolutePath, '--verify-launch', "--home=${verifyHome.absolutePath}")
+  }
+}
+
+tasks.register('packageCurrentPlatformRelease') {
+  dependsOn(
+      isWindows ? 'packageWindowsInstaller' : isMacos ? 'packageMacosAppImage' : 'packageLinuxReleaseZip'
+      )
+}
+
+tasks.register('verifyCurrentPlatformRelease') {
+  dependsOn(
+      isWindows ? 'verifyWindowsAppImage' : isMacos ? 'verifyMacosAppImage' : 'verifyLinuxAppImage'
+      )
+}
+
+tasks.register('releaseCheck') {
+  dependsOn 'verifyPackagingResources', 'verifyCurrentPlatformRelease'
 }
 
 tasks.withType(GroovyCompile).configureEach {

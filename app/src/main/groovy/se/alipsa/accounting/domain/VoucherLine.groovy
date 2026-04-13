@@ -1,13 +1,11 @@
 package se.alipsa.accounting.domain
 
 import groovy.transform.Canonical
-import groovy.transform.CompileStatic
 
 /**
  * One debit or credit line in a voucher.
  */
 @Canonical
-@CompileStatic
 final class VoucherLine {
 
   Long id
