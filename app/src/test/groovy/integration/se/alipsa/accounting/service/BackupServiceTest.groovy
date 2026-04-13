@@ -18,9 +18,14 @@ import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class BackupServiceTest {
 
@@ -72,6 +77,23 @@ class BackupServiceTest {
       assertEquals(1, count(sql, 'report_archive'))
       assertEquals(12, countSchemaVersion(sql))
     }
+  }
+
+  @Test
+  void restoreRejectsBackupWithPathTraversalInManifest() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.resolve('source-home').toString())
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    BackupService backupService = createBackupService(databaseService)
+    Path backupPath = tempDir.resolve('malicious-backup.zip')
+    createMaliciousBackup(backupPath)
+
+    IllegalArgumentException exception = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException) {
+      backupService.restoreBackup(backupPath, tempDir.resolve('restored-home'))
+    }
+
+    assertTrue(exception.message.contains('otillåten sökväg'))
+    assertTrue(!Files.exists(tempDir.resolve('evil.txt')))
   }
 
   private void seedEnvironment(DatabaseService databaseService) {
@@ -160,5 +182,38 @@ class BackupServiceTest {
       return
     }
     System.setProperty(name, value)
+  }
+
+  private static void createMaliciousBackup(Path backupPath) {
+    byte[] scriptBytes = 'create table demo(id int);'.getBytes(StandardCharsets.UTF_8)
+    byte[] payloadBytes = 'owned'.getBytes(StandardCharsets.UTF_8)
+    String manifest = [
+        'formatVersion=1',
+        "createdAt=${LocalDateTime.of(2026, 1, 1, 0, 0)}",
+        'schemaVersion=12',
+        'databasePath=database/script.sql',
+        "databaseChecksumSha256=${sha256(scriptBytes)}",
+        "databaseSizeBytes=${scriptBytes.length}",
+        "FILE\tATTACHMENT\t../../evil.txt\t${sha256(payloadBytes)}\t${payloadBytes.length}"
+    ].join('\n')
+    Files.createDirectories(backupPath.parent)
+    ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(backupPath), StandardCharsets.UTF_8)
+    zip.withCloseable {
+      writeZipEntry(zip, 'database/script.sql', scriptBytes)
+      writeZipEntry(zip, 'manifest.txt', manifest.getBytes(StandardCharsets.UTF_8))
+      writeZipEntry(zip, '../../evil.txt', payloadBytes)
+    }
+  }
+
+  private static void writeZipEntry(ZipOutputStream zip, String name, byte[] content) {
+    ZipEntry entry = new ZipEntry(name)
+    zip.putNextEntry(entry)
+    zip.write(content)
+    zip.closeEntry()
+  }
+
+  private static String sha256(byte[] content) {
+    MessageDigest digest = MessageDigest.getInstance('SHA-256')
+    HexFormat.of().formatHex(digest.digest(content))
   }
 }

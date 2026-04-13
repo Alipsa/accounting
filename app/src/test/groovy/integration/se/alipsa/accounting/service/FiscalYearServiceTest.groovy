@@ -11,10 +11,15 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.report.ReportSelection
+import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 class FiscalYearServiceTest {
 
@@ -143,6 +148,32 @@ class FiscalYearServiceTest {
     } as Executable
 
     assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void deleteFiscalYearReportsDependenciesBeforeDatabaseConstraintFailure() {
+    fiscalYearService = new FiscalYearService(
+        databaseService,
+        accountingPeriodService,
+        auditLogService,
+        new RetentionPolicyService(Clock.fixed(Instant.parse('2030-01-01T00:00:00Z'), ZoneOffset.UTC))
+    )
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        '2020',
+        LocalDate.of(2020, 1, 1),
+        LocalDate.of(2020, 12, 31)
+    )
+    new ReportArchiveService(databaseService).archiveReport(
+        new ReportSelection(ReportType.VOUCHER_LIST, year.id, null, year.startDate, year.endDate),
+        'PDF',
+        'arkiv'.bytes
+    )
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      fiscalYearService.deleteFiscalYear(year.id)
+    }
+
+    assertTrue(exception.message.contains('rapportarkiv'))
   }
 
   private static void restoreProperty(String name, String value) {

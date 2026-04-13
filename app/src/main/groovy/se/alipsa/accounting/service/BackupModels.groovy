@@ -58,27 +58,3 @@ final class RestoreResult {
   int restoredReportCount
   int schemaVersion
 }
-
-@Canonical
-@CompileStatic
-final class StartupVerificationReport {
-
-  LocalDateTime verifiedAt
-  boolean ok
-  List<String> errors = []
-  List<String> warnings = []
-}
-
-@Canonical
-@CompileStatic
-final class SystemDiagnosticsSnapshot {
-
-  Path applicationHome
-  Path databaseFile
-  int schemaVersion
-  int expectedSchemaVersion
-  StartupVerificationReport verificationReport
-  BackupSummary latestBackup
-  LocalDateTime latestSieExportAt
-  String latestSieExportSummary
-}

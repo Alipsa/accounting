@@ -9,6 +9,7 @@ import groovy.transform.stc.SimpleType
 
 import se.alipsa.accounting.support.AppPaths
 
+import java.nio.file.Path
 import java.util.logging.Logger
 
 /**
@@ -19,6 +20,8 @@ import java.util.logging.Logger
 final class DatabaseService {
 
   private static final Logger log = Logger.getLogger(DatabaseService.name)
+  static final String USERNAME = 'sa'
+  static final String PASSWORD = ''
   private static final String DRIVER = 'org.h2.Driver'
   private static final List<MigrationDefinition> MIGRATIONS = [
       new MigrationDefinition(1, 'V1__baseline.sql', '/db/migrations/V1__baseline.sql'),
@@ -79,9 +82,13 @@ final class DatabaseService {
     validateDatabaseUrl(defaultDatabaseUrl())
   }
 
+  static String embeddedDatabaseUrl(Path applicationHome) {
+    "jdbc:h2:file:${AppPaths.databaseBasePath(applicationHome)};AUTO_SERVER=FALSE;DB_CLOSE_ON_EXIT=FALSE"
+  }
+
   @SuppressWarnings('FactoryMethodName')
   <T> T withSql(@ClosureParams(value = SimpleType, options = ['groovy.sql.Sql']) Closure<T> work) {
-    Sql sql = Sql.newInstance(databaseUrl(), 'sa', '', DRIVER)
+    Sql sql = Sql.newInstance(databaseUrl(), USERNAME, PASSWORD, DRIVER)
     try {
       work.call(sql)
     } finally {
@@ -100,7 +107,7 @@ final class DatabaseService {
   }
 
   private String defaultDatabaseUrl() {
-    "jdbc:h2:file:${AppPaths.databaseBasePath()};AUTO_SERVER=FALSE;DB_CLOSE_ON_EXIT=FALSE"
+    embeddedDatabaseUrl(AppPaths.applicationHome())
   }
 
   private String validateDatabaseUrl(String url) {

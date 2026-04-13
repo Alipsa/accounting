@@ -105,6 +105,12 @@ final class FiscalYearService {
         throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
       }
       retentionPolicyService.ensureDeletionAllowed(year.endDate, "Räkenskapsår ${year.name}")
+      List<String> dependencyIssues = findDeletionDependencies(sql, fiscalYearId)
+      if (!dependencyIssues.isEmpty()) {
+        throw new IllegalStateException(
+            "Räkenskapsåret ${year.name} kan inte raderas eftersom beroenden finns: ${dependencyIssues.join(', ')}."
+        )
+      }
       int deleted = sql.executeUpdate('delete from fiscal_year where id = ?', [fiscalYearId])
       if (deleted != 1) {
         throw new IllegalStateException("Räkenskapsåret kunde inte raderas: ${fiscalYearId}")
@@ -217,5 +223,29 @@ final class FiscalYearService {
         Boolean.TRUE == row.get('closed'),
         SqlValueMapper.toLocalDateTime(row.get('closedAt'))
     )
+  }
+
+  private static List<String> findDeletionDependencies(Sql sql, long fiscalYearId) {
+    List<String> issues = []
+    appendDependencyIssue(sql, issues, fiscalYearId, 'report_archive', 'fiscal_year_id', 'rapportarkiv')
+    appendDependencyIssue(sql, issues, fiscalYearId, 'audit_log', 'fiscal_year_id', 'audit-logg')
+    appendDependencyIssue(sql, issues, fiscalYearId, 'closing_entry', 'next_fiscal_year_id', 'bokslutsposter som pekar på året som nästa år')
+    issues
+  }
+
+  private static void appendDependencyIssue(
+      Sql sql,
+      List<String> issues,
+      long fiscalYearId,
+      String tableName,
+      String columnName,
+      String label
+  ) {
+    String query = "select count(*) as total from ${tableName} where ${columnName} = ?"
+    GroovyRowResult row = sql.firstRow(query, [fiscalYearId]) as GroovyRowResult
+    int total = ((Number) row.get('total')).intValue()
+    if (total > 0) {
+      issues << "${label} (${total})".toString()
+    }
   }
 }

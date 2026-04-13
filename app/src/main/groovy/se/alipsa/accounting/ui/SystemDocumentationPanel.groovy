@@ -42,6 +42,7 @@ final class SystemDocumentationPanel extends JPanel {
   private final JTextArea diagnosticsArea = new JTextArea(8, 48)
   private final JTextArea documentationArea = new JTextArea(24, 48)
   private final JTextArea messageArea = new JTextArea(4, 48)
+  private final JButton refreshButton = new JButton('Uppdatera')
 
   SystemDocumentationPanel(
       SystemDocumentationService documentationService,
@@ -88,10 +89,9 @@ final class SystemDocumentationPanel extends JPanel {
 
   private JPanel buildActions() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton refreshButton = new JButton('Uppdatera')
     refreshButton.addActionListener { refreshAll() }
     JButton exportDocsButton = new JButton('Exportera dokumentation')
-    exportDocsButton.addActionListener { exportDocumentation() }
+    exportDocsButton.addActionListener { exportDocumentation(exportDocsButton) }
     JButton backupButton = new JButton('Skapa backup...')
     backupButton.addActionListener { createBackup() }
     JButton restoreButton = new JButton('Återställ backup...')
@@ -107,10 +107,37 @@ final class SystemDocumentationPanel extends JPanel {
   }
 
   private void refreshAll() {
-    diagnosticsArea.text = renderDiagnostics()
-    documentationArea.text = documentationService.renderDocumentation()
-    messageArea.foreground = new Color(22, 101, 52)
-    messageArea.text = 'Systemdiagnostik och dokumentation uppdaterad.'
+    refreshButton.enabled = false
+    diagnosticsArea.text = 'Laddar diagnostik...'
+    documentationArea.text = 'Laddar systemdokumentation...'
+    messageArea.foreground = new Color(33, 33, 33)
+    messageArea.text = 'Hämtar systemdiagnostik och dokumentation...'
+    new SwingWorker<RefreshPayload, Void>() {
+      @Override
+      protected RefreshPayload doInBackground() {
+        new RefreshPayload(renderDiagnostics(), documentationService.renderDocumentation())
+      }
+
+      @Override
+      protected void done() {
+        try {
+          RefreshPayload payload = get()
+          diagnosticsArea.text = payload.diagnostics
+          documentationArea.text = payload.documentation
+          showInfo('Systemdiagnostik och dokumentation uppdaterad.')
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          showError('Uppdateringen av systeminformationen avbröts.')
+        } catch (ExecutionException exception) {
+          Throwable cause = exception.cause ?: exception
+          diagnosticsArea.text = ''
+          documentationArea.text = ''
+          showError(cause.message ?: 'Systeminformationen kunde inte hämtas.')
+        } finally {
+          refreshButton.enabled = true
+        }
+      }
+    }.execute()
   }
 
   private String renderDiagnostics() {
@@ -131,13 +158,31 @@ final class SystemDocumentationPanel extends JPanel {
     ].join('\n')
   }
 
-  private void exportDocumentation() {
-    try {
-      Path path = documentationService.exportDocumentation()
-      showInfo("Systemdokumentationen exporterades till ${path}.")
-    } catch (Exception exception) {
-      showError(exception.message ?: 'Systemdokumentationen kunde inte exporteras.')
-    }
+  private void exportDocumentation(JButton exportButton) {
+    exportButton.enabled = false
+    showInfo('Exporterar systemdokumentation...')
+    new SwingWorker<Path, Void>() {
+      @Override
+      protected Path doInBackground() {
+        documentationService.exportDocumentation()
+      }
+
+      @Override
+      protected void done() {
+        try {
+          Path path = get()
+          showInfo("Systemdokumentationen exporterades till ${path}.")
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          showError('Exporten av systemdokumentation avbröts.')
+        } catch (ExecutionException exception) {
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: 'Systemdokumentationen kunde inte exporteras.')
+        } finally {
+          exportButton.enabled = true
+        }
+      }
+    }.execute()
   }
 
   private void createBackup() {
@@ -225,5 +270,17 @@ final class SystemDocumentationPanel extends JPanel {
   private void showError(String text) {
     messageArea.foreground = new Color(153, 27, 27)
     messageArea.text = text
+  }
+
+  @CompileStatic
+  private static final class RefreshPayload {
+
+    final String diagnostics
+    final String documentation
+
+    RefreshPayload(String diagnostics, String documentation) {
+      this.diagnostics = diagnostics
+      this.documentation = documentation
+    }
   }
 }

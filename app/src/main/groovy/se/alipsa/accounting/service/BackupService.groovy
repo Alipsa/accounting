@@ -33,6 +33,8 @@ final class BackupService {
   private static final String DATABASE_SCRIPT_ENTRY = 'database/script.sql'
   private static final DateTimeFormatter FILE_TIMESTAMP = DateTimeFormatter.ofPattern('yyyyMMdd-HHmmss')
   private static final int MAX_BACKUPS_TO_SCAN = 200
+  private static final String ATTACHMENT_ROOT = 'attachments/'
+  private static final String REPORT_ROOT = 'reports/'
 
   private final DatabaseService databaseService
   private final AttachmentService attachmentService
@@ -76,14 +78,18 @@ final class BackupService {
     try {
       writeDatabaseScript(tempScript)
       byte[] scriptBytes = Files.readAllBytes(tempScript)
-      BackupManifest manifest = buildManifest(tempScript, scriptBytes)
+      List<AttachmentMetadata> attachments = attachmentService.listAllAttachments()
+      List<ReportArchive> archives = reportArchiveService.listArchives(10_000)
+      BackupManifest manifest = buildManifest(tempScript, scriptBytes, attachments, archives)
+      Map<String, AttachmentMetadata> attachmentsByPath = indexAttachments(attachments)
+      Map<String, ReportArchive> reportsByPath = indexReports(archives)
       Files.createDirectories(safeTarget.parent)
       ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(safeTarget), StandardCharsets.UTF_8)
       zip.withCloseable {
         writeEntry(zip, DATABASE_SCRIPT_ENTRY, scriptBytes)
         writeEntry(zip, MANIFEST_ENTRY, renderManifest(manifest).getBytes(StandardCharsets.UTF_8))
-        writeAttachments(zip, manifest)
-        writeReports(zip, manifest)
+        writeAttachments(zip, manifest, attachmentsByPath)
+        writeReports(zip, manifest, reportsByPath)
       }
       BackupSummary summary = new BackupSummary(
           safeTarget,
@@ -149,13 +155,10 @@ final class BackupService {
     Path safeBackup = requireBackupFile(backupPath)
     ZipFile zipFile = new ZipFile(safeBackup.toFile(), StandardCharsets.UTF_8)
     zipFile.withCloseable { ZipFile zip ->
-      ZipEntry manifestEntry = zip.getEntry(MANIFEST_ENTRY)
-      if (manifestEntry == null) {
-        throw new IllegalArgumentException('Backupen saknar manifest.txt.')
-      }
-      BackupManifest manifest = parseManifest(new String(zip.getInputStream(manifestEntry).readAllBytes(), StandardCharsets.UTF_8))
+      BackupManifest manifest = readManifest(zip)
       verifyDatabaseScript(zip, manifest)
       manifest.files.each { BackupFileEntry file ->
+        validateManifestEntryPath(file)
         ZipEntry zipEntry = zip.getEntry(file.relativePath)
         if (zipEntry == null) {
           throw new IllegalArgumentException("Backupen saknar ${file.relativePath}.")
@@ -181,14 +184,14 @@ final class BackupService {
           .limit(Math.min(MAX_BACKUPS_TO_SCAN, safeLimit) as long)
           .collect { Path path ->
             try {
-              BackupManifest manifest = verifyBackup(path)
+              BackupManifest manifest = readManifest(path)
               new BackupSummary(
                   path,
                   manifest.createdAt,
                   manifest.schemaVersion,
                   manifest.files.count { BackupFileEntry file -> file.section == 'ATTACHMENT' } as int,
                   manifest.files.count { BackupFileEntry file -> file.section == 'REPORT' } as int,
-                  sha256(path)
+                  null
               )
             } catch (Exception ignored) {
               null
@@ -197,22 +200,27 @@ final class BackupService {
     }
   }
 
-  private BackupManifest buildManifest(Path scriptPath, byte[] scriptBytes) {
+  private BackupManifest buildManifest(
+      Path scriptPath,
+      byte[] scriptBytes,
+      List<AttachmentMetadata> attachments,
+      List<ReportArchive> archives
+  ) {
     List<BackupFileEntry> files = []
-    attachmentService.listAllAttachments().each { AttachmentMetadata attachment ->
+    attachments.each { AttachmentMetadata attachment ->
       Path source = attachmentService.resolveStoredPath(attachment)
       files << new BackupFileEntry(
           'ATTACHMENT',
-          "attachments/${attachment.storagePath}",
+          "${ATTACHMENT_ROOT}${attachment.storagePath}",
           sha256(source),
           Files.size(source)
       )
     }
-    reportArchiveService.listArchives(10_000).each { ReportArchive archive ->
+    archives.each { ReportArchive archive ->
       Path source = reportArchiveService.resolveStoredPath(archive)
       files << new BackupFileEntry(
           'REPORT',
-          "reports/${archive.storagePath}",
+          "${REPORT_ROOT}${archive.storagePath}",
           sha256(source),
           Files.size(source)
       )
@@ -234,11 +242,13 @@ final class BackupService {
     }
   }
 
-  private void writeAttachments(ZipOutputStream zip, BackupManifest manifest) {
+  private void writeAttachments(
+      ZipOutputStream zip,
+      BackupManifest manifest,
+      Map<String, AttachmentMetadata> attachmentsByPath
+  ) {
     manifest.files.findAll { BackupFileEntry file -> file.section == 'ATTACHMENT' }.each { BackupFileEntry file ->
-      AttachmentMetadata attachment = attachmentService.listAllAttachments().find { AttachmentMetadata candidate ->
-        "attachments/${candidate.storagePath}" == file.relativePath
-      }
+      AttachmentMetadata attachment = attachmentsByPath.get(file.relativePath)
       if (attachment == null) {
         throw new IllegalStateException("Bilagan saknas i databasen för ${file.relativePath}.")
       }
@@ -247,11 +257,13 @@ final class BackupService {
     }
   }
 
-  private void writeReports(ZipOutputStream zip, BackupManifest manifest) {
+  private void writeReports(
+      ZipOutputStream zip,
+      BackupManifest manifest,
+      Map<String, ReportArchive> reportsByPath
+  ) {
     manifest.files.findAll { BackupFileEntry file -> file.section == 'REPORT' }.each { BackupFileEntry file ->
-      ReportArchive archive = reportArchiveService.listArchives(10_000).find { ReportArchive candidate ->
-        "reports/${candidate.storagePath}" == file.relativePath
-      }
+      ReportArchive archive = reportsByPath.get(file.relativePath)
       if (archive == null) {
         throw new IllegalStateException("Rapportarkivet saknas i databasen för ${file.relativePath}.")
       }
@@ -295,6 +307,9 @@ final class BackupService {
       }
       if (line.startsWith('FILE\t')) {
         String[] parts = line.split('\t')
+        if (parts.length != 5) {
+          throw new IllegalArgumentException("Ogiltig manifestrad: ${line}")
+        }
         files << new BackupFileEntry(parts[1], parts[2], parts[3], Long.parseLong(parts[4]))
         return
       }
@@ -343,7 +358,10 @@ final class BackupService {
     zip.withCloseable { ZipFile zipFile ->
       ([DATABASE_SCRIPT_ENTRY] + manifest.files.collect { BackupFileEntry file -> file.relativePath }).each { String entryName ->
         ZipEntry entry = zipFile.getEntry(entryName)
-        Path target = tempDir.resolve(entryName).normalize()
+        if (entry == null) {
+          throw new IllegalArgumentException("Backupen saknar ${entryName}.")
+        }
+        Path target = resolveContainedPath(tempDir, entryName)
         Files.createDirectories(target.parent)
         Files.copy(zipFile.getInputStream(entry), target, StandardCopyOption.REPLACE_EXISTING)
       }
@@ -362,8 +380,14 @@ final class BackupService {
   }
 
   private static void restoreDatabase(Path scriptPath, Path targetHome) {
-    String url = "jdbc:h2:file:${AppPaths.databaseBasePath(targetHome)};AUTO_SERVER=FALSE;DB_CLOSE_ON_EXIT=FALSE"
-    RunScript.execute(url, 'sa', '', scriptPath.toString(), StandardCharsets.UTF_8, false)
+    RunScript.execute(
+        DatabaseService.embeddedDatabaseUrl(targetHome),
+        DatabaseService.USERNAME,
+        DatabaseService.PASSWORD,
+        scriptPath.toString(),
+        StandardCharsets.UTF_8,
+        false
+    )
   }
 
   private static void copyTree(Path sourceRoot, Path targetRoot) {
@@ -440,5 +464,63 @@ final class BackupService {
   private static String sha256(byte[] content) {
     MessageDigest digest = MessageDigest.getInstance('SHA-256')
     HexFormat.of().formatHex(digest.digest(content))
+  }
+
+  private static BackupManifest readManifest(Path backupPath) {
+    Path safeBackup = requireBackupFile(backupPath)
+    ZipFile zipFile = new ZipFile(safeBackup.toFile(), StandardCharsets.UTF_8)
+    zipFile.withCloseable { ZipFile zip ->
+      readManifest(zip)
+    }
+  }
+
+  private static BackupManifest readManifest(ZipFile zip) {
+    ZipEntry manifestEntry = zip.getEntry(MANIFEST_ENTRY)
+    if (manifestEntry == null) {
+      throw new IllegalArgumentException('Backupen saknar manifest.txt.')
+    }
+    BackupManifest manifest = parseManifest(new String(zip.getInputStream(manifestEntry).readAllBytes(), StandardCharsets.UTF_8))
+    manifest.files.each { BackupFileEntry file ->
+      validateManifestEntryPath(file)
+    }
+    manifest
+  }
+
+  private static Map<String, AttachmentMetadata> indexAttachments(List<AttachmentMetadata> attachments) {
+    Map<String, AttachmentMetadata> index = [:]
+    attachments.each { AttachmentMetadata attachment ->
+      index.put("${ATTACHMENT_ROOT}${attachment.storagePath}".toString(), attachment)
+    }
+    index
+  }
+
+  private static Map<String, ReportArchive> indexReports(List<ReportArchive> archives) {
+    Map<String, ReportArchive> index = [:]
+    archives.each { ReportArchive archive ->
+      index.put("${REPORT_ROOT}${archive.storagePath}".toString(), archive)
+    }
+    index
+  }
+
+  private static void validateManifestEntryPath(BackupFileEntry file) {
+    if (!(file.section in ['ATTACHMENT', 'REPORT'])) {
+      throw new IllegalArgumentException("Backupen innehåller en ogiltig sektion: ${file.section}")
+    }
+    String expectedPrefix = file.section == 'ATTACHMENT' ? ATTACHMENT_ROOT : REPORT_ROOT
+    if (!(file.relativePath?.startsWith(expectedPrefix))) {
+      throw new IllegalArgumentException("Backupen innehåller en otillåten sökväg: ${file.relativePath}")
+    }
+    resolveContainedPath(Path.of('/tmp/alipsa-accounting-validate'), file.relativePath)
+  }
+
+  private static Path resolveContainedPath(Path root, String entryName) {
+    if (!entryName?.trim()) {
+      throw new IllegalArgumentException('Backupen innehåller en tom sökväg.')
+    }
+    Path resolved = root.resolve(entryName).normalize()
+    if (!resolved.startsWith(root)) {
+      throw new IllegalArgumentException("Backupen innehåller en otillåten sökväg: ${entryName}")
+    }
+    resolved
   }
 }
