@@ -1,9 +1,12 @@
 package se.alipsa.accounting
 
+import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
 
@@ -36,9 +39,14 @@ final class AlipsaAccounting {
       System.out.println(versionLine())
       return
     }
+    I18n.instance.setLocale(Locale.getDefault())
     try {
       LoggingConfigurer.configure()
       DatabaseService.instance.initialize()
+      CompanySettings storedSettings = new CompanySettingsService().getSettings()
+      if (storedSettings?.localeTag) {
+        I18n.instance.setLocale(Locale.forLanguageTag(storedSettings.localeTag))
+      }
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
         failOnStartupErrors(startupReport)
