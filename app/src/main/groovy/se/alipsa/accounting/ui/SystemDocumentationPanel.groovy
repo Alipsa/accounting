@@ -76,6 +76,7 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
     backupButton.text = I18n.instance.getString('systemDocumentationPanel.button.backup')
     restoreButton.text = I18n.instance.getString('systemDocumentationPanel.button.restore')
     manualButton.text = I18n.instance.getString('systemDocumentationPanel.button.manual')
+    refreshAll()
   }
 
   private void buildUi() {

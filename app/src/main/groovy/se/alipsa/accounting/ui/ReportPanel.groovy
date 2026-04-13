@@ -121,7 +121,9 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     generatePdfButton.text = I18n.instance.getString('reportPanel.button.generatePdf')
     openVoucherButton.text = I18n.instance.getString('reportPanel.button.openVoucher')
     openArchiveButton.text = I18n.instance.getString('reportPanel.button.openArchive')
-    archiveTable.tableHeader.repaint()
+    reloadAccountingPeriods()
+    reloadReport()
+    archiveTableModel.fireTableStructureChanged()
   }
 
   private void buildUi() {

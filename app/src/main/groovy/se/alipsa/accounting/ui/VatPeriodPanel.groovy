@@ -77,8 +77,9 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     transferButton.text = I18n.instance.getString('vatPeriodPanel.button.bookTransfer')
     transferDefaultsLabel.text = I18n.instance.format('vatPeriodPanel.transferDefaults',
         VatService.DEFAULT_TRANSFER_SERIES, VatService.DEFAULT_SETTLEMENT_ACCOUNT)
-    periodTable.tableHeader.repaint()
-    reportTable.tableHeader.repaint()
+    periodTableModel.fireTableStructureChanged()
+    reportTableModel.fireTableStructureChanged()
+    reloadReportPreview()
   }
 
   private void buildUi() {

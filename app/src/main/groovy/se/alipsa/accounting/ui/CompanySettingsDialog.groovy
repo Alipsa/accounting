@@ -24,6 +24,9 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
 
   private final CompanySettingsService companySettingsService
   private final Runnable onSave
+  private final Locale originalLocale
+
+  private boolean saved = false
 
   private final JTextField companyNameField = new JTextField(28)
   private final JTextField organizationNumberField = new JTextField(18)
@@ -47,6 +50,7 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
     super(owner, I18n.instance.getString('companySettingsDialog.title'), true)
     this.companySettingsService = companySettingsService
     this.onSave = onSave
+    originalLocale = I18n.instance.locale
     I18n.instance.addLocaleChangeListener(this)
     buildUi()
     populate(companySettingsService.getSettings())
@@ -67,6 +71,9 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
   @Override
   void dispose() {
     I18n.instance.removeLocaleChangeListener(this)
+    if (!saved) {
+      I18n.instance.setLocale(originalLocale)
+    }
     super.dispose()
   }
 
@@ -207,6 +214,7 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
         vatPeriodicityComboBox.selectedItem as VatPeriodicity
     )
     companySettingsService.save(settings)
+    saved = true
     onSave.run()
     dispose()
   }
