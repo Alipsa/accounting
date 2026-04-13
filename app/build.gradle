@@ -113,12 +113,20 @@ def launcherPathFor = { String platform ->
 }
 
 def clearDirectory = { File directory ->
-  directory.mkdirs()
+  if (!directory.mkdirs() && !directory.isDirectory()) {
+    throw new GradleException("Kunde inte skapa release-katalogen ${directory.absolutePath}")
+  }
   File[] children = directory.listFiles()
   if (children == null || children.length == 0) {
     return
   }
   children.each { File child ->
+    if (java.nio.file.Files.isSymbolicLink(child.toPath())) {
+      if (!child.delete()) {
+        throw new GradleException("Kunde inte ta bort symlink ${child.absolutePath}")
+      }
+      return
+    }
     boolean deleted = child.directory ? child.deleteDir() : child.delete()
     if (!deleted && child.exists()) {
       throw new GradleException("Kunde inte rensa release-katalogen ${child.absolutePath}")

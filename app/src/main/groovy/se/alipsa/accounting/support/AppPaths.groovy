@@ -4,11 +4,15 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.attribute.PosixFilePermission
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Resolves application directories in a platform-aware way.
  */
 final class AppPaths {
+
+  private static final Logger log = Logger.getLogger(AppPaths.name)
 
   static final String HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.home'
   static final String DATABASE_URL_PROPERTY = 'alipsa.accounting.db.url'
@@ -109,7 +113,6 @@ final class AppPaths {
     }
   }
 
-  @SuppressWarnings('CatchException')
   private static void tightenPermissions(Path path) {
     try {
       Files.setPosixFilePermissions(
@@ -122,17 +125,20 @@ final class AppPaths {
       )
       return
     } catch (UnsupportedOperationException ignored) {
-      // Ignore and fall back to basic file permissions for non-POSIX file systems.
-    } catch (Exception ignored) {
-      // Ignore and fall back to basic file permissions if the filesystem rejects POSIX attrs.
+      // Fall back to basic file permissions for non-POSIX file systems.
+    } catch (IOException | SecurityException exception) {
+      log.log(Level.WARNING, "Kunde inte sätta POSIX-rättigheter på ${path}", exception)
     }
 
     File directory = path.toFile()
-    directory.setReadable(false, false)
-    directory.setWritable(false, false)
-    directory.setExecutable(false, false)
-    directory.setReadable(true, true)
-    directory.setWritable(true, true)
-    directory.setExecutable(true, true)
+    boolean ok = directory.setReadable(false, false)
+    ok &= directory.setWritable(false, false)
+    ok &= directory.setExecutable(false, false)
+    ok &= directory.setReadable(true, true)
+    ok &= directory.setWritable(true, true)
+    ok &= directory.setExecutable(true, true)
+    if (!ok) {
+      log.warning("Kunde inte begränsa rättigheter för ${path}")
+    }
   }
 }

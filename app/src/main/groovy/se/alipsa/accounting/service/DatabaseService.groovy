@@ -19,7 +19,8 @@ final class DatabaseService {
   private static final Logger log = Logger.getLogger(DatabaseService.name)
   // Eager singleton -- construction must remain side-effect-free because the
   // instance is created at class-loading time, before --home=... has been processed.
-  static DatabaseService instance = new DatabaseService()
+  @SuppressWarnings('PropertyName')
+  static final DatabaseService instance = new DatabaseService()
   static final String USERNAME = 'sa'
   static final String PASSWORD = ''
   private static final String DRIVER = 'org.h2.Driver'

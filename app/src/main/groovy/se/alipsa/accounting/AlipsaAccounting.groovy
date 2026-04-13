@@ -42,6 +42,10 @@ final class AlipsaAccounting {
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
         failOnStartupErrors(startupReport)
+        String version = AlipsaAccounting.package?.implementationVersion
+        if (!version) {
+          log.warning('JAR manifest saknar Implementation-Version — paketeringen kan vara felaktig.')
+        }
         if (!startupReport.warnings.isEmpty()) {
           log.warning("Launch verification completed with warnings: ${startupReport.warnings.join(' | ')}")
         }
@@ -55,14 +59,14 @@ final class AlipsaAccounting {
         MainFrame mainFrame = new MainFrame()
         mainFrame.display()
       }
-    } catch (Throwable throwable) {
-      log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', throwable)
+    } catch (Exception exception) {
+      log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', exception)
       if (options.interactive) {
-        showStartupError(throwable)
+        showStartupError(exception)
       } else {
-        System.err.println("Failed to start Alipsa Accounting: ${throwable.message ?: throwable.class.simpleName}")
+        System.err.println("Failed to start Alipsa Accounting: ${exception.message ?: exception.class.simpleName}")
       }
-      throw throwable
+      throw exception
     }
   }
 
