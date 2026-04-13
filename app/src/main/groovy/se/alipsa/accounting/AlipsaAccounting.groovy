@@ -1,9 +1,12 @@
 package se.alipsa.accounting
 
+import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
 
@@ -36,9 +39,14 @@ final class AlipsaAccounting {
       System.out.println(versionLine())
       return
     }
+    I18n.instance.setLocale(Locale.getDefault())
     try {
       LoggingConfigurer.configure()
       DatabaseService.instance.initialize()
+      CompanySettings storedSettings = new CompanySettingsService().getSettings()
+      if (storedSettings?.localeTag) {
+        I18n.instance.setLocale(Locale.forLanguageTag(storedSettings.localeTag))
+      }
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
         failOnStartupErrors(startupReport)
@@ -87,17 +95,14 @@ final class AlipsaAccounting {
       return
     }
     String detail = throwable.message ?: 'Unknown startup failure.'
-    String message = """Alipsa Accounting kunde inte starta.
-
-${throwable.class.simpleName}: ${detail}
-
-Se loggfilen för mer information."""
+    String message = I18n.instance.format('alipsaAccounting.startup.errorMessage', throwable.class.simpleName, detail)
+    String title = I18n.instance.getString('alipsaAccounting.startup.errorTitle')
     if (SwingUtilities.isEventDispatchThread()) {
-      JOptionPane.showMessageDialog(null, message, 'Alipsa Accounting', JOptionPane.ERROR_MESSAGE)
+      JOptionPane.showMessageDialog(null, message, title, JOptionPane.ERROR_MESSAGE)
       return
     }
     SwingUtilities.invokeAndWait {
-      JOptionPane.showMessageDialog(null, message, 'Alipsa Accounting', JOptionPane.ERROR_MESSAGE)
+      JOptionPane.showMessageDialog(null, message, title, JOptionPane.ERROR_MESSAGE)
     }
   }
 
@@ -107,20 +112,17 @@ Se loggfilen för mer information."""
     }
     List<String> rows = []
     if (!report.errors.isEmpty()) {
-      rows << 'Kritiska verifieringsfel:'
+      rows << I18n.instance.getString('alipsaAccounting.startup.verificationErrors')
       rows.addAll(report.errors.take(5).collect { String error -> "- ${error}".toString() })
     }
     if (!report.warnings.isEmpty()) {
-      rows << 'Varningar:'
+      rows << I18n.instance.getString('alipsaAccounting.startup.verificationWarnings')
       rows.addAll(report.warnings.take(5).collect { String warning -> "- ${warning}".toString() })
     }
-    String message = """Alipsa Accounting startade, men verifieringen hittade avvikelser.
-
-${rows.join('\n')}
-
-Öppna fliken System för detaljer."""
+    String message = I18n.instance.format('alipsaAccounting.startup.verificationMessage', rows.join('\n'))
+    String title = I18n.instance.getString('alipsaAccounting.startup.verificationTitle')
     SwingUtilities.invokeLater {
-      JOptionPane.showMessageDialog(null, message, 'Startup-verifiering', JOptionPane.WARNING_MESSAGE)
+      JOptionPane.showMessageDialog(null, message, title, JOptionPane.WARNING_MESSAGE)
     }
   }
 
@@ -156,12 +158,12 @@ ${rows.join('\n')}
         if (argument.startsWith(HOME_ARGUMENT_PREFIX)) {
           String value = argument.substring(HOME_ARGUMENT_PREFIX.length()).trim()
           if (!value) {
-            throw new IllegalArgumentException('Tomt värde för --home är inte tillåtet.')
+            throw new IllegalArgumentException(I18n.instance.getString('alipsaAccounting.error.emptyHome'))
           }
           applicationHomeOverride = value
           return
         }
-        throw new IllegalArgumentException("Okänt startargument: ${argument}")
+        throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))
       }
       new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride)
     }

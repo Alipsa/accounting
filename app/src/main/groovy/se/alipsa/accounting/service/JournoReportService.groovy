@@ -50,7 +50,7 @@ final class JournoReportService {
     try {
       createJournoEngine().renderHtml(report.reportType.templateName, buildTemplateModel(report))
     } catch (JournoException exception) {
-      throw new IllegalStateException("PDF-förhandsvisningen kunde inte renderas för ${report.reportType.label}.", exception)
+      throw new IllegalStateException("PDF-förhandsvisningen kunde inte renderas för ${report.reportType.displayName}.", exception)
     }
   }
 
@@ -58,7 +58,7 @@ final class JournoReportService {
     try {
       createJournoEngine().renderPdf(report.reportType.templateName, buildTemplateModel(report))
     } catch (JournoException exception) {
-      throw new IllegalStateException("PDF kunde inte skapas för ${report.reportType.label}.", exception)
+      throw new IllegalStateException("PDF kunde inte skapas för ${report.reportType.displayName}.", exception)
     }
   }
 
@@ -72,7 +72,7 @@ final class JournoReportService {
         pdf
     )
     auditLogService.logExport(
-        "PDF-rapport skapad: ${report.reportType.label}",
+        "PDF-rapport skapad: ${report.reportType.displayName}",
         "archiveId=${archive.id}\nchecksumSha256=${archive.checksumSha256}\nstoragePath=${archive.storagePath}"
     )
     archive

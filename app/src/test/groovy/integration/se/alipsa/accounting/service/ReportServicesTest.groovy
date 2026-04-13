@@ -20,6 +20,7 @@ import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -43,9 +44,12 @@ class ReportServicesTest {
   private JournoReportService journoReportService
   private FiscalYear fiscalYear
   private String previousHome
+  private Locale previousLocale
 
   @BeforeEach
   void setUp() {
+    previousLocale = I18n.instance.locale
+    I18n.instance.setLocale(Locale.forLanguageTag('sv'))
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
@@ -76,6 +80,7 @@ class ReportServicesTest {
 
   @AfterEach
   void tearDown() {
+    I18n.instance.setLocale(previousLocale)
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
   }
 

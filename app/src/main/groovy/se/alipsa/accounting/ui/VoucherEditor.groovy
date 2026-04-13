@@ -12,6 +12,7 @@ import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -21,6 +22,8 @@ import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -36,13 +39,14 @@ import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
+import javax.swing.SwingUtilities
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
 
 /**
  * Voucher registration dialog with row editing, account lookup and totals.
  */
-final class VoucherEditor extends JDialog {
+final class VoucherEditor extends JDialog implements PropertyChangeListener {
 
   static final class Dependencies {
 
@@ -85,8 +89,20 @@ final class VoucherEditor extends JDialog {
   private final JTable attachmentTable = new JTable(attachmentTableModel)
   private final AuditLogTableModel auditLogTableModel = new AuditLogTableModel()
   private final JTable auditLogTable = new JTable(auditLogTableModel)
-  private final JButton addAttachmentButton = new JButton('Lägg till bilaga...')
-  private final JButton openAttachmentButton = new JButton('Öppna bilaga...')
+  private final JButton addAttachmentButton = new JButton(I18n.instance.getString('voucherEditor.button.addAttachment'))
+  private final JButton openAttachmentButton = new JButton(I18n.instance.getString('voucherEditor.button.openAttachment'))
+  private JLabel fiscalYearLabel
+  private JLabel seriesLabel
+  private JLabel dateLabel
+  private JLabel descriptionLabel
+  private JButton addLineButton
+  private JButton removeLineButton
+  private JButton lookupButton
+  private JButton cancelButton
+  private JButton saveDraftButton
+  private JButton bookButton
+  private JButton voidDraftButton
+  private JTabbedPane tabs
   private Voucher voucher
   private boolean readOnly
 
@@ -96,7 +112,7 @@ final class VoucherEditor extends JDialog {
       Long voucherId,
       Runnable onSave
   ) {
-    super(owner, voucherId == null ? 'Ny verifikation' : 'Verifikation', true)
+    super(owner, '', true)
     this.voucherService = dependencies.voucherService
     this.fiscalYearService = dependencies.fiscalYearService
     this.accountService = dependencies.accountService
@@ -108,8 +124,42 @@ final class VoucherEditor extends JDialog {
     fiscalYearComboBox = new JComboBox<>(fiscalYearService.listFiscalYears() as FiscalYear[])
     lineTableModel = new LineTableModel(accountService, !readOnly)
     lineTable = new JTable(lineTableModel)
+    setTitle(voucherId == null
+        ? I18n.instance.getString('voucherEditor.title.new')
+        : I18n.instance.getString('voucherEditor.title.edit'))
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     loadVoucher()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    fiscalYearLabel.text = I18n.instance.getString('voucherEditor.label.fiscalYear')
+    seriesLabel.text = I18n.instance.getString('voucherEditor.label.series')
+    dateLabel.text = I18n.instance.getString('voucherEditor.label.date')
+    descriptionLabel.text = I18n.instance.getString('voucherEditor.label.description')
+    addLineButton.text = I18n.instance.getString('voucherEditor.button.addLine')
+    removeLineButton.text = I18n.instance.getString('voucherEditor.button.removeLine')
+    lookupButton.text = I18n.instance.getString('voucherEditor.button.refreshAccountNames')
+    addAttachmentButton.text = I18n.instance.getString('voucherEditor.button.addAttachment')
+    openAttachmentButton.text = I18n.instance.getString('voucherEditor.button.openAttachment')
+    cancelButton.text = I18n.instance.getString('voucherEditor.button.close')
+    saveDraftButton.text = I18n.instance.getString('voucherEditor.button.saveDraft')
+    bookButton.text = I18n.instance.getString('voucherEditor.button.book')
+    voidDraftButton.text = I18n.instance.getString('voucherEditor.button.voidDraft')
+    tabs.setTitleAt(0, I18n.instance.getString('voucherEditor.tab.lines'))
+    tabs.setTitleAt(1, I18n.instance.getString('voucherEditor.tab.attachments'))
+    tabs.setTitleAt(2, I18n.instance.getString('voucherEditor.tab.history'))
+    lineTable.tableHeader.repaint()
+    attachmentTable.tableHeader.repaint()
+    auditLogTable.tableHeader.repaint()
+    refreshTotals()
   }
 
   static void showDialog(
@@ -120,6 +170,12 @@ final class VoucherEditor extends JDialog {
   ) {
     VoucherEditor editor = new VoucherEditor(owner, dependencies, voucherId, onSave)
     editor.setVisible(true)
+  }
+
+  @Override
+  void dispose() {
+    I18n.instance.removeLocaleChangeListener(this)
+    super.dispose()
   }
 
   private void buildUi() {
@@ -134,10 +190,10 @@ final class VoucherEditor extends JDialog {
   }
 
   private JTabbedPane buildCenterTabs() {
-    JTabbedPane tabs = new JTabbedPane()
-    tabs.addTab('Rader', buildLinePanel())
-    tabs.addTab('Bilagor', buildAttachmentPanel())
-    tabs.addTab('Historik', buildAuditPanel())
+    tabs = new JTabbedPane()
+    tabs.addTab(I18n.instance.getString('voucherEditor.tab.lines'), buildLinePanel())
+    tabs.addTab(I18n.instance.getString('voucherEditor.tab.attachments'), buildAttachmentPanel())
+    tabs.addTab(I18n.instance.getString('voucherEditor.tab.history'), buildAuditPanel())
     tabs
   }
 
@@ -154,18 +210,21 @@ final class VoucherEditor extends JDialog {
         new Insets(0, 0, 8, 16), 0, 0
     )
 
-    panel.add(new JLabel('Räkenskapsår'), labelConstraints)
+    fiscalYearLabel = new JLabel(I18n.instance.getString('voucherEditor.label.fiscalYear'))
+    panel.add(fiscalYearLabel, labelConstraints)
     panel.add(fiscalYearComboBox, fieldConstraints)
 
     labelConstraints.gridx = 2
     fieldConstraints.gridx = 3
     fieldConstraints.weightx = 0.0d
-    panel.add(new JLabel('Serie'), labelConstraints)
+    seriesLabel = new JLabel(I18n.instance.getString('voucherEditor.label.series'))
+    panel.add(seriesLabel, labelConstraints)
     panel.add(seriesField, fieldConstraints)
 
     labelConstraints.gridx = 4
     fieldConstraints.gridx = 5
-    panel.add(new JLabel('Datum'), labelConstraints)
+    dateLabel = new JLabel(I18n.instance.getString('voucherEditor.label.date'))
+    panel.add(dateLabel, labelConstraints)
     panel.add(dateField, fieldConstraints)
 
     labelConstraints.gridx = 0
@@ -174,7 +233,8 @@ final class VoucherEditor extends JDialog {
     fieldConstraints.gridy = 1
     fieldConstraints.gridwidth = 5
     fieldConstraints.weightx = 1.0d
-    panel.add(new JLabel('Text'), labelConstraints)
+    descriptionLabel = new JLabel(I18n.instance.getString('voucherEditor.label.description'))
+    panel.add(descriptionLabel, labelConstraints)
     panel.add(descriptionField, fieldConstraints)
     panel
   }
@@ -187,24 +247,24 @@ final class VoucherEditor extends JDialog {
     }
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton addButton = new JButton('Lägg till rad')
-    addButton.addActionListener {
+    addLineButton = new JButton(I18n.instance.getString('voucherEditor.button.addLine'))
+    addLineButton.addActionListener {
       lineTableModel.addBlankRow()
     }
-    JButton removeButton = new JButton('Ta bort rad')
-    removeButton.addActionListener {
+    removeLineButton = new JButton(I18n.instance.getString('voucherEditor.button.removeLine'))
+    removeLineButton.addActionListener {
       removeSelectedLine()
     }
-    JButton lookupButton = new JButton('Uppdatera kontonamn')
+    lookupButton = new JButton(I18n.instance.getString('voucherEditor.button.refreshAccountNames'))
     lookupButton.addActionListener {
       lineTableModel.refreshAccountNames()
       refreshTotals()
     }
-    addButton.enabled = !readOnly
-    removeButton.enabled = !readOnly
+    addLineButton.enabled = !readOnly
+    removeLineButton.enabled = !readOnly
     lookupButton.enabled = !readOnly
-    actions.add(addButton)
-    actions.add(removeButton)
+    actions.add(addLineButton)
+    actions.add(removeLineButton)
     actions.add(lookupButton)
 
     JPanel panel = new JPanel(new BorderLayout(0, 8))
@@ -251,15 +311,15 @@ final class VoucherEditor extends JDialog {
     validationArea.visible = false
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT))
-    JButton cancelButton = new JButton('Stäng')
+    cancelButton = new JButton(I18n.instance.getString('voucherEditor.button.close'))
     cancelButton.addActionListener { dispose() }
-    JButton saveDraftButton = new JButton('Spara utkast')
+    saveDraftButton = new JButton(I18n.instance.getString('voucherEditor.button.saveDraft'))
     saveDraftButton.enabled = !readOnly
     saveDraftButton.addActionListener { saveDraftRequested() }
-    JButton bookButton = new JButton('Bokför')
+    bookButton = new JButton(I18n.instance.getString('voucherEditor.button.book'))
     bookButton.enabled = !readOnly
     bookButton.addActionListener { bookRequested() }
-    JButton voidDraftButton = new JButton('Makulera utkast')
+    voidDraftButton = new JButton(I18n.instance.getString('voucherEditor.button.voidDraft'))
     voidDraftButton.enabled = voucher != null && voucher.status == VoucherStatus.DRAFT
     voidDraftButton.addActionListener { cancelDraftRequested() }
 
@@ -295,7 +355,8 @@ final class VoucherEditor extends JDialog {
     seriesField.text = voucher.seriesCode
     dateField.text = voucher.accountingDate.toString()
     descriptionField.text = voucher.description
-    setTitle((voucher.voucherNumber ?: "Utkast ${voucher.id}") as String)
+    setTitle((voucher.voucherNumber
+        ?: I18n.instance.format('voucherEditor.title.draft', voucher.id)) as String)
     fiscalYearComboBox.enabled = !readOnly
     seriesField.enabled = !readOnly
     dateField.enabled = !readOnly
@@ -310,12 +371,13 @@ final class VoucherEditor extends JDialog {
       Voucher saved = saveDraft()
       voucher = saved
       lineTableModel.setRows(saved.lines)
-      setTitle((voucher.voucherNumber ?: "Utkast ${voucher.id}") as String)
+      setTitle((voucher.voucherNumber
+          ?: I18n.instance.format('voucherEditor.title.draft', voucher.id)) as String)
       refreshAttachmentAndHistory()
-      showInfo('Utkastet sparades.')
+      showInfo(I18n.instance.getString('voucherEditor.message.draftSaved'))
       onSave.run()
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Verifikationen kunde inte sparas.')
+      showError(exception.message ?: I18n.instance.getString('voucherEditor.error.saveFailed'))
     }
   }
 
@@ -326,7 +388,7 @@ final class VoucherEditor extends JDialog {
       onSave.run()
       dispose()
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Verifikationen kunde inte bokföras.')
+      showError(exception.message ?: I18n.instance.getString('voucherEditor.error.bookFailed'))
     }
   }
 
@@ -339,14 +401,14 @@ final class VoucherEditor extends JDialog {
       onSave.run()
       dispose()
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Utkastet kunde inte makuleras.')
+      showError(exception.message ?: I18n.instance.getString('voucherEditor.error.voidFailed'))
     }
   }
 
   private Voucher saveDraft() {
     FiscalYear fiscalYear = selectedFiscalYear()
     if (fiscalYear == null) {
-      throw new IllegalArgumentException('Skapa ett räkenskapsår innan verifikationer registreras.')
+      throw new IllegalArgumentException(I18n.instance.getString('voucherEditor.error.createFiscalYear'))
     }
     LocalDate accountingDate = parseDate(dateField.text)
     List<VoucherLine> lines = lineTableModel.toVoucherLines()
@@ -385,11 +447,12 @@ final class VoucherEditor extends JDialog {
         debit = debit.add(parseAmount(line.debit))
         credit = credit.add(parseAmount(line.credit))
       }
-      totalsLabel.text = "Debet: ${debit.setScale(2).toPlainString()}   " +
-          "Kredit: ${credit.setScale(2).toPlainString()}   " +
-          "Differens: ${debit.subtract(credit).setScale(2).toPlainString()}"
+      totalsLabel.text = I18n.instance.format('voucherEditor.totals',
+          debit.setScale(2).toPlainString(),
+          credit.setScale(2).toPlainString(),
+          debit.subtract(credit).setScale(2).toPlainString())
     } catch (IllegalArgumentException ignored) {
-      totalsLabel.text = 'Summering kan inte visas innan alla belopp är giltiga.'
+      totalsLabel.text = I18n.instance.getString('voucherEditor.totals.invalid')
     }
   }
 
@@ -407,7 +470,7 @@ final class VoucherEditor extends JDialog {
 
   private void addAttachmentRequested() {
     if (voucher == null) {
-      showError('Spara verifikationen som utkast innan du lägger till bilagor.')
+      showError(I18n.instance.getString('voucherEditor.error.saveBeforeAttachment'))
       return
     }
     javax.swing.JFileChooser chooser = new javax.swing.JFileChooser()
@@ -418,31 +481,31 @@ final class VoucherEditor extends JDialog {
     try {
       attachmentService.addAttachment(voucher.id, chooser.selectedFile.toPath())
       refreshAttachmentAndHistory()
-      showInfo("Bilagan ${chooser.selectedFile.name} registrerades.")
+      showInfo(I18n.instance.format('voucherEditor.message.attachmentAdded', chooser.selectedFile.name))
     } catch (IllegalArgumentException | IllegalStateException exception) {
-      showError(exception.message ?: 'Bilagan kunde inte registreras.')
+      showError(exception.message ?: I18n.instance.getString('voucherEditor.error.attachmentFailed'))
     }
   }
 
   private void openSelectedAttachment() {
     AttachmentMetadata selected = selectedAttachment()
     if (selected == null) {
-      showError('Välj en bilaga först.')
+      showError(I18n.instance.getString('voucherEditor.error.selectAttachment'))
       return
     }
     if (!Desktop.isDesktopSupported()) {
-      showError('Systemet kan inte öppna bilagor från applikationen.')
+      showError(I18n.instance.getString('voucherEditor.error.desktopNotSupported'))
       return
     }
     Desktop desktop = Desktop.getDesktop()
     if (!desktop.isSupported(Desktop.Action.OPEN)) {
-      showError('Systemet saknar stöd för att öppna bilagor.')
+      showError(I18n.instance.getString('voucherEditor.error.openNotSupported'))
       return
     }
     try {
       desktop.open(attachmentService.resolveStoredPath(selected).toFile())
     } catch (IOException exception) {
-      showError(exception.message ?: 'Bilagan kunde inte öppnas.')
+      showError(exception.message ?: I18n.instance.getString('voucherEditor.error.attachmentOpenFailed'))
     }
   }
 
@@ -460,7 +523,7 @@ final class VoucherEditor extends JDialog {
     try {
       LocalDate.parse(value?.trim())
     } catch (DateTimeParseException exception) {
-      throw new IllegalArgumentException('Datum måste anges som ÅÅÅÅ-MM-DD.')
+      throw new IllegalArgumentException(I18n.instance.getString('voucherEditor.error.dateFormat'))
     }
   }
 
@@ -472,7 +535,7 @@ final class VoucherEditor extends JDialog {
     try {
       new BigDecimal(normalized.replace(',', '.')).setScale(2)
     } catch (NumberFormatException exception) {
-      throw new IllegalArgumentException('Belopp måste vara giltiga tal.')
+      throw new IllegalArgumentException(I18n.instance.getString('voucherEditor.error.invalidAmount'))
     }
   }
 
@@ -518,8 +581,6 @@ final class VoucherEditor extends JDialog {
   }
 
   private static final class LineTableModel extends AbstractTableModel {
-
-    private static final List<String> COLUMNS = ['Konto', 'Kontonamn', 'Radtext', 'Debet', 'Kredit']
 
     private final AccountService accountService
     private final boolean editable
@@ -595,14 +656,18 @@ final class VoucherEditor extends JDialog {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 5
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('voucherEditor.table.line.account')
+        case 1: return I18n.instance.getString('voucherEditor.table.line.accountName')
+        case 2: return I18n.instance.getString('voucherEditor.table.line.lineDescription')
+        case 3: return I18n.instance.getString('voucherEditor.table.line.debit')
+        case 4: return I18n.instance.getString('voucherEditor.table.line.credit')
+        default: return ''
+      }
     }
 
     @Override
@@ -666,9 +731,11 @@ final class VoucherEditor extends JDialog {
       }
       try {
         Account account = accountService.findAccount(normalized)
-        account == null ? 'Okänt konto' : account.accountName
+        account == null
+            ? I18n.instance.getString('voucherEditor.table.line.unknownAccount')
+            : account.accountName
       } catch (IllegalArgumentException ignored) {
-        'Ogiltigt konto'
+        I18n.instance.getString('voucherEditor.table.line.invalidAccount')
       }
     }
 
@@ -678,8 +745,6 @@ final class VoucherEditor extends JDialog {
   }
 
   private static final class AttachmentTableModel extends AbstractTableModel {
-
-    private static final List<String> COLUMNS = ['Filnamn', 'Typ', 'Storlek', 'Checksumma', 'Sparad']
 
     private List<AttachmentMetadata> rows = []
 
@@ -697,14 +762,18 @@ final class VoucherEditor extends JDialog {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 5
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('voucherEditor.table.attachment.fileName')
+        case 1: return I18n.instance.getString('voucherEditor.table.attachment.type')
+        case 2: return I18n.instance.getString('voucherEditor.table.attachment.size')
+        case 3: return I18n.instance.getString('voucherEditor.table.attachment.checksum')
+        case 4: return I18n.instance.getString('voucherEditor.table.attachment.saved')
+        default: return ''
+      }
     }
 
     @Override
@@ -729,8 +798,6 @@ final class VoucherEditor extends JDialog {
 
   private static final class AuditLogTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Tid', 'Händelse', 'Sammanfattning', 'Aktör', 'Hash']
-
     private List<AuditLogEntry> rows = []
 
     void setRows(List<AuditLogEntry> entries) {
@@ -743,14 +810,18 @@ final class VoucherEditor extends JDialog {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 5
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('voucherEditor.table.auditLog.time')
+        case 1: return I18n.instance.getString('voucherEditor.table.auditLog.event')
+        case 2: return I18n.instance.getString('voucherEditor.table.auditLog.summary')
+        case 3: return I18n.instance.getString('voucherEditor.table.auditLog.actor')
+        case 4: return I18n.instance.getString('voucherEditor.table.auditLog.hash')
+        default: return ''
+      }
     }
 
     @Override

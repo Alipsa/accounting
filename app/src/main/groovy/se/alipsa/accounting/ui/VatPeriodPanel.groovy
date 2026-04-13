@@ -4,10 +4,13 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
+import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.math.RoundingMode
 import java.text.DecimalFormat
 
@@ -21,13 +24,14 @@ import javax.swing.JSplitPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.ListSelectionModel
+import javax.swing.SwingUtilities
 import javax.swing.event.ListSelectionEvent
 import javax.swing.table.AbstractTableModel
 
 /**
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
-final class VatPeriodPanel extends JPanel {
+final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat('#,##0.00')
 
@@ -35,22 +39,47 @@ final class VatPeriodPanel extends JPanel {
   private final FiscalYearService fiscalYearService
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
-  private final JLabel summaryLabel = new JLabel('Välj en momsperiod för att visa rapporten.')
+  private final JLabel summaryLabel = new JLabel(I18n.instance.getString('vatPeriodPanel.summary.initial'))
   private final JLabel transferDefaultsLabel = new JLabel(
-      "Momsöverföring bokförs i serie ${VatService.DEFAULT_TRANSFER_SERIES} mot konto ${VatService.DEFAULT_SETTLEMENT_ACCOUNT}."
+      I18n.instance.format('vatPeriodPanel.transferDefaults',
+          VatService.DEFAULT_TRANSFER_SERIES, VatService.DEFAULT_SETTLEMENT_ACCOUNT)
   )
   private final VatPeriodTableModel periodTableModel = new VatPeriodTableModel()
   private final VatReportTableModel reportTableModel = new VatReportTableModel()
   private final JTable periodTable = new JTable(periodTableModel)
   private final JTable reportTable = new JTable(reportTableModel)
+  private JLabel fiscalYearLabel
+  private JButton refreshButton
+  private JButton reportButton
+  private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
 
   VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService) {
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
+    I18n.instance.addLocaleChangeListener(this)
     buildUi()
     reloadFiscalYears()
     reloadPeriods()
+  }
+
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    fiscalYearLabel.text = I18n.instance.getString('vatPeriodPanel.label.fiscalYear')
+    refreshButton.text = I18n.instance.getString('vatPeriodPanel.button.refresh')
+    reportButton.text = I18n.instance.getString('vatPeriodPanel.button.report')
+    transferButton.text = I18n.instance.getString('vatPeriodPanel.button.bookTransfer')
+    transferDefaultsLabel.text = I18n.instance.format('vatPeriodPanel.transferDefaults',
+        VatService.DEFAULT_TRANSFER_SERIES, VatService.DEFAULT_SETTLEMENT_ACCOUNT)
+    periodTableModel.fireTableStructureChanged()
+    reportTableModel.fireTableStructureChanged()
+    reloadReportPreview()
   }
 
   private void buildUi() {
@@ -73,9 +102,10 @@ final class VatPeriodPanel extends JPanel {
     JPanel panel = new JPanel(new BorderLayout(0, 8))
 
     JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    filters.add(new JLabel('Räkenskapsår'))
+    fiscalYearLabel = new JLabel(I18n.instance.getString('vatPeriodPanel.label.fiscalYear'))
+    filters.add(fiscalYearLabel)
     filters.add(fiscalYearComboBox)
-    JButton refreshButton = new JButton('Uppdatera')
+    refreshButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.refresh'))
     refreshButton.addActionListener {
       reloadFiscalYears()
       reloadPeriods()
@@ -83,11 +113,11 @@ final class VatPeriodPanel extends JPanel {
     filters.add(refreshButton)
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    JButton reportButton = new JButton('Rapportera vald period')
+    reportButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.report'))
     reportButton.addActionListener {
       reportSelectedPeriod()
     }
-    JButton transferButton = new JButton('Bokför momsöverföring')
+    transferButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.bookTransfer'))
     transferButton.addActionListener {
       bookTransferForSelectedPeriod()
     }
@@ -152,7 +182,7 @@ final class VatPeriodPanel extends JPanel {
       periodTable.setRowSelectionInterval(0, 0)
     } else {
       reportTableModel.setRows([])
-      summaryLabel.text = 'Inga momsperioder tillgängliga för valt räkenskapsår.'
+      summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.noPeriods')
     }
   }
 
@@ -160,28 +190,29 @@ final class VatPeriodPanel extends JPanel {
     VatPeriod period = selectedPeriod()
     if (period == null) {
       reportTableModel.setRows([])
-      summaryLabel.text = 'Välj en momsperiod för att visa rapporten.'
+      summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
       return
     }
     VatService.VatReport report = vatService.calculateReport(period.id)
     reportTableModel.setRows(report.rows)
-    summaryLabel.text = "Bas: ${formatAmount(report.rows.sum(BigDecimal.ZERO) { VatService.VatReportRow row -> row.baseAmount } as BigDecimal)}" +
-        "  Utgående: ${formatAmount(report.outputVatTotal)}" +
-        "  Ingående: ${formatAmount(report.inputVatTotal)}" +
-        "  Netto: ${formatAmount(report.netVatToPay)}"
+    summaryLabel.text = I18n.instance.format('vatPeriodPanel.summary.base',
+        formatAmount(report.rows.sum(BigDecimal.ZERO) { VatService.VatReportRow row -> row.baseAmount } as BigDecimal)) +
+        "  ${I18n.instance.format('vatPeriodPanel.summary.output', formatAmount(report.outputVatTotal))}" +
+        "  ${I18n.instance.format('vatPeriodPanel.summary.input', formatAmount(report.inputVatTotal))}" +
+        "  ${I18n.instance.format('vatPeriodPanel.summary.net', formatAmount(report.netVatToPay))}"
   }
 
   private void reportSelectedPeriod() {
     VatPeriod period = selectedPeriod()
     if (period == null) {
-      showError('Välj en momsperiod att rapportera.')
+      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodReport'))
       return
     }
     try {
       VatPeriod reportedPeriod = vatService.reportPeriod(period.id)
       reloadPeriods()
       selectPeriod(reportedPeriod.id)
-      showInfo("Momsperiod ${reportedPeriod.periodName} är rapporterad.")
+      showInfo(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriod.periodName))
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
     } catch (IllegalStateException exception) {
@@ -192,14 +223,14 @@ final class VatPeriodPanel extends JPanel {
   private void bookTransferForSelectedPeriod() {
     VatPeriod period = selectedPeriod()
     if (period == null) {
-      showError('Välj en momsperiod för momsöverföring.')
+      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodTransfer'))
       return
     }
     try {
       vatService.bookTransfer(period.id)
       reloadPeriods()
       selectPeriod(period.id)
-      showInfo("Momsöverföring bokfördes för period ${period.periodName}.")
+      showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName))
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
     } catch (IllegalStateException exception) {
@@ -246,7 +277,7 @@ final class VatPeriodPanel extends JPanel {
 
   private void showError(String message) {
     feedbackArea.foreground = new Color(153, 27, 27)
-    feedbackArea.text = message ?: 'Ett oväntat fel uppstod.'
+    feedbackArea.text = message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected')
   }
 
   private static String formatAmount(BigDecimal amount) {
@@ -255,7 +286,6 @@ final class VatPeriodPanel extends JPanel {
 
   private static final class VatPeriodTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Period', 'Från', 'Till', 'Status', 'Rapporterad', 'Transfer']
     private List<VatPeriod> rows = []
 
     void setRows(List<VatPeriod> rows) {
@@ -276,14 +306,19 @@ final class VatPeriodPanel extends JPanel {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 6
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('vatPeriodPanel.table.period.period')
+        case 1: return I18n.instance.getString('vatPeriodPanel.table.period.from')
+        case 2: return I18n.instance.getString('vatPeriodPanel.table.period.to')
+        case 3: return I18n.instance.getString('vatPeriodPanel.table.period.status')
+        case 4: return I18n.instance.getString('vatPeriodPanel.table.period.reported')
+        case 5: return I18n.instance.getString('vatPeriodPanel.table.period.transfer')
+        default: return ''
+      }
     }
 
     @Override
@@ -310,7 +345,6 @@ final class VatPeriodPanel extends JPanel {
 
   private static final class VatReportTableModel extends AbstractTableModel {
 
-    private static final List<String> COLUMNS = ['Kod', 'Benämning', 'Bas', 'Utgående moms', 'Ingående moms']
     private List<VatService.VatReportRow> rows = []
 
     void setRows(List<VatService.VatReportRow> rows) {
@@ -323,14 +357,18 @@ final class VatPeriodPanel extends JPanel {
       rows.size()
     }
 
-    @Override
-    int getColumnCount() {
-      COLUMNS.size()
-    }
+    final int columnCount = 5
 
     @Override
     String getColumnName(int column) {
-      COLUMNS[column]
+      switch (column) {
+        case 0: return I18n.instance.getString('vatPeriodPanel.table.report.code')
+        case 1: return I18n.instance.getString('vatPeriodPanel.table.report.label')
+        case 2: return I18n.instance.getString('vatPeriodPanel.table.report.base')
+        case 3: return I18n.instance.getString('vatPeriodPanel.table.report.outputVat')
+        case 4: return I18n.instance.getString('vatPeriodPanel.table.report.inputVat')
+        default: return ''
+      }
     }
 
     @Override

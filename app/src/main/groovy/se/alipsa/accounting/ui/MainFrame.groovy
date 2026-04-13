@@ -27,12 +27,15 @@ import se.alipsa.accounting.service.SystemDocumentationService
 import se.alipsa.accounting.service.UserManualService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Font
 import java.awt.Image
+import java.beans.PropertyChangeEvent
+import java.beans.PropertyChangeListener
 import java.util.logging.Logger
 
 import javax.imageio.ImageIO
@@ -42,13 +45,9 @@ import javax.swing.*
  * Main desktop window with phase two navigation and setup actions.
  */
 @CompileDynamic
-final class MainFrame {
+final class MainFrame implements PropertyChangeListener {
 
   private static final Logger log = Logger.getLogger(MainFrame.name)
-  private static final List<Map<String, String>> PLACEHOLDER_TABS = [
-      [title: 'Översikt', description: 'Översikt och status för bokföringen kommer här.'],
-      [title: 'Rapporter', description: 'Rapporter och export kommer här.']
-  ]
   private static final List<String> ICON_PATHS = [
       '/icons/logo16.png',
       '/icons/logo32.png',
@@ -127,13 +126,25 @@ final class MainFrame {
   )
   private JLabel statusLabel
   private JLabel companySummaryLabel
+  private JLabel headerLabel
+  private JLabel overviewDescriptionLabel
+  private JMenu fileMenu
+  private JMenuItem companySettingsMenuItem
+  private JMenuItem sieExchangeMenuItem
+  private JMenuItem exitMenuItem
+  private JMenu helpMenu
+  private JMenuItem manualMenuItem
+  private JMenuItem aboutMenuItem
+  private JButton editCompanySettingsButton
+  private JTabbedPane tabbedPane
   private final JFrame frame
 
   MainFrame() {
+    I18n.instance.addLocaleChangeListener(this)
     frame = buildFrame()
     applyIcons()
     refreshCompanySettingsSummary()
-    setStatus('Applikationen är startad och redo för kontoplan, företagsinställningar och räkenskapsår.')
+    setStatus(I18n.instance.getString('mainFrame.status.started'))
   }
 
   void display() {
@@ -149,9 +160,48 @@ final class MainFrame {
     statusLabel.text = text
   }
 
+  @Override
+  void propertyChange(PropertyChangeEvent evt) {
+    if ('locale' == evt.propertyName) {
+      SwingUtilities.invokeLater { applyLocale() }
+    }
+  }
+
+  private void applyLocale() {
+    frame.title = I18n.instance.getString('mainFrame.title')
+    headerLabel.text = I18n.instance.getString('mainFrame.title')
+    statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
+
+    fileMenu.text = I18n.instance.getString('mainFrame.menu.file')
+    companySettingsMenuItem.text = I18n.instance.getString('mainFrame.menu.file.companySettings')
+    sieExchangeMenuItem.text = I18n.instance.getString('mainFrame.menu.file.sieExchange')
+    exitMenuItem.text = I18n.instance.getString('mainFrame.menu.file.exit')
+
+    helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
+    manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
+    aboutMenuItem.text = I18n.instance.getString('mainFrame.menu.help.about')
+
+    tabbedPane.setTitleAt(0, I18n.instance.getString('mainFrame.tab.overview'))
+    tabbedPane.setTitleAt(1, I18n.instance.getString('mainFrame.tab.vouchers'))
+    tabbedPane.setTitleAt(2, I18n.instance.getString('mainFrame.tab.vat'))
+    tabbedPane.setTitleAt(3, I18n.instance.getString('mainFrame.tab.reports'))
+    tabbedPane.setTitleAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts'))
+    tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
+    tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.system'))
+    tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
+
+    editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
+
+    String overviewTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
+    String overviewDesc = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
+    overviewDescriptionLabel.text = "<html><h2>${overviewTitle}</h2><p>${overviewDesc}</p></html>"
+
+    refreshCompanySettingsSummary()
+  }
+
   private JFrame buildFrame() {
     swing.frame(
-        title: 'Alipsa Accounting',
+        title: I18n.instance.getString('mainFrame.title'),
         size: [1100, 720],
         defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
         locationByPlatform: true,
@@ -159,27 +209,27 @@ final class MainFrame {
     ) {
       lookAndFeel 'system'
       menuBar {
-        menu(text: 'Arkiv') {
-          menuItem(text: 'Företagsuppgifter...', actionPerformed: { showCompanySettingsDialog() })
-          menuItem(text: 'SIE import/export...', actionPerformed: { showSieExchangeDialog() })
-          menuItem(text: 'Avsluta', actionPerformed: { exitRequested() })
+        fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
+          companySettingsMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.companySettings'), actionPerformed: { showCompanySettingsDialog() })
+          sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: { showSieExchangeDialog() })
+          exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: { exitRequested() })
         }
-        menu(text: 'Hjälp') {
-          menuItem(text: 'Användarmanual', actionPerformed: { showUserManualDialog() })
-          menuItem(text: 'Om', actionPerformed: { showAboutDialog() })
+        helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
+          manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
+          aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
         }
       }
       borderLayout()
       panel(constraints: BorderLayout.NORTH, border: swing.emptyBorder(12, 16, 8, 16)) {
         borderLayout()
-        label(
-            text: 'Alipsa Accounting',
+        headerLabel = label(
+            text: I18n.instance.getString('mainFrame.title'),
             horizontalAlignment: SwingConstants.LEFT,
             font: new Font('Dialog', Font.BOLD, 22),
             constraints: BorderLayout.CENTER
         )
       }
-      tabbedPane(constraints: BorderLayout.CENTER) {
+      tabbedPane = tabbedPane(constraints: BorderLayout.CENTER) {
         buildMainTabs().each { Map<String, Object> tab ->
           widget(tab.component, title: tab.title as String)
         }
@@ -187,7 +237,7 @@ final class MainFrame {
       panel(constraints: BorderLayout.SOUTH, border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
         borderLayout()
         statusLabel = label(
-            text: 'Redo',
+            text: I18n.instance.getString('mainFrame.status.ready'),
             border: swing.emptyBorder(6, 12, 6, 12),
             constraints: BorderLayout.CENTER
         ) as JLabel
@@ -200,7 +250,7 @@ final class MainFrame {
       borderLayout(vgap: 12)
       panel(constraints: BorderLayout.NORTH) {
         flowLayout(alignment: java.awt.FlowLayout.LEFT, hgap: 8, vgap: 0)
-        button(text: 'Redigera företagsuppgifter', actionPerformed: { showCompanySettingsDialog() })
+        editCompanySettingsButton = button(text: I18n.instance.getString('mainFrame.button.editCompanySettings'), actionPerformed: { showCompanySettingsDialog() })
       }
       companySummaryLabel = label(
           text: '',
@@ -210,12 +260,12 @@ final class MainFrame {
     } as JPanel
   }
 
-  private JPanel buildPlaceholderPanel(String title, String description) {
-    String safeTitle = escapeHtml(title)
-    String safeDescription = escapeHtml(description)
+  private JPanel buildOverviewPanel() {
+    String safeTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
+    String safeDescription = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
     swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
       borderLayout()
-      label(
+      overviewDescriptionLabel = label(
           text: "<html><h2>${safeTitle}</h2><p>${safeDescription}</p></html>",
           horizontalAlignment: SwingConstants.CENTER,
           constraints: BorderLayout.CENTER
@@ -225,10 +275,10 @@ final class MainFrame {
 
   private List<Map<String, Object>> buildMainTabs() {
     [
-        [title: PLACEHOLDER_TABS[0].title, component: buildPlaceholderPanel(PLACEHOLDER_TABS[0].title, PLACEHOLDER_TABS[0].description)],
-        [title: 'Verifikationer', component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
-        [title: 'Moms', component: new VatPeriodPanel(vatService, fiscalYearService)],
-        [title: 'Rapporter', component: new ReportPanel(
+        [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
+        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService)],
+        [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
             journoReportService,
             reportExportService,
@@ -237,15 +287,15 @@ final class MainFrame {
             accountingPeriodService,
             new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)
         )],
-        [title: 'Kontoplan', component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
-        [title: 'Räkenskapsår', component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService)],
-        [title: 'System', component: new SystemDocumentationPanel(
+        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService)],
+        [title: I18n.instance.getString('mainFrame.tab.system'), component: new SystemDocumentationPanel(
             systemDocumentationService,
             diagnosticsService,
             backupService,
             userManualService
         )],
-        [title: 'Inställningar', component: buildCompanySettingsPanel()]
+        [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildCompanySettingsPanel()]
     ]
   }
 
@@ -256,11 +306,11 @@ final class MainFrame {
 
   private void showAboutDialog() {
     ImageIcon icon = loadIcon('/icons/logo64.png')
-    String version = MainFrame.package?.implementationVersion ?: 'utvecklingsversion'
+    String version = MainFrame.package?.implementationVersion ?: I18n.instance.getString('mainFrame.about.versionDefault')
     JOptionPane.showMessageDialog(
         frame,
-        "Alipsa Accounting\nVersion: ${version}",
-        'Om Alipsa Accounting',
+        I18n.instance.format('mainFrame.about.message', version),
+        I18n.instance.getString('mainFrame.about.title'),
         JOptionPane.INFORMATION_MESSAGE,
         icon
     )
@@ -269,18 +319,18 @@ final class MainFrame {
   private void showCompanySettingsDialog() {
     CompanySettingsDialog.showDialog(frame, companySettingsService, {
       refreshCompanySettingsSummary()
-      setStatus('Företagsinställningarna sparades.')
+      setStatus(I18n.instance.getString('mainFrame.status.companySaved'))
     } as Runnable)
   }
 
   private void showSieExchangeDialog() {
     SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService)
-    setStatus('SIE-import/export stängdes.')
+    setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
   }
 
   private void showUserManualDialog() {
     UserManualDialog.showDialog(frame, userManualService)
-    setStatus('Användarmanualen visades.')
+    setStatus(I18n.instance.getString('mainFrame.status.manualShown'))
   }
 
   private void refreshCompanySettingsSummary() {
@@ -289,23 +339,17 @@ final class MainFrame {
     }
     CompanySettings settings = companySettingsService.getSettings()
     if (settings == null) {
-      companySummaryLabel.text = '''
-                <html>
-                <h2>Företagsinställningar</h2>
-                <p>Ingen företagsprofil är sparad än. Öppna dialogen för att genomföra grundinställningen.</p>
-                </html>
-            '''.stripIndent().trim()
+      companySummaryLabel.text = I18n.instance.getString('mainFrame.companySettings.noProfile')
       return
     }
-    companySummaryLabel.text = """
-            <html>
-            <h2>${escapeHtml(settings.companyName)}</h2>
-            <p>Organisationsnummer: ${escapeHtml(settings.organizationNumber)}</p>
-            <p>Valuta: ${escapeHtml(settings.defaultCurrency)}</p>
-            <p>Locale: ${escapeHtml(settings.localeTag)}</p>
-            <p>Momsperiod: ${escapeHtml(settings.vatPeriodicity?.label ?: 'Månadsvis')}</p>
-            </html>
-        """.stripIndent().trim()
+    companySummaryLabel.text = I18n.instance.format(
+        'mainFrame.companySettings.summary',
+        escapeHtml(settings.companyName),
+        I18n.instance.getString('mainFrame.companySettings.orgNumber'), escapeHtml(settings.organizationNumber),
+        I18n.instance.getString('mainFrame.companySettings.currency'), escapeHtml(settings.defaultCurrency),
+        escapeHtml(settings.localeTag),
+        I18n.instance.getString('mainFrame.companySettings.vatPeriod'), escapeHtml(settings.vatPeriodicity?.displayName ?: I18n.instance.getString('vatPeriodicity.MONTHLY'))
+    )
   }
 
   private void applyIcons() {
