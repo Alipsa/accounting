@@ -47,13 +47,19 @@ if [ "$BUILD" = true ]; then
   gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$branch"
 
   echo "Waiting for workflow run to appear..."
-  sleep 5
-
-  run_id=$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$branch" \
-    --limit 1 --json databaseId --jq '.[0].databaseId')
+  run_id=""
+  for attempt in $(seq 1 12); do
+    sleep 5
+    run_id=$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$branch" \
+      --limit 1 --json databaseId,status --jq '.[0].databaseId')
+    if [ -n "$run_id" ]; then
+      break
+    fi
+    echo "  Attempt $attempt/12: run not yet visible..."
+  done
 
   if [ -z "$run_id" ]; then
-    echo "ERROR: Could not find workflow run."
+    echo "ERROR: Could not find workflow run after 60 seconds."
     exit 1
   fi
 
@@ -65,8 +71,8 @@ if [ "$BUILD" = true ]; then
   mkdir -p "$DIST_DIR"
   gh run download "$run_id" --repo "$REPO" --dir "$DIST_DIR"
 
-  # Flatten: move files out of per-platform subdirectories
-  find "$DIST_DIR" -mindepth 2 -type f -exec mv {} "$DIST_DIR/" \;
+  # Flatten: move files out of per-platform subdirectories (no-clobber to avoid overwrites)
+  find "$DIST_DIR" -mindepth 2 -type f -exec mv -n {} "$DIST_DIR/" \;
   find "$DIST_DIR" -mindepth 1 -type d -empty -delete
 
   echo ""

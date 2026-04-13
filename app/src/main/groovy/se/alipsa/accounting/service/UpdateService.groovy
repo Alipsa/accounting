@@ -4,6 +4,7 @@ import groovy.json.JsonSlurper
 import groovy.transform.CompileDynamic
 
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.LoggingConfigurer
 
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -11,6 +12,7 @@ import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -35,6 +37,7 @@ final class UpdateService {
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(LATEST_RELEASE_URL))
         .header('Accept', 'application/vnd.github+json')
+        .header('User-Agent', "AlipsaAccounting/${currentVersion()}")
         .GET()
         .build()
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
@@ -49,13 +52,16 @@ final class UpdateService {
     String htmlUrl = release.get('html_url') as String ?: ''
 
     String downloadUrl = null
+    String checksumUrl = null
     List<Map<String, Object>> assets = release.get('assets') as List<Map<String, Object>>
     if (assets != null) {
       for (Map<String, Object> asset : assets) {
         String name = asset.get('name') as String
         if (name != null && name.startsWith(DIST_ASSET_PREFIX) && name.endsWith('.zip')) {
           downloadUrl = asset.get('browser_download_url') as String
-          break
+        }
+        if (name != null && name.startsWith(DIST_ASSET_PREFIX) && name.endsWith('.zip.sha256')) {
+          checksumUrl = asset.get('browser_download_url') as String
         }
       }
     }
@@ -64,6 +70,7 @@ final class UpdateService {
         currentVersion: currentVersion(),
         availableVersion: remoteVersion,
         downloadUrl: downloadUrl,
+        checksumUrl: checksumUrl,
         releaseNotes: releaseNotes,
         releasePageUrl: htmlUrl,
         updateAvailable: isNewer(remoteVersion, currentVersion())
@@ -82,6 +89,7 @@ final class UpdateService {
     HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(info.downloadUrl))
+        .header('User-Agent', "AlipsaAccounting/${currentVersion()}")
         .GET()
         .build()
     HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
@@ -104,7 +112,43 @@ final class UpdateService {
         }
       }
     }
+
+    if (info.checksumUrl != null) {
+      verifyChecksum(targetFile, info.checksumUrl, client)
+    }
+
     targetFile
+  }
+
+  private void verifyChecksum(Path file, String checksumUrl, HttpClient client) {
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create(checksumUrl))
+        .header('User-Agent', "AlipsaAccounting/${currentVersion()}")
+        .GET()
+        .build()
+    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    if (response.statusCode() != 200) {
+      throw new IOException("Checksum download failed with status ${response.statusCode()}")
+    }
+
+    String expectedHash = response.body().trim().split('\\s+')[0]
+    String actualHash = sha256(file)
+    if (expectedHash != actualHash) {
+      Files.deleteIfExists(file)
+      throw new IOException("Checksum mismatch: expected ${expectedHash} but got ${actualHash}")
+    }
+  }
+
+  private static String sha256(Path file) {
+    MessageDigest digest = MessageDigest.getInstance('SHA-256')
+    Files.newInputStream(file).withCloseable { InputStream input ->
+      byte[] buffer = new byte[8192]
+      int bytesRead
+      while ((bytesRead = input.read(buffer)) != -1) {
+        digest.update(buffer, 0, bytesRead)
+      }
+    }
+    digest.digest().collect { String.format('%02x', it) }.join()
   }
 
   void applyUpdateAndRestart(Path downloadedZip) {
@@ -121,6 +165,7 @@ final class UpdateService {
     }
 
     Path updaterScript = writeUpdaterScript(stagingDir, extractedDir, installDir)
+    LoggingConfigurer.shutdown()
     launchUpdaterAndExit(updaterScript)
   }
 
@@ -174,6 +219,7 @@ final class UpdateService {
     boolean isWindows = osName.contains('win')
     Path launcher = launcherPath()
     String launcherCommand = launcher != null ? "\"${launcher}\"" : ''
+    Path backupDir = installDir.resolve('.update-backup')
 
     Path script
     if (isWindows) {
@@ -181,8 +227,19 @@ final class UpdateService {
       script.toFile().text = """\
 @echo off
 timeout /t 3 /nobreak >nul
-del /q "${installDir}\\*.jar"
+if exist "${backupDir}" rd /s /q "${backupDir}"
+mkdir "${backupDir}"
+move "${installDir}\\*.jar" "${backupDir}\\"
 copy /y "${extractedDir}\\*.jar" "${installDir}\\"
+if errorlevel 1 (
+  echo Update failed, restoring backup...
+  move "${backupDir}\\*.jar" "${installDir}\\"
+  rd /s /q "${backupDir}"
+  echo Update failed. Please try again.
+  pause
+  exit /b 1
+)
+rd /s /q "${backupDir}"
 rd /s /q "${extractedDir}"
 del "${stagingDir}\\*.zip"
 ${launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${launcherCommand}"}
@@ -193,8 +250,17 @@ del "%~f0"
       script.toFile().text = """\
 #!/usr/bin/env bash
 sleep 3
-rm -f "${installDir}/"*.jar
-cp "${extractedDir}/"*.jar "${installDir}/"
+rm -rf "${backupDir}"
+mkdir -p "${backupDir}"
+mv "${installDir}/"*.jar "${backupDir}/"
+if ! cp "${extractedDir}/"*.jar "${installDir}/"; then
+  echo "Update failed, restoring backup..."
+  mv "${backupDir}/"*.jar "${installDir}/"
+  rm -rf "${backupDir}"
+  echo "Update failed. Please try again."
+  exit 1
+fi
+rm -rf "${backupDir}"
 rm -rf "${extractedDir}"
 rm -f "${stagingDir}/"*.zip
 ${launcherCommand.isEmpty() ? 'echo "Update complete."' : "exec ${launcherCommand} &"}
@@ -219,7 +285,7 @@ rm -f "\$0"
     System.exit(0)
   }
 
-  private static boolean isNewer(String remote, String current) {
+  static boolean isNewer(String remote, String current) {
     if (remote == null || current == null || current == 'dev') {
       return false
     }
@@ -238,7 +304,7 @@ rm -f "\$0"
     false
   }
 
-  private static int[] parseVersion(String version) {
+  static int[] parseVersion(String version) {
     version.split('\\.').collect { String part ->
       try {
         Integer.parseInt(part)
@@ -267,6 +333,7 @@ rm -f "\$0"
     String currentVersion
     String availableVersion
     String downloadUrl
+    String checksumUrl
     String releaseNotes
     String releasePageUrl
     boolean updateAvailable
