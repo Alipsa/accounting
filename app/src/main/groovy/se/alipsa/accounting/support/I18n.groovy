@@ -17,8 +17,8 @@ final class I18n {
   static final I18n instance = new I18n()
 
   private final PropertyChangeSupport changeSupport = new PropertyChangeSupport(this)
-  private Locale currentLocale
-  private ResourceBundle bundle
+  private volatile Locale currentLocale
+  private volatile ResourceBundle bundle
 
   I18n(Locale locale = Locale.ENGLISH) {
     this.currentLocale = locale
@@ -35,11 +35,13 @@ final class I18n {
   }
 
   String format(String key, Object... args) {
-    String pattern = getString(key)
-    if (pattern.startsWith('[') && pattern.endsWith(']')) {
-      return pattern
+    try {
+      String pattern = bundle.getString(key)
+      MessageFormat.format(pattern, args)
+    } catch (MissingResourceException ignored) {
+      log.warning("Missing i18n key: ${key}")
+      "[${key}]"
     }
-    MessageFormat.format(pattern, args)
   }
 
   Locale getLocale() {
@@ -62,7 +64,11 @@ final class I18n {
   }
 
   private static ResourceBundle loadBundle(Locale locale) {
-    ResourceBundle.clearCache()
-    ResourceBundle.getBundle(BUNDLE_BASE_NAME, locale)
+    ResourceBundle.getBundle(BUNDLE_BASE_NAME, locale, new ResourceBundle.Control() {
+      @Override
+      long getTimeToLive(String baseName, Locale loc) {
+        ResourceBundle.Control.TTL_DONT_CACHE
+      }
+    })
   }
 }

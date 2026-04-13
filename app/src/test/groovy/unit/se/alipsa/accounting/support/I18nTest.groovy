@@ -38,13 +38,13 @@ final class I18nTest {
 
   @Test
   void formatInterpolatesParameters() {
-    assertEquals('Hello World', i18n.format('test.greeting', 'World'))
+    assertEquals('Fiscal year 2024 created.', i18n.format('fiscalYearPanel.message.created', '2024'))
   }
 
   @Test
   void formatReturnsSwedishWithParameters() {
     i18n.setLocale(Locale.forLanguageTag('sv'))
-    assertEquals('Hej World', i18n.format('test.greeting', 'World'))
+    assertEquals('R\u00e4kenskaps\u00e5ret 2024 skapades.', i18n.format('fiscalYearPanel.message.created', '2024'))
   }
 
   @Test

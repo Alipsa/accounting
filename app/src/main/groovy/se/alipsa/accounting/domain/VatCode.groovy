@@ -33,6 +33,11 @@ enum VatCode {
     I18n.instance.getString("vatCode.${name()}")
   }
 
+  @Override
+  String toString() {
+    displayName
+  }
+
   static VatCode fromDatabaseValue(String value) {
     String normalized = value?.trim()
     normalized ? valueOf(normalized) : null
