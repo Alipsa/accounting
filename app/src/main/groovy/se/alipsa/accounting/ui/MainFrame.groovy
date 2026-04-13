@@ -24,6 +24,8 @@ import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.service.SystemDiagnosticsService
 import se.alipsa.accounting.service.SystemDocumentationService
+import se.alipsa.accounting.service.UpdateService
+import se.alipsa.accounting.service.UpdateService.UpdateInfo
 import se.alipsa.accounting.service.UserManualService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
@@ -32,10 +34,12 @@ import se.alipsa.accounting.support.LoggingConfigurer
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Cursor
 import java.awt.Font
 import java.awt.Image
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.logging.Level
 import java.util.logging.Logger
 
 import javax.imageio.ImageIO
@@ -137,7 +141,10 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem updateMenuItem
   private JMenuItem aboutMenuItem
   private JButton editCompanySettingsButton
+  private JButton updateNotificationButton
   private JTabbedPane tabbedPane
+  private final UpdateService updateService = new UpdateService()
+  private UpdateInfo pendingUpdate
   private final JFrame frame
 
   MainFrame() {
@@ -155,6 +162,7 @@ final class MainFrame implements PropertyChangeListener {
         showCompanySettingsDialog()
       }
     }
+    checkForUpdateInBackground()
   }
 
   void setStatus(String text) {
@@ -172,17 +180,27 @@ final class MainFrame implements PropertyChangeListener {
     frame.title = I18n.instance.getString('mainFrame.title')
     headerLabel.text = I18n.instance.getString('mainFrame.title')
     statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
+    applyMenuLocale()
+    applyTabLocale()
+    editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
+    if (pendingUpdate != null) {
+      updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
+    }
+    refreshCompanySettingsSummary()
+  }
 
+  private void applyMenuLocale() {
     fileMenu.text = I18n.instance.getString('mainFrame.menu.file')
     companySettingsMenuItem.text = I18n.instance.getString('mainFrame.menu.file.companySettings')
     sieExchangeMenuItem.text = I18n.instance.getString('mainFrame.menu.file.sieExchange')
     exitMenuItem.text = I18n.instance.getString('mainFrame.menu.file.exit')
-
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
     manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
     updateMenuItem.text = I18n.instance.getString('mainFrame.menu.help.checkForUpdates')
     aboutMenuItem.text = I18n.instance.getString('mainFrame.menu.help.about')
+  }
 
+  private void applyTabLocale() {
     tabbedPane.setTitleAt(0, I18n.instance.getString('mainFrame.tab.overview'))
     tabbedPane.setTitleAt(1, I18n.instance.getString('mainFrame.tab.vouchers'))
     tabbedPane.setTitleAt(2, I18n.instance.getString('mainFrame.tab.vat'))
@@ -191,14 +209,9 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
     tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.system'))
     tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
-
-    editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
-
     String overviewTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
     String overviewDesc = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
     overviewDescriptionLabel.text = "<html><h2>${overviewTitle}</h2><p>${overviewDesc}</p></html>"
-
-    refreshCompanySettingsSummary()
   }
 
   private JFrame buildFrame() {
@@ -237,14 +250,7 @@ final class MainFrame implements PropertyChangeListener {
           widget(tab.component, title: tab.title as String)
         }
       }
-      panel(constraints: BorderLayout.SOUTH, border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
-        borderLayout()
-        statusLabel = label(
-            text: I18n.instance.getString('mainFrame.status.ready'),
-            border: swing.emptyBorder(6, 12, 6, 12),
-            constraints: BorderLayout.CENTER
-        ) as JLabel
-      }
+      widget(buildStatusBar(), constraints: BorderLayout.SOUTH)
     } as JFrame
   }
 
@@ -260,6 +266,27 @@ final class MainFrame implements PropertyChangeListener {
           verticalAlignment: SwingConstants.TOP,
           constraints: BorderLayout.CENTER
       ) as JLabel
+    } as JPanel
+  }
+
+  private JPanel buildStatusBar() {
+    swing.panel(border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
+      borderLayout()
+      statusLabel = label(
+          text: I18n.instance.getString('mainFrame.status.ready'),
+          border: swing.emptyBorder(6, 12, 6, 12),
+          constraints: BorderLayout.CENTER
+      ) as JLabel
+      updateNotificationButton = button(
+          text: I18n.instance.getString('mainFrame.button.updateAvailable'),
+          constraints: BorderLayout.EAST,
+          visible: false,
+          cursor: Cursor.getPredefinedCursor(Cursor.HAND_CURSOR),
+          borderPainted: false,
+          contentAreaFilled: false,
+          foreground: new Color(22, 101, 52),
+          actionPerformed: { showUpdateDialog() }
+      ) as JButton
     } as JPanel
   }
 
@@ -338,6 +365,27 @@ final class MainFrame implements PropertyChangeListener {
 
   private void showUpdateDialog() {
     UpdateDialog.showDialog(frame)
+  }
+
+  private void checkForUpdateInBackground() {
+    Thread updateThread = new Thread({
+      try {
+        UpdateInfo info = updateService.checkForUpdate()
+        if (info.updateAvailable) {
+          pendingUpdate = info
+          SwingUtilities.invokeLater {
+            updateNotificationButton.text = I18n.instance.format(
+                'mainFrame.button.updateVersion', info.availableVersion)
+            updateNotificationButton.visible = true
+          }
+        }
+      } catch (Exception exception) {
+        log.log(Level.FINE, 'Background update check failed (offline or unreachable).', exception)
+      }
+    } as Runnable, 'update-check')
+    updateThread.daemon = true
+    updateThread.priority = Thread.MIN_PRIORITY
+    updateThread.start()
   }
 
   private void refreshCompanySettingsSummary() {
