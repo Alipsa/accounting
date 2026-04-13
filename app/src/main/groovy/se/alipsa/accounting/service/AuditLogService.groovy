@@ -104,56 +104,66 @@ final class AuditLogService {
   List<String> validateIntegrity() {
     databaseService.withSql { Sql sql ->
       List<String> problems = []
-      String expectedPreviousHash = null
-      String actualLastHash = null
-      sql.rows('''
-          select id,
-                 event_type as eventType,
-                 voucher_id as voucherId,
-                 attachment_id as attachmentId,
-                 fiscal_year_id as fiscalYearId,
-                 accounting_period_id as accountingPeriodId,
-                 vat_period_id as vatPeriodId,
-                 actor,
-                 summary,
-                 details,
-                 previous_hash as previousHash,
-                 entry_hash as entryHash,
-                 created_at as createdAt
-            from audit_log
-           order by id
-      ''').each { GroovyRowResult row ->
-        AuditLogEntry entry = mapEntry(row)
-        if (entry.previousHash != expectedPreviousHash) {
-          problems << ("Auditlogg ${entry.id} har fel föregående hash." as String)
-        }
-        String calculated = calculateHash(new AuditEntrySeed(
-            eventType: entry.eventType,
-            voucherId: entry.voucherId,
-            attachmentId: entry.attachmentId,
-            fiscalYearId: entry.fiscalYearId,
-            accountingPeriodId: entry.accountingPeriodId,
-            vatPeriodId: entry.vatPeriodId,
-            actor: entry.actor,
-            summary: entry.summary,
-            details: entry.details,
-            previousHash: entry.previousHash,
-            createdAt: entry.createdAt
-        ))
-        if (entry.entryHash != calculated) {
-          problems << ("Auditlogg ${entry.id} har ogiltig hash." as String)
-        }
-        expectedPreviousHash = entry.entryHash
-        actualLastHash = entry.entryHash
-      }
-      AuditChainHead chainHead = loadChainHead(sql)
-      if (chainHead == null) {
-        problems << 'Auditloggkedjans huvud saknas.'
-      } else if (chainHead.lastEntryHash != actualLastHash) {
-        problems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
+      sql.rows('select distinct company_id as companyId from audit_log').each { GroovyRowResult companyRow ->
+        long companyId = ((Number) companyRow.get('companyId')).longValue()
+        problems.addAll(validateIntegrityForCompany(sql, companyId))
       }
       problems
     }
+  }
+
+  private static List<String> validateIntegrityForCompany(Sql sql, long companyId) {
+    List<String> problems = []
+    String expectedPreviousHash = null
+    String actualLastHash = null
+    sql.rows('''
+        select id,
+               event_type as eventType,
+               voucher_id as voucherId,
+               attachment_id as attachmentId,
+               fiscal_year_id as fiscalYearId,
+               accounting_period_id as accountingPeriodId,
+               vat_period_id as vatPeriodId,
+               actor,
+               summary,
+               details,
+               previous_hash as previousHash,
+               entry_hash as entryHash,
+               created_at as createdAt
+          from audit_log
+         where company_id = ?
+         order by id
+    ''', [companyId]).each { GroovyRowResult row ->
+      AuditLogEntry entry = mapEntry(row)
+      if (entry.previousHash != expectedPreviousHash) {
+        problems << ("Auditlogg ${entry.id} har fel föregående hash." as String)
+      }
+      String calculated = calculateHash(new AuditEntrySeed(
+          eventType: entry.eventType,
+          voucherId: entry.voucherId,
+          attachmentId: entry.attachmentId,
+          fiscalYearId: entry.fiscalYearId,
+          accountingPeriodId: entry.accountingPeriodId,
+          vatPeriodId: entry.vatPeriodId,
+          actor: entry.actor,
+          summary: entry.summary,
+          details: entry.details,
+          previousHash: entry.previousHash,
+          createdAt: entry.createdAt
+      ))
+      if (entry.entryHash != calculated) {
+        problems << ("Auditlogg ${entry.id} har ogiltig hash." as String)
+      }
+      expectedPreviousHash = entry.entryHash
+      actualLastHash = entry.entryHash
+    }
+    AuditChainHead chainHead = loadChainHead(sql, companyId)
+    if (chainHead == null) {
+      problems << 'Auditloggkedjans huvud saknas.'
+    } else if (chainHead.lastEntryHash != actualLastHash) {
+      problems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
+    }
+    problems
   }
 
   AuditLogEntry logImport(String summary, String details = null) {
@@ -297,7 +307,8 @@ final class AuditLogService {
     String safeEventType = requireText(eventType, 'Audit event type')
     String safeSummary = requireText(summary, 'Audit summary')
     AuditReferences safeReferences = references ?: AuditReferences.EMPTY
-    AuditChainHead chainHead = lockChainHead(sql)
+    long companyId = resolveCompanyId(sql, safeReferences)
+    AuditChainHead chainHead = lockChainHead(sql, companyId)
     AuditEntrySeed seed = new AuditEntrySeed(
         eventType: safeEventType,
         voucherId: safeReferences.voucherId,
@@ -325,8 +336,9 @@ final class AuditLogService {
             details,
             previous_hash,
             entry_hash,
-            created_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            created_at,
+            company_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', [
         seed.eventType,
         seed.voucherId,
@@ -339,10 +351,11 @@ final class AuditLogService {
         seed.details,
         seed.previousHash,
         entryHash,
-        Timestamp.valueOf(seed.createdAt)
+        Timestamp.valueOf(seed.createdAt),
+        companyId
     ])
     long id = ((Number) keys.first().first()).longValue()
-    updateChainHead(sql, entryHash)
+    updateChainHead(sql, companyId, entryHash)
     findById(sql, id)
   }
 
@@ -373,35 +386,66 @@ final class AuditLogService {
     row == null ? null : mapEntry(row)
   }
 
-  private static AuditChainHead lockChainHead(Sql sql) {
+  private static Long resolveCompanyId(Sql sql, AuditReferences references) {
+    if (references.voucherId != null) {
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from voucher where id = ?',
+          [references.voucherId]
+      ) as GroovyRowResult
+      if (row != null) {
+        return ((Number) row.get('companyId')).longValue()
+      }
+    }
+    if (references.fiscalYearId != null) {
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from fiscal_year where id = ?',
+          [references.fiscalYearId]
+      ) as GroovyRowResult
+      if (row != null) {
+        return ((Number) row.get('companyId')).longValue()
+      }
+    }
+    if (references.attachmentId != null) {
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from attachment where id = ?',
+          [references.attachmentId]
+      ) as GroovyRowResult
+      if (row != null) {
+        return ((Number) row.get('companyId')).longValue()
+      }
+    }
+    CompanyService.LEGACY_COMPANY_ID
+  }
+
+  private static AuditChainHead lockChainHead(Sql sql, long companyId) {
     GroovyRowResult row = sql.firstRow('''
         select last_entry_hash as lastEntryHash
           from audit_log_chain_head
-         where id = 1
+         where company_id = ?
          for update
-    ''') as GroovyRowResult
+    ''', [companyId]) as GroovyRowResult
     if (row == null) {
       throw new IllegalStateException('Kedjehuvudet för audit-loggen saknas.')
     }
     new AuditChainHead(row.get('lastEntryHash') as String)
   }
 
-  private static AuditChainHead loadChainHead(Sql sql) {
+  private static AuditChainHead loadChainHead(Sql sql, long companyId) {
     GroovyRowResult row = sql.firstRow('''
         select last_entry_hash as lastEntryHash
           from audit_log_chain_head
-         where id = 1
-    ''') as GroovyRowResult
+         where company_id = ?
+    ''', [companyId]) as GroovyRowResult
     row == null ? null : new AuditChainHead(row.get('lastEntryHash') as String)
   }
 
-  private static void updateChainHead(Sql sql, String entryHash) {
+  private static void updateChainHead(Sql sql, long companyId, String entryHash) {
     int updated = sql.executeUpdate('''
         update audit_log_chain_head
            set last_entry_hash = ?,
                updated_at = current_timestamp
-         where id = 1
-    ''', [entryHash])
+         where company_id = ?
+    ''', [entryHash, companyId])
     if (updated != 1) {
       throw new IllegalStateException('Kedjehuvudet för audit-loggen kunde inte uppdateras.')
     }

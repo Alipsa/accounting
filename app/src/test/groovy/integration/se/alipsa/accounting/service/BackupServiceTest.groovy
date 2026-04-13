@@ -76,7 +76,7 @@ class BackupServiceTest {
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
-      assertEquals(13, countSchemaVersion(sql))
+      assertEquals(14, countSchemaVersion(sql))
     }
   }
 
@@ -191,7 +191,7 @@ class BackupServiceTest {
     String manifest = [
         'formatVersion=1',
         "createdAt=${LocalDateTime.of(2026, 1, 1, 0, 0)}",
-        'schemaVersion=12',
+        'schemaVersion=14',
         'databasePath=database/script.sql',
         "databaseChecksumSha256=${sha256(scriptBytes)}",
         "databaseSizeBytes=${scriptBytes.length}",
