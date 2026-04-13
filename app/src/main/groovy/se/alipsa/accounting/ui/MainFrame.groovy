@@ -27,6 +27,7 @@ import se.alipsa.accounting.service.SystemDocumentationService
 import se.alipsa.accounting.service.UpdateService
 import se.alipsa.accounting.service.UpdateService.UpdateInfo
 import se.alipsa.accounting.service.UserManualService
+import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
@@ -36,7 +37,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Cursor
 import java.awt.Desktop
-import java.awt.Font
+import java.awt.FlowLayout
 import java.awt.Image
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
@@ -62,6 +63,7 @@ final class MainFrame implements PropertyChangeListener {
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanySettingsService companySettingsService = new CompanySettingsService()
+  private final UserPreferencesService userPreferencesService = new UserPreferencesService()
   private final AuditLogService auditLogService = new AuditLogService()
   private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
   private final AccountService accountService = new AccountService()
@@ -131,7 +133,6 @@ final class MainFrame implements PropertyChangeListener {
   )
   private JLabel statusLabel
   private JLabel companySummaryLabel
-  private JLabel headerLabel
   private JLabel overviewDescriptionLabel
   private JMenu fileMenu
   private JMenuItem companySettingsMenuItem
@@ -144,6 +145,9 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem aboutMenuItem
   private JButton editCompanySettingsButton
   private JButton updateNotificationButton
+  private JButton englishButton
+  private JButton swedishButton
+  private JLabel languageLabel
   private JTabbedPane tabbedPane
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
@@ -180,11 +184,12 @@ final class MainFrame implements PropertyChangeListener {
 
   private void applyLocale() {
     frame.title = I18n.instance.getString('mainFrame.title')
-    headerLabel.text = I18n.instance.getString('mainFrame.title')
     statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
     applyMenuLocale()
     applyTabLocale()
     editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
+    languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
+    updateLanguageButtonBorders()
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
     }
@@ -241,15 +246,6 @@ final class MainFrame implements PropertyChangeListener {
         }
       }
       borderLayout()
-      panel(constraints: BorderLayout.NORTH, border: swing.emptyBorder(12, 16, 8, 16)) {
-        borderLayout()
-        headerLabel = label(
-            text: I18n.instance.getString('mainFrame.title'),
-            horizontalAlignment: SwingConstants.LEFT,
-            font: new Font('Dialog', Font.BOLD, 22),
-            constraints: BorderLayout.CENTER
-        )
-      }
       tabbedPane = tabbedPane(constraints: BorderLayout.CENTER)
     } as JFrame
     buildMainTabs().each { Map<String, Object> tab ->
@@ -259,19 +255,56 @@ final class MainFrame implements PropertyChangeListener {
     f
   }
 
-  private JPanel buildCompanySettingsPanel() {
-    swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
-      borderLayout(vgap: 12)
-      panel(constraints: BorderLayout.NORTH) {
-        flowLayout(alignment: java.awt.FlowLayout.LEFT, hgap: 8, vgap: 0)
-        editCompanySettingsButton = button(text: I18n.instance.getString('mainFrame.button.editCompanySettings'), actionPerformed: { showCompanySettingsDialog() })
-      }
-      companySummaryLabel = label(
-          text: '',
-          verticalAlignment: SwingConstants.TOP,
-          constraints: BorderLayout.CENTER
-      ) as JLabel
-    } as JPanel
+  private JPanel buildSettingsPanel() {
+    JPanel panel = new JPanel(new BorderLayout(0, 12))
+    panel.border = BorderFactory.createEmptyBorder(24, 24, 24, 24)
+
+    JPanel topPanel = new JPanel(new BorderLayout(0, 12))
+
+    JPanel languageRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    languageLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.language'))
+    englishButton = new JButton(loadFlagIcon('/icons/UK.png'))
+    swedishButton = new JButton(loadFlagIcon('/icons/sweden.png'))
+    englishButton.addActionListener { switchLanguage(Locale.ENGLISH) }
+    swedishButton.addActionListener { switchLanguage(Locale.forLanguageTag('sv')) }
+    updateLanguageButtonBorders()
+    languageRow.add(languageLabel)
+    languageRow.add(englishButton)
+    languageRow.add(swedishButton)
+    topPanel.add(languageRow, BorderLayout.NORTH)
+
+    JPanel companyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    editCompanySettingsButton = new JButton(I18n.instance.getString('mainFrame.button.editCompanySettings'))
+    editCompanySettingsButton.addActionListener { showCompanySettingsDialog() }
+    companyRow.add(editCompanySettingsButton)
+    topPanel.add(companyRow, BorderLayout.SOUTH)
+
+    panel.add(topPanel, BorderLayout.NORTH)
+
+    companySummaryLabel = new JLabel('')
+    companySummaryLabel.verticalAlignment = SwingConstants.TOP
+    panel.add(companySummaryLabel, BorderLayout.CENTER)
+
+    panel
+  }
+
+  private void switchLanguage(Locale locale) {
+    I18n.instance.setLocale(locale)
+    userPreferencesService.setLanguage(locale)
+    updateLanguageButtonBorders()
+  }
+
+  private void updateLanguageButtonBorders() {
+    boolean isSwedish = I18n.instance.locale.language == 'sv'
+    swedishButton.border = isSwedish ?
+        BorderFactory.createLoweredBevelBorder() : BorderFactory.createRaisedBevelBorder()
+    englishButton.border = isSwedish ?
+        BorderFactory.createRaisedBevelBorder() : BorderFactory.createLoweredBevelBorder()
+  }
+
+  private static ImageIcon loadFlagIcon(String path) {
+    URL resource = MainFrame.getResource(path)
+    resource != null ? new ImageIcon(resource) : null
   }
 
   private JPanel buildStatusBar() {
@@ -330,7 +363,7 @@ final class MainFrame implements PropertyChangeListener {
             backupService,
             userManualService
         )],
-        [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildCompanySettingsPanel()]
+        [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildSettingsPanel()]
     ]
   }
 
