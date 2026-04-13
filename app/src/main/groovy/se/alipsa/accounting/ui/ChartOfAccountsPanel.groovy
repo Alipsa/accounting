@@ -101,15 +101,15 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void rebuildClassFilter() {
-    String selectedItem = classFilter.selectedItem as String
+    int selectedIndex = classFilter.selectedIndex
     classFilter.removeAllItems()
     String allLabel = I18n.instance.getString('chartOfAccountsPanel.filter.all')
     String reviewLabel = I18n.instance.getString('chartOfAccountsPanel.filter.reviewRequired')
     [allLabel, 'ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE', reviewLabel].each { String item ->
       classFilter.addItem(item)
     }
-    if (selectedItem != null) {
-      classFilter.selectedItem = selectedItem
+    if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
+      classFilter.selectedIndex = selectedIndex
     }
   }
 

@@ -104,6 +104,8 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
 
   private void applyLocale() {
     allFilterValue = I18n.instance.getString('voucherListPanel.filter.all')
+    rebuildStatusFilter()
+    reloadFiscalYears()
     fiscalYearLabel.text = I18n.instance.getString('voucherListPanel.label.fiscalYear')
     statusLabel.text = I18n.instance.getString('voucherListPanel.label.status')
     searchLabel.text = I18n.instance.getString('voucherListPanel.label.search')
@@ -112,6 +114,18 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
     openButton.text = I18n.instance.getString('voucherListPanel.button.openVoucher')
     correctionButton.text = I18n.instance.getString('voucherListPanel.button.createCorrection')
     voucherTable.tableHeader.repaint()
+  }
+
+  private void rebuildStatusFilter() {
+    int selectedIndex = statusComboBox.selectedIndex
+    statusComboBox.removeAllItems()
+    statusComboBox.addItem(allFilterValue)
+    VoucherStatus.values().each { VoucherStatus status ->
+      statusComboBox.addItem(status.name())
+    }
+    if (selectedIndex >= 0 && selectedIndex < statusComboBox.itemCount) {
+      statusComboBox.selectedIndex = selectedIndex
+    }
   }
 
   private void buildUi() {

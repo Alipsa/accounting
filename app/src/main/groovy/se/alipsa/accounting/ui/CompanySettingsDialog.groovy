@@ -180,7 +180,7 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
   private void populate(CompanySettings settings) {
     if (settings == null) {
       defaultCurrencyField.text = 'SEK'
-      localeTagField.text = 'sv-SE'
+      localeTagField.text = Locale.getDefault().toLanguageTag()
       vatPeriodicityComboBox.selectedItem = VatPeriodicity.MONTHLY
       return
     }
@@ -256,6 +256,7 @@ final class CompanySettingsDialog extends JDialog implements PropertyChangeListe
 
   private void switchLanguage(Locale locale) {
     I18n.instance.setLocale(locale)
+    localeTagField.text = locale.toLanguageTag()
     updateLanguageButtonBorders()
   }
 
