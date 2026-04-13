@@ -14,9 +14,15 @@ final class CompanySettingsService {
   private static final long SETTINGS_ID = 1L
 
   private final DatabaseService databaseService
+  private final CompanyService companyService
 
   CompanySettingsService(DatabaseService databaseService = DatabaseService.instance) {
+    this(databaseService, new CompanyService(databaseService))
+  }
+
+  CompanySettingsService(DatabaseService databaseService, CompanyService companyService) {
     this.databaseService = databaseService
+    this.companyService = companyService
   }
 
   CompanySettings getSettings() {
@@ -31,7 +37,7 @@ final class CompanySettingsService {
 
   CompanySettings save(CompanySettings settings) {
     validate(settings)
-    databaseService.withTransaction { Sql sql ->
+    CompanySettings persistedSettings = databaseService.withTransaction { Sql sql ->
       GroovyRowResult row = sql.firstRow(
           'select count(*) as total from company_settings where id = ?',
           [SETTINGS_ID]
@@ -72,6 +78,8 @@ final class CompanySettingsService {
       }
       loadSettings(sql)
     }
+    companyService.upsertLegacyCompany(persistedSettings)
+    persistedSettings
   }
 
   private static CompanySettings loadSettings(Sql sql) {

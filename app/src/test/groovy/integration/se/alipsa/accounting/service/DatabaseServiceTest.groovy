@@ -47,6 +47,7 @@ class DatabaseServiceTest {
       sql.firstRow('''
           select
               (select coalesce(max(version), 0) from schema_version) as version,
+              (select count(*) from information_schema.tables where table_name = 'COMPANY') as company,
               (select count(*) from information_schema.tables where table_name = 'COMPANY_SETTINGS') as companySettings,
               (select count(*) from information_schema.tables where table_name = 'FISCAL_YEAR') as fiscalYear,
               (select count(*) from information_schema.tables where table_name = 'ACCOUNTING_PERIOD') as accountingPeriod,
@@ -63,11 +64,14 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.tables where table_name = 'REPORT_ARCHIVE') as reportArchive,
               (select count(*) from information_schema.tables where table_name = 'IMPORT_JOB') as importJob,
               (select count(*) from information_schema.tables where table_name = 'CLOSING_ENTRY') as closingEntry,
-              (select count(*) from information_schema.columns where table_name = 'AUDIT_LOG' and column_name = 'VAT_PERIOD_ID') as auditLogVatPeriodColumn
+              (select count(*) from information_schema.columns where table_name = 'AUDIT_LOG' and column_name = 'VAT_PERIOD_ID') as auditLogVatPeriodColumn,
+              (select count(*) from information_schema.columns where table_name = 'FISCAL_YEAR' and column_name = 'COMPANY_ID') as fiscalYearCompanyColumn,
+              (select count(*) from information_schema.columns where table_name = 'ACCOUNT' and column_name = 'COMPANY_ID') as accountCompanyColumn
       ''') as GroovyRowResult
     }
 
-    assertEquals(12, ((Number) result.version).intValue())
+    assertEquals(13, ((Number) result.version).intValue())
+    assertEquals(1, ((Number) result.company).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())
     assertEquals(1, ((Number) result.accountingPeriod).intValue())
@@ -85,6 +89,8 @@ class DatabaseServiceTest {
     assertEquals(1, ((Number) result.importJob).intValue())
     assertEquals(1, ((Number) result.closingEntry).intValue())
     assertEquals(1, ((Number) result.auditLogVatPeriodColumn).intValue())
+    assertEquals(1, ((Number) result.fiscalYearCompanyColumn).intValue())
+    assertEquals(1, ((Number) result.accountCompanyColumn).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 
