@@ -9,6 +9,9 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Path
 import java.nio.file.Paths
 
+// This test mutates global system properties (os.name, user.home) to verify
+// platform-specific path defaults. Tests must run single-threaded to avoid
+// interfering with other tests that call AppPaths.applicationHome() concurrently.
 class AppPathsTest {
 
   private String previousOsName
