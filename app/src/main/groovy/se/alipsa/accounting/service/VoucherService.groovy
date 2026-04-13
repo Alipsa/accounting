@@ -151,7 +151,8 @@ final class VoucherService {
 
       String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
       List<VoucherLine> safeLines = normalizeLines(sql, lines, false, true)
-      replaceLines(sql, voucherId, safeLines)
+      long companyId = resolveCompanyId(sql, current.fiscalYearId)
+      replaceLines(sql, voucherId, companyId, safeLines)
       sql.executeUpdate('''
           update voucher
              set accounting_date = ?,
@@ -370,6 +371,7 @@ final class VoucherService {
     boolean requireActiveAccounts = originalVoucherId == null
     List<VoucherLine> safeLines = normalizeLines(sql, lines, false, requireActiveAccounts)
     VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     List<List<Object>> keys = sql.executeInsert('''
         insert into voucher (
             fiscal_year_id,
@@ -383,18 +385,20 @@ final class VoucherService {
             previous_hash,
             content_hash,
             booked_at,
+            company_id,
             created_at,
             updated_at
-        ) values (?, ?, null, null, ?, ?, 'DRAFT', ?, null, null, null, current_timestamp, current_timestamp)
+        ) values (?, ?, null, null, ?, ?, 'DRAFT', ?, null, null, null, ?, current_timestamp, current_timestamp)
     ''', [
         fiscalYearId,
         series.id,
         Date.valueOf(accountingDate),
         safeDescription,
-        originalVoucherId
+        originalVoucherId,
+        companyId
     ])
     long voucherId = ((Number) keys.first().first()).longValue()
-    replaceLines(sql, voucherId, safeLines)
+    replaceLines(sql, voucherId, companyId, safeLines)
     Voucher draft = requireVoucher(sql, voucherId)
     if (originalVoucherId == null) {
       auditLogService.recordVoucherCreated(sql, draft)
@@ -802,7 +806,7 @@ final class VoucherService {
     SqlValueMapper.toLocalDateTime(row.get('bookedAt'))
   }
 
-  private static void replaceLines(Sql sql, long voucherId, List<VoucherLine> lines) {
+  private static void replaceLines(Sql sql, long voucherId, long companyId, List<VoucherLine> lines) {
     sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
     lines.eachWithIndex { VoucherLine line, int index ->
       sql.executeInsert('''
@@ -813,15 +817,17 @@ final class VoucherService {
               line_description,
               debit_amount,
               credit_amount,
+              company_id,
               created_at
-          ) values (?, ?, ?, ?, ?, ?, current_timestamp)
+          ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
       ''', [
           voucherId,
           index + 1,
           line.accountNumber,
           line.description,
           line.debitAmount,
-          line.creditAmount
+          line.creditAmount,
+          companyId
       ])
     }
   }

@@ -102,6 +102,7 @@ final class SieImportExportService {
         )
         new SieImportResult(job, fiscalYear, false, counts.accountsCreated, counts.openingBalanceCount, counts.voucherCount, counts.lineCount, parsed.warnings)
       }
+      long companyId = resolveCompanyId(result.fiscalYear.id)
       auditLogService.logImport(
           "Importerade SIE ${result.job.fileName}",
           [
@@ -109,7 +110,8 @@ final class SieImportExportService {
               "fiscalYearId=${result.job.fiscalYearId}",
               "checksum=${result.job.checksumSha256}",
               "summary=${result.job.summary}"
-          ].join('\n')
+          ].join('\n'),
+          companyId
       )
       result
     } catch (Exception exception) {
@@ -128,6 +130,7 @@ final class SieImportExportService {
     Files.createDirectories(safeTarget.parent)
     Files.write(safeTarget, content)
     String checksum = sha256(content)
+    long companyId = resolveCompanyId(payload.fiscalYear.id)
     auditLogService.logExport(
         "Exporterade SIE ${payload.fiscalYear.name}",
         [
@@ -137,7 +140,8 @@ final class SieImportExportService {
             "accounts=${payload.accountCount}",
             "openingBalances=${payload.openingBalanceCount}",
             "vouchers=${payload.voucherCount}"
-        ].join('\n')
+        ].join('\n'),
+        companyId
     )
     new SieExportResult(
         safeTarget.toAbsolutePath().normalize(),
@@ -897,6 +901,19 @@ final class SieImportExportService {
     safeNormalBalanceSide == 'DEBIT'
         ? scale(debitAmount - creditAmount)
         : scale(creditAmount - debitAmount)
+  }
+
+  private long resolveCompanyId(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select company_id as companyId from fiscal_year where id = ?',
+          [fiscalYearId]
+      ) as GroovyRowResult
+      if (row == null) {
+        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+      }
+      ((Number) row.get('companyId')).longValue()
+    }
   }
 
   private static String normalizeAccountNumber(String accountNumber) {

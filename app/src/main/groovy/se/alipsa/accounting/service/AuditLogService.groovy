@@ -166,20 +166,20 @@ final class AuditLogService {
     problems
   }
 
-  AuditLogEntry logImport(String summary, String details = null) {
-    recordStandaloneEvent(IMPORT, summary, details)
+  AuditLogEntry logImport(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
+    recordStandaloneEvent(IMPORT, summary, details, companyId)
   }
 
-  AuditLogEntry logExport(String summary, String details = null) {
-    recordStandaloneEvent(EXPORT, summary, details)
+  AuditLogEntry logExport(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
+    recordStandaloneEvent(EXPORT, summary, details, companyId)
   }
 
-  AuditLogEntry logBackup(String summary, String details = null) {
-    recordStandaloneEvent(BACKUP, summary, details)
+  AuditLogEntry logBackup(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
+    recordStandaloneEvent(BACKUP, summary, details, companyId)
   }
 
-  AuditLogEntry logRestore(String summary, String details = null) {
-    recordStandaloneEvent(RESTORE, summary, details)
+  AuditLogEntry logRestore(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
+    recordStandaloneEvent(RESTORE, summary, details, companyId)
   }
 
   @PackageScope
@@ -302,12 +302,13 @@ final class AuditLogService {
       String eventType,
       AuditReferences references,
       String summary,
-      String details
+      String details,
+      Long explicitCompanyId = null
   ) {
     String safeEventType = requireText(eventType, 'Audit event type')
     String safeSummary = requireText(summary, 'Audit summary')
     AuditReferences safeReferences = references ?: AuditReferences.EMPTY
-    long companyId = resolveCompanyId(sql, safeReferences)
+    long companyId = explicitCompanyId ?: resolveCompanyId(sql, safeReferences)
     AuditChainHead chainHead = lockChainHead(sql, companyId)
     AuditEntrySeed seed = new AuditEntrySeed(
         eventType: safeEventType,
@@ -359,9 +360,9 @@ final class AuditLogService {
     findById(sql, id)
   }
 
-  private AuditLogEntry recordStandaloneEvent(String eventType, String summary, String details) {
+  private AuditLogEntry recordStandaloneEvent(String eventType, String summary, String details, long companyId) {
     databaseService.withTransaction { Sql sql ->
-      recordEvent(sql, eventType, AuditReferences.EMPTY, summary, details)
+      recordEvent(sql, eventType, AuditReferences.EMPTY, summary, details, companyId)
     }
   }
 
