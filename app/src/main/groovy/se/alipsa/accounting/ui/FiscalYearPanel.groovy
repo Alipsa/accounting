@@ -4,7 +4,6 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
@@ -32,6 +31,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
   private final ClosingService closingService
+  private final ActiveCompanyManager activeCompanyManager
 
   private final JTextField nameField = new JTextField(20)
   private final JTextField startDateField = new JTextField(10)
@@ -52,12 +52,15 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   FiscalYearPanel(
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
-      ClosingService closingService
+      ClosingService closingService,
+      ActiveCompanyManager activeCompanyManager
   ) {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.closingService = closingService
+    this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
     buildUi()
     reloadData()
   }
@@ -66,6 +69,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   void propertyChange(PropertyChangeEvent evt) {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater { reloadData() }
     }
   }
 
@@ -190,7 +195,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     }
 
     try {
-      FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, nameField.text, startDate, endDate)
+      FiscalYear year = fiscalYearService.createFiscalYear(activeCompanyManager.companyId, nameField.text, startDate, endDate)
       clearInputs()
       reloadData()
       selectFiscalYear(year.id)
@@ -230,7 +235,12 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadData() {
-    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID)
+    if (!activeCompanyManager.hasActiveCompany()) {
+      fiscalYearTableModel.setRows([])
+      periodTableModel.setRows([])
+      return
+    }
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(activeCompanyManager.companyId)
     fiscalYearTableModel.setRows(fiscalYears)
     if (!fiscalYears.isEmpty() && fiscalYearTable.selectedRow < 0) {
       fiscalYearTable.setRowSelectionInterval(0, 0)

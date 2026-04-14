@@ -2,7 +2,6 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
@@ -45,6 +44,7 @@ final class SieExchangeDialog extends JDialog {
 
   private final SieImportExportService sieImportExportService
   private final FiscalYearService fiscalYearService
+  private final long companyId
 
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea summaryArea = new JTextArea(5, 50)
@@ -55,18 +55,19 @@ final class SieExchangeDialog extends JDialog {
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
-  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService) {
+  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
+    this.companyId = companyId
     buildUi()
     reloadFiscalYears()
     reloadJobs()
     showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
-  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService) {
-    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService)
+  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId) {
+    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyId)
     dialog.visible = true
   }
 
@@ -151,7 +152,7 @@ final class SieExchangeDialog extends JDialog {
   private void reloadFiscalYears() {
     FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(companyId).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
@@ -160,7 +161,7 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void reloadJobs() {
-    importJobTableModel.setRows(sieImportExportService.listImportJobs(CompanyService.LEGACY_COMPANY_ID))
+    importJobTableModel.setRows(sieImportExportService.listImportJobs(companyId))
   }
 
   private void importRequested() {
@@ -176,7 +177,7 @@ final class SieExchangeDialog extends JDialog {
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
-        sieImportExportService.importFile(CompanyService.LEGACY_COMPANY_ID, selectedPath)
+        sieImportExportService.importFile(companyId, selectedPath)
       }
 
       @Override

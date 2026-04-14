@@ -10,7 +10,6 @@ import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
@@ -77,6 +76,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
   private final AccountService accountService
   private final AttachmentService attachmentService
   private final AuditLogService auditLogService
+  private final long companyId
   private final Runnable onSave
   private final JComboBox<FiscalYear> fiscalYearComboBox
   private final JTextField seriesField = new JTextField(6)
@@ -110,6 +110,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
   VoucherEditor(
       Frame owner,
       Dependencies dependencies,
+      long companyId,
       Long voucherId,
       Runnable onSave
   ) {
@@ -119,11 +120,12 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
     this.accountService = dependencies.accountService
     this.attachmentService = dependencies.attachmentService
     this.auditLogService = dependencies.auditLogService
+    this.companyId = companyId
     this.onSave = onSave
     voucher = voucherId == null ? null : voucherService.findVoucher(voucherId)
     readOnly = voucher != null && voucher.status != VoucherStatus.DRAFT
-    fiscalYearComboBox = new JComboBox<>(fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID) as FiscalYear[])
-    lineTableModel = new LineTableModel(accountService, !readOnly)
+    fiscalYearComboBox = new JComboBox<>(fiscalYearService.listFiscalYears(companyId) as FiscalYear[])
+    lineTableModel = new LineTableModel(accountService, companyId, !readOnly)
     lineTable = new JTable(lineTableModel)
     setTitle(voucherId == null
         ? I18n.instance.getString('voucherEditor.title.new')
@@ -166,10 +168,11 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
   static void showDialog(
       Frame owner,
       Dependencies dependencies,
+      long companyId,
       Long voucherId,
       Runnable onSave
   ) {
-    VoucherEditor editor = new VoucherEditor(owner, dependencies, voucherId, onSave)
+    VoucherEditor editor = new VoucherEditor(owner, dependencies, companyId, voucherId, onSave)
     editor.setVisible(true)
   }
 
@@ -584,11 +587,13 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
   private static final class LineTableModel extends AbstractTableModel {
 
     private final AccountService accountService
+    private final long companyId
     private final boolean editable
     private final List<LineEntry> rows = []
 
-    LineTableModel(AccountService accountService, boolean editable) {
+    LineTableModel(AccountService accountService, long companyId, boolean editable) {
       this.accountService = accountService
+      this.companyId = companyId
       this.editable = editable
     }
 
@@ -732,7 +737,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
         return ''
       }
       try {
-        Account account = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, normalized)
+        Account account = accountService.findAccount(companyId, normalized)
         account == null
             ? I18n.instance.getString('voucherEditor.table.line.unknownAccount')
             : account.accountName

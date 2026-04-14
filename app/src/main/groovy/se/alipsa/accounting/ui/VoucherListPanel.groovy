@@ -6,7 +6,6 @@ import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
@@ -47,6 +46,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
   private final AccountService accountService
   private final AttachmentService attachmentService
   private final AuditLogService auditLogService
+  private final ActiveCompanyManager activeCompanyManager
   private final VoucherEditor.Dependencies editorDependencies
   private final Timer searchDebounceTimer
   private final JComboBox<Object> fiscalYearComboBox = new JComboBox<>()
@@ -72,13 +72,15 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
       FiscalYearService fiscalYearService,
       AccountService accountService,
       AttachmentService attachmentService,
-      AuditLogService auditLogService
+      AuditLogService auditLogService,
+      ActiveCompanyManager activeCompanyManager
   ) {
     this.voucherService = voucherService
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
     this.attachmentService = attachmentService
     this.auditLogService = auditLogService
+    this.activeCompanyManager = activeCompanyManager
     editorDependencies = new VoucherEditor.Dependencies(
         voucherService,
         fiscalYearService,
@@ -90,6 +92,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
     searchDebounceTimer = new Timer(SEARCH_DEBOUNCE_MILLIS, { reloadVouchers() } as ActionListener)
     searchDebounceTimer.repeats = false
     I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
     buildUi()
     reloadFiscalYears()
     installFilterListeners()
@@ -100,6 +103,8 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
   void propertyChange(PropertyChangeEvent evt) {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater { refreshData() }
     }
   }
 
@@ -219,7 +224,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
       Object selected = fiscalYearComboBox.selectedItem
       fiscalYearComboBox.removeAllItems()
       fiscalYearComboBox.addItem(allFilterValue)
-      fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
+      fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
         fiscalYearComboBox.addItem(fiscalYear)
       }
       if (selected != null) {
@@ -246,7 +251,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
     }
     Long fiscalYearId = selectedFiscalYearId()
     VoucherStatus status = selectedStatus()
-    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYearId, status, searchField.text)
+    List<Voucher> vouchers = voucherService.listVouchers(activeCompanyManager.companyId, fiscalYearId, status, searchField.text)
     tableModel.setRows(vouchers)
     showInfo(I18n.instance.format('voucherListPanel.message.showing', vouchers.size()))
   }
@@ -256,6 +261,10 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void refreshData() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      tableModel.setRows([])
+      return
+    }
     reloadFiscalYears()
     reloadVouchers()
   }
@@ -285,7 +294,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void openEditor(Long voucherId) {
-    VoucherEditor.showDialog(ownerFrame(), editorDependencies, voucherId, {
+    VoucherEditor.showDialog(ownerFrame(), editorDependencies, activeCompanyManager.companyId, voucherId, {
       refreshData()
     } as Runnable)
   }

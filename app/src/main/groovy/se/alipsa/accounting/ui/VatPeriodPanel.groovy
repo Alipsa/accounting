@@ -2,7 +2,6 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.support.I18n
@@ -38,6 +37,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private final VatService vatService
   private final FiscalYearService fiscalYearService
+  private final ActiveCompanyManager activeCompanyManager
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel summaryLabel = new JLabel(I18n.instance.getString('vatPeriodPanel.summary.initial'))
@@ -55,10 +55,12 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
 
-  VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService) {
+  VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService, ActiveCompanyManager activeCompanyManager) {
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
+    this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
     buildUi()
     reloadFiscalYears()
     reloadPeriods()
@@ -68,6 +70,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   void propertyChange(PropertyChangeEvent evt) {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater {
+        reloadFiscalYears()
+        reloadPeriods()
+      }
     }
   }
 
@@ -159,9 +166,15 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadFiscalYears() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      fiscalYearComboBox.removeAllItems()
+      periodTableModel.setRows([])
+      reportTableModel.setRows([])
+      return
+    }
     FiscalYear selected = selectedFiscalYear()
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
