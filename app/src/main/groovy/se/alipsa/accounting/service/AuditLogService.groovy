@@ -76,6 +76,7 @@ final class AuditLogService {
   }
 
   List<AuditLogEntry> listEntries(long companyId, int limit = 200) {
+    CompanyService.requireValidCompanyId(companyId)
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''
@@ -132,10 +133,17 @@ final class AuditLogService {
     databaseService.withSql { Sql sql ->
       List<String> problems = []
       sql.rows('select distinct company_id as companyId from audit_log').each { GroovyRowResult companyRow ->
-        long companyId = ((Number) companyRow.get('companyId')).longValue()
-        problems.addAll(validateIntegrityForCompany(sql, companyId))
+        long cid = ((Number) companyRow.get('companyId')).longValue()
+        problems.addAll(validateIntegrityForCompany(sql, cid))
       }
       problems
+    }
+  }
+
+  List<String> validateIntegrity(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      validateIntegrityForCompany(sql, companyId)
     }
   }
 
@@ -442,7 +450,7 @@ final class AuditLogService {
         return ((Number) row.get('companyId')).longValue()
       }
     }
-    CompanyService.LEGACY_COMPANY_ID
+    throw new IllegalStateException('Kunde inte avgöra företag från auditreferenserna.')
   }
 
   private static AuditChainHead lockChainHead(Sql sql, long companyId) {

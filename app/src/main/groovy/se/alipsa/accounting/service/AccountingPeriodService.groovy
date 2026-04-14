@@ -84,6 +84,7 @@ final class AccountingPeriodService {
   }
 
   boolean isDateLocked(long companyId, LocalDate accountingDate) {
+    CompanyService.requireValidCompanyId(companyId)
     if (accountingDate == null) {
       throw new IllegalArgumentException('Accounting date is required.')
     }

@@ -163,7 +163,7 @@ class SieImportExportServiceTest {
     }
 
     assertTrue(exception.message.contains('låsta perioder'))
-    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(1).first().status)
+    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
   }
 
   @Test

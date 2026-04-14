@@ -62,12 +62,14 @@ final class FiscalYearService {
   }
 
   FiscalYear createFiscalYear(long companyId, String name, LocalDate startDate, LocalDate endDate) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withTransaction { Sql sql ->
       createFiscalYear(sql, accountingPeriodService, companyId, name, startDate, endDate)
     }
   }
 
   List<FiscalYear> listFiscalYears(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       sql.rows('''
                 select id,

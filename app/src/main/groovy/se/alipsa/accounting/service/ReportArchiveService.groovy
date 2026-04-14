@@ -87,6 +87,7 @@ final class ReportArchiveService {
   }
 
   List<ReportArchive> listArchives(long companyId, int limit = 100) {
+    CompanyService.requireValidCompanyId(companyId)
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''

@@ -460,14 +460,7 @@ final class VatService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   private static VatPeriod requirePeriod(Sql sql, long vatPeriodId) {

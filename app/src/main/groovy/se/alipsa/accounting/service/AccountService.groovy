@@ -21,6 +21,7 @@ final class AccountService {
   }
 
   boolean hasAccounts(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow(
           'select count(*) as total from account where company_id = ?',
@@ -31,6 +32,7 @@ final class AccountService {
   }
 
   AccountOverview loadOverview(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
           select count(*) as total,
@@ -48,6 +50,7 @@ final class AccountService {
   }
 
   List<Account> searchAccounts(long companyId, String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
           select id,
@@ -92,6 +95,7 @@ final class AccountService {
   }
 
   Account findAccount(long companyId, String accountNumber) {
+    CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
@@ -114,6 +118,7 @@ final class AccountService {
   }
 
   void setAccountActive(long companyId, String accountNumber, boolean active) {
+    CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
       int updated = sql.executeUpdate('''
@@ -266,14 +271,7 @@ final class AccountService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   @Canonical

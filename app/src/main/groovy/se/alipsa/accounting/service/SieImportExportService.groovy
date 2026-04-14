@@ -78,18 +78,21 @@ final class SieImportExportService {
     this.auditLogService = auditLogService
   }
   SieImportResult importFile(long companyId, Path filePath) {
+    CompanyService.requireValidCompanyId(companyId)
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
-    long jobId = createImportJob(safePath.fileName.toString(), checksum)
+    long jobId = createImportJob(companyId, safePath.fileName.toString(), checksum)
     ImportJob duplicate = markDuplicateIfNeeded(jobId, checksum)
     if (duplicate != null) {
       return new SieImportResult(duplicate, null, true, 0, 0, 0, 0, [])
     }
+    Long resolvedFiscalYearId = null
     try {
       ParsedSie parsed = parseDocument(safePath)
       SieImportResult result = databaseService.withTransaction { Sql sql ->
         FiscalYear fiscalYear = resolveTargetFiscalYear(sql, companyId, parsed.document)
+        resolvedFiscalYearId = fiscalYear.id
         ImportCounts counts = importDocument(sql, fiscalYear.id, parsed.document, parsed.warnings)
         String summary = buildSuccessSummary(counts, fiscalYear, parsed.warnings)
         ImportJob job = completeImportJob(
@@ -114,7 +117,7 @@ final class SieImportExportService {
       )
       result
     } catch (Exception exception) {
-      markFailed(jobId, exception)
+      markFailed(jobId, resolvedFiscalYearId, exception)
       throw exception
     }
   }
@@ -153,6 +156,7 @@ final class SieImportExportService {
     )
   }
   List<ImportJob> listImportJobs(long companyId, int limit = 20) {
+    CompanyService.requireValidCompanyId(companyId)
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''
@@ -166,8 +170,7 @@ final class SieImportExportService {
                  ij.started_at as startedAt,
                  ij.completed_at as completedAt
             from import_job ij
-            left join fiscal_year fy on fy.id = ij.fiscal_year_id
-           where fy.company_id = ? or ij.fiscal_year_id is null
+           where ij.company_id = ?
            order by ij.started_at desc, ij.id desc
            limit ?
       ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
@@ -205,10 +208,11 @@ final class SieImportExportService {
     }
     settings
   }
-  private long createImportJob(String fileName, String checksum) {
+  private long createImportJob(long companyId, String fileName, String checksum) {
     databaseService.withTransaction { Sql sql ->
       List<List<Object>> keys = sql.executeInsert('''
           insert into import_job (
+              company_id,
               file_name,
               checksum_sha256,
               status,
@@ -216,8 +220,8 @@ final class SieImportExportService {
               error_log,
               started_at,
               completed_at
-          ) values (?, ?, 'STARTED', ?, null, current_timestamp, null)
-      ''', [truncate(fileName, 255), checksum, 'Import startad.'])
+          ) values (?, ?, ?, 'STARTED', ?, null, current_timestamp, null)
+      ''', [companyId, truncate(fileName, 255), checksum, 'Import startad.'])
       ((Number) keys.first().first()).longValue()
     }
   }
@@ -823,16 +827,18 @@ final class SieImportExportService {
     findImportJob(sql, jobId)
   }
 
-  private void markFailed(long jobId, Exception exception) {
+  private void markFailed(long jobId, Long fiscalYearId, Exception exception) {
     databaseService.withTransaction { Sql sql ->
       sql.executeUpdate('''
           update import_job
-             set status = 'FAILED',
+             set fiscal_year_id = coalesce(?, fiscal_year_id),
+                 status = 'FAILED',
                  summary = ?,
                  error_log = ?,
                  completed_at = current_timestamp
            where id = ?
       ''', [
+          fiscalYearId,
           truncate(exception.message ?: 'Importen misslyckades.', 1000),
           truncate(buildFailureLog(exception), 20000),
           jobId
@@ -930,19 +936,12 @@ final class SieImportExportService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   private long resolveCompanyId(long fiscalYearId) {
     databaseService.withSql { Sql sql ->
-      resolveCompanyId(sql, fiscalYearId)
+      CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
     }
   }
 

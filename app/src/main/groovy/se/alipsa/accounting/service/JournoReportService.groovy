@@ -1,6 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
 import se.alipsa.accounting.domain.Company
@@ -90,23 +89,19 @@ final class JournoReportService {
   private Map<String, Object> buildTemplateModel(ReportResult report) {
     long companyId = resolveCompanyId(report.fiscalYearId)
     Company company = companyService.findById(companyId)
+    if (company == null) {
+      throw new IllegalStateException("Företaget kunde inte hittas: ${companyId}")
+    }
     [
-        companyName       : company?.companyName ?: 'Alipsa Accounting',
-        organizationNumber: company?.organizationNumber ?: '',
+        companyName       : company.companyName,
+        organizationNumber: company.organizationNumber,
         report            : report
     ] + report.templateModel
   }
 
   private long resolveCompanyId(long fiscalYearId) {
     databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select company_id as companyId from fiscal_year where id = ?',
-          [fiscalYearId]
-      ) as GroovyRowResult
-      if (row == null) {
-        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-      }
-      ((Number) row.get('companyId')).longValue()
+      CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
     }
   }
 

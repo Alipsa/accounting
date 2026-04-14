@@ -626,14 +626,7 @@ final class ReportDataService {
 
   private long resolveCompanyId(long fiscalYearId) {
     databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select company_id as companyId from fiscal_year where id = ?',
-          [fiscalYearId]
-      ) as GroovyRowResult
-      if (row == null) {
-        throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-      }
-      ((Number) row.get('companyId')).longValue()
+      CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
     }
   }
 
