@@ -14,6 +14,7 @@ import java.awt.GridBagLayout
 import java.awt.Insets
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.function.Consumer
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -31,7 +32,7 @@ import javax.swing.SwingUtilities
 final class CompanyDialog extends JDialog implements PropertyChangeListener {
 
   private final CompanyService companyService
-  private final Runnable onSave
+  private final Consumer<Company> onSave
   private Company company
 
   private final JTextField companyNameField = new JTextField(28)
@@ -49,7 +50,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
   private JButton cancelButton
   private JButton saveButton
 
-  CompanyDialog(Frame owner, CompanyService companyService, Company company, Runnable onSave) {
+  CompanyDialog(Frame owner, CompanyService companyService, Company company, Consumer<Company> onSave) {
     super(owner, I18n.instance.getString('companyDialog.title.new'), true)
     this.companyService = companyService
     this.company = company
@@ -62,7 +63,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     populate()
   }
 
-  static void showDialog(Frame owner, CompanyService companyService, Company company, Runnable onSave) {
+  static void showDialog(Frame owner, CompanyService companyService, Company company, Consumer<Company> onSave) {
     CompanyDialog dialog = new CompanyDialog(owner, companyService, company, onSave)
     dialog.setVisible(true)
   }
@@ -205,10 +206,10 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
           null
       )
       company = companyService.save(toSave)
-      onSave.run()
+      onSave.accept(company)
       dispose()
-    } catch (IllegalArgumentException exception) {
-      showValidation([ValidationSupport.fieldError('', exception.message)])
+    } catch (Exception exception) {
+      showValidation([ValidationSupport.fieldError('', exception.message ?: exception.class.simpleName)])
     }
   }
 

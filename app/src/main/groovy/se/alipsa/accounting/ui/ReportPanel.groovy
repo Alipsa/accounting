@@ -261,6 +261,10 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadFiscalYears() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      fiscalYearComboBox.removeAllItems()
+      return
+    }
     FiscalYear selected = selectedFiscalYear()
     fiscalYearComboBox.removeAllItems()
     fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->

@@ -261,6 +261,10 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void refreshData() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      tableModel.setRows([])
+      return
+    }
     reloadFiscalYears()
     reloadVouchers()
   }

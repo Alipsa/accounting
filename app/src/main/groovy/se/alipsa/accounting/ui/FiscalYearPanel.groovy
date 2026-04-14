@@ -235,6 +235,11 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadData() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      fiscalYearTableModel.setRows([])
+      periodTableModel.setRows([])
+      return
+    }
     List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(activeCompanyManager.companyId)
     fiscalYearTableModel.setRows(fiscalYears)
     if (!fiscalYears.isEmpty() && fiscalYearTable.selectedRow < 0) {

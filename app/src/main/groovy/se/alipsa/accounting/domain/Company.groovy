@@ -19,4 +19,9 @@ final class Company {
   boolean active = true
   LocalDateTime createdAt
   LocalDateTime updatedAt
+
+  @Override
+  String toString() {
+    companyName ?: ''
+  }
 }

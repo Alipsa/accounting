@@ -382,15 +382,31 @@ final class MainFrame implements PropertyChangeListener {
   private void reloadCompanyComboBox() {
     List<Company> companies = companyService.listCompanies(true)
     Company selected = companyComboBox.selectedItem as Company
-    companyComboBox.removeAllItems()
-    companies.each { Company c -> companyComboBox.addItem(c) }
-    if (selected != null) {
-      Company match = companies.find { Company c -> c.id == selected.id }
-      if (match != null) {
-        companyComboBox.selectedItem = match
+    java.awt.event.ActionListener[] listeners = companyComboBox.actionListeners
+    listeners.each { companyComboBox.removeActionListener(it) }
+    try {
+      companyComboBox.removeAllItems()
+      companies.each { Company c -> companyComboBox.addItem(c) }
+      if (selected != null) {
+        Company match = companies.find { Company c -> c.id == selected.id }
+        if (match != null) {
+          companyComboBox.selectedItem = match
+        }
+      } else if (!companies.isEmpty()) {
+        companyComboBox.selectedIndex = 0
       }
-    } else if (!companies.isEmpty()) {
-      companyComboBox.selectedIndex = 0
+    } finally {
+      listeners.each { companyComboBox.addActionListener(it) }
+    }
+  }
+
+  private void selectCompanyInComboBox(Long companyId) {
+    for (int index = 0; index < companyComboBox.itemCount; index++) {
+      Company c = companyComboBox.getItemAt(index) as Company
+      if (c?.id == companyId) {
+        companyComboBox.selectedItem = c
+        return
+      }
     }
   }
 
@@ -467,25 +483,23 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void showNewCompanyDialog() {
-    CompanyDialog.showDialog(frame, companyService, null, {
+    CompanyDialog.showDialog(frame, companyService, null, { Company saved ->
       reloadCompanyComboBox()
-      Company last = companyComboBox.getItemAt(companyComboBox.itemCount - 1) as Company
-      if (last != null) {
-        companyComboBox.selectedItem = last
-      }
-    } as Runnable)
+      selectCompanyInComboBox(saved.id)
+    } as java.util.function.Consumer<Company>)
   }
 
   private void showEditCompanyDialog() {
     Company active = activeCompanyManager.activeCompany
     if (active == null) {
+      setStatus(I18n.instance.getString('mainFrame.companySettings.noProfile'))
       return
     }
-    CompanyDialog.showDialog(frame, companyService, active, {
+    CompanyDialog.showDialog(frame, companyService, active, { Company saved ->
       reloadCompanyComboBox()
       refreshTitle()
       refreshCompanySettingsSummary()
-    } as Runnable)
+    } as java.util.function.Consumer<Company>)
   }
 
   private void showSieExchangeDialog() {

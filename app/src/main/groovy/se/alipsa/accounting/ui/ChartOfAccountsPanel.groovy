@@ -218,6 +218,10 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void reloadAccounts() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      accountTableModel.setRows([])
+      return
+    }
     String selectedClass = classFilter.selectedItem as String
     boolean manualReviewOnly = selectedClass == reviewFilterLabel()
     String accountClass = selectedClass in [null, allFilterLabel(), reviewFilterLabel()] ? '' : selectedClass
