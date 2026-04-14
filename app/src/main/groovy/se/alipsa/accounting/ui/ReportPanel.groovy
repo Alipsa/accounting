@@ -7,7 +7,6 @@ import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.service.AccountingPeriodService
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.ReportArchiveService
@@ -57,6 +56,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
   private final VoucherEditor.Dependencies voucherEditorDependencies
+  private final ActiveCompanyManager activeCompanyManager
   private final JComboBox<ReportType> reportTypeComboBox = new JComboBox<>(ReportType.values())
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JComboBox<Object> accountingPeriodComboBox = new JComboBox<>()
@@ -88,7 +88,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       ReportArchiveService reportArchiveService,
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
-      VoucherEditor.Dependencies voucherEditorDependencies
+      VoucherEditor.Dependencies voucherEditorDependencies,
+      ActiveCompanyManager activeCompanyManager
   ) {
     this.reportDataService = reportDataService
     this.journoReportService = journoReportService
@@ -97,7 +98,9 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.voucherEditorDependencies = voucherEditorDependencies
+    this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
     buildUi()
     reloadFiscalYears()
     reloadArchives()
@@ -108,6 +111,12 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   void propertyChange(PropertyChangeEvent evt) {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater {
+        reloadFiscalYears()
+        reloadArchives()
+        reloadReport()
+      }
     }
   }
 
@@ -254,7 +263,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private void reloadFiscalYears() {
     FiscalYear selected = selectedFiscalYear()
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
@@ -367,7 +376,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadArchives() {
-    archiveTableModel.setRows(reportArchiveService.listArchives(CompanyService.LEGACY_COMPANY_ID, 100))
+    archiveTableModel.setRows(reportArchiveService.listArchives(activeCompanyManager.companyId, 100))
     updateActionButtons()
   }
 
@@ -376,7 +385,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     if (voucherId == null) {
       return
     }
-    VoucherEditor.showDialog(ownerFrame(), voucherEditorDependencies, voucherId, {
+    VoucherEditor.showDialog(ownerFrame(), voucherEditorDependencies, activeCompanyManager.companyId, voucherId, {
       reloadReport()
     } as Runnable)
   }

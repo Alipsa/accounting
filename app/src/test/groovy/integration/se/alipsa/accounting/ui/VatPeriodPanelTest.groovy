@@ -43,10 +43,12 @@ class VatPeriodPanelTest {
   Path tempDir
 
   private DatabaseService databaseService
+  private CompanyService companyService
   private AccountingPeriodService accountingPeriodService
   private FiscalYearService fiscalYearService
   private VoucherService voucherService
   private VatService vatService
+  private ActiveCompanyManager activeCompanyManager
   private FiscalYear fiscalYear
   private String previousHome
   private Locale previousLocale
@@ -59,11 +61,13 @@ class VatPeriodPanelTest {
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
+    companyService = new CompanyService(databaseService)
     AuditLogService auditLogService = new AuditLogService(databaseService)
     accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService, auditLogService)
+    activeCompanyManager = new ActiveCompanyManager(companyService)
     fiscalYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID,
         '2026',
@@ -84,7 +88,7 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService)
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
 
     JTable periodTable = findTable(panel, 'Period')
@@ -102,7 +106,7 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService)
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
 
     JTable periodTable = findTable(panel, 'Period')

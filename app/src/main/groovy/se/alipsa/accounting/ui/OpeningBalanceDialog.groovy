@@ -4,7 +4,6 @@ import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.service.AccountService
-import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
@@ -42,6 +41,7 @@ final class OpeningBalanceDialog extends JDialog {
       Frame owner,
       AccountService accountService,
       FiscalYearService fiscalYearService,
+      long companyId,
       Account account,
       Runnable onSave
   ) {
@@ -50,7 +50,7 @@ final class OpeningBalanceDialog extends JDialog {
     this.account = account
     this.onSave = onSave
 
-    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID)
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(companyId)
     fiscalYearComboBox = new JComboBox<>(fiscalYears as FiscalYear[])
     buildUi()
     refreshCurrentAmount()
@@ -60,13 +60,14 @@ final class OpeningBalanceDialog extends JDialog {
       Frame owner,
       AccountService accountService,
       FiscalYearService fiscalYearService,
+      long companyId,
       Account account,
       Runnable onSave
   ) {
     if (!account.isBalanceAccount()) {
       throw new IllegalArgumentException('Opening balances may only be set on balance accounts.')
     }
-    OpeningBalanceDialog dialog = new OpeningBalanceDialog(owner, accountService, fiscalYearService, account, onSave)
+    OpeningBalanceDialog dialog = new OpeningBalanceDialog(owner, accountService, fiscalYearService, companyId, account, onSave)
     dialog.setVisible(true)
   }
 

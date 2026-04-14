@@ -3,6 +3,7 @@ package se.alipsa.accounting.ui
 import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
 
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -11,6 +12,7 @@ import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
@@ -62,6 +64,7 @@ final class MainFrame implements PropertyChangeListener {
   ]
 
   private final SwingBuilder swing = new SwingBuilder()
+  private final CompanyService companyService = new CompanyService()
   private final CompanySettingsService companySettingsService = new CompanySettingsService()
   private final UserPreferencesService userPreferencesService = new UserPreferencesService()
   private final AuditLogService auditLogService = new AuditLogService()
@@ -129,15 +132,21 @@ final class MainFrame implements PropertyChangeListener {
       reportDataService,
       reportArchiveService,
       reportIntegrityService,
-      companySettingsService,
+      companyService,
       auditLogService,
       DatabaseService.instance
   )
+  private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService)
+
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private JLabel overviewDescriptionLabel
+  private JLabel companyLabel
+  private JComboBox<Company> companyComboBox
   private JMenu fileMenu
   private JMenuItem companySettingsMenuItem
+  private JMenuItem newCompanyMenuItem
+  private JMenuItem editCompanyMenuItem
   private JMenuItem sieExchangeMenuItem
   private JMenuItem exitMenuItem
   private JMenu helpMenu
@@ -157,17 +166,19 @@ final class MainFrame implements PropertyChangeListener {
 
   MainFrame() {
     I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
     applyIcons()
     refreshCompanySettingsSummary()
+    refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
   }
 
   void display() {
     frame.visible = true
-    if (!companySettingsService.isConfigured()) {
+    if (!activeCompanyManager.hasActiveCompany()) {
       SwingUtilities.invokeLater {
-        showCompanySettingsDialog()
+        showNewCompanyDialog()
       }
     }
     checkForUpdateInBackground()
@@ -181,15 +192,36 @@ final class MainFrame implements PropertyChangeListener {
   void propertyChange(PropertyChangeEvent evt) {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater { onCompanyChanged() }
+    }
+  }
+
+  private void onCompanyChanged() {
+    refreshTitle()
+    refreshCompanySettingsSummary()
+    Company active = activeCompanyManager.activeCompany
+    if (active != null) {
+      setStatus(I18n.instance.format('mainFrame.status.companySwitched', active.companyName))
+    }
+  }
+
+  private void refreshTitle() {
+    Company active = activeCompanyManager.activeCompany
+    if (active != null) {
+      frame.title = I18n.instance.format('mainFrame.title.company', active.companyName)
+    } else {
+      frame.title = I18n.instance.getString('mainFrame.title')
     }
   }
 
   private void applyLocale() {
-    frame.title = I18n.instance.getString('mainFrame.title')
+    refreshTitle()
     statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
     applyMenuLocale()
     applyTabLocale()
     editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
+    companyLabel.text = I18n.instance.getString('mainFrame.label.activeCompany')
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
     updateLanguageButtonBorders()
     if (pendingUpdate != null) {
@@ -201,6 +233,8 @@ final class MainFrame implements PropertyChangeListener {
   private void applyMenuLocale() {
     fileMenu.text = I18n.instance.getString('mainFrame.menu.file')
     companySettingsMenuItem.text = I18n.instance.getString('mainFrame.menu.file.companySettings')
+    newCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.newCompany')
+    editCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.editCompany')
     sieExchangeMenuItem.text = I18n.instance.getString('mainFrame.menu.file.sieExchange')
     exitMenuItem.text = I18n.instance.getString('mainFrame.menu.file.exit')
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
@@ -235,8 +269,12 @@ final class MainFrame implements PropertyChangeListener {
       lookAndFeel 'system'
       menuBar {
         fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
+          newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: { showNewCompanyDialog() })
+          editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: { showEditCompanyDialog() })
+          separator()
           companySettingsMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.companySettings'), actionPerformed: { showCompanySettingsDialog() })
           sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: { showSieExchangeDialog() })
+          separator()
           exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: { exitRequested() })
         }
         helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
@@ -310,24 +348,57 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private JPanel buildStatusBar() {
-    swing.panel(border: swing.lineBorder(color: Color.LIGHT_GRAY)) {
-      borderLayout()
-      statusLabel = label(
-          text: I18n.instance.getString('mainFrame.status.ready'),
-          border: swing.emptyBorder(6, 12, 6, 12),
-          constraints: BorderLayout.CENTER
-      ) as JLabel
-      updateNotificationButton = button(
-          text: I18n.instance.getString('mainFrame.button.updateAvailable'),
-          constraints: BorderLayout.EAST,
-          visible: false,
-          cursor: Cursor.getPredefinedCursor(Cursor.HAND_CURSOR),
-          borderPainted: false,
-          contentAreaFilled: false,
-          foreground: new Color(22, 101, 52),
-          actionPerformed: { showUpdateDialog() }
-      ) as JButton
-    } as JPanel
+    JPanel statusBar = new JPanel(new BorderLayout())
+    statusBar.border = BorderFactory.createCompoundBorder(
+        BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
+        BorderFactory.createEmptyBorder(4, 8, 4, 8)
+    )
+
+    JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    companyLabel = new JLabel(I18n.instance.getString('mainFrame.label.activeCompany'))
+    companyComboBox = new JComboBox<>()
+    reloadCompanyComboBox()
+    companyComboBox.addActionListener { onCompanyComboBoxChanged() }
+    leftPanel.add(companyLabel)
+    leftPanel.add(companyComboBox)
+
+    statusLabel = new JLabel(I18n.instance.getString('mainFrame.status.ready'))
+    statusLabel.border = BorderFactory.createEmptyBorder(0, 12, 0, 0)
+
+    updateNotificationButton = new JButton(I18n.instance.getString('mainFrame.button.updateAvailable'))
+    updateNotificationButton.visible = false
+    updateNotificationButton.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+    updateNotificationButton.borderPainted = false
+    updateNotificationButton.contentAreaFilled = false
+    updateNotificationButton.foreground = new Color(22, 101, 52)
+    updateNotificationButton.addActionListener { showUpdateDialog() }
+
+    statusBar.add(leftPanel, BorderLayout.WEST)
+    statusBar.add(statusLabel, BorderLayout.CENTER)
+    statusBar.add(updateNotificationButton, BorderLayout.EAST)
+    statusBar
+  }
+
+  private void reloadCompanyComboBox() {
+    List<Company> companies = companyService.listCompanies(true)
+    Company selected = companyComboBox.selectedItem as Company
+    companyComboBox.removeAllItems()
+    companies.each { Company c -> companyComboBox.addItem(c) }
+    if (selected != null) {
+      Company match = companies.find { Company c -> c.id == selected.id }
+      if (match != null) {
+        companyComboBox.selectedItem = match
+      }
+    } else if (!companies.isEmpty()) {
+      companyComboBox.selectedIndex = 0
+    }
+  }
+
+  private void onCompanyComboBoxChanged() {
+    Company selected = companyComboBox.selectedItem as Company
+    if (selected != null && selected.id != activeCompanyManager.companyId) {
+      activeCompanyManager.companyId = selected.id
+    }
   }
 
   private JPanel buildOverviewPanel() {
@@ -346,8 +417,8 @@ final class MainFrame implements PropertyChangeListener {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)],
-        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService)],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
             journoReportService,
@@ -355,10 +426,11 @@ final class MainFrame implements PropertyChangeListener {
             reportArchiveService,
             fiscalYearService,
             accountingPeriodService,
-            new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService)
+            new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService),
+            activeCompanyManager
         )],
-        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService)],
-        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService)],
+        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.system'), component: new SystemDocumentationPanel(
             systemDocumentationService,
             diagnosticsService,
@@ -389,12 +461,35 @@ final class MainFrame implements PropertyChangeListener {
   private void showCompanySettingsDialog() {
     CompanySettingsDialog.showDialog(frame, companySettingsService, {
       refreshCompanySettingsSummary()
+      reloadCompanyComboBox()
       setStatus(I18n.instance.getString('mainFrame.status.companySaved'))
     } as Runnable)
   }
 
+  private void showNewCompanyDialog() {
+    CompanyDialog.showDialog(frame, companyService, null, {
+      reloadCompanyComboBox()
+      Company last = companyComboBox.getItemAt(companyComboBox.itemCount - 1) as Company
+      if (last != null) {
+        companyComboBox.selectedItem = last
+      }
+    } as Runnable)
+  }
+
+  private void showEditCompanyDialog() {
+    Company active = activeCompanyManager.activeCompany
+    if (active == null) {
+      return
+    }
+    CompanyDialog.showDialog(frame, companyService, active, {
+      reloadCompanyComboBox()
+      refreshTitle()
+      refreshCompanySettingsSummary()
+    } as Runnable)
+  }
+
   private void showSieExchangeDialog() {
-    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService)
+    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, activeCompanyManager.companyId)
     setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
   }
 
@@ -446,18 +541,18 @@ final class MainFrame implements PropertyChangeListener {
     if (companySummaryLabel == null) {
       return
     }
-    CompanySettings settings = companySettingsService.getSettings()
-    if (settings == null) {
+    Company active = activeCompanyManager.activeCompany
+    if (active == null) {
       companySummaryLabel.text = I18n.instance.getString('mainFrame.companySettings.noProfile')
       return
     }
     companySummaryLabel.text = I18n.instance.format(
         'mainFrame.companySettings.summary',
-        escapeHtml(settings.companyName),
-        I18n.instance.getString('mainFrame.companySettings.orgNumber'), escapeHtml(settings.organizationNumber),
-        I18n.instance.getString('mainFrame.companySettings.currency'), escapeHtml(settings.defaultCurrency),
-        escapeHtml(settings.localeTag),
-        I18n.instance.getString('mainFrame.companySettings.vatPeriod'), escapeHtml(settings.vatPeriodicity?.displayName ?: I18n.instance.getString('vatPeriodicity.MONTHLY'))
+        escapeHtml(active.companyName),
+        I18n.instance.getString('mainFrame.companySettings.orgNumber'), escapeHtml(active.organizationNumber),
+        I18n.instance.getString('mainFrame.companySettings.currency'), escapeHtml(active.defaultCurrency),
+        escapeHtml(active.localeTag),
+        I18n.instance.getString('mainFrame.companySettings.vatPeriod'), escapeHtml(active.vatPeriodicity?.displayName ?: I18n.instance.getString('vatPeriodicity.MONTHLY'))
     )
   }
 
