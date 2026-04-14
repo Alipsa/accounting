@@ -122,6 +122,12 @@ Releasebyggen använder `jpackage` och kräver Java 21 med tillhörande paketeri
 - Aktuell plattform: `./gradlew :app:packageCurrentPlatformRelease`
 - Smoke test av aktuell plattform: `./gradlew :app:verifyCurrentPlatformRelease`
 
+Om Gradle hittar fel JDK för jpackage (t.ex. en inbäddad JDK utan jpackage) kan sökvägen sättas explicit:
+
+```
+./gradlew :app:verifyCurrentPlatformRelease -Pjpackage.executable=/path/to/jdk-21/bin/jpackage
+```
+
 Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
 
 Linux-releasen producerar en `app-image` plus ett zip-arkiv som även innehåller `.desktop`-filen. Windows-releasen producerar en `exe`-installerare med meny- och skrivbordsgenväg. macOS-releasen producerar `AlipsaAccounting.app`.

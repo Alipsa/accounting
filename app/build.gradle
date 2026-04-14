@@ -54,6 +54,8 @@ def releaseConfig = [
   generatedRoot : layout.buildDirectory.dir('generated/packaging')
 ]
 
+def licenseFilePath = rootProject.file('LICENSE').absolutePath
+
 def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file("${releaseConfig.appName}.desktop.template")
 def linuxDesktopEntry = releaseConfig.generatedRoot.map { it.file("linux-desktop/${releaseConfig.appName}.desktop") }
 
@@ -64,14 +66,15 @@ def isMacos = currentPlatform == 'macos'
 def isLinux = currentPlatform == 'linux'
 def mainJarFileName = tasks.named('jar', Jar).flatMap { Jar jarTask -> jarTask.archiveFileName }
 
-def jpackageExecutable = javaToolchains.launcherFor {
-  languageVersion = JavaLanguageVersion.of(21)
-}.map { launcher ->
-  launcher.metadata.installationPath.file('bin/jpackage').asFile.absolutePath
-}
+def jpackageExecutable = project.providers.gradleProperty('jpackage.executable')
+    .orElse(javaToolchains.launcherFor {
+      languageVersion = JavaLanguageVersion.of(21)
+    }.map { launcher ->
+      launcher.metadata.installationPath.file('bin/jpackage').asFile.absolutePath
+    })
 
 def buildJpackageArgs = { String platform, String type, File destinationDir, List<String> extraArgs = [] ->
-  [
+  List<String> args = [
     '--type',
     type,
     '--dest',
@@ -96,11 +99,16 @@ def buildJpackageArgs = { String platform, String type, File destinationDir, Lis
     releaseConfig.generatedRoot.get().dir(platform).asFile.absolutePath,
     '--icon',
     releaseConfig.packagingRoot.dir(platform).file("${releaseConfig.appName}.${platform == 'linux' ? 'png' : platform == 'windows' ? 'ico' : 'icns'}").asFile.absolutePath,
-    '--license-file',
-    rootProject.file('LICENSE').absolutePath,
     '--java-options',
     '-Dfile.encoding=UTF-8'
-  ] + extraArgs
+  ]
+  if (type != 'app-image') {
+    args += [
+      '--license-file',
+      licenseFilePath
+    ]
+  }
+  args + extraArgs
 }
 
 def launcherPathFor = { String platform ->
