@@ -8,16 +8,31 @@
 Desktopbaserat bokföringsprogram för små svenska företag.
 Byggt med Groovy, Swing och en inbäddad H2-databas — inga externa tjänster behövs.
 
+Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut.
+Det är inte ett komplett affärssystem — fakturering, lönehantering, bankintegration och årsredovisningsflöden ingår inte.
+
 ## Funktioner
 
-- **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering.
+- **Flerföretagsstöd** — skapa och växla mellan flera företag i samma installation. Varje företag har egen kontoplan, egna räkenskapsår, nummerserier, hashkedjor och rapportarkiv. Data isoleras fullständigt via `company_id` i datamodellen.
+- **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering. Kontoplanen är företagsspecifik — två företag kan ha samma BAS-kontonummer utan konflikt.
 - **Räkenskapsår och perioder** — skapa år, dela in i perioder och lås perioder när de är klara.
 - **Verifikationer** — registrera, bokför och korrigera verifikationer med bilagor.
-- **Moms** — beräkna, rapportera och bokför momsöverföring per period.
+- **Moms** — beräkna, rapportera och bokför momsöverföring per period. Stöder månads- och årsmoms. Kvartalsmoms stöds inte i v1.0.0.
 - **Rapporter** — generera verifikationslista, huvudbok, provbalans, resultat- och balansrapport, transaktionsrapport och momsrapport som PDF eller CSV. Rapporter arkiveras med checksumma.
 - **SIE4** — importera och exportera bokföringsdata via SIE4 med dubblettskydd och integritetskontroll.
 - **Bokslut** — stäng räkenskapsår med bokslutsverifikation och automatisk generering av nästa års ingående balanser.
 - **Revisionskedja** — alla väsentliga händelser loggas i en hashkedja för spårbarhet.
+
+### Avgränsningar
+
+Följande funktioner ingår inte i v1.0.0:
+
+- Fakturering och lön
+- Bankintegration
+- Årsredovisningsflöden
+- Anläggningsregister (planerat till v1.1.0)
+- Förbättrad kraschsäker bilagehantering (planerat till v1.1.0)
+- Kvartalsmoms (månads- och årsmoms stöds)
 
 ## Förutsättningar
 

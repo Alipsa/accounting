@@ -93,9 +93,9 @@ class AcceptanceCriteriaTest {
         LocalDate.of(2026, 1, 15),
         'Försäljning',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 800.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 200.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
         ]
     )
     Voucher correctedVoucher = services.voucherService.createAndBook(
@@ -104,8 +104,8 @@ class AcceptanceCriteriaTest {
         LocalDate.of(2026, 1, 16),
         'Intern omföring',
         [
-            new VoucherLine(null, null, 0, '1930', null, 'Bank', 100.00G, 0.00G),
-            new VoucherLine(null, null, 0, '1510', null, 'Motkonto', 0.00G, 100.00G)
+            new VoucherLine(null, null, 0, null, '1930', null, 'Bank', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '1510', null, 'Motkonto', 0.00G, 100.00G)
         ]
     )
     Voucher correction = services.voucherService.createCorrectionVoucher(correctedVoucher.id)

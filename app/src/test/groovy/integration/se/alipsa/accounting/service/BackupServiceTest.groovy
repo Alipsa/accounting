@@ -120,8 +120,8 @@ class BackupServiceTest {
         LocalDate.of(2026, 1, 10),
         'Försäljning',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 500.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 500.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 500.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 500.00G)
         ]
     )
     Path attachmentFile = tempDir.resolve('receipt.txt')

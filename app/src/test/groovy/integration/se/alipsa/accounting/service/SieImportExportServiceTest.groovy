@@ -267,9 +267,9 @@ class SieImportExportServiceTest {
         LocalDate.of(2026, 1, 15),
         'Försäljning januari',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1250.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 1000.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 250.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1250.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 250.00G)
         ]
     )
 
