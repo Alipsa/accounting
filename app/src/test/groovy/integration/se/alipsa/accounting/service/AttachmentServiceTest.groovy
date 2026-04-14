@@ -166,8 +166,8 @@ class AttachmentServiceTest {
 
   private static List<VoucherLine> balancedLines(BigDecimal amount) {
     [
-        new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', amount, 0.00G),
-        new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, amount)
+        new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', amount, 0.00G),
+        new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, amount)
     ]
   }
 

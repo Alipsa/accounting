@@ -119,8 +119,8 @@ class MultiCompanyChainHeadTest {
         LocalDate.of(2026, 1, 15),
         'Försäljning i bolag 2',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 100.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 100.00G)
         ]
     )
 
@@ -169,8 +169,8 @@ class MultiCompanyChainHeadTest {
         LocalDate.of(2026, 1, 15),
         'Försäljning i bolag 2',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 100.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 100.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 100.00G)
         ]
     )
 

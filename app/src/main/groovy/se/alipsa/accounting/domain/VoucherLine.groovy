@@ -40,17 +40,4 @@ final class VoucherLine {
     this.creditAmount = creditAmount
   }
 
-  @Deprecated
-  VoucherLine(
-      Long id,
-      Long voucherId,
-      int lineIndex,
-      String accountNumber,
-      String accountName,
-      String description,
-      BigDecimal debitAmount = BigDecimal.ZERO,
-      BigDecimal creditAmount = BigDecimal.ZERO
-  ) {
-    this(id, voucherId, lineIndex, (Long) null, accountNumber, accountName, description, debitAmount, creditAmount)
-  }
 }
