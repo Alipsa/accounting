@@ -239,6 +239,10 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void refreshOverview() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      overviewLabel.text = ''
+      return
+    }
     AccountService.AccountOverview overview = accountService.loadOverview(activeCompanyManager.companyId)
     overviewLabel.text = I18n.instance.format('chartOfAccountsPanel.overview',
         overview.totalCount as Object, overview.activeCount as Object,
