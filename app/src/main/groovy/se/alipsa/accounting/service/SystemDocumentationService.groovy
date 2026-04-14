@@ -48,7 +48,7 @@ final class SystemDocumentationService {
     SystemDiagnosticsSnapshot diagnostics = diagnosticsService.snapshot()
     List<MigrationService.AppliedMigration> migrations = migrationService.listAppliedMigrations()
     List<AttachmentMetadata> attachments = attachmentService.listAllAttachments()
-    List<ReportArchive> archives = reportArchiveService.listArchives(200)
+    List<ReportArchive> archives = reportArchiveService.listAllArchives(200)
     List<String> lines = [
         '# Alipsa Accounting systemdokumentation',
         '',
@@ -110,7 +110,7 @@ final class SystemDocumentationService {
         '## Audit-logg',
         ''
     ])
-    auditLogService.listEntries(20).each { entry ->
+    auditLogService.listAllEntries(20).each { entry ->
       lines << "- ${entry.createdAt}: `${entry.eventType}` ${entry.summary}".toString()
     }
     lines.join('\n')

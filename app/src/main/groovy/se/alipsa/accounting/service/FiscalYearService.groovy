@@ -61,13 +61,15 @@ final class FiscalYearService {
     this.retentionPolicyService = retentionPolicyService
   }
 
-  FiscalYear createFiscalYear(String name, LocalDate startDate, LocalDate endDate) {
+  FiscalYear createFiscalYear(long companyId, String name, LocalDate startDate, LocalDate endDate) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withTransaction { Sql sql ->
-      createFiscalYear(sql, accountingPeriodService, name, startDate, endDate)
+      createFiscalYear(sql, accountingPeriodService, companyId, name, startDate, endDate)
     }
   }
 
-  List<FiscalYear> listFiscalYears() {
+  List<FiscalYear> listFiscalYears(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       sql.rows('''
                 select id,
@@ -77,8 +79,9 @@ final class FiscalYearService {
                        closed,
                        closed_at as closedAt
                   from fiscal_year
+                 where company_id = ?
                  order by start_date desc
-            ''').collect { GroovyRowResult row ->
+            ''', [companyId]).collect { GroovyRowResult row ->
         mapFiscalYear(row)
       }
     }
@@ -133,6 +136,7 @@ final class FiscalYearService {
   static FiscalYear createFiscalYear(
       Sql sql,
       AccountingPeriodService accountingPeriodService,
+      long companyId,
       String name,
       LocalDate startDate,
       LocalDate endDate,
@@ -140,17 +144,18 @@ final class FiscalYearService {
   ) {
     validateDateRange(startDate, endDate)
     String safeName = resolveName(name, startDate, endDate)
-    ensureNoOverlap(sql, startDate, endDate, overlapMessage)
+    ensureNoOverlap(sql, companyId, startDate, endDate, overlapMessage)
     List<List<Object>> keys = sql.executeInsert('''
                 insert into fiscal_year (
+                    company_id,
                     name,
                     start_date,
                     end_date,
                     closed,
                     closed_at,
                     created_at
-                ) values (?, ?, ?, false, null, current_timestamp)
-            ''', [safeName, Date.valueOf(startDate), Date.valueOf(endDate)])
+                ) values (?, ?, ?, ?, false, null, current_timestamp)
+            ''', [companyId, safeName, Date.valueOf(startDate), Date.valueOf(endDate)])
     long fiscalYearId = ((Number) keys.first().first()).longValue()
     accountingPeriodService.createPeriods(sql, fiscalYearId, startDate, endDate)
     VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
@@ -186,13 +191,14 @@ final class FiscalYearService {
     closedYear
   }
 
-  private static void ensureNoOverlap(Sql sql, LocalDate startDate, LocalDate endDate, String overlapMessage) {
+  private static void ensureNoOverlap(Sql sql, long companyId, LocalDate startDate, LocalDate endDate, String overlapMessage) {
     GroovyRowResult row = sql.firstRow('''
             select count(*) as total
               from fiscal_year
-             where start_date <= ?
+             where company_id = ?
+               and start_date <= ?
                and end_date >= ?
-        ''', [Date.valueOf(endDate), Date.valueOf(startDate)]) as GroovyRowResult
+        ''', [companyId, Date.valueOf(endDate), Date.valueOf(startDate)]) as GroovyRowResult
     if (((Number) row.get('total')).intValue() > 0) {
       throw new IllegalArgumentException(overlapMessage)
     }

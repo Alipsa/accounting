@@ -148,6 +148,29 @@ final class CompanyService {
     findById(sql, company.id)
   }
 
+  static void requireValidCompanyId(long companyId) {
+    if (companyId <= 0) {
+      throw new IllegalArgumentException("Ogiltigt företags-id: ${companyId}")
+    }
+  }
+
+  static long resolveFromFiscalYear(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
+  }
+
+  long resolveFromFiscalYear(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      resolveFromFiscalYear(sql, fiscalYearId)
+    }
+  }
+
   private static Company findById(Sql sql, long companyId) {
     GroovyRowResult row = sql.firstRow('''
         select id,

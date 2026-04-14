@@ -44,7 +44,7 @@ final class StartupVerificationService {
     }
 
     errors.addAll(reportIntegrityService.listCriticalProblems())
-    reportArchiveService.findIntegrityFailures().each { ReportArchive archive ->
+    reportArchiveService.findAllIntegrityFailures().each { ReportArchive archive ->
       errors << ("Rapportarkiv ${archive.id} har avvikande checksumma eller saknas på disk." as String)
     }
 

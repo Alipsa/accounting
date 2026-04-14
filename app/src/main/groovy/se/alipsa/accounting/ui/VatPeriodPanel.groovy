@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.support.I18n
@@ -160,7 +161,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private void reloadFiscalYears() {
     FiscalYear selected = selectedFiscalYear()
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {

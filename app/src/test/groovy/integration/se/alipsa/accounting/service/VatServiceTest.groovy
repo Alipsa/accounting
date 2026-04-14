@@ -54,6 +54,7 @@ class VatServiceTest {
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService)
     fiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
@@ -108,7 +109,7 @@ class VatServiceTest {
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
 
     VatPeriod reportedPeriod = vatService.reportPeriod(january.id)
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertEquals(VatService.REPORTED, reportedPeriod.status)
     assertTrue(auditEntries.any { AuditLogEntry entry ->
@@ -145,7 +146,7 @@ class VatServiceTest {
 
     Voucher transferVoucher = vatService.bookTransfer(january.id)
     VatPeriod lockedPeriod = vatService.findPeriod(january.id)
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertEquals(VatService.LOCKED, lockedPeriod.status)
     assertEquals(transferVoucher.id, lockedPeriod.transferVoucherId)
@@ -249,6 +250,7 @@ class VatServiceTest {
         )
     )
     FiscalYear annualYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2027',
         LocalDate.of(2027, 1, 1),
         LocalDate.of(2027, 12, 31)

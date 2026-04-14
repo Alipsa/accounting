@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ChartOfAccountsImportService.ImportSummary
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
@@ -217,6 +218,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String accountClass = selectedClass in [null, allFilterLabel(), reviewFilterLabel()] ? '' : selectedClass
 
     List<Account> accounts = accountService.searchAccounts(
+        CompanyService.LEGACY_COMPANY_ID,
         searchField.text,
         accountClass,
         activeOnlyCheckBox.selected,
@@ -228,7 +230,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void refreshOverview() {
-    AccountService.AccountOverview overview = accountService.loadOverview()
+    AccountService.AccountOverview overview = accountService.loadOverview(CompanyService.LEGACY_COMPANY_ID)
     overviewLabel.text = I18n.instance.format('chartOfAccountsPanel.overview',
         overview.totalCount as Object, overview.activeCount as Object,
         overview.manualReviewCount as Object)
@@ -294,7 +296,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    accountService.setAccountActive(account.accountNumber, !account.active)
+    accountService.setAccountActive(CompanyService.LEGACY_COMPANY_ID, account.accountNumber, !account.active)
     reloadAccounts()
     selectAccount(account.accountNumber)
     String status = account.active

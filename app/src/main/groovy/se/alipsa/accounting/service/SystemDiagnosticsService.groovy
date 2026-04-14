@@ -34,7 +34,7 @@ final class SystemDiagnosticsService {
   SystemDiagnosticsSnapshot snapshot() {
     StartupVerificationReport verificationReport = startupVerificationService.verify()
     BackupSummary latestBackup = backupService.listBackups(1).find()
-    AuditLogEntry latestSieExport = auditLogService.listEntries(200).find { AuditLogEntry entry ->
+    AuditLogEntry latestSieExport = auditLogService.listAllEntries(200).find { AuditLogEntry entry ->
       entry.eventType == AuditLogService.EXPORT && entry.summary?.startsWith('Exporterade SIE')
     }
     Path databaseFile = AppPaths.databaseBasePath().resolveSibling('accounting.mv.db')

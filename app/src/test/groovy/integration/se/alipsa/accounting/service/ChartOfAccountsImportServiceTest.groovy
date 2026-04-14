@@ -57,10 +57,10 @@ class ChartOfAccountsImportServiceTest {
     assertTrue(summary.createdCount > 1000)
     assertTrue(summary.manualReviewCount > 0)
 
-    Account assetAccount = accountService.findAccount('1010')
-    Account equityAccount = accountService.findAccount('2010')
-    Account incomeAccount = accountService.findAccount('3000')
-    Account manualReviewAccount = accountService.findAccount('8999')
+    Account assetAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
+    Account equityAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2010')
+    Account incomeAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '3000')
+    Account manualReviewAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
 
     assertNotNull(assetAccount)
     assertEquals('ASSET', assetAccount.accountClass)
@@ -83,16 +83,17 @@ class ChartOfAccountsImportServiceTest {
   void searchToggleAndOpeningBalanceRulesWork() {
     importService.importFromExcel(workbookPath())
     long fiscalYearId = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
     ).id
 
-    List<Account> assets = accountService.searchAccounts('fordr', 'ASSET', true, false)
+    List<Account> assets = accountService.searchAccounts(CompanyService.LEGACY_COMPANY_ID, 'fordr', 'ASSET', true, false)
     assertFalse(assets.isEmpty())
 
-    accountService.setAccountActive('1010', false)
-    Account updated = accountService.findAccount('1010')
+    accountService.setAccountActive(CompanyService.LEGACY_COMPANY_ID, '1010', false)
+    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
     assertFalse(updated.active)
 
     OpeningBalance openingBalance = accountService.saveOpeningBalance(fiscalYearId, '1010', 1250.50G)

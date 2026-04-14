@@ -136,7 +136,7 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildGeneralLedgerReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql)
+      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> priorBalances = effective.startDate.isAfter(effective.fiscalYear.startDate)
           ? loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
@@ -208,7 +208,7 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildTrialBalanceReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql)
+      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> priorBalances = effective.startDate.isAfter(effective.fiscalYear.startDate)
           ? loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
@@ -255,7 +255,7 @@ final class ReportDataService {
 
   private ReportResult buildIncomeStatementReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql)
+      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, Totals> periodTotals = loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
       List<IncomeStatementRow> rows = accountInfos.keySet().sort().collect { String accountNumber ->
         AccountInfo info = accountInfos[accountNumber]
@@ -293,7 +293,7 @@ final class ReportDataService {
 
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql)
+      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> movements = loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
       List<BalanceSheetRow> rows = accountInfos.keySet().sort().collect { String accountNumber ->
@@ -455,13 +455,14 @@ final class ReportDataService {
     if (startDate.isBefore(fiscalYear.startDate) || endDate.isAfter(fiscalYear.endDate) || endDate.isBefore(startDate)) {
       throw new IllegalArgumentException('Rapportintervallet måste ligga inom räkenskapsåret.')
     }
+    long companyId = resolveCompanyId(fiscalYear.id)
     String selectionLabel = period == null
         ? "Intervall ${startDate} - ${endDate}"
         : "Period ${period.periodName} (${startDate} - ${endDate})"
-    new EffectiveSelection(selection, fiscalYear, startDate, endDate, selectionLabel)
+    new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel)
   }
 
-  private static Map<String, AccountInfo> loadAccountInfos(Sql sql) {
+  private static Map<String, AccountInfo> loadAccountInfos(Sql sql, long companyId) {
     Map<String, AccountInfo> accounts = [:]
     sql.rows('''
         select id as accountId,
@@ -470,8 +471,9 @@ final class ReportDataService {
                account_class as accountClass,
                normal_balance_side as normalBalanceSide
           from account
+         where company_id = ?
          order by account_number
-    ''').each { GroovyRowResult row ->
+    ''', [companyId]).each { GroovyRowResult row ->
       accounts.put(row.get('accountNumber') as String, new AccountInfo(
           ((Number) row.get('accountId')).longValue(),
           row.get('accountName') as String,
@@ -622,6 +624,12 @@ final class ReportDataService {
     )
   }
 
+  private long resolveCompanyId(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
+    }
+  }
+
   private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
     String safeNormalBalanceSide = normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
     if (!safeNormalBalanceSide) {
@@ -648,6 +656,7 @@ final class ReportDataService {
 
     final ReportSelection selection
     final FiscalYear fiscalYear
+    final long companyId
     final LocalDate startDate
     final LocalDate endDate
     final String selectionLabel
@@ -655,6 +664,7 @@ final class ReportDataService {
     private EffectiveSelection(
         ReportSelection selection,
         FiscalYear fiscalYear,
+        long companyId,
         LocalDate startDate,
         LocalDate endDate,
         String selectionLabel
@@ -667,6 +677,7 @@ final class ReportDataService {
           endDate
       )
       this.fiscalYear = fiscalYear
+      this.companyId = companyId
       this.startDate = startDate
       this.endDate = endDate
       this.selectionLabel = selectionLabel

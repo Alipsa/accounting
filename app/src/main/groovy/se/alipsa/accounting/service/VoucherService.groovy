@@ -243,10 +243,17 @@ final class VoucherService {
     databaseService.withTransaction { Sql sql ->
       List<String> problems = []
       sql.rows('select distinct company_id as companyId from voucher').each { GroovyRowResult companyRow ->
-        long companyId = ((Number) companyRow.get('companyId')).longValue()
-        problems.addAll(validateIntegrityForCompany(sql, companyId))
+        long cid = ((Number) companyRow.get('companyId')).longValue()
+        problems.addAll(validateIntegrityForCompany(sql, cid))
       }
       problems
+    }
+  }
+
+  List<String> validateIntegrity(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withTransaction { Sql sql ->
+      validateIntegrityForCompany(sql, companyId)
     }
   }
 
@@ -304,7 +311,8 @@ final class VoucherService {
     problems
   }
 
-  List<Voucher> listVouchers(Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
+  List<Voucher> listVouchers(long companyId, Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
           select v.id,
@@ -323,9 +331,9 @@ final class VoucherService {
                  v.booked_at as bookedAt
             from voucher v
             join voucher_series s on s.id = v.voucher_series_id
-           where 1 = 1
+           where v.company_id = ?
       ''')
-      List<Object> params = []
+      List<Object> params = [companyId]
 
       if (fiscalYearId != null) {
         query.append(' and v.fiscal_year_id = ?')
@@ -768,14 +776,7 @@ final class VoucherService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   private static ChainHead lockChainHead(Sql sql, long companyId) {

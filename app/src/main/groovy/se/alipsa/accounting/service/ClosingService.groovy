@@ -71,14 +71,20 @@ final class ClosingService {
   }
 
   YearEndClosingPreview previewClosing(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
-    List<String> integrityProblems = reportIntegrityService.listCriticalProblems()
+    long companyId = databaseService.withSql { Sql sql ->
+      resolveCompanyId(sql, fiscalYearId)
+    }
+    List<String> integrityProblems = reportIntegrityService.listCriticalProblems(companyId)
     databaseService.withSql { Sql sql ->
       buildPreview(sql, fiscalYearId, closingAccountNumber, integrityProblems)
     }
   }
 
   YearEndClosingResult closeFiscalYear(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
-    reportIntegrityService.ensureOperationAllowed('Årsstängning')
+    long companyId = databaseService.withSql { Sql sql ->
+      resolveCompanyId(sql, fiscalYearId)
+    }
+    reportIntegrityService.ensureOperationAllowed(companyId, 'Årsstängning')
     databaseService.withTransaction { Sql sql ->
       // Integrity is checked before opening the transaction so we do not re-run the
       // expensive cross-system validation while holding DB locks during closing.
@@ -87,7 +93,7 @@ final class ClosingService {
         throw new IllegalStateException(preview.blockingIssues.join('\n'))
       }
       FiscalYear nextFiscalYear = preview.nextFiscalYearWillBeCreated
-          ? ensureNextFiscalYear(sql, preview.fiscalYear)
+          ? ensureNextFiscalYear(sql, companyId, preview.fiscalYear)
           : preview.nextFiscalYear
       YearEndClosingPreview executionPreview = new YearEndClosingPreview(
           preview.fiscalYear,
@@ -162,7 +168,8 @@ final class ClosingService {
       blockers << ("Integritetskontrollerna måste vara gröna före årsstängning:\n${summary}" as String)
     }
 
-    BalanceAccountSeed closingAccount = loadAccount(sql, safeClosingAccount)
+    long companyId = resolveCompanyId(sql, fiscalYear.id)
+    BalanceAccountSeed closingAccount = loadAccount(sql, companyId, safeClosingAccount)
     if (closingAccount == null) {
       blockers << ("Resultat förs mot konto ${safeClosingAccount}, men kontot saknas i kontoplanen." as String)
     } else {
@@ -191,7 +198,7 @@ final class ClosingService {
       warnings << ("Bokslutsfristen passerade ${dueDate}. Årsbokslutet borde redan vara upprättat." as String)
     }
 
-    NextFiscalYearPlan nextPlan = planNextFiscalYear(sql, fiscalYear)
+    NextFiscalYearPlan nextPlan = planNextFiscalYear(sql, companyId, fiscalYear)
     if (nextPlan.conflictMessage != null) {
       blockers << nextPlan.conflictMessage
     } else if (nextPlan.fiscalYear?.id != null) {
@@ -488,7 +495,7 @@ final class ClosingService {
     closingBalances
   }
 
-  private NextFiscalYearPlan planNextFiscalYear(Sql sql, FiscalYear fiscalYear) {
+  private NextFiscalYearPlan planNextFiscalYear(Sql sql, long companyId, FiscalYear fiscalYear) {
     LocalDate nextStartDate = fiscalYear.endDate.plusDays(1)
     long daySpan = ChronoUnit.DAYS.between(fiscalYear.startDate, fiscalYear.endDate)
     LocalDate nextEndDate = nextStartDate.plusDays(daySpan)
@@ -501,9 +508,10 @@ final class ClosingService {
                closed,
                closed_at as closedAt
           from fiscal_year
-         where start_date = ?
+         where company_id = ?
+           and start_date = ?
            and end_date = ?
-    ''', [Date.valueOf(nextStartDate), Date.valueOf(nextEndDate)]) as GroovyRowResult
+    ''', [companyId, Date.valueOf(nextStartDate), Date.valueOf(nextEndDate)]) as GroovyRowResult
     if (exact != null) {
       return new NextFiscalYearPlan(mapFiscalYear(exact), false, null)
     }
@@ -511,9 +519,10 @@ final class ClosingService {
     GroovyRowResult overlap = sql.firstRow('''
         select count(*) as total
           from fiscal_year
-         where start_date <= ?
+         where company_id = ?
+           and start_date <= ?
            and end_date >= ?
-    ''', [Date.valueOf(nextEndDate), Date.valueOf(nextStartDate)]) as GroovyRowResult
+    ''', [companyId, Date.valueOf(nextEndDate), Date.valueOf(nextStartDate)]) as GroovyRowResult
     if (((Number) overlap.get('total')).intValue() > 0) {
       return new NextFiscalYearPlan(
           null,
@@ -545,8 +554,8 @@ final class ClosingService {
     mapFiscalYear(row)
   }
 
-  private FiscalYear ensureNextFiscalYear(Sql sql, FiscalYear fiscalYear) {
-    NextFiscalYearPlan plan = planNextFiscalYear(sql, fiscalYear)
+  private FiscalYear ensureNextFiscalYear(Sql sql, long companyId, FiscalYear fiscalYear) {
+    NextFiscalYearPlan plan = planNextFiscalYear(sql, companyId, fiscalYear)
     if (plan.conflictMessage != null) {
       throw new IllegalStateException(plan.conflictMessage)
     }
@@ -556,6 +565,7 @@ final class ClosingService {
     FiscalYearService.createFiscalYear(
         sql,
         accountingPeriodService,
+        companyId,
         plan.fiscalYear.name,
         plan.fiscalYear.startDate,
         plan.fiscalYear.endDate
@@ -592,7 +602,7 @@ final class ClosingService {
     ((Number) row.get('total')).intValue() > 0
   }
 
-  private static BalanceAccountSeed loadAccount(Sql sql, String accountNumber) {
+  private static BalanceAccountSeed loadAccount(Sql sql, long companyId, String accountNumber) {
     GroovyRowResult row = sql.firstRow('''
         select account_number as accountNumber,
                account_name as accountName,
@@ -600,8 +610,9 @@ final class ClosingService {
                normal_balance_side as normalBalanceSide,
                active
           from account
-         where account_number = ?
-    ''', [accountNumber]) as GroovyRowResult
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber]) as GroovyRowResult
     if (row == null) {
       return null
     }
@@ -626,14 +637,7 @@ final class ClosingService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   private static String normalizeAccountNumber(String accountNumber) {

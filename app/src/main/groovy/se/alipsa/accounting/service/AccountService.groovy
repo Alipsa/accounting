@@ -20,21 +20,27 @@ final class AccountService {
     this.databaseService = databaseService
   }
 
-  boolean hasAccounts() {
+  boolean hasAccounts(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow('select count(*) as total from account') as GroovyRowResult
+      GroovyRowResult row = sql.firstRow(
+          'select count(*) as total from account where company_id = ?',
+          [companyId]
+      ) as GroovyRowResult
       ((Number) row.get('total')).intValue() > 0
     }
   }
 
-  AccountOverview loadOverview() {
+  AccountOverview loadOverview(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
           select count(*) as total,
                  coalesce(sum(case when active then 1 else 0 end), 0) as activeCount,
                  coalesce(sum(case when manual_review_required then 1 else 0 end), 0) as manualReviewCount
             from account
-      ''') as GroovyRowResult
+           where company_id = ?
+      ''', [companyId]) as GroovyRowResult
       new AccountOverview(
           ((Number) row.get('total')).intValue(),
           ((Number) row.get('activeCount')).intValue(),
@@ -43,7 +49,8 @@ final class AccountService {
     }
   }
 
-  List<Account> searchAccounts(String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
+  List<Account> searchAccounts(long companyId, String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
           select id,
@@ -57,9 +64,9 @@ final class AccountService {
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote
             from account
-           where 1 = 1
+           where company_id = ?
       ''')
-      List<Object> params = []
+      List<Object> params = [companyId]
 
       String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
       if (normalizedQuery) {
@@ -87,7 +94,8 @@ final class AccountService {
     }
   }
 
-  Account findAccount(String accountNumber) {
+  Account findAccount(long companyId, String accountNumber) {
+    CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
@@ -102,21 +110,24 @@ final class AccountService {
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote
             from account
-           where account_number = ?
-      ''', [normalized]) as GroovyRowResult
+           where company_id = ?
+             and account_number = ?
+      ''', [companyId, normalized]) as GroovyRowResult
       row == null ? null : mapAccount(row)
     }
   }
 
-  void setAccountActive(String accountNumber, boolean active) {
+  void setAccountActive(long companyId, String accountNumber, boolean active) {
+    CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
       int updated = sql.executeUpdate('''
           update account
              set active = ?,
                  updated_at = current_timestamp
-           where account_number = ?
-      ''', [active, normalized])
+           where company_id = ?
+             and account_number = ?
+      ''', [active, companyId, normalized])
       if (updated != 1) {
         throw new IllegalArgumentException("Unknown account number: ${normalized}")
       }
@@ -158,7 +169,8 @@ final class AccountService {
     String normalizedAccountNumber = normalizeAccountNumber(accountNumber)
     BigDecimal normalizedAmount = normalizeAmount(amount)
     databaseService.withTransaction { Sql sql ->
-      Account account = requireBalanceAccount(sql, normalizedAccountNumber)
+      long companyId = resolveCompanyId(sql, fiscalYearId)
+      Account account = requireBalanceAccount(sql, companyId, normalizedAccountNumber)
       requireFiscalYear(sql, fiscalYearId)
       boolean exists = openingBalanceExists(sql, fiscalYearId, account.id)
       if (exists) {
@@ -217,7 +229,7 @@ final class AccountService {
     }
   }
 
-  private static Account requireBalanceAccount(Sql sql, String accountNumber) {
+  private static Account requireBalanceAccount(Sql sql, long companyId, String accountNumber) {
     GroovyRowResult row = sql.firstRow('''
         select id,
                company_id as companyId,
@@ -230,8 +242,9 @@ final class AccountService {
                manual_review_required as manualReviewRequired,
                classification_note as classificationNote
           from account
-         where account_number = ?
-    ''', [accountNumber]) as GroovyRowResult
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber]) as GroovyRowResult
     if (row == null) {
       throw new IllegalArgumentException("Unknown account number: ${accountNumber}")
     }
@@ -258,14 +271,7 @@ final class AccountService {
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow(
-        'select company_id as companyId from fiscal_year where id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
-    }
-    ((Number) row.get('companyId')).longValue()
+    CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
   }
 
   @Canonical

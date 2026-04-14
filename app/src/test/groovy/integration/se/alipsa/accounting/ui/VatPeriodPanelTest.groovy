@@ -17,6 +17,7 @@ import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
@@ -64,6 +65,7 @@ class VatPeriodPanelTest {
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService, auditLogService)
     fiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)

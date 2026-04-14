@@ -51,7 +51,7 @@ class SieImportExportServiceTest {
     targetDatabaseService.initialize()
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
-    def result = targetService.importFile(exportPath)
+    def result = targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
 
     assertFalse(result.duplicate)
     assertEquals(ImportJobStatus.SUCCESS, result.job.status)
@@ -74,9 +74,9 @@ class SieImportExportServiceTest {
     targetDatabaseService.initialize()
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
-    def firstImport = targetService.importFile(exportPath)
-    def secondImport = targetService.importFile(exportPath)
-    List<ImportJob> jobs = targetService.listImportJobs(10)
+    def firstImport = targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
+    def secondImport = targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
+    List<ImportJob> jobs = targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 10)
 
     assertEquals(ImportJobStatus.SUCCESS, firstImport.job.status)
     assertTrue(secondImport.duplicate)
@@ -116,11 +116,11 @@ class SieImportExportServiceTest {
     malformed.toFile().text = 'this is not a sie file'
 
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      service.importFile(malformed)
+      service.importFile(CompanyService.LEGACY_COMPANY_ID, malformed)
     }
 
     assertTrue(exception.message.contains('SIE'))
-    assertEquals(ImportJobStatus.FAILED, service.listImportJobs(1).first().status)
+    assertEquals(ImportJobStatus.FAILED, service.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
   }
 
   @Test
@@ -136,11 +136,11 @@ class SieImportExportServiceTest {
     }
 
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      service.importFile(oversized)
+      service.importFile(CompanyService.LEGACY_COMPANY_ID, oversized)
     }
 
     assertTrue(exception.message.contains('Max 50 MB'))
-    assertTrue(service.listImportJobs().isEmpty())
+    assertTrue(service.listImportJobs(CompanyService.LEGACY_COMPANY_ID).isEmpty())
   }
 
   @Test
@@ -154,16 +154,16 @@ class SieImportExportServiceTest {
     AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(targetDatabaseService, auditLogService)
     FiscalYearService fiscalYearService = new FiscalYearService(targetDatabaseService, accountingPeriodService, auditLogService)
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     accountingPeriodService.lockPeriod(accountingPeriodService.listPeriods(fiscalYear.id).first().id, 'låst för test')
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
-      targetService.importFile(exportPath)
+      targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
     }
 
     assertTrue(exception.message.contains('låsta perioder'))
-    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(1).first().status)
+    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
   }
 
   @Test
@@ -174,7 +174,7 @@ class SieImportExportServiceTest {
     SieImportExportService service = createSieService(databaseService)
     Path filePath = writeSimpleSie(tempDir.resolve('group21.sie'), '2120', 'Periodiseringsfonder')
 
-    service.importFile(filePath)
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
 
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow(
@@ -197,7 +197,7 @@ class SieImportExportServiceTest {
     SieImportExportService service = createSieService(databaseService)
     Path filePath = writeSimpleSie(tempDir.resolve('preserve.sie'), '2120', 'Periodiseringsfonder')
 
-    service.importFile(filePath)
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
 
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
@@ -231,7 +231,7 @@ class SieImportExportServiceTest {
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     CompanySettingsService companySettingsService = new CompanySettingsService(databaseService)
     companySettingsService.save(new CompanySettings(null, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
 
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT')

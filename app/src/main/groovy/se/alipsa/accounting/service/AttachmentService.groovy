@@ -114,6 +114,27 @@ final class AttachmentService {
     }
   }
 
+  List<AttachmentMetadata> listAllAttachments(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 voucher_id as voucherId,
+                 original_file_name as originalFileName,
+                 content_type as contentType,
+                 storage_path as storagePath,
+                 checksum_sha256 as checksumSha256,
+                 file_size as fileSize,
+                 created_at as createdAt
+            from attachment
+           where company_id = ?
+           order by id
+      ''', [companyId]).collect { GroovyRowResult row ->
+        mapAttachment(row)
+      }
+    }
+  }
+
   List<AttachmentMetadata> listAllAttachments() {
     databaseService.withSql { Sql sql ->
       sql.rows('''
@@ -161,7 +182,30 @@ final class AttachmentService {
     Files.deleteIfExists(resolveStoragePath(attachment.storagePath))
   }
 
-  List<AttachmentMetadata> findIntegrityFailures() {
+  List<AttachmentMetadata> findIntegrityFailures(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 voucher_id as voucherId,
+                 original_file_name as originalFileName,
+                 content_type as contentType,
+                 storage_path as storagePath,
+                 checksum_sha256 as checksumSha256,
+                 file_size as fileSize,
+                 created_at as createdAt
+            from attachment
+           where company_id = ?
+           order by id
+      ''', [companyId]).collect { GroovyRowResult row ->
+        mapAttachment(row)
+      }.findAll { AttachmentMetadata attachment ->
+        !verifyAttachment(attachment)
+      }
+    }
+  }
+
+  List<AttachmentMetadata> findAllIntegrityFailures() {
     databaseService.withSql { Sql sql ->
       sql.rows('''
           select id,

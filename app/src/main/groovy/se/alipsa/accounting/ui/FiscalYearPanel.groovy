@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
@@ -189,7 +190,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     }
 
     try {
-      FiscalYear year = fiscalYearService.createFiscalYear(nameField.text, startDate, endDate)
+      FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, nameField.text, startDate, endDate)
       clearInputs()
       reloadData()
       selectFiscalYear(year.id)
@@ -229,7 +230,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadData() {
-    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears()
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID)
     fiscalYearTableModel.setRows(fiscalYears)
     if (!fiscalYears.isEmpty() && fiscalYearTable.selectedRow < 0) {
       fiscalYearTable.setRowSelectionInterval(0, 0)

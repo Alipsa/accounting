@@ -90,7 +90,6 @@ ruleset {
         exclude 'ConsecutiveBlankLines'
         exclude 'Indentation'
         exclude 'LineLength'
-        exclude 'SpaceAfterComma'
         exclude 'SpaceAfterMethodCallName'
         exclude 'SpaceAfterOpeningBrace'
         exclude 'SpaceAroundMapEntryColon'

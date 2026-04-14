@@ -107,7 +107,7 @@ class BackupServiceTest {
     ReportArchiveService reportArchiveService = new ReportArchiveService(databaseService)
 
     companySettingsService.save(new CompanySettings(1L, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
-    def fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    def fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
       insertAccount(sql, '1930', 'Bankkonto', 'ASSET', 'DEBIT')

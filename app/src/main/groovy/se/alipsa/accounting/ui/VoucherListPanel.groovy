@@ -6,6 +6,7 @@ import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
@@ -218,7 +219,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
       Object selected = fiscalYearComboBox.selectedItem
       fiscalYearComboBox.removeAllItems()
       fiscalYearComboBox.addItem(allFilterValue)
-      fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
+      fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
         fiscalYearComboBox.addItem(fiscalYear)
       }
       if (selected != null) {
@@ -245,7 +246,7 @@ final class VoucherListPanel extends JPanel implements PropertyChangeListener {
     }
     Long fiscalYearId = selectedFiscalYearId()
     VoucherStatus status = selectedStatus()
-    List<Voucher> vouchers = voucherService.listVouchers(fiscalYearId, status, searchField.text)
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYearId, status, searchField.text)
     tableModel.setRows(vouchers)
     showInfo(I18n.instance.format('voucherListPanel.message.showing', vouchers.size()))
   }

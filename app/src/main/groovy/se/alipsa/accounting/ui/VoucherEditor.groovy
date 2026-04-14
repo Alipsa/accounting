@@ -10,6 +10,7 @@ import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
@@ -121,7 +122,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
     this.onSave = onSave
     voucher = voucherId == null ? null : voucherService.findVoucher(voucherId)
     readOnly = voucher != null && voucher.status != VoucherStatus.DRAFT
-    fiscalYearComboBox = new JComboBox<>(fiscalYearService.listFiscalYears() as FiscalYear[])
+    fiscalYearComboBox = new JComboBox<>(fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID) as FiscalYear[])
     lineTableModel = new LineTableModel(accountService, !readOnly)
     lineTable = new JTable(lineTableModel)
     setTitle(voucherId == null
@@ -731,7 +732,7 @@ final class VoucherEditor extends JDialog implements PropertyChangeListener {
         return ''
       }
       try {
-        Account account = accountService.findAccount(normalized)
+        Account account = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, normalized)
         account == null
             ? I18n.instance.getString('voucherEditor.table.line.unknownAccount')
             : account.accountName

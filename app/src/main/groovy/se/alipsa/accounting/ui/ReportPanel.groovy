@@ -7,6 +7,7 @@ import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.ReportArchiveService
@@ -253,7 +254,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private void reloadFiscalYears() {
     FiscalYear selected = selectedFiscalYear()
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
@@ -366,7 +367,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadArchives() {
-    archiveTableModel.setRows(reportArchiveService.listArchives(100))
+    archiveTableModel.setRows(reportArchiveService.listArchives(CompanyService.LEGACY_COMPANY_ID, 100))
     updateActionButtons()
   }
 

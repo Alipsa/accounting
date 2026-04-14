@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.Company
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -64,7 +66,7 @@ class MultiCompanyChainHeadTest {
         reportDataService,
         reportArchiveService,
         new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
-        new CompanySettingsService(databaseService),
+        companyService,
         auditLogService,
         databaseService
     )
@@ -193,6 +195,25 @@ class MultiCompanyChainHeadTest {
       ((Number) row.get('total')).intValue()
     }
     assertEquals(2, exportCount)
+  }
+
+  @Test
+  void listFiscalYearsIsolatesDataByCompany() {
+    FiscalYear fy1 = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    Company company2 = companyService.save(
+        new Company(null, 'Isolation AB', '556999-0001', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null))
+    FiscalYear fy2 = fiscalYearService.createFiscalYear(
+        company2.id, '2026-B', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+
+    List<FiscalYear> company1Years = fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID)
+    List<FiscalYear> company2Years = fiscalYearService.listFiscalYears(company2.id)
+
+    assertEquals(1, company1Years.size())
+    assertEquals(fy1.id, company1Years.first().id)
+    assertEquals(1, company2Years.size())
+    assertEquals(fy2.id, company2Years.first().id)
+    assertTrue(company1Years.every { FiscalYear fy -> fy.id != fy2.id })
   }
 
   private static void insertAccount(
