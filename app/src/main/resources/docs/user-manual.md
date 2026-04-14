@@ -1,12 +1,23 @@
 # Användarmanual för Alipsa Accounting
 
+Alipsa Accounting är ett huvudboksprogram för små svenska företag. Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut. Fakturering, lönehantering och bankintegration ingår inte.
+
 ## Kom igång
 
-1. Starta programmet.
-2. Registrera företagsuppgifter under `Arkiv -> Företagsuppgifter...`.
+1. Starta programmet. Ett standardföretag skapas automatiskt vid första start.
+2. Redigera företagsuppgifter via `Redigera företag` i verktygsfältet, eller skapa ett nytt företag via `Nytt företag`.
 3. Skapa ett räkenskapsår i fliken `Räkenskapsår`.
 4. Importera BAS-kontoplanen i fliken `Kontoplan`.
 5. Kontrollera fliken `System` efter första start så att startup-verifieringen är grön.
+
+## Flerföretagsstöd
+
+Programmet kan hantera flera företag i samma installation. Varje företag har sin egen kontoplan, sina egna räkenskapsår, nummerserier, momsperioder och rapportarkiv.
+
+- **Växla företag** — välj aktivt företag i rullgardinsmenyn högst upp i fönstret. Alla flikar och flöden arbetar mot det valda företaget.
+- **Skapa nytt företag** — klicka `Nytt företag` i verktygsfältet och fyll i företagsuppgifter.
+- **Redigera företag** — klicka `Redigera företag` för att ändra namn, organisationsnummer, valuta eller momsperiodicitet.
+- **Isolering** — data är fullständigt isolerad mellan företag. Sökning, rapporter, SIE-export och bokslut för ett företag visar aldrig data från ett annat.
 
 ## Löpande bokföring
 
@@ -19,6 +30,7 @@
 ## Moms, rapporter och SIE
 
 - Stäng och rapportera momsperioder i fliken `Moms`.
+- v1.0.0 stöder månads- och årsmoms. Kvartalsmoms stöds inte i denna version.
 - Generera PDF- och CSV-rapporter i fliken `Rapporter`.
 - Importera och exportera SIE4 under `Arkiv -> SIE import/export...`.
 - CSV-export använder semikolon som avgränsare för att fungera bra med svensk Excel-standard.
@@ -52,3 +64,10 @@
 - Om startvarning visas: öppna fliken `System` och kontrollera verifieringsfel eller varningar.
 - Om en backup inte kan återställas: kontrollera att ZIP-filen är komplett och inte har ändrats manuellt.
 - Om bokföring blockeras: kontrollera om bokföringsperiod eller momsperiod är rapporterad eller låst.
+
+## Uppskjutet till v1.1.0
+
+Följande förbättringar är planerade till v1.1.0:
+
+- Kraschsäker bilagehantering (recovery vid avbruten skrivning mellan filsystem och databas).
+- Anläggningsregister för materiella och immateriella anläggningstillgångar.
