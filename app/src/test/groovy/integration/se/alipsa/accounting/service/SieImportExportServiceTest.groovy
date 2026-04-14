@@ -13,7 +13,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
-import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.ImportJobStatus
@@ -229,8 +229,11 @@ class SieImportExportServiceTest {
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
-    CompanySettingsService companySettingsService = new CompanySettingsService(databaseService)
-    companySettingsService.save(new CompanySettings(null, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
+    CompanyService companyService = new CompanyService(databaseService)
+    companyService.save(new Company(
+        CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null
+    ))
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
 
     databaseService.withTransaction { Sql sql ->
@@ -293,7 +296,7 @@ class SieImportExportServiceTest {
         databaseService,
         accountingPeriodService,
         voucherService,
-        new CompanySettingsService(databaseService),
+        new CompanyService(databaseService),
         reportIntegrityService,
         auditLogService
     )

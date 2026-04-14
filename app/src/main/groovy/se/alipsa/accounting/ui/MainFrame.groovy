@@ -124,7 +124,7 @@ final class MainFrame implements PropertyChangeListener {
       DatabaseService.instance,
       accountingPeriodService,
       voucherService,
-      companySettingsService,
+      companyService,
       reportIntegrityService,
       auditLogService
   )

@@ -15,7 +15,7 @@ import alipsa.sieparser.SieType
 import alipsa.sieparser.SieVoucher
 import alipsa.sieparser.SieVoucherRow
 
-import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.ImportJobStatus
@@ -49,7 +49,7 @@ final class SieImportExportService {
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
   private final VoucherService voucherService
-  private final CompanySettingsService companySettingsService
+  private final CompanyService companyService
   private final ReportIntegrityService reportIntegrityService
   private final AuditLogService auditLogService
   SieImportExportService() {
@@ -57,7 +57,7 @@ final class SieImportExportService {
         DatabaseService.instance,
         new AccountingPeriodService(DatabaseService.instance),
         new VoucherService(DatabaseService.instance),
-        new CompanySettingsService(DatabaseService.instance),
+        new CompanyService(DatabaseService.instance),
         new ReportIntegrityService(),
         new AuditLogService(DatabaseService.instance)
     )
@@ -66,14 +66,14 @@ final class SieImportExportService {
       DatabaseService databaseService,
       AccountingPeriodService accountingPeriodService,
       VoucherService voucherService,
-      CompanySettingsService companySettingsService,
+      CompanyService companyService,
       ReportIntegrityService reportIntegrityService,
       AuditLogService auditLogService
   ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
     this.voucherService = voucherService
-    this.companySettingsService = companySettingsService
+    this.companyService = companyService
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
   }
@@ -123,16 +123,19 @@ final class SieImportExportService {
   }
   SieExportResult exportFiscalYear(long fiscalYearId, Path targetPath) {
     Path safeTarget = normalizeExportPath(targetPath)
-    reportIntegrityService.ensureReportingAllowed()
-    CompanySettings settings = requireCompanySettings()
     ExportPayload payload = databaseService.withSql { Sql sql ->
-      buildExportPayload(sql, fiscalYearId, settings)
+      long companyId = resolveCompanyId(sql, fiscalYearId)
+      Company company = companyService.findById(companyId)
+      if (company == null) {
+        throw new IllegalStateException('Företagsuppgifter måste sparas innan SIE-export kan göras.')
+      }
+      reportIntegrityService.ensureReportingAllowed(companyId)
+      buildExportPayload(sql, fiscalYearId, company)
     }
     byte[] content = renderDocument(payload.document)
     Files.createDirectories(safeTarget.parent)
     Files.write(safeTarget, content)
     String checksum = sha256(content)
-    long companyId = resolveCompanyId(payload.fiscalYear.id)
     auditLogService.logExport(
         "Exporterade SIE ${payload.fiscalYear.name}",
         [
@@ -143,7 +146,7 @@ final class SieImportExportService {
             "openingBalances=${payload.openingBalanceCount}",
             "vouchers=${payload.voucherCount}"
         ].join('\n'),
-        companyId
+        payload.companyId
     )
     new SieExportResult(
         safeTarget.toAbsolutePath().normalize(),
@@ -200,13 +203,6 @@ final class SieImportExportService {
       throw new IllegalArgumentException("Ogiltig exportväg: ${normalized}")
     }
     normalized
-  }
-  private CompanySettings requireCompanySettings() {
-    CompanySettings settings = companySettingsService.getSettings()
-    if (settings == null) {
-      throw new IllegalStateException('Företagsuppgifter måste sparas innan SIE-export kan göras.')
-    }
-    settings
   }
   private long createImportJob(long companyId, String fileName, String checksum) {
     databaseService.withTransaction { Sql sql ->
@@ -628,14 +624,13 @@ final class SieImportExportService {
     closing
   }
 
-  private ExportPayload buildExportPayload(Sql sql, long fiscalYearId, CompanySettings settings) {
+  private static ExportPayload buildExportPayload(Sql sql, long fiscalYearId, Company company) {
     FiscalYear fiscalYear = findFiscalYear(sql, fiscalYearId)
     if (fiscalYear == null) {
       throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
     }
 
-    long companyId = resolveCompanyId(sql, fiscalYearId)
-    Map<String, AccountSeed> accounts = loadAccounts(sql, companyId)
+    Map<String, AccountSeed> accounts = loadAccounts(sql, company.id)
     Map<String, BigDecimal> openings = loadOpeningBalances(sql, fiscalYearId)
     List<ExportVoucherSeed> vouchers = loadBookedVouchers(sql, fiscalYearId)
     Map<String, BigDecimal> closings = loadClosingBalances(sql, fiscalYearId)
@@ -647,10 +642,10 @@ final class SieImportExportService {
     document.setGEN_NAMN(GENERATOR_NAME)
     document.setOMFATTN(fiscalYear.endDate)
     document.setPROGRAM([PROGRAM_NAME, PROGRAM_VERSION])
-    document.setVALUTA(settings.defaultCurrency?.trim()?.toUpperCase(Locale.ROOT) ?: 'SEK')
+    document.setVALUTA(company.defaultCurrency?.trim()?.toUpperCase(Locale.ROOT) ?: 'SEK')
     document.setFNAMN(new SieCompany())
-    document.getFNAMN().setName(settings.companyName)
-    document.getFNAMN().setOrgIdentifier(settings.organizationNumber)
+    document.getFNAMN().setName(company.companyName)
+    document.getFNAMN().setOrgIdentifier(company.organizationNumber)
     document.setRars([(0): buildBookingYear(fiscalYear)])
 
     Map<String, SieAccount> konto = [:]
@@ -664,6 +659,7 @@ final class SieImportExportService {
     document.setVER(buildExportVouchers(document, vouchers))
 
     new ExportPayload(
+        company.id,
         document,
         fiscalYear,
         accounts.size(),
