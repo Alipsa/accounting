@@ -114,6 +114,27 @@ final class DatabaseService {
     }
   }
 
+  /**
+   * Issues an H2 {@code SHUTDOWN} so the engine releases its file handles. Required on Windows
+   * before deleting the database directory (e.g. JUnit {@code @TempDir} cleanup), since H2 keeps
+   * the {@code .mv.db} file open between connections.
+   */
+  void shutdown() {
+    Sql sql = Sql.newInstance(databaseUrl(), USERNAME, PASSWORD, DRIVER)
+    try {
+      sql.execute('shutdown')
+    } catch (java.sql.SQLException ignored) {
+      // H2 closes the connection as part of SHUTDOWN and reports "Database is already closed"
+      // when the Statement tries to finalize. The shutdown itself succeeded.
+    } finally {
+      try {
+        sql.close()
+      } catch (java.sql.SQLException ignored) {
+        // Connection is already closed by SHUTDOWN.
+      }
+    }
+  }
+
   private String defaultDatabaseUrl() {
     embeddedDatabaseUrl(AppPaths.applicationHome())
   }

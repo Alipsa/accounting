@@ -1,12 +1,19 @@
 #
 # https://help.github.com/articles/dealing-with-line-endings/
 #
-# Linux start script should use lf
-/gradlew        text eol=lf
+# All text files use LF so Spotless checks and checksum-based tests are stable
+# on Windows runners (where core.autocrlf would otherwise convert to CRLF).
+* text=auto eol=lf
 
-# These are Windows script files and should use crlf
+# Windows script files keep CRLF.
 *.bat           text eol=crlf
+*.cmd           text eol=crlf
 
-# Binary files should be left untouched
+# Binary files should be left untouched.
 *.jar           binary
-
+*.png           binary
+*.ico           binary
+*.icns          binary
+*.pdf           binary
+*.xlsx          binary
+*.zip           binary

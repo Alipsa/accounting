@@ -57,6 +57,10 @@ final class AlipsaAccounting {
           log.warning("Launch verification completed with warnings: ${startupReport.warnings.join(' | ')}")
         }
         System.out.println("Launch verification OK: ${versionLine()} [home=${AppPaths.applicationHome()}]")
+        // Release the H2 and logging file handles so the caller (tests, packaging verification)
+        // can delete the verification home directory on Windows.
+        DatabaseService.instance.shutdown()
+        LoggingConfigurer.shutdown()
         return
       }
       if (!startupReport.ok || !startupReport.warnings.isEmpty()) {

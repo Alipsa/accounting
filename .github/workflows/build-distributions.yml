@@ -19,7 +19,7 @@ jobs:
           - os: macos-latest
             platform: macos
             tasks: packageMacosAppImage
-            artifact: app/build/release/macos/*
+            artifact: app/build/release/macos/AlipsaAccounting-macos.zip
 
     runs-on: ${{ matrix.os }}
 

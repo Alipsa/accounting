@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -13,6 +14,9 @@ import java.nio.file.Paths
 // platform-specific path defaults. Tests must run single-threaded to avoid
 // interfering with other tests that call AppPaths.applicationHome() concurrently.
 class AppPathsTest {
+
+  @TempDir
+  Path tempDir
 
   private String previousOsName
   private String previousUserHome
@@ -59,11 +63,12 @@ class AppPathsTest {
 
   @Test
   void applicationHomeOverrideTakesPrecedenceForAllDerivedDirectories() {
-    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, '/tmp/accounting-home')
+    Path overrideHome = tempDir.resolve('accounting-home')
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, overrideHome.toString())
 
     Path home = AppPaths.applicationHome()
 
-    assertEquals(Paths.get('/tmp/accounting-home'), home)
+    assertEquals(overrideHome.toAbsolutePath().normalize(), home)
     assertEquals(home.resolve('data'), AppPaths.dataDirectory())
     assertEquals(home.resolve('logs'), AppPaths.logDirectory())
     assertEquals(home.resolve('attachments'), AppPaths.attachmentsDirectory())
