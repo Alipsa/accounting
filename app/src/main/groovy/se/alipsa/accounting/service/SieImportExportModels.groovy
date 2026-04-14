@@ -99,6 +99,7 @@ final class ExportLineSeed {
 @Canonical
 final class ExportPayload {
 
+  long companyId
   SieDocument document
   FiscalYear fiscalYear
   int accountCount

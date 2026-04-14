@@ -123,20 +123,19 @@ final class SieImportExportService {
   }
   SieExportResult exportFiscalYear(long fiscalYearId, Path targetPath) {
     Path safeTarget = normalizeExportPath(targetPath)
-    reportIntegrityService.ensureReportingAllowed()
     ExportPayload payload = databaseService.withSql { Sql sql ->
       long companyId = resolveCompanyId(sql, fiscalYearId)
       Company company = companyService.findById(companyId)
       if (company == null) {
         throw new IllegalStateException('Företagsuppgifter måste sparas innan SIE-export kan göras.')
       }
+      reportIntegrityService.ensureReportingAllowed(companyId)
       buildExportPayload(sql, fiscalYearId, company)
     }
     byte[] content = renderDocument(payload.document)
     Files.createDirectories(safeTarget.parent)
     Files.write(safeTarget, content)
     String checksum = sha256(content)
-    long companyId = resolveCompanyId(payload.fiscalYear.id)
     auditLogService.logExport(
         "Exporterade SIE ${payload.fiscalYear.name}",
         [
@@ -147,7 +146,7 @@ final class SieImportExportService {
             "openingBalances=${payload.openingBalanceCount}",
             "vouchers=${payload.voucherCount}"
         ].join('\n'),
-        companyId
+        payload.companyId
     )
     new SieExportResult(
         safeTarget.toAbsolutePath().normalize(),
@@ -660,6 +659,7 @@ final class SieImportExportService {
     document.setVER(buildExportVouchers(document, vouchers))
 
     new ExportPayload(
+        company.id,
         document,
         fiscalYear,
         accounts.size(),
