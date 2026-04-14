@@ -15,6 +15,7 @@ import java.math.RoundingMode
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Date
+import java.time.LocalDate
 
 /**
  * Calculates VAT reports, manages VAT periods and books VAT transfer vouchers.
@@ -191,57 +192,87 @@ final class VatService {
     if (periodicity == VatPeriodicity.ANNUAL) {
       GroovyRowResult first = accountingPeriods.first()
       GroovyRowResult last = accountingPeriods.last()
-      sql.executeInsert('''
-          insert into vat_period (
-              fiscal_year_id,
-              period_index,
-              period_name,
-              start_date,
-              end_date,
-              status,
-              report_hash,
-              reported_at,
-              locked_at,
-              transfer_voucher_id,
-              created_at,
-              updated_at
-          ) values (?, ?, ?, ?, ?, ?, null, null, null, null, current_timestamp, current_timestamp)
-      ''', [
-          fiscalYearId,
-          1,
+      insertVatPeriod(sql, fiscalYearId, 1,
           "${SqlValueMapper.toLocalDate(first.get('startDate'))} - ${SqlValueMapper.toLocalDate(last.get('endDate'))}".toString(),
-          first.get('startDate'),
-          last.get('endDate'),
-          OPEN
-      ])
+          first.get('startDate'), last.get('endDate'))
+      return
+    }
+
+    if (periodicity == VatPeriodicity.QUARTERLY) {
+      List<List<GroovyRowResult>> quarters = groupByCalendarQuarter(accountingPeriods)
+      quarters.eachWithIndex { List<GroovyRowResult> quarter, int index ->
+        GroovyRowResult first = quarter.first()
+        GroovyRowResult last = quarter.last()
+        LocalDate start = SqlValueMapper.toLocalDate(first.get('startDate'))
+        LocalDate end = SqlValueMapper.toLocalDate(last.get('endDate'))
+        int calendarQuarter = (start.monthValue - 1).intdiv(3) as int + 1
+        String label = "Q${calendarQuarter} ${start.year}"
+        if (isPartialQuarter(start, end, calendarQuarter)) {
+          label = "${label} (del)"
+        }
+        insertVatPeriod(sql, fiscalYearId, index + 1, label,
+            first.get('startDate'), last.get('endDate'))
+      }
       return
     }
 
     accountingPeriods.each { GroovyRowResult row ->
-      sql.executeInsert('''
-          insert into vat_period (
-              fiscal_year_id,
-              period_index,
-              period_name,
-              start_date,
-              end_date,
-              status,
-              report_hash,
-              reported_at,
-              locked_at,
-              transfer_voucher_id,
-              created_at,
-              updated_at
-          ) values (?, ?, ?, ?, ?, ?, null, null, null, null, current_timestamp, current_timestamp)
-      ''', [
-          fiscalYearId,
+      insertVatPeriod(sql, fiscalYearId,
           ((Number) row.get('periodIndex')).intValue(),
           row.get('periodName') as String,
-          row.get('startDate'),
-          row.get('endDate'),
-          OPEN
-      ])
+          row.get('startDate'), row.get('endDate'))
     }
+  }
+
+  private static void insertVatPeriod(Sql sql, long fiscalYearId, int periodIndex, String periodName, Object startDate, Object endDate) {
+    sql.executeInsert('''
+        insert into vat_period (
+            fiscal_year_id,
+            period_index,
+            period_name,
+            start_date,
+            end_date,
+            status,
+            report_hash,
+            reported_at,
+            locked_at,
+            transfer_voucher_id,
+            created_at,
+            updated_at
+        ) values (?, ?, ?, ?, ?, ?, null, null, null, null, current_timestamp, current_timestamp)
+    ''', [fiscalYearId, periodIndex, periodName, startDate, endDate, OPEN])
+  }
+
+  private static List<List<GroovyRowResult>> groupByCalendarQuarter(List<GroovyRowResult> accountingPeriods) {
+    List<List<GroovyRowResult>> quarters = []
+    List<GroovyRowResult> current = []
+    int currentQuarter = -1
+    int currentYear = -1
+    accountingPeriods.each { GroovyRowResult row ->
+      LocalDate start = SqlValueMapper.toLocalDate(row.get('startDate'))
+      int quarter = (start.monthValue - 1).intdiv(3) as int
+      int year = start.year
+      if (quarter != currentQuarter || year != currentYear) {
+        if (!current.isEmpty()) {
+          quarters << current
+        }
+        current = []
+        currentQuarter = quarter
+        currentYear = year
+      }
+      current << row
+    }
+    if (!current.isEmpty()) {
+      quarters << current
+    }
+    quarters
+  }
+
+  private static boolean isPartialQuarter(LocalDate start, LocalDate end, int calendarQuarter) {
+    int firstMonth = (calendarQuarter - 1) * 3 + 1
+    LocalDate quarterStart = LocalDate.of(start.year, firstMonth, 1)
+    LocalDate quarterEnd = quarterStart.plusMonths(3).minusDays(1)
+    start != quarterStart || end != quarterEnd
   }
 
   private static VatPeriodicity loadPeriodicity(Sql sql, long companyId) {

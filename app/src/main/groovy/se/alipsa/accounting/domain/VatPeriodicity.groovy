@@ -8,6 +8,7 @@ import se.alipsa.accounting.support.I18n
 enum VatPeriodicity {
 
   MONTHLY,
+  QUARTERLY,
   ANNUAL
 
   String getDisplayName() {

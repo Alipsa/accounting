@@ -100,7 +100,7 @@ final class SystemDocumentationService {
         '- Verifikationer bokförs med nummerserier per företag, räkenskapsår och serie.',
         '- Bokförda verifikationer är append-only och korrigeras genom korrigeringsverifikation.',
         '- Momsperioder kan rapporteras och låsas för att blockera otillåtna ändringar.',
-        '- Månads- och årsmoms stöds. Kvartalsmoms ingår inte i v1.0.0.',
+        '- Månads-, kvartals- och årsmoms stöds.',
         '- Årsbokslut stänger resultatkonton mot konto 2099 och skapar nästa års ingående balanser.',
         '',
         '## Import och export',

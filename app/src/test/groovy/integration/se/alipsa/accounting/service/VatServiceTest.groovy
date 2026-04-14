@@ -264,6 +264,117 @@ class VatServiceTest {
     assertEquals('2027-01-01 - 2027-12-31', periods.first().periodName)
   }
 
+  @Test
+  void quarterlyVatSettingCreatesFourVatPeriodsForFiscalYear() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Konsultfirma',
+            '930501-5678',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+
+    List<VatPeriod> periods = vatService.listPeriods(quarterlyYear.id)
+
+    assertEquals(4, periods.size())
+    assertEquals(LocalDate.of(2027, 1, 1), periods[0].startDate)
+    assertEquals(LocalDate.of(2027, 3, 31), periods[0].endDate)
+    assertEquals('Q1 2027', periods[0].periodName)
+    assertEquals(LocalDate.of(2027, 4, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2027, 6, 30), periods[1].endDate)
+    assertEquals('Q2 2027', periods[1].periodName)
+    assertEquals(LocalDate.of(2027, 7, 1), periods[2].startDate)
+    assertEquals(LocalDate.of(2027, 9, 30), periods[2].endDate)
+    assertEquals('Q3 2027', periods[2].periodName)
+    assertEquals(LocalDate.of(2027, 10, 1), periods[3].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), periods[3].endDate)
+    assertEquals('Q4 2027', periods[3].periodName)
+  }
+
+  @Test
+  void quarterlyVatForBrokenFiscalYearProducesCalendarQuarterPeriodsWithPartialEdges() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Brutet AB',
+            '556677-8899',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear brokenYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2028/2029 brutet',
+        LocalDate.of(2028, 7, 15),
+        LocalDate.of(2029, 7, 14)
+    )
+
+    List<VatPeriod> periods = vatService.listPeriods(brokenYear.id)
+
+    assertEquals(5, periods.size())
+    assertEquals(LocalDate.of(2028, 7, 15), periods[0].startDate)
+    assertEquals(LocalDate.of(2028, 9, 30), periods[0].endDate)
+    assertEquals('Q3 2028 (del)', periods[0].periodName)
+    assertEquals(LocalDate.of(2028, 10, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2028, 12, 31), periods[1].endDate)
+    assertEquals('Q4 2028', periods[1].periodName)
+    assertEquals(LocalDate.of(2029, 1, 1), periods[2].startDate)
+    assertEquals(LocalDate.of(2029, 3, 31), periods[2].endDate)
+    assertEquals('Q1 2029', periods[2].periodName)
+    assertEquals(LocalDate.of(2029, 4, 1), periods[3].startDate)
+    assertEquals(LocalDate.of(2029, 6, 30), periods[3].endDate)
+    assertEquals('Q2 2029', periods[3].periodName)
+    assertEquals(LocalDate.of(2029, 7, 1), periods[4].startDate)
+    assertEquals(LocalDate.of(2029, 7, 14), periods[4].endDate)
+    assertEquals('Q3 2029 (del)', periods[4].periodName)
+  }
+
+  @Test
+  void quarterlyVatForQuarterAlignedBrokenFiscalYearProducesFourFullQuarters() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Kvartalslinjerat AB',
+            '556600-1122',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear alignedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027/2028 april',
+        LocalDate.of(2027, 4, 1),
+        LocalDate.of(2028, 3, 31)
+    )
+
+    List<VatPeriod> periods = vatService.listPeriods(alignedYear.id)
+
+    assertEquals(4, periods.size())
+    assertEquals(LocalDate.of(2027, 4, 1), periods[0].startDate)
+    assertEquals(LocalDate.of(2027, 6, 30), periods[0].endDate)
+    assertEquals('Q2 2027', periods[0].periodName)
+    assertEquals(LocalDate.of(2027, 7, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2027, 9, 30), periods[1].endDate)
+    assertEquals('Q3 2027', periods[1].periodName)
+    assertEquals(LocalDate.of(2027, 10, 1), periods[2].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), periods[2].endDate)
+    assertEquals('Q4 2027', periods[2].periodName)
+    assertEquals(LocalDate.of(2028, 1, 1), periods[3].startDate)
+    assertEquals(LocalDate.of(2028, 3, 31), periods[3].endDate)
+    assertEquals('Q1 2028', periods[3].periodName)
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),
