@@ -69,7 +69,7 @@ class ClosingServiceTest {
 
   @Test
   void yearEndClosingCreatesClosingVoucherAndNextYearOpeningBalances() {
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()
     databaseService.withTransaction { Sql sql ->
       def accountId = sql.firstRow('select id from account where account_number = ?', ['1930']).get('id')
@@ -129,7 +129,7 @@ class ClosingServiceTest {
       assertEquals(700.00G, openingBalanceFor(sql, result.nextFiscalYear.id, '2099'))
     }
 
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
     assertTrue(auditEntries.any { AuditLogEntry entry ->
       entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == fiscalYear.id
     })
@@ -138,7 +138,7 @@ class ClosingServiceTest {
 
   @Test
   void previewWarnsOnDeadlineAndBlocksOpenPeriods() {
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
     seedClosingAccounts()
 
     def preview = closingService.previewClosing(fiscalYear.id)
@@ -149,7 +149,7 @@ class ClosingServiceTest {
 
   @Test
   void reClosingAnAlreadyClosedYearIsBlocked() {
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()
     accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
       accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')

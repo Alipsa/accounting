@@ -75,7 +75,34 @@ final class AuditLogService {
     }
   }
 
-  List<AuditLogEntry> listEntries(int limit = 200) {
+  List<AuditLogEntry> listEntries(long companyId, int limit = 200) {
+    int safeLimit = Math.max(1, limit)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 event_type as eventType,
+                 voucher_id as voucherId,
+                 attachment_id as attachmentId,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
+                 actor,
+                 summary,
+                 details,
+                 previous_hash as previousHash,
+                 entry_hash as entryHash,
+                 created_at as createdAt
+            from audit_log
+           where company_id = ?
+           order by created_at desc, id desc
+           limit ?
+      ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
+        mapEntry(row)
+      }
+    }
+  }
+
+  List<AuditLogEntry> listAllEntries(int limit = 200) {
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''

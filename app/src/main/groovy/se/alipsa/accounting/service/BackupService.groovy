@@ -77,7 +77,7 @@ final class BackupService {
       writeDatabaseScript(tempScript)
       byte[] scriptBytes = Files.readAllBytes(tempScript)
       List<AttachmentMetadata> attachments = attachmentService.listAllAttachments()
-      List<ReportArchive> archives = reportArchiveService.listArchives(10_000)
+      List<ReportArchive> archives = reportArchiveService.listAllArchives(10_000)
       BackupManifest manifest = buildManifest(tempScript, scriptBytes, attachments, archives)
       Map<String, AttachmentMetadata> attachmentsByPath = indexAttachments(attachments)
       Map<String, ReportArchive> reportsByPath = indexReports(archives)

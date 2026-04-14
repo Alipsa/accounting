@@ -3,7 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
-import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -18,7 +18,7 @@ final class JournoReportService {
   private final ReportDataService reportDataService
   private final ReportArchiveService reportArchiveService
   private final ReportIntegrityService reportIntegrityService
-  private final CompanySettingsService companySettingsService
+  private final CompanyService companyService
   private final AuditLogService auditLogService
   private final DatabaseService databaseService
 
@@ -27,7 +27,7 @@ final class JournoReportService {
         new ReportDataService(),
         new ReportArchiveService(),
         new ReportIntegrityService(),
-        new CompanySettingsService(),
+        new CompanyService(),
         new AuditLogService(),
         DatabaseService.instance
     )
@@ -37,14 +37,14 @@ final class JournoReportService {
       ReportDataService reportDataService,
       ReportArchiveService reportArchiveService,
       ReportIntegrityService reportIntegrityService,
-      CompanySettingsService companySettingsService,
+      CompanyService companyService,
       AuditLogService auditLogService,
       DatabaseService databaseService
   ) {
     this.reportDataService = reportDataService
     this.reportArchiveService = reportArchiveService
     this.reportIntegrityService = reportIntegrityService
-    this.companySettingsService = companySettingsService
+    this.companyService = companyService
     this.auditLogService = auditLogService
     this.databaseService = databaseService
   }
@@ -88,10 +88,11 @@ final class JournoReportService {
   }
 
   private Map<String, Object> buildTemplateModel(ReportResult report) {
-    CompanySettings settings = companySettingsService.getSettings()
+    long companyId = resolveCompanyId(report.fiscalYearId)
+    Company company = companyService.findById(companyId)
     [
-        companyName       : settings?.companyName ?: 'Alipsa Accounting',
-        organizationNumber: settings?.organizationNumber ?: '',
+        companyName       : company?.companyName ?: 'Alipsa Accounting',
+        organizationNumber: company?.organizationNumber ?: '',
         report            : report
     ] + report.templateModel
   }

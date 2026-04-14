@@ -83,17 +83,19 @@ final class AccountingPeriodService {
     }
   }
 
-  boolean isDateLocked(LocalDate accountingDate) {
+  boolean isDateLocked(long companyId, LocalDate accountingDate) {
     if (accountingDate == null) {
       throw new IllegalArgumentException('Accounting date is required.')
     }
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
                 select count(*) as total
-                  from accounting_period
-                 where locked = true
-                   and ? between start_date and end_date
-            ''', [Date.valueOf(accountingDate)]) as GroovyRowResult
+                  from accounting_period ap
+                  join fiscal_year fy on fy.id = ap.fiscal_year_id
+                 where fy.company_id = ?
+                   and ap.locked = true
+                   and ? between ap.start_date and ap.end_date
+            ''', [companyId, Date.valueOf(accountingDate)]) as GroovyRowResult
       ((Number) row.get('total')).intValue() > 0
     }
   }

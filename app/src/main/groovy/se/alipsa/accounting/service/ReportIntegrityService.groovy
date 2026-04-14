@@ -28,7 +28,7 @@ final class ReportIntegrityService {
   List<String> listCriticalProblems() {
     List<String> problems = []
     problems.addAll(voucherService.validateIntegrity())
-    attachmentService.findIntegrityFailures().each { AttachmentMetadata attachment ->
+    attachmentService.findAllIntegrityFailures().each { AttachmentMetadata attachment ->
       problems << ("Bilaga ${attachment.id} har avvikande checksumma eller saknas på disk." as String)
     }
     problems.addAll(auditLogService.validateIntegrity())

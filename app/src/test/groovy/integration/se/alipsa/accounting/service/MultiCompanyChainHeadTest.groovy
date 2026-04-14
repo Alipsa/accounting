@@ -64,7 +64,7 @@ class MultiCompanyChainHeadTest {
         reportDataService,
         reportArchiveService,
         new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
-        new CompanySettingsService(databaseService),
+        companyService,
         auditLogService,
         databaseService
     )

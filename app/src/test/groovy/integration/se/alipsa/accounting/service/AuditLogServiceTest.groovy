@@ -46,7 +46,7 @@ class AuditLogServiceTest {
     auditLogService.logBackup('Skapade backup', 'archive=backup.zip')
     auditLogService.logRestore('Återställde backup', 'archive=backup.zip')
 
-    List<AuditLogEntry> entries = auditLogService.listEntries()
+    List<AuditLogEntry> entries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertEquals(4, entries.size())
     assertTrue(entries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.IMPORT })

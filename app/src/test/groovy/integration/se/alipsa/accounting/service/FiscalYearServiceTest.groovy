@@ -50,7 +50,7 @@ class FiscalYearServiceTest {
 
   @Test
   void createFiscalYearGeneratesMonthlyPeriodsForBrokenYear() {
-    FiscalYear year = fiscalYearService.createFiscalYear(
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2025/2026 brutet',
         LocalDate.of(2025, 7, 15),
         LocalDate.of(2026, 7, 14)
@@ -67,14 +67,14 @@ class FiscalYearServiceTest {
 
   @Test
   void overlappingFiscalYearsAreRejected() {
-    fiscalYearService.createFiscalYear(
+    fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2025/2026',
         LocalDate.of(2025, 7, 1),
         LocalDate.of(2026, 6, 30)
     )
 
     Executable action = {
-      fiscalYearService.createFiscalYear(
+      fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
           '2026 kalenderår',
           LocalDate.of(2026, 1, 1),
           LocalDate.of(2026, 12, 31)
@@ -86,7 +86,7 @@ class FiscalYearServiceTest {
 
   @Test
   void periodLockAndYearCloseUpdateLockStatus() {
-    FiscalYear year = fiscalYearService.createFiscalYear(
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
@@ -100,12 +100,12 @@ class FiscalYearServiceTest {
       accountingPeriodService.lockPeriod(period.id, 'Årsslut.')
     }
 
-    assertTrue(accountingPeriodService.isDateLocked(LocalDate.of(2026, 1, 15)))
-    assertTrue(accountingPeriodService.isDateLocked(LocalDate.of(2026, 2, 15)))
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID,LocalDate.of(2026, 1, 15)))
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID,LocalDate.of(2026, 2, 15)))
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
     List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries()
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertTrue(closedYear.closed)
     assertTrue(closedPeriods.every { AccountingPeriod period -> period.locked })
@@ -119,7 +119,7 @@ class FiscalYearServiceTest {
 
   @Test
   void closingYearWithOpenPeriodsIsRejected() {
-    FiscalYear year = fiscalYearService.createFiscalYear(
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
@@ -134,7 +134,7 @@ class FiscalYearServiceTest {
 
   @Test
   void lockingAnAlreadyLockedPeriodIsRejected() {
-    FiscalYear year = fiscalYearService.createFiscalYear(
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
@@ -158,7 +158,7 @@ class FiscalYearServiceTest {
         auditLogService,
         new RetentionPolicyService(Clock.fixed(Instant.parse('2030-01-01T00:00:00Z'), ZoneOffset.UTC))
     )
-    FiscalYear year = fiscalYearService.createFiscalYear(
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2020',
         LocalDate.of(2020, 1, 1),
         LocalDate.of(2020, 12, 31)

@@ -51,6 +51,7 @@ class AttachmentServiceTest {
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     fiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
@@ -83,7 +84,7 @@ class AttachmentServiceTest {
     assertEquals(attachment.id, attachments.first().id)
     assertTrue(Files.exists(attachmentService.resolveStoredPath(attachment)))
     assertTrue(attachmentService.verifyAttachment(attachment.id))
-    assertEquals([], attachmentService.findIntegrityFailures())
+    assertEquals([], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID))
     assertArrayEquals(Files.readAllBytes(source), attachmentService.readAttachment(attachment.id))
     assertTrue(auditEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.ATTACHMENT_ADDED })
   }
@@ -104,7 +105,7 @@ class AttachmentServiceTest {
     Files.writeString(attachmentService.resolveStoredPath(attachment), 'modified', StandardCharsets.UTF_8)
 
     assertFalse(attachmentService.verifyAttachment(attachment.id))
-    assertEquals([attachment.id], attachmentService.findIntegrityFailures()*.id)
+    assertEquals([attachment.id], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
   }
 
   @Test
@@ -129,7 +130,7 @@ class AttachmentServiceTest {
     }
 
     assertTrue(exception.message.contains('utanför bilagearkivet'))
-    assertEquals([attachment.id], attachmentService.findIntegrityFailures()*.id)
+    assertEquals([attachment.id], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
   }
 
   private void insertTestAccounts() {

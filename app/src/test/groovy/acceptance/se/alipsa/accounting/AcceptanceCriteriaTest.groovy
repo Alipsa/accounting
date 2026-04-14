@@ -29,6 +29,7 @@ import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.BackupSummary
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
@@ -77,7 +78,7 @@ class AcceptanceCriteriaTest {
     AcceptanceServices services = createAcceptanceServices(databaseService)
 
     services.companySettingsService.save(new CompanySettings(1L, 'Accept AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
-    FiscalYear fiscalYear = services.fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fiscalYear = services.fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     Path workbook = createBasWorkbook()
     new ChartOfAccountsImportService(databaseService).importFromExcel(workbook)
     configureVatAccounts(databaseService)
@@ -226,6 +227,7 @@ class AcceptanceCriteriaTest {
 
   private static AcceptanceServices createAcceptanceServices(DatabaseService databaseService) {
     CompanySettingsService companySettingsService = new CompanySettingsService(databaseService)
+    CompanyService companyService = new CompanyService(databaseService)
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
@@ -246,7 +248,7 @@ class AcceptanceCriteriaTest {
             reportDataService,
             reportArchiveService,
             reportIntegrityService,
-            companySettingsService,
+            companyService,
             auditLogService,
             databaseService
         ),

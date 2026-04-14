@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.service.AccountService
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
@@ -49,7 +50,7 @@ final class OpeningBalanceDialog extends JDialog {
     this.account = account
     this.onSave = onSave
 
-    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears()
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID)
     fiscalYearComboBox = new JComboBox<>(fiscalYears as FiscalYear[])
     buildUi()
     refreshCurrentAmount()

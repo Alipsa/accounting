@@ -132,7 +132,8 @@ final class VatService {
       if (balances.isEmpty()) {
         throw new IllegalStateException("Momsperiod ${period.periodName} saknar momsbalanser att överföra.")
       }
-      requireSettlementAccount(sql, settlementAccount)
+      long companyId = resolveCompanyId(sql, period.fiscalYearId)
+      requireSettlementAccount(sql, companyId, settlementAccount)
       List<VoucherLine> lines = buildTransferLines(balances, settlementAccount)
       String description = "Momsöverföring ${period.periodName}"
       Voucher voucher = bookTransferVoucher(sql, period, seriesCode, description, lines)
@@ -157,12 +158,13 @@ final class VatService {
   @PackageScope
   static void ensurePeriodsForFiscalYear(Sql sql, long fiscalYearId) {
     GroovyRowResult fiscalYearRow = sql.firstRow(
-        'select count(*) as total from fiscal_year where id = ?',
+        'select company_id as companyId from fiscal_year where id = ?',
         [fiscalYearId]
     ) as GroovyRowResult
-    if (((Number) fiscalYearRow.get('total')).intValue() != 1) {
+    if (fiscalYearRow == null) {
       throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
     }
+    long companyId = ((Number) fiscalYearRow.get('companyId')).longValue()
 
     GroovyRowResult existing = sql.firstRow(
         'select count(*) as total from vat_period where fiscal_year_id = ?',
@@ -172,7 +174,7 @@ final class VatService {
       return
     }
 
-    VatPeriodicity periodicity = loadPeriodicity(sql)
+    VatPeriodicity periodicity = loadPeriodicity(sql, companyId)
     List<GroovyRowResult> accountingPeriods = sql.rows('''
         select period_index as periodIndex,
                period_name as periodName,
@@ -242,12 +244,12 @@ final class VatService {
     }
   }
 
-  private static VatPeriodicity loadPeriodicity(Sql sql) {
+  private static VatPeriodicity loadPeriodicity(Sql sql, long companyId) {
     GroovyRowResult row = sql.firstRow('''
         select vat_periodicity as vatPeriodicity
-          from company_settings
-         where id = 1
-    ''') as GroovyRowResult
+          from company
+         where id = ?
+    ''', [companyId]) as GroovyRowResult
     VatPeriodicity.fromDatabaseValue(row?.get('vatPeriodicity') as String)
   }
 
@@ -400,13 +402,14 @@ final class VatService {
     lines
   }
 
-  private static void requireSettlementAccount(Sql sql, String accountNumber) {
+  private static void requireSettlementAccount(Sql sql, long companyId, String accountNumber) {
     GroovyRowResult row = sql.firstRow('''
         select account_number as accountNumber,
                account_class as accountClass
           from account
-         where account_number = ?
-    ''', [accountNumber?.trim()]) as GroovyRowResult
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber?.trim()]) as GroovyRowResult
     if (row == null) {
       throw new IllegalArgumentException("Momsredovisningskonto saknas: ${accountNumber}")
     }
@@ -454,6 +457,17 @@ final class VatService {
     payload.append(report.netVatToPay.toPlainString())
     MessageDigest digest = MessageDigest.getInstance('SHA-256')
     HexFormat.of().formatHex(digest.digest(payload.toString().getBytes(StandardCharsets.UTF_8)))
+  }
+
+  private static long resolveCompanyId(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select company_id as companyId from fiscal_year where id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    ((Number) row.get('companyId')).longValue()
   }
 
   private static VatPeriod requirePeriod(Sql sql, long vatPeriodId) {

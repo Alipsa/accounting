@@ -71,11 +71,11 @@ class ReportServicesTest {
         reportDataService,
         reportArchiveService,
         new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
-        new CompanySettingsService(databaseService),
+        new CompanyService(databaseService),
         auditLogService,
         databaseService
     )
-    fiscalYear = fiscalYearService.createFiscalYear('2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     insertTestAccounts()
     bookFixtures()
   }
@@ -132,7 +132,7 @@ class ReportServicesTest {
     assertEquals(ReportType.INCOME_STATEMENT, archive.reportType)
     assertTrue(new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith('%PDF-'))
     assertTrue(Files.size(reportArchiveService.resolveStoredPath(archive)) > 500L)
-    assertEquals('c662c635ccea3d6d722d49ae996ea40edcdae8cf4f20c0aab7f8a176c52b560c', sha256(journoReportService.renderHtml(preview).getBytes(StandardCharsets.UTF_8)))
+    assertEquals('ccf4d53a601b18ee472bdb2c9b945f7b8bb1c297239e58cb3f7bc2ebbf56e19d', sha256(journoReportService.renderHtml(preview).getBytes(StandardCharsets.UTF_8)))
   }
 
   @Test

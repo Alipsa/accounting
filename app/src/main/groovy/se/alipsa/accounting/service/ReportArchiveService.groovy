@@ -86,7 +86,34 @@ final class ReportArchiveService {
     }
   }
 
-  List<ReportArchive> listArchives(int limit = 100) {
+  List<ReportArchive> listArchives(long companyId, int limit = 100) {
+    int safeLimit = Math.max(1, limit)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select ra.id,
+                 ra.report_type as reportType,
+                 ra.report_format as reportFormat,
+                 ra.fiscal_year_id as fiscalYearId,
+                 ra.accounting_period_id as accountingPeriodId,
+                 ra.start_date as startDate,
+                 ra.end_date as endDate,
+                 ra.file_name as fileName,
+                 ra.storage_path as storagePath,
+                 ra.checksum_sha256 as checksumSha256,
+                 ra.parameters,
+                 ra.created_at as createdAt
+            from report_archive ra
+            join fiscal_year fy on fy.id = ra.fiscal_year_id
+           where fy.company_id = ?
+           order by ra.created_at desc, ra.id desc
+           limit ?
+      ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
+        mapArchive(row)
+      }
+    }
+  }
+
+  List<ReportArchive> listAllArchives(int limit = 10_000) {
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''
@@ -131,8 +158,14 @@ final class ReportArchiveService {
     verifyArchive(archive)
   }
 
-  List<ReportArchive> findIntegrityFailures() {
-    listArchives(500).findAll { ReportArchive archive ->
+  List<ReportArchive> findIntegrityFailures(long companyId) {
+    listArchives(companyId, 500).findAll { ReportArchive archive ->
+      !verifyArchive(archive)
+    }
+  }
+
+  List<ReportArchive> findAllIntegrityFailures() {
+    listAllArchives(500).findAll { ReportArchive archive ->
       !verifyArchive(archive)
     }
   }

@@ -304,7 +304,7 @@ final class VoucherService {
     problems
   }
 
-  List<Voucher> listVouchers(Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
+  List<Voucher> listVouchers(long companyId, Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
           select v.id,
@@ -323,9 +323,9 @@ final class VoucherService {
                  v.booked_at as bookedAt
             from voucher v
             join voucher_series s on s.id = v.voucher_series_id
-           where 1 = 1
+           where v.company_id = ?
       ''')
-      List<Object> params = []
+      List<Object> params = [companyId]
 
       if (fiscalYearId != null) {
         query.append(' and v.fiscal_year_id = ?')

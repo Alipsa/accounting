@@ -77,7 +77,7 @@ final class SieImportExportService {
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
   }
-  SieImportResult importFile(Path filePath) {
+  SieImportResult importFile(long companyId, Path filePath) {
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
@@ -89,7 +89,7 @@ final class SieImportExportService {
     try {
       ParsedSie parsed = parseDocument(safePath)
       SieImportResult result = databaseService.withTransaction { Sql sql ->
-        FiscalYear fiscalYear = resolveTargetFiscalYear(sql, parsed.document)
+        FiscalYear fiscalYear = resolveTargetFiscalYear(sql, companyId, parsed.document)
         ImportCounts counts = importDocument(sql, fiscalYear.id, parsed.document, parsed.warnings)
         String summary = buildSuccessSummary(counts, fiscalYear, parsed.warnings)
         ImportJob job = completeImportJob(
@@ -102,7 +102,6 @@ final class SieImportExportService {
         )
         new SieImportResult(job, fiscalYear, false, counts.accountsCreated, counts.openingBalanceCount, counts.voucherCount, counts.lineCount, parsed.warnings)
       }
-      long companyId = resolveCompanyId(result.fiscalYear.id)
       auditLogService.logImport(
           "Importerade SIE ${result.job.fileName}",
           [
@@ -153,23 +152,25 @@ final class SieImportExportService {
         payload.voucherCount
     )
   }
-  List<ImportJob> listImportJobs(int limit = 20) {
+  List<ImportJob> listImportJobs(long companyId, int limit = 20) {
     int safeLimit = Math.max(1, limit)
     databaseService.withSql { Sql sql ->
       sql.rows('''
-          select id,
-                 file_name as fileName,
-                 checksum_sha256 as checksumSha256,
-                 fiscal_year_id as fiscalYearId,
-                 status,
-                 summary,
-                 error_log as errorLog,
-                 started_at as startedAt,
-                 completed_at as completedAt
-            from import_job
-           order by started_at desc, id desc
+          select ij.id,
+                 ij.file_name as fileName,
+                 ij.checksum_sha256 as checksumSha256,
+                 ij.fiscal_year_id as fiscalYearId,
+                 ij.status,
+                 ij.summary,
+                 ij.error_log as errorLog,
+                 ij.started_at as startedAt,
+                 ij.completed_at as completedAt
+            from import_job ij
+            left join fiscal_year fy on fy.id = ij.fiscal_year_id
+           where fy.company_id = ? or ij.fiscal_year_id is null
+           order by ij.started_at desc, ij.id desc
            limit ?
-      ''', [safeLimit]).collect { GroovyRowResult row ->
+      ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
         mapImportJob(row)
       }
     }
@@ -269,7 +270,7 @@ final class SieImportExportService {
     new ParsedSie(document, warnings)
   }
 
-  private FiscalYear resolveTargetFiscalYear(Sql sql, SieDocument document) {
+  private FiscalYear resolveTargetFiscalYear(Sql sql, long companyId, SieDocument document) {
     SieBookingYear bookingYear = selectPrimaryBookingYear(document)
     GroovyRowResult existing = sql.firstRow('''
         select id,
@@ -279,11 +280,12 @@ final class SieImportExportService {
                closed,
                closed_at as closedAt
           from fiscal_year
-         where start_date = ?
+         where company_id = ?
+           and start_date = ?
            and end_date = ?
-    ''', [Date.valueOf(bookingYear.start), Date.valueOf(bookingYear.end)]) as GroovyRowResult
+    ''', [companyId, Date.valueOf(bookingYear.start), Date.valueOf(bookingYear.end)]) as GroovyRowResult
     FiscalYear fiscalYear = existing == null
-        ? createFiscalYear(sql, bookingYear.start, bookingYear.end)
+        ? createFiscalYear(sql, companyId, bookingYear.start, bookingYear.end)
         : mapFiscalYear(existing)
     ensureFiscalYearImportable(sql, fiscalYear)
     fiscalYear
@@ -300,13 +302,14 @@ final class SieImportExportService {
     document.getRars().values().sort { SieBookingYear year -> year.id }.first()
   }
 
-  private FiscalYear createFiscalYear(Sql sql, LocalDate startDate, LocalDate endDate) {
+  private FiscalYear createFiscalYear(Sql sql, long companyId, LocalDate startDate, LocalDate endDate) {
     String name = startDate.year == endDate.year
         ? startDate.year.toString()
         : "${startDate} - ${endDate}"
     FiscalYearService.createFiscalYear(
         sql,
         accountingPeriodService,
+        companyId,
         name,
         startDate,
         endDate,
@@ -368,9 +371,10 @@ final class SieImportExportService {
           select account_number as accountNumber,
                  manual_review_required as manualReviewRequired
             from account
-           where account_number = ?
+           where company_id = ?
+             and account_number = ?
           ''',
-          [accountNumber]
+          [companyId, accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
         sql.executeInsert('''
@@ -407,13 +411,15 @@ final class SieImportExportService {
                    manual_review_required = ?,
                    classification_note = ?,
                    updated_at = current_timestamp
-             where account_number = ?
+             where company_id = ?
+               and account_number = ?
         ''', [
             accountName,
             classification.accountClass,
             classification.normalBalanceSide,
             classification.manualReviewRequired,
             classification.note,
+            companyId,
             accountNumber
         ])
       } else {
@@ -421,9 +427,11 @@ final class SieImportExportService {
             update account
                set account_name = ?,
                    updated_at = current_timestamp
-             where account_number = ?
+             where company_id = ?
+               and account_number = ?
         ''', [
             accountName,
+            companyId,
             accountNumber
         ])
       }
@@ -432,10 +440,11 @@ final class SieImportExportService {
   }
 
   private static int persistOpeningBalances(Sql sql, long fiscalYearId, List<SiePeriodValue> balances, List<String> warnings) {
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     Map<String, BigDecimal> normalizedBalances = [:]
     (balances ?: []).each { SiePeriodValue value ->
       String accountNumber = normalizeAccountNumber(value.account?.number)
-      if (!isBalanceAccount(sql, accountNumber)) {
+      if (!isBalanceAccount(sql, companyId, accountNumber)) {
         warnings << ("Ingående balans för konto ${accountNumber} hoppades över eftersom kontot inte är ett balanskonto." as String)
         return
       }
@@ -444,7 +453,6 @@ final class SieImportExportService {
       }
       normalizedBalances[accountNumber] = scale(value.amount)
     }
-    long companyId = resolveCompanyId(sql, fiscalYearId)
     normalizedBalances.each { String accountNumber, BigDecimal amount ->
       GroovyRowResult account = sql.firstRow(
           'select id from account where company_id = ? and account_number = ?',
@@ -617,7 +625,8 @@ final class SieImportExportService {
       throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
     }
 
-    Map<String, AccountSeed> accounts = loadAccounts(sql)
+    long companyId = resolveCompanyId(sql, fiscalYearId)
+    Map<String, AccountSeed> accounts = loadAccounts(sql, companyId)
     Map<String, BigDecimal> openings = loadOpeningBalances(sql, fiscalYearId)
     List<ExportVoucherSeed> vouchers = loadBookedVouchers(sql, fiscalYearId)
     Map<String, BigDecimal> closings = loadClosingBalances(sql, fiscalYearId)
@@ -662,7 +671,7 @@ final class SieImportExportService {
     bookingYear
   }
 
-  private static Map<String, AccountSeed> loadAccounts(Sql sql) {
+  private static Map<String, AccountSeed> loadAccounts(Sql sql, long companyId) {
     Map<String, AccountSeed> accounts = [:]
     sql.rows('''
         select account_number as accountNumber,
@@ -670,8 +679,9 @@ final class SieImportExportService {
                account_class as accountClass,
                normal_balance_side as normalBalanceSide
           from account
+         where company_id = ?
          order by account_number
-    ''').each { GroovyRowResult row ->
+    ''', [companyId]).each { GroovyRowResult row ->
       accounts[row.get('accountNumber') as String] = new AccountSeed(
           row.get('accountName') as String,
           row.get('accountClass') as String,
@@ -900,10 +910,10 @@ final class SieImportExportService {
     )
   }
 
-  private static boolean isBalanceAccount(Sql sql, String accountNumber) {
+  private static boolean isBalanceAccount(Sql sql, long companyId, String accountNumber) {
     GroovyRowResult row = sql.firstRow(
-        'select account_class as accountClass from account where account_number = ?',
-        [accountNumber]
+        'select account_class as accountClass from account where company_id = ? and account_number = ?',
+        [companyId, accountNumber]
     ) as GroovyRowResult
     String accountClass = row?.get('accountClass') as String
     accountClass in ['ASSET', 'LIABILITY', 'EQUITY']

@@ -53,6 +53,7 @@ class VoucherServiceTest {
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     fiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)

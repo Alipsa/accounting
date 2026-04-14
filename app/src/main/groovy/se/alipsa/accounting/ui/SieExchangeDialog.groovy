@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
@@ -150,7 +151,7 @@ final class SieExchangeDialog extends JDialog {
   private void reloadFiscalYears() {
     FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears().each { FiscalYear fiscalYear ->
+    fiscalYearService.listFiscalYears(CompanyService.LEGACY_COMPANY_ID).each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
@@ -159,7 +160,7 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void reloadJobs() {
-    importJobTableModel.setRows(sieImportExportService.listImportJobs())
+    importJobTableModel.setRows(sieImportExportService.listImportJobs(CompanyService.LEGACY_COMPANY_ID))
   }
 
   private void importRequested() {
@@ -175,7 +176,7 @@ final class SieExchangeDialog extends JDialog {
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
-        sieImportExportService.importFile(selectedPath)
+        sieImportExportService.importFile(CompanyService.LEGACY_COMPANY_ID, selectedPath)
       }
 
       @Override
