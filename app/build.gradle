@@ -58,6 +58,10 @@ def licenseFilePath = rootProject.file('LICENSE').absolutePath
 
 def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file("${releaseConfig.appName}.desktop.template")
 def linuxDesktopEntry = releaseConfig.generatedRoot.map { it.file("linux-desktop/${releaseConfig.appName}.desktop") }
+def linuxInstallTemplate = releaseConfig.packagingRoot.dir('linux').file('install.sh.template')
+def linuxUninstallTemplate = releaseConfig.packagingRoot.dir('linux').file('uninstall.sh.template')
+def linuxInstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/install.sh') }
+def linuxUninstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/uninstall.sh') }
 
 def currentOsName = System.getProperty('os.name', 'unknown').toLowerCase(Locale.ROOT)
 def currentPlatform = currentOsName.contains('win') ? 'windows' : currentOsName.contains('mac') ? 'macos' : 'linux'
@@ -186,6 +190,26 @@ tasks.register('generateLinuxDesktopEntry') {
   }
 }
 
+tasks.register('generateLinuxInstallScripts') {
+  inputs.file(linuxInstallTemplate)
+  inputs.file(linuxUninstallTemplate)
+  outputs.file(linuxInstallScript)
+  outputs.file(linuxUninstallScript)
+  doLast {
+    [
+      (linuxInstallTemplate.asFile): linuxInstallScript.get().asFile,
+      (linuxUninstallTemplate.asFile): linuxUninstallScript.get().asFile
+    ].each { File source, File target ->
+      target.parentFile.mkdirs()
+      target.text = source.getText('UTF-8')
+          .replace('@DISPLAY_NAME@', releaseConfig.displayName)
+          .replace('@DESCRIPTION@', releaseConfig.description)
+          .replace('@APP_NAME@', releaseConfig.appName)
+          .replace('@PACKAGE_NAME@', releaseConfig.packageName)
+    }
+  }
+}
+
 tasks.register('prepareLinuxPackagingResources', Copy) {
   dependsOn 'generateReleaseMetadata', 'generateLinuxDesktopEntry'
   from(releaseConfig.packagingRoot.dir('linux'))
@@ -242,15 +266,23 @@ tasks.register('packageLinuxAppImage', Exec) {
 
 tasks.register('packageLinuxReleaseZip', Zip) {
   onlyIf { isLinux }
-  dependsOn 'packageLinuxAppImage', 'generateLinuxDesktopEntry'
+  dependsOn 'packageLinuxAppImage', 'generateLinuxInstallScripts'
   archiveBaseName = releaseConfig.packageName
   archiveVersion = releaseConfig.version
   archiveClassifier = 'linux'
   destinationDirectory = releaseConfig.releaseRoot.map { it.dir('linux') }
   from(releaseConfig.releaseRoot.map { it.dir("linux/${releaseConfig.appName}") }) {
     into(releaseConfig.appName)
+    filesMatching("bin/${releaseConfig.appName}") {
+      it.permissions { unix(0755) }
+    }
   }
-  from(linuxDesktopEntry)
+  from(linuxInstallScript) {
+    filePermissions { unix(0755) }
+  }
+  from(linuxUninstallScript) {
+    filePermissions { unix(0755) }
+  }
 }
 
 tasks.register('packageWindowsAppImage', Exec) {
