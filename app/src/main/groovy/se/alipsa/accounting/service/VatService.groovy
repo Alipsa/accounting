@@ -250,7 +250,10 @@ final class VatService {
           from company
          where id = ?
     ''', [companyId]) as GroovyRowResult
-    VatPeriodicity.fromDatabaseValue(row?.get('vatPeriodicity') as String)
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt företag: ${companyId}")
+    }
+    VatPeriodicity.fromDatabaseValue(row.get('vatPeriodicity') as String)
   }
 
   private static List<VatPeriod> listPeriods(Sql sql, long fiscalYearId) {

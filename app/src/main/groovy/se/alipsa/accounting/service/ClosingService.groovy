@@ -71,14 +71,20 @@ final class ClosingService {
   }
 
   YearEndClosingPreview previewClosing(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
-    List<String> integrityProblems = reportIntegrityService.listCriticalProblems()
+    long companyId = databaseService.withSql { Sql sql ->
+      resolveCompanyId(sql, fiscalYearId)
+    }
+    List<String> integrityProblems = reportIntegrityService.listCriticalProblems(companyId)
     databaseService.withSql { Sql sql ->
       buildPreview(sql, fiscalYearId, closingAccountNumber, integrityProblems)
     }
   }
 
   YearEndClosingResult closeFiscalYear(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
-    reportIntegrityService.ensureOperationAllowed('Årsstängning')
+    long companyId = databaseService.withSql { Sql sql ->
+      resolveCompanyId(sql, fiscalYearId)
+    }
+    reportIntegrityService.ensureOperationAllowed(companyId, 'Årsstängning')
     databaseService.withTransaction { Sql sql ->
       // Integrity is checked before opening the transaction so we do not re-run the
       // expensive cross-system validation while holding DB locks during closing.
@@ -86,7 +92,6 @@ final class ClosingService {
       if (!preview.blockingIssues.isEmpty()) {
         throw new IllegalStateException(preview.blockingIssues.join('\n'))
       }
-      long companyId = resolveCompanyId(sql, preview.fiscalYear.id)
       FiscalYear nextFiscalYear = preview.nextFiscalYearWillBeCreated
           ? ensureNextFiscalYear(sql, companyId, preview.fiscalYear)
           : preview.nextFiscalYear

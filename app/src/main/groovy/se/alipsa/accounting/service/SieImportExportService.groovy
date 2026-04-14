@@ -448,6 +448,10 @@ final class SieImportExportService {
     Map<String, BigDecimal> normalizedBalances = [:]
     (balances ?: []).each { SiePeriodValue value ->
       String accountNumber = normalizeAccountNumber(value.account?.number)
+      if (!accountExists(sql, companyId, accountNumber)) {
+        warnings << ("Ingående balans för konto ${accountNumber} hoppades över eftersom kontot inte finns." as String)
+        return
+      }
       if (!isBalanceAccount(sql, companyId, accountNumber)) {
         warnings << ("Ingående balans för konto ${accountNumber} hoppades över eftersom kontot inte är ett balanskonto." as String)
         return
@@ -917,12 +921,20 @@ final class SieImportExportService {
   }
 
   private static boolean isBalanceAccount(Sql sql, long companyId, String accountNumber) {
+    String accountClass = lookupAccountClass(sql, companyId, accountNumber)
+    accountClass in ['ASSET', 'LIABILITY', 'EQUITY']
+  }
+
+  private static boolean accountExists(Sql sql, long companyId, String accountNumber) {
+    lookupAccountClass(sql, companyId, accountNumber) != null
+  }
+
+  private static String lookupAccountClass(Sql sql, long companyId, String accountNumber) {
     GroovyRowResult row = sql.firstRow(
         'select account_class as accountClass from account where company_id = ? and account_number = ?',
         [companyId, accountNumber]
     ) as GroovyRowResult
-    String accountClass = row?.get('accountClass') as String
-    accountClass in ['ASSET', 'LIABILITY', 'EQUITY']
+    row?.get('accountClass') as String
   }
 
   private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
