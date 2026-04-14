@@ -21,7 +21,7 @@ final class ActiveCompanyManager {
   ActiveCompanyManager(CompanyService companyService) {
     this.companyService = companyService
     try {
-      List<Company> companies = companyService.listCompanies(true)
+      List<Company> companies = companyService.listCompanies(true) ?: []
       this.companyId = companies.isEmpty() ? 0L : companies.first().id
     } catch (Exception ignored) {
       this.companyId = 0L
