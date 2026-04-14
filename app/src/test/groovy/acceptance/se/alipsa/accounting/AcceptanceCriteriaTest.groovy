@@ -258,7 +258,7 @@ class AcceptanceCriteriaTest {
             databaseService,
             accountingPeriodService,
             voucherService,
-            companySettingsService,
+            companyService,
             reportIntegrityService,
             auditLogService
         ),

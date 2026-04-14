@@ -49,9 +49,11 @@ final class ReportArchiveService {
 
     try {
       databaseService.withTransaction { Sql sql ->
+        long companyId = CompanyService.resolveFromFiscalYear(sql, safeSelection.fiscalYearId)
         LocalDateTime createdAt = currentDatabaseTimestamp(sql)
         List<List<Object>> keys = sql.executeInsert('''
             insert into report_archive (
+                company_id,
                 report_type,
                 report_format,
                 fiscal_year_id,
@@ -63,8 +65,9 @@ final class ReportArchiveService {
                 checksum_sha256,
                 parameters,
                 created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', [
+            companyId,
             safeSelection.reportType.name(),
             safeFormat,
             safeSelection.fiscalYearId,
