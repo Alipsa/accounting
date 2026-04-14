@@ -7,6 +7,10 @@
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf
 
+# Report templates and SQL must be byte-stable across platforms (checksums, golden masters)
+*.ftl           text eol=lf
+*.sql           text eol=lf
+
 # Binary files should be left untouched
 *.jar           binary
 

@@ -132,7 +132,8 @@ class ReportServicesTest {
     assertEquals(ReportType.INCOME_STATEMENT, archive.reportType)
     assertTrue(new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith('%PDF-'))
     assertTrue(Files.size(reportArchiveService.resolveStoredPath(archive)) > 500L)
-    assertEquals('ccf4d53a601b18ee472bdb2c9b945f7b8bb1c297239e58cb3f7bc2ebbf56e19d', sha256(journoReportService.renderHtml(preview).getBytes(StandardCharsets.UTF_8)))
+    String html = journoReportService.renderHtml(preview).replace('\r\n', '\n').replace('\r', '\n')
+    assertEquals('ccf4d53a601b18ee472bdb2c9b945f7b8bb1c297239e58cb3f7bc2ebbf56e19d', sha256(html.getBytes(StandardCharsets.UTF_8)))
   }
 
   @Test
