@@ -1,6 +1,6 @@
 # Användarmanual för Alipsa Accounting
 
-Alipsa Accounting är ett huvudboksprogram för små svenska företag. Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut. Fakturering, lönehantering och bankintegration ingår inte.
+Alipsa Accounting är ett bokföringsprogram för små svenska företag. Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut. Fakturering, lönehantering och bankintegration ingår inte.
 
 ## Kom igång
 

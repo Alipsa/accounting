@@ -5,7 +5,7 @@
 ![Gradle 9.4](https://img.shields.io/badge/Gradle-9.4-02303A?logo=gradle)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-Desktopbaserat huvudboksprogram för små svenska företag.
+Desktopbaserat bokföringsprogram för små svenska företag.
 Byggt med Groovy, Swing och en inbäddad H2-databas — inga externa tjänster behövs.
 
 Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut.
