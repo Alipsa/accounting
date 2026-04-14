@@ -115,6 +115,7 @@ final class AttachmentService {
   }
 
   List<AttachmentMetadata> listAllAttachments(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       sql.rows('''
           select id,
@@ -182,6 +183,7 @@ final class AttachmentService {
   }
 
   List<AttachmentMetadata> findIntegrityFailures(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       sql.rows('''
           select id,

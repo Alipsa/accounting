@@ -83,7 +83,7 @@ final class SieImportExportService {
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
     long jobId = createImportJob(companyId, safePath.fileName.toString(), checksum)
-    ImportJob duplicate = markDuplicateIfNeeded(jobId, checksum)
+    ImportJob duplicate = markDuplicateIfNeeded(jobId, companyId, checksum)
     if (duplicate != null) {
       return new SieImportResult(duplicate, null, true, 0, 0, 0, 0, [])
     }
@@ -225,18 +225,19 @@ final class SieImportExportService {
       ((Number) keys.first().first()).longValue()
     }
   }
-  private ImportJob markDuplicateIfNeeded(long jobId, String checksum) {
+  private ImportJob markDuplicateIfNeeded(long jobId, long companyId, String checksum) {
     databaseService.withTransaction { Sql sql ->
       GroovyRowResult existing = sql.firstRow('''
           select id,
                  file_name as fileName
             from import_job
            where checksum_sha256 = ?
+             and company_id = ?
              and status = 'SUCCESS'
              and id <> ?
            order by completed_at desc, id desc
            limit 1
-      ''', [checksum, jobId]) as GroovyRowResult
+      ''', [checksum, companyId, jobId]) as GroovyRowResult
       if (existing == null) {
         return null
       }
