@@ -17,7 +17,7 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 - **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering. Kontoplanen är företagsspecifik — två företag kan ha samma BAS-kontonummer utan konflikt.
 - **Räkenskapsår och perioder** — skapa år, dela in i perioder och lås perioder när de är klara.
 - **Verifikationer** — registrera, bokför och korrigera verifikationer med bilagor.
-- **Moms** — beräkna, rapportera och bokför momsöverföring per period. Stöder månads- och årsmoms. Kvartalsmoms stöds inte i v1.0.0.
+- **Moms** — beräkna, rapportera och bokför momsöverföring per period. Stöder månads-, kvartals- och årsmoms.
 - **Rapporter** — generera verifikationslista, huvudbok, provbalans, resultat- och balansrapport, transaktionsrapport och momsrapport som PDF eller CSV. Rapporter arkiveras med checksumma.
 - **SIE4** — importera och exportera bokföringsdata via SIE4 med dubblettskydd och integritetskontroll.
 - **Bokslut** — stäng räkenskapsår med bokslutsverifikation och automatisk generering av nästa års ingående balanser.
@@ -32,7 +32,6 @@ Följande funktioner ingår inte i v1.0.0:
 - Årsredovisningsflöden
 - Anläggningsregister (planerat till v1.1.0)
 - Förbättrad kraschsäker bilagehantering (planerat till v1.1.0)
-- Kvartalsmoms (månads- och årsmoms stöds)
 
 ## Förutsättningar
 

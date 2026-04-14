@@ -30,7 +30,7 @@ Programmet kan hantera flera företag i samma installation. Varje företag har s
 ## Moms, rapporter och SIE
 
 - Stäng och rapportera momsperioder i fliken `Moms`.
-- v1.0.0 stöder månads- och årsmoms. Kvartalsmoms stöds inte i denna version.
+- Stöder månads-, kvartals- och årsmoms.
 - Generera PDF- och CSV-rapporter i fliken `Rapporter`.
 - Importera och exportera SIE4 under `Arkiv -> SIE import/export...`.
 - CSV-export använder semikolon som avgränsare för att fungera bra med svensk Excel-standard.

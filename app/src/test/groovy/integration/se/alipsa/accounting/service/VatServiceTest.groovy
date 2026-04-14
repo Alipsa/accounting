@@ -264,6 +264,42 @@ class VatServiceTest {
     assertEquals('2027-01-01 - 2027-12-31', periods.first().periodName)
   }
 
+  @Test
+  void quarterlyVatSettingCreatesFourVatPeriodsForFiscalYear() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Konsultfirma',
+            '930501-5678',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+
+    List<VatPeriod> periods = vatService.listPeriods(quarterlyYear.id)
+
+    assertEquals(4, periods.size())
+    assertEquals(LocalDate.of(2027, 1, 1), periods[0].startDate)
+    assertEquals(LocalDate.of(2027, 3, 31), periods[0].endDate)
+    assertTrue(periods[0].periodName.contains('Q1'))
+    assertEquals(LocalDate.of(2027, 4, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2027, 6, 30), periods[1].endDate)
+    assertTrue(periods[1].periodName.contains('Q2'))
+    assertEquals(LocalDate.of(2027, 7, 1), periods[2].startDate)
+    assertEquals(LocalDate.of(2027, 9, 30), periods[2].endDate)
+    assertTrue(periods[2].periodName.contains('Q3'))
+    assertEquals(LocalDate.of(2027, 10, 1), periods[3].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), periods[3].endDate)
+    assertTrue(periods[3].periodName.contains('Q4'))
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),
