@@ -68,12 +68,24 @@ if [ "$BUILD" = true ]; then
 
   echo "Downloading artifacts to $DIST_DIR/"
   rm -rf "$DIST_DIR"
-  mkdir -p "$DIST_DIR"
-  gh run download "$run_id" --repo "$REPO" --dir "$DIST_DIR"
+  mkdir -p "$DIST_DIR/extras"
+  gh run download "$run_id" --repo "$REPO" --dir "$DIST_DIR/extras"
 
-  # Flatten: move files out of per-platform subdirectories (no-clobber to avoid overwrites)
-  find "$DIST_DIR" -mindepth 2 -type f -exec mv -n {} "$DIST_DIR/" \;
-  find "$DIST_DIR" -mindepth 1 -type d -empty -delete
+  # Promote known distribution files to the dist root; leave anything else
+  # behind in extras/ so the root stays clean.
+  shopt -s nullglob
+  for f in "$DIST_DIR"/extras/*/alipsa-accounting-*.zip \
+           "$DIST_DIR"/extras/*/AlipsaAccounting-*.exe \
+           "$DIST_DIR"/extras/*/AlipsaAccounting-*.zip \
+           "$DIST_DIR"/extras/*/app-*.zip; do
+    mv "$f" "$DIST_DIR/"
+  done
+  shopt -u nullglob
+
+  # Flatten any residual platform subdirs inside extras/ and drop empties.
+  find "$DIST_DIR/extras" -mindepth 2 -type f -exec mv -n {} "$DIST_DIR/extras/" \;
+  find "$DIST_DIR/extras" -mindepth 1 -type d -empty -delete
+  rmdir "$DIST_DIR/extras" 2>/dev/null || true
 
   echo ""
   echo "Generating SHA-256 checksums..."
@@ -143,11 +155,12 @@ gpg --verify <file>.asc <file>
   fi
 
   echo "Creating GitHub release $TAG..."
+  mapfile -t release_assets < <(find "$DIST_DIR" -maxdepth 1 -type f)
   gh release create "$TAG" \
     --repo "$REPO" \
     --title "Alipsa Accounting ${VERSION}" \
     --notes "$release_body" \
-    "$DIST_DIR"/*
+    "${release_assets[@]}"
 
   echo ""
   release_url=$(gh release view "$TAG" --repo "$REPO" --json url --jq '.url')
