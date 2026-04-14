@@ -258,14 +258,14 @@ class MultiCompanyIsolationTest {
     voucherService.createAndBook(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
         ])
     voucherService.createAndBook(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 2000.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 2000.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 2000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 2000.00G)
         ])
 
     accountingPeriodService.listPeriods(fyA.id).each { period ->
@@ -285,9 +285,10 @@ class MultiCompanyIsolationTest {
     assertEquals('2026', companyBYears.first().name)
 
     databaseService.withSql { Sql sql ->
-      int closingEntriesB = countRows(sql, 'closing_entry',
-          "fiscal_year_id = ${fyB.id}")
-      assertEquals(0, closingEntriesB)
+      GroovyRowResult row = sql.firstRow(
+          'select count(*) as total from closing_entry where fiscal_year_id = ?',
+          [fyB.id]) as GroovyRowResult
+      assertEquals(0, ((Number) row.get('total')).intValue())
     }
   }
 
@@ -384,12 +385,6 @@ class MultiCompanyIsolationTest {
           [companyId]) as GroovyRowResult
       ((Number) row.get('total')).intValue()
     }
-  }
-
-  private static int countRows(Sql sql, String tableName, String whereClause) {
-    GroovyRowResult row = sql.firstRow(
-        "select count(*) as total from ${tableName} where ${whereClause}" as String) as GroovyRowResult
-    ((Number) row.get('total')).intValue()
   }
 
   private static void restoreProperty(String name, String value) {

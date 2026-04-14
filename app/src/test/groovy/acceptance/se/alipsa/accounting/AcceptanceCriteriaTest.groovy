@@ -206,16 +206,16 @@ class AcceptanceCriteriaTest {
     services.voucherService.createAndBook(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Alfa',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 800.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 200.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
         ])
     services.voucherService.createAndBook(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Bravo',
         [
-            new VoucherLine(null, null, 0, '1510', null, 'Kundfordran', 2500.00G, 0.00G),
-            new VoucherLine(null, null, 0, '3010', null, 'Försäljning', 0.00G, 2000.00G),
-            new VoucherLine(null, null, 0, '2611', null, 'Utgående moms', 0.00G, 500.00G)
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 2500.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 2000.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 500.00G)
         ])
 
     ReportArchive reportA = services.journoReportService.generatePdf(
