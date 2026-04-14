@@ -100,8 +100,8 @@ class FiscalYearServiceTest {
       accountingPeriodService.lockPeriod(period.id, 'Årsslut.')
     }
 
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID,LocalDate.of(2026, 1, 15)))
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID,LocalDate.of(2026, 2, 15)))
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 2, 15)))
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
     List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)

@@ -57,10 +57,10 @@ class ChartOfAccountsImportServiceTest {
     assertTrue(summary.createdCount > 1000)
     assertTrue(summary.manualReviewCount > 0)
 
-    Account assetAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID,'1010')
-    Account equityAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID,'2010')
-    Account incomeAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID,'3000')
-    Account manualReviewAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID,'8999')
+    Account assetAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
+    Account equityAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2010')
+    Account incomeAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '3000')
+    Account manualReviewAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
 
     assertNotNull(assetAccount)
     assertEquals('ASSET', assetAccount.accountClass)
@@ -93,7 +93,7 @@ class ChartOfAccountsImportServiceTest {
     assertFalse(assets.isEmpty())
 
     accountService.setAccountActive(CompanyService.LEGACY_COMPANY_ID, '1010', false)
-    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID,'1010')
+    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
     assertFalse(updated.active)
 
     OpeningBalance openingBalance = accountService.saveOpeningBalance(fiscalYearId, '1010', 1250.50G)
