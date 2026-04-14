@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
 
+import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
@@ -39,6 +41,7 @@ import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.ReportIntegrityService
+import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
@@ -177,6 +180,120 @@ class AcceptanceCriteriaTest {
     assertTrue(Files.isRegularFile(packagingRoot.resolve('linux').resolve('AlipsaAccounting.png')))
     assertTrue(Files.isRegularFile(packagingRoot.resolve('windows').resolve('AlipsaAccounting.ico')))
     assertTrue(Files.isRegularFile(packagingRoot.resolve('macos').resolve('AlipsaAccounting.icns')))
+  }
+
+  @Test
+  void multiCompanyIsolationCanBeDemonstrated() {
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    AcceptanceServices services = createAcceptanceServices(databaseService)
+
+    CompanyService companyService = new CompanyService(databaseService)
+    Company companyA = companyService.findById(CompanyService.LEGACY_COMPANY_ID)
+    companyA = companyService.save(new Company(
+        companyA.id, 'Alfa AB', '556001-0001', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null))
+    Company companyB = companyService.save(new Company(
+        null, 'Bravo AB', '556002-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null))
+
+    FiscalYear fyA = services.fiscalYearService.createFiscalYear(
+        companyA.id, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear fyB = services.fiscalYearService.createFiscalYear(
+        companyB.id, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+
+    seedCompanyAccounts(databaseService, companyA.id)
+    seedCompanyAccounts(databaseService, companyB.id)
+
+    services.voucherService.createAndBook(
+        fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Alfa',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
+        ])
+    services.voucherService.createAndBook(
+        fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Bravo',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 2500.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 2000.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 500.00G)
+        ])
+
+    ReportArchive reportA = services.journoReportService.generatePdf(
+        new ReportSelection(ReportType.VOUCHER_LIST, fyA.id, null, fyA.startDate, fyA.endDate))
+    assertNotNull(reportA)
+
+    Path sieB = tempDir.resolve('bravo.sie')
+    SieExportResult sieResultB = services.sieService.exportFiscalYear(fyB.id, sieB)
+    assertNotNull(sieResultB.checksumSha256)
+    String sieContent = sieB.toFile().getText('CP437')
+    assertTrue(sieContent.contains('Bravo AB'))
+    assertTrue(!sieContent.contains('Alfa AB'))
+
+    lockAllAccountingPeriods(services.accountingPeriodService, fyA.id)
+    YearEndClosingResult closingA = services.closingService.closeFiscalYear(fyA.id)
+    assertTrue(closingA.closedFiscalYear.closed)
+    assertEquals('2027', closingA.nextFiscalYear.name)
+
+    FiscalYear fyBAfter = services.fiscalYearService.findById(fyB.id)
+    assertTrue(!fyBAfter.closed)
+    List<FiscalYear> companyBYears = services.fiscalYearService.listFiscalYears(companyB.id)
+    assertEquals(1, companyBYears.size())
+
+    databaseService.withSql { Sql sql ->
+      int vouchersA = countVouchersForFiscalYear(sql, fyA.id)
+      int vouchersB = countVouchersForFiscalYear(sql, fyB.id)
+      assertTrue(vouchersA >= 1)
+      assertTrue(vouchersB == 1)
+    }
+  }
+
+  private static int countVouchersForFiscalYear(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select count(*) as total from voucher where fiscal_year_id = ?', [fiscalYearId]) as GroovyRowResult
+    ((Number) row.get('total')).intValue()
+  }
+
+  private static void seedCompanyAccounts(DatabaseService databaseService, long companyId) {
+    databaseService.withTransaction { Sql sql ->
+      insertAccountIfMissing(sql, companyId, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
+      insertAccountIfMissing(sql, companyId, '1930', 'Företagskonto', 'ASSET', 'DEBIT', null)
+      insertAccountIfMissing(sql, companyId, '2099', 'Årets resultat', 'EQUITY', 'CREDIT', null)
+      insertAccountIfMissing(sql, companyId, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
+      insertAccountIfMissing(sql, companyId, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
+      insertAccountIfMissing(sql, companyId, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
+      insertAccountIfMissing(sql, companyId, '4010', 'Varukostnad', 'EXPENSE', 'DEBIT', null)
+    }
+  }
+
+  private static void insertAccountIfMissing(
+      Sql sql,
+      long companyId,
+      String accountNumber,
+      String accountName,
+      String accountClass,
+      String normalBalanceSide,
+      String vatCode
+  ) {
+    if (sql.firstRow(
+        'select account_number from account where company_id = ? and account_number = ?',
+        [companyId, accountNumber]) != null) {
+      return
+    }
+    sql.executeInsert('''
+        insert into account (
+            company_id,
+            account_number,
+            account_name,
+            account_class,
+            normal_balance_side,
+            vat_code,
+            active,
+            manual_review_required,
+            classification_note,
+            created_at,
+            updated_at
+        ) values (?, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+    ''', [companyId, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 
   private static void lockAllAccountingPeriods(AccountingPeriodService accountingPeriodService, long fiscalYearId) {

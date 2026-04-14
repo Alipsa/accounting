@@ -41,7 +41,11 @@ final class ReportArchiveService {
     String safeFormat = normalizeFormat(reportFormat)
     AppPaths.ensureDirectoryStructure()
     String fileName = buildFileName(safeSelection, safeFormat)
-    String storagePath = buildStoragePath(fileName)
+
+    long companyId = databaseService.withSql { Sql sql ->
+      CompanyService.resolveFromFiscalYear(sql, safeSelection.fiscalYearId)
+    }
+    String storagePath = buildStoragePath(companyId, fileName)
     Path targetPath = resolveStoragePath(storagePath)
     Files.createDirectories(targetPath.parent)
     Files.write(targetPath, content)
@@ -49,7 +53,6 @@ final class ReportArchiveService {
 
     try {
       databaseService.withTransaction { Sql sql ->
-        long companyId = CompanyService.resolveFromFiscalYear(sql, safeSelection.fiscalYearId)
         LocalDateTime createdAt = currentDatabaseTimestamp(sql)
         List<List<Object>> keys = sql.executeInsert('''
             insert into report_archive (
@@ -252,10 +255,10 @@ final class ReportArchiveService {
     "${selection.reportType.name().toLowerCase(Locale.ROOT)}-${selection.startDate}-${selection.endDate}.${suffix}"
   }
 
-  private static String buildStoragePath(String fileName) {
+  private static String buildStoragePath(long companyId, String fileName) {
     LocalDateTime now = LocalDateTime.now()
     String safeFileName = fileName.replaceAll(/[^A-Za-z0-9._-]/, '_')
-    "${now.year}/${String.format('%02d', now.monthValue)}/${safeFileName}"
+    "c${companyId}/${now.year}/${String.format('%02d', now.monthValue)}/${safeFileName}"
   }
 
   private static Path resolveStoragePath(String storagePath) {
