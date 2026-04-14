@@ -199,12 +199,18 @@ final class VatService {
     }
 
     if (periodicity == VatPeriodicity.QUARTERLY) {
-      List<List<GroovyRowResult>> quarters = groupByQuarter(accountingPeriods)
+      List<List<GroovyRowResult>> quarters = groupByCalendarQuarter(accountingPeriods)
       quarters.eachWithIndex { List<GroovyRowResult> quarter, int index ->
         GroovyRowResult first = quarter.first()
         GroovyRowResult last = quarter.last()
-        insertVatPeriod(sql, fiscalYearId, index + 1,
-            "Q${index + 1} ${SqlValueMapper.toLocalDate(first.get('startDate'))} - ${SqlValueMapper.toLocalDate(last.get('endDate'))}".toString(),
+        LocalDate start = SqlValueMapper.toLocalDate(first.get('startDate'))
+        LocalDate end = SqlValueMapper.toLocalDate(last.get('endDate'))
+        int calendarQuarter = (start.monthValue - 1).intdiv(3) as int + 1
+        String label = "Q${calendarQuarter} ${start.year}"
+        if (isPartialQuarter(start, end, calendarQuarter)) {
+          label = "${label} (del)"
+        }
+        insertVatPeriod(sql, fiscalYearId, index + 1, label,
             first.get('startDate'), last.get('endDate'))
       }
       return
@@ -237,19 +243,22 @@ final class VatService {
     ''', [fiscalYearId, periodIndex, periodName, startDate, endDate, OPEN])
   }
 
-  private static List<List<GroovyRowResult>> groupByQuarter(List<GroovyRowResult> accountingPeriods) {
+  private static List<List<GroovyRowResult>> groupByCalendarQuarter(List<GroovyRowResult> accountingPeriods) {
     List<List<GroovyRowResult>> quarters = []
     List<GroovyRowResult> current = []
     int currentQuarter = -1
+    int currentYear = -1
     accountingPeriods.each { GroovyRowResult row ->
       LocalDate start = SqlValueMapper.toLocalDate(row.get('startDate'))
       int quarter = (start.monthValue - 1).intdiv(3) as int
-      if (quarter != currentQuarter) {
+      int year = start.year
+      if (quarter != currentQuarter || year != currentYear) {
         if (!current.isEmpty()) {
           quarters << current
         }
         current = []
         currentQuarter = quarter
+        currentYear = year
       }
       current << row
     }
@@ -257,6 +266,13 @@ final class VatService {
       quarters << current
     }
     quarters
+  }
+
+  private static boolean isPartialQuarter(LocalDate start, LocalDate end, int calendarQuarter) {
+    int firstMonth = (calendarQuarter - 1) * 3 + 1
+    LocalDate quarterStart = LocalDate.of(start.year, firstMonth, 1)
+    LocalDate quarterEnd = quarterStart.plusMonths(3).minusDays(1)
+    start != quarterStart || end != quarterEnd
   }
 
   private static VatPeriodicity loadPeriodicity(Sql sql, long companyId) {
