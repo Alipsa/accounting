@@ -144,6 +144,49 @@ final class VoucherService {
     }
   }
 
+  boolean isLastInSeries(long voucherId) {
+    databaseService.withSql { Sql sql ->
+      Voucher voucher = requireVoucher(sql, voucherId)
+      GroovyRowResult row = sql.firstRow('''
+          select max(running_number) as maxRunning
+            from voucher
+           where voucher_series_id = ?
+             and fiscal_year_id = ?
+      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
+      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
+      voucher.runningNumber != null && voucher.runningNumber == maxRunning
+    }
+  }
+
+  void deleteVoucher(long voucherId) {
+    databaseService.withTransaction { Sql sql ->
+      Voucher voucher = requireVoucher(sql, voucherId)
+      if (voucher.status != VoucherStatus.ACTIVE) {
+        throw new IllegalStateException('Endast aktiva verifikationer kan tas bort.')
+      }
+      ensurePeriodUnlocked(sql, voucher.fiscalYearId, voucher.accountingDate)
+      GroovyRowResult row = sql.firstRow('''
+          select max(running_number) as maxRunning
+            from voucher
+           where voucher_series_id = ?
+             and fiscal_year_id = ?
+      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
+      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
+      if (voucher.runningNumber == null || voucher.runningNumber != maxRunning) {
+        throw new IllegalStateException('Endast den sista verifikationen i serien kan tas bort.')
+      }
+      sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
+      sql.executeUpdate('delete from attachment where voucher_id = ?', [voucherId])
+      sql.executeUpdate('delete from voucher where id = ?', [voucherId])
+      sql.executeUpdate('''
+          update voucher_series
+             set next_running_number = ?,
+                 updated_at = current_timestamp
+           where id = ?
+      ''', [voucher.runningNumber, voucher.voucherSeriesId])
+    }
+  }
+
   Voucher createCorrectionVoucher(long originalVoucherId, String description = null) {
     databaseService.withTransaction { Sql sql ->
       Voucher original = requireVoucher(sql, originalVoucherId)

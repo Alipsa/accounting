@@ -184,7 +184,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
     voidButton = new JButton('\u2716')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
-    voidButton.addActionListener { voidVoucher() }
+    voidButton.addActionListener { deleteOrCancelVoucher() }
     panel.add(voidButton)
 
     panel
@@ -437,23 +437,41 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private void voidVoucher() {
+  private void deleteOrCancelVoucher() {
     if (currentVoucher == null) {
       return
     }
-    int choice = javax.swing.JOptionPane.showConfirmDialog(
-        this,
-        I18n.instance.getString('voucherPanel.button.void') + ' ' + (currentVoucher.voucherNumber ?: '') + '?',
-        I18n.instance.getString('voucherPanel.button.void'),
-        javax.swing.JOptionPane.OK_CANCEL_OPTION
-    )
-    if (choice != javax.swing.JOptionPane.OK_OPTION) {
-      return
-    }
     try {
-      Voucher cancelled = voucherService.cancelVoucher(currentVoucher.id)
-      showInfo(I18n.instance.getString('voucherPanel.message.voided').replace('{0}', cancelled.voucherNumber ?: ''))
-      reloadVoucherList()
+      if (voucherService.isLastInSeries(currentVoucher.id)) {
+        int choice = javax.swing.JOptionPane.showConfirmDialog(
+            this,
+            I18n.instance.getString('voucherPanel.confirm.delete')
+                .replace('{0}', currentVoucher.voucherNumber ?: ''),
+            I18n.instance.getString('voucherPanel.button.void'),
+            javax.swing.JOptionPane.OK_CANCEL_OPTION
+        )
+        if (choice != javax.swing.JOptionPane.OK_OPTION) {
+          return
+        }
+        voucherService.deleteVoucher(currentVoucher.id)
+        showInfo(I18n.instance.getString('voucherPanel.message.deleted')
+            .replace('{0}', currentVoucher.voucherNumber ?: ''))
+        reloadVoucherList()
+      } else {
+        int choice = javax.swing.JOptionPane.showConfirmDialog(
+            this,
+            I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+                .replace('{0}', currentVoucher.voucherNumber ?: ''),
+            I18n.instance.getString('voucherPanel.button.void'),
+            javax.swing.JOptionPane.YES_NO_OPTION
+        )
+        if (choice == javax.swing.JOptionPane.YES_OPTION) {
+          Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+          showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+              correction.voucherNumber ?: ''))
+          reloadVoucherList()
+        }
+      }
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
     }
