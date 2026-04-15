@@ -113,8 +113,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   @Override
   void propertyChange(PropertyChangeEvent event) {
-    if (event.propertyName == ActiveCompanyManager.COMPANY_ID_PROPERTY
-        || event.propertyName == ActiveCompanyManager.FISCAL_YEAR_PROPERTY) {
+    if (event.propertyName == ActiveCompanyManager.COMPANY_ID_PROPERTY) {
+      SwingUtilities.invokeLater {
+        installAccountLookupEditor()
+        reloadVoucherList()
+      }
+    } else if (event.propertyName == ActiveCompanyManager.FISCAL_YEAR_PROPERTY) {
       SwingUtilities.invokeLater { reloadVoucherList() }
     } else if ('locale' == event.propertyName) {
       SwingUtilities.invokeLater { updateLabels() }
@@ -379,7 +383,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       currentIndex = found
       showVoucher(voucherList[currentIndex])
     } else {
-      showError(I18n.instance.getString('voucherPanel.error.saveFailed'))
+      showError("${I18n.instance.getString('voucherPanel.label.voucherNumber')} ${normalized} — ${I18n.instance.getString('voucherPanel.lookup.noMatches')}" as String)
     }
   }
 
@@ -426,6 +430,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private void voidVoucher() {
     if (currentVoucher == null) {
+      return
+    }
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.getString('voucherPanel.button.void') + ' ' + (currentVoucher.voucherNumber ?: '') + '?',
+        I18n.instance.getString('voucherPanel.button.void'),
+        javax.swing.JOptionPane.OK_CANCEL_OPTION
+    )
+    if (choice != javax.swing.JOptionPane.OK_OPTION) {
       return
     }
     try {
@@ -824,8 +837,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       switch (columnIndex) {
         case 0:
           row.accountNumber = text.trim()
-          row.accountName = lookupAccountName(row.accountNumber)
-          row.normalBalanceSide = lookupNormalBalanceSide(row.accountNumber)
+          Account lookedUp = lookupAccount(row.accountNumber)
+          row.accountName = lookedUp?.accountName ?: ''
+          row.normalBalanceSide = lookedUp?.normalBalanceSide ?: ''
           recalculateBalances(rowIndex)
           break
         case 1:
@@ -861,29 +875,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
     }
 
-    private String lookupAccountName(String accountNumber) {
+    private Account lookupAccount(String accountNumber) {
       String normalized = accountNumber?.trim()
       if (!normalized) {
-        return ''
+        return null
       }
       try {
-        Account account = accountService.findAccount(activeCompanyManager.companyId, normalized)
-        account == null ? '' : account.accountName
+        accountService.findAccount(activeCompanyManager.companyId, normalized)
       } catch (Exception ignored) {
-        ''
-      }
-    }
-
-    private String lookupNormalBalanceSide(String accountNumber) {
-      String normalized = accountNumber?.trim()
-      if (!normalized) {
-        return ''
-      }
-      try {
-        Account account = accountService.findAccount(activeCompanyManager.companyId, normalized)
-        account == null ? '' : account.normalBalanceSide
-      } catch (Exception ignored) {
-        ''
+        null
       }
     }
 
