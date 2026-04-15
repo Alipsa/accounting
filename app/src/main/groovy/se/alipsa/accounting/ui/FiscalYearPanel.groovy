@@ -290,6 +290,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private static DatePicker createDatePicker() {
     DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
+    settings.allowKeyboardEditing = false
     new DatePicker(settings)
   }
 
