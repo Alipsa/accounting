@@ -102,8 +102,7 @@ final class AccountLookupPopup {
           event.consume()
         } else if (event.keyCode == KeyEvent.VK_ESCAPE) {
           hide()
-        } else if (event.keyCode == KeyEvent.VK_ENTER && popup.visible && currentResults.size() == 1) {
-          resultList.selectedIndex = 0
+        } else if (event.keyCode == KeyEvent.VK_ENTER && popup.visible && resultList.selectedIndex >= 0) {
           selectCurrent()
           event.consume()
         }
@@ -126,6 +125,10 @@ final class AccountLookupPopup {
       hide()
       return
     }
+    if (query.matches('[0-9]{4,}')) {
+      hide()
+      return
+    }
     currentResults = accountService.searchAccounts(companyId, query, null, true, false)
     listModel.clear()
     if (currentResults.isEmpty()) {
@@ -136,10 +139,11 @@ final class AccountLookupPopup {
       currentResults.each { Account account ->
         listModel.addElement("${account.accountNumber} \u2014 ${account.accountName}" as String)
       }
+      resultList.selectedIndex = 0
     }
     resultList.visibleRowCount = Math.min(listModel.size(), MAX_VISIBLE_ROWS)
     popup.pack()
-    if (activeEditor != null) {
+    if (activeEditor?.showing) {
       popup.show(activeEditor, 0, activeEditor.height)
     }
   }
@@ -148,8 +152,8 @@ final class AccountLookupPopup {
     int index = resultList.selectedIndex
     if (index >= 0 && index < currentResults.size()) {
       Account selected = currentResults[index]
-      onSelect.accept(selected)
       hide()
+      onSelect.accept(selected)
     }
   }
 }

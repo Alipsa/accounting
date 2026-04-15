@@ -24,6 +24,8 @@ import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.event.ActionEvent
 import java.awt.event.KeyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.time.LocalDate
@@ -35,7 +37,9 @@ import javax.swing.DefaultCellEditor
 import javax.swing.JButton
 import javax.swing.JFileChooser
 import javax.swing.JLabel
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.JScrollPane
 import javax.swing.JTabbedPane
 import javax.swing.JTable
@@ -74,11 +78,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private JButton prevButton
   private JButton nextButton
-  private JButton newButton
   private JButton saveButton
   private JButton correctionButton
   private JButton voidButton
-  private JButton removeLineButton
   private JButton addAttachmentButton
   private JButton openAttachmentButton
   private JTabbedPane tabs
@@ -150,6 +152,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')))
     panel.add(datePicker)
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')))
+    descriptionField.addActionListener { moveCursorToCell(0, 0) }
     panel.add(descriptionField)
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.series')))
     panel.add(seriesField)
@@ -174,11 +177,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     nextButton.addActionListener { navigateNext() }
     panel.add(nextButton)
-
-    newButton = new JButton('\uD83E\uDDF9')
-    newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
-    newButton.addActionListener { showBlankVoucher() }
-    panel.add(newButton)
 
     saveButton = new JButton('\uD83D\uDCBE')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
@@ -215,14 +213,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     installEnterKeyNavigation()
     installAccountLookupEditor()
     installRightAlignedColumns()
-
-    JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    removeLineButton = new JButton(I18n.instance.getString('voucherPanel.button.removeLine'))
-    removeLineButton.addActionListener { removeSelectedLine() }
-    actions.add(removeLineButton)
+    installDeleteKeyBinding()
+    installLineTableContextMenu()
 
     JPanel panel = new JPanel(new BorderLayout(0, 8))
-    panel.add(actions, BorderLayout.NORTH)
     panel.add(new JScrollPane(lineTable), BorderLayout.CENTER)
     panel
   }
@@ -232,6 +226,44 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     rightRenderer.horizontalAlignment = SwingConstants.RIGHT
     [2, 3, 5, 6].each { int col ->
       lineTable.columnModel.getColumn(col).cellRenderer = rightRenderer
+    }
+  }
+
+  private void installDeleteKeyBinding() {
+    KeyStroke deleteKey = KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0)
+    KeyStroke backspaceKey = KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0)
+    lineTable.getInputMap().put(deleteKey, 'deleteSelectedLine')
+    lineTable.getInputMap().put(backspaceKey, 'deleteSelectedLine')
+    lineTable.getActionMap().put('deleteSelectedLine', new AbstractAction() {
+      @Override
+      void actionPerformed(ActionEvent event) {
+        if (!lineTable.editing && !readOnly) {
+          removeSelectedLine()
+        }
+      }
+    })
+  }
+
+  private void installLineTableContextMenu() {
+    JPopupMenu contextMenu = new JPopupMenu()
+    JMenuItem deleteItem = new JMenuItem(I18n.instance.getString('voucherPanel.button.removeLine'))
+    deleteItem.addActionListener { removeSelectedLine() }
+    contextMenu.add(deleteItem)
+    lineTable.addMouseListener(new MouseAdapter() {
+      @Override
+      void mousePressed(MouseEvent event) { showContextMenu(event, contextMenu) }
+      @Override
+      void mouseReleased(MouseEvent event) { showContextMenu(event, contextMenu) }
+    })
+  }
+
+  private void showContextMenu(MouseEvent event, JPopupMenu menu) {
+    if (event.popupTrigger && !readOnly) {
+      int row = lineTable.rowAtPoint(event.point)
+      if (row >= 0 && row < lineTableModel.rowCount - 1) {
+        lineTable.setRowSelectionInterval(row, row)
+        menu.show(lineTable, event.x, event.y)
+      }
     }
   }
 
@@ -303,7 +335,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void moveCursorToCell(int row, int col) {
-    Timer timer = new Timer(50, {
+    Timer timer = new Timer(100, {
       if (row < lineTable.rowCount) {
         lineTable.requestFocusInWindow()
         lineTable.changeSelection(row, col, false, false)
@@ -450,6 +482,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     refreshAttachmentAndHistory()
     refreshTotals()
     applyReadOnlyState()
+    updateNavigationButtons()
   }
 
   private void showBlankVoucher() {
@@ -470,6 +503,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     auditLogTableModel.setRows([])
     refreshTotals()
     applyReadOnlyState()
+    updateNavigationButtons()
     feedbackArea.text = ''
   }
 
@@ -503,9 +537,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (voucherList.isEmpty()) {
       return
     }
-    if (currentIndex <= 0) {
-      currentIndex = 0
-    } else {
+    if (currentIndex < 0) {
+      currentIndex = voucherList.size() - 1
+    } else if (currentIndex > 0) {
       currentIndex--
     }
     showVoucher(voucherList[currentIndex])
@@ -516,11 +550,20 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       return
     }
     if (currentIndex < 0) {
-      currentIndex = 0
-    } else if (currentIndex < voucherList.size() - 1) {
-      currentIndex++
+      return
     }
-    showVoucher(voucherList[currentIndex])
+    if (currentIndex >= voucherList.size() - 1) {
+      currentIndex = -1
+      showBlankVoucher()
+    } else {
+      currentIndex++
+      showVoucher(voucherList[currentIndex])
+    }
+  }
+
+  private void updateNavigationButtons() {
+    prevButton.enabled = !voucherList.isEmpty() && currentIndex != 0
+    nextButton.enabled = !voucherList.isEmpty() && currentIndex >= 0
   }
 
   private void jumpToVoucher(String number) {
@@ -645,7 +688,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
     voidButton.enabled = !readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
-    removeLineButton.enabled = !readOnly
     correctionButton.enabled = readOnly && currentVoucher != null
     addAttachmentButton.enabled = currentVoucher != null
   }
@@ -774,11 +816,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private void updateLabels() {
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
-    newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
-    removeLineButton.text = I18n.instance.getString('voucherPanel.button.removeLine')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
