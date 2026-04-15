@@ -43,9 +43,11 @@ import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
+import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
+import javax.swing.table.DefaultTableCellRenderer
 
 /**
  * Inline voucher editor panel with sequential navigation.
@@ -211,6 +213,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
     installEnterKeyNavigation()
     installAccountLookupEditor()
+    installRightAlignedColumns()
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     removeLineButton = new JButton(I18n.instance.getString('voucherPanel.button.removeLine'))
@@ -221,6 +224,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     panel.add(actions, BorderLayout.NORTH)
     panel.add(new JScrollPane(lineTable), BorderLayout.CENTER)
     panel
+  }
+
+  private void installRightAlignedColumns() {
+    DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer()
+    rightRenderer.horizontalAlignment = SwingConstants.RIGHT
+    [2, 3, 5, 6].each { int col ->
+      lineTable.columnModel.getColumn(col).cellRenderer = rightRenderer
+    }
   }
 
   private void installEnterKeyNavigation() {
