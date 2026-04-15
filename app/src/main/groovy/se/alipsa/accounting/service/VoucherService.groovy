@@ -200,9 +200,9 @@ final class VoucherService {
       if (!safeDescription) {
         safeDescription = "Korrigering av ${original.voucherNumber ?: original.id}"
       }
-      // Conservative policy: the correction keeps the original accounting date.
-      // If that period has been locked after booking, the correction is blocked and
-      // the user must unlock the period before retrying.
+      // A correction keeps the original accounting date and is allowed even when
+      // that period has been locked — correction is the intended mechanism for
+      // amending vouchers whose period is no longer editable.
       List<VoucherLine> reversingLines = original.lines.collect { VoucherLine line ->
         new VoucherLine(
             null,
@@ -223,7 +223,8 @@ final class VoucherService {
           original.accountingDate,
           safeDescription,
           reversingLines,
-          original.id
+          original.id,
+          true
       )
       sql.executeUpdate('''
           update voucher

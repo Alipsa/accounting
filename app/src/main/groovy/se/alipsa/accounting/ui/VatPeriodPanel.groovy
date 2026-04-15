@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
@@ -15,6 +17,7 @@ import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.math.RoundingMode
 import java.text.DecimalFormat
+import java.util.function.BiFunction
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -58,6 +61,9 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
+  private BiFunction<String, String, Integer> lockPeriodsConfirmer = { String message, String title ->
+    Integer.valueOf(JOptionPane.showConfirmDialog(this, message, title, JOptionPane.YES_NO_OPTION))
+  } as BiFunction<String, String, Integer>
 
   VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService,
                  AccountingPeriodService accountingPeriodService, ActiveCompanyManager activeCompanyManager) {
@@ -266,13 +272,10 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     if (unlocked.isEmpty()) {
       return
     }
-    int choice = JOptionPane.showConfirmDialog(
-        this,
-        I18n.instance.format('vatPeriodPanel.confirm.lockPeriods',
-            unlocked.size().toString(), vatPeriod.endDate.toString()),
-        I18n.instance.getString('vatPeriodPanel.confirm.lockPeriods.title'),
-        JOptionPane.YES_NO_OPTION
-    )
+    String message = I18n.instance.format('vatPeriodPanel.confirm.lockPeriods',
+        unlocked.size().toString(), vatPeriod.endDate.toString())
+    String title = I18n.instance.getString('vatPeriodPanel.confirm.lockPeriods.title')
+    int choice = lockPeriodsConfirmer.apply(message, title).intValue()
     if (choice != JOptionPane.YES_OPTION) {
       return
     }
@@ -280,6 +283,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     List<AccountingPeriod> locked = accountingPeriodService.lockPeriodsUpTo(
         vatPeriod.fiscalYearId, vatPeriod.endDate, reason)
     showInfo(I18n.instance.format('vatPeriodPanel.message.periodsLocked', locked.size().toString()))
+  }
+
+  @PackageScope
+  void setLockPeriodsConfirmer(BiFunction<String, String, Integer> confirmer) {
+    this.lockPeriodsConfirmer = confirmer
   }
 
   private FiscalYear selectedFiscalYear() {

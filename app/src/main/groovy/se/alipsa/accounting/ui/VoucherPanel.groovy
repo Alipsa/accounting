@@ -688,7 +688,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
     voidButton.enabled = !readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
-    correctionButton.enabled = readOnly && currentVoucher != null
+    correctionButton.enabled = readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
     addAttachmentButton.enabled = currentVoucher != null
   }
 

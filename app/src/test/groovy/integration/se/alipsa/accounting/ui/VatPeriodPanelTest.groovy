@@ -31,8 +31,10 @@ import java.math.RoundingMode
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.BiFunction
 
 import javax.swing.JButton
+import javax.swing.JOptionPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
@@ -88,7 +90,11 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      VatPeriodPanel vatPanel = new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      vatPanel.lockPeriodsConfirmer = { String message, String title ->
+        Integer.valueOf(JOptionPane.NO_OPTION)
+      } as BiFunction<String, String, Integer>
+      vatPanel
     }
 
     JTable periodTable = findTable(panel, 'Period')
@@ -106,7 +112,11 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      VatPeriodPanel vatPanel = new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      vatPanel.lockPeriodsConfirmer = { String message, String title ->
+        Integer.valueOf(JOptionPane.NO_OPTION)
+      } as BiFunction<String, String, Integer>
+      vatPanel
     }
 
     JTable periodTable = findTable(panel, 'Period')

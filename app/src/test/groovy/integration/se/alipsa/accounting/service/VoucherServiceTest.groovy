@@ -287,7 +287,7 @@ class VoucherServiceTest {
   }
 
   @Test
-  void correctionIsBlockedIfOriginalPeriodWasLockedAfterCreation() {
+  void correctionIsAllowedEvenWhenOriginalPeriodIsLocked() {
     Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
@@ -298,12 +298,11 @@ class VoucherServiceTest {
     AccountingPeriod january = accountingPeriodService.listPeriods(fiscalYear.id).first()
     accountingPeriodService.lockPeriod(january.id, 'Januari är låst.')
 
-    Executable action = {
-      voucherService.createCorrectionVoucher(active.id)
-    } as Executable
+    Voucher correction = voucherService.createCorrectionVoucher(active.id)
 
-    IllegalStateException exception = assertThrows(IllegalStateException, action)
-    assertEquals('Perioden är låst och verifikationen kan inte ändras.', exception.message)
+    assertEquals(VoucherStatus.CORRECTION, correction.status)
+    assertEquals(active.id, correction.originalVoucherId)
+    assertEquals(LocalDate.of(2026, 1, 10), correction.accountingDate)
   }
 
   @Test
@@ -315,6 +314,13 @@ class VoucherServiceTest {
         'Audit verifikation',
         balancedLines(100.00G)
     )
+    voucherService.updateVoucher(
+        voucher.id,
+        LocalDate.of(2026, 5, 1),
+        'Audit verifikation justerad',
+        balancedLines(150.00G)
+    )
+    voucherService.cancelVoucher(voucher.id)
 
     Voucher correctable = voucherService.createVoucher(
         fiscalYear.id,
@@ -330,6 +336,14 @@ class VoucherServiceTest {
     List<AuditLogEntry> correctionEntries = auditLogService.listEntriesForVoucher(correction.id)
 
     assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
+    assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.UPDATE_VOUCHER })
+    assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CANCEL_VOUCHER })
+    AuditLogEntry updateEntry = voucherEntries.find { AuditLogEntry entry -> entry.eventType == AuditLogService.UPDATE_VOUCHER }
+    assertNotNull(updateEntry.details, 'Ändringshändelsen ska ha detaljer.')
+    assertTrue(updateEntry.details.contains('Audit verifikation justerad'),
+        'Ändringshändelsen ska innehålla ny verifikationstext.')
+    assertTrue(updateEntry.details.contains('debit=150.00'),
+        'Ändringshändelsen ska innehålla uppdaterade radbelopp.')
     assertTrue(correctableEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
     assertTrue(correctionEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CORRECTION_VOUCHER })
     assertEquals([], auditLogService.validateIntegrity())
