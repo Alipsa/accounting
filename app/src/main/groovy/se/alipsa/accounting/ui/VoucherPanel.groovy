@@ -263,10 +263,23 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           moveCursorToCell(row, 2)
         }
         break
-      case 2: // Debet — next row account
-      case 3: // Kredit — next row account
-        ensureAutoRow()
-        moveCursorToCell(row + 1, 0)
+      case 2: // Debet
+        LineEntry debitEntry = lineTableModel.rows[row]
+        if (hasText(debitEntry.debit)) {
+          ensureAutoRow()
+          moveCursorToCell(row + 1, 0)
+        } else {
+          moveCursorToCell(row, 3)
+        }
+        break
+      case 3: // Kredit
+        LineEntry creditEntry = lineTableModel.rows[row]
+        if (hasText(creditEntry.credit)) {
+          ensureAutoRow()
+          moveCursorToCell(row + 1, 0)
+        } else {
+          moveCursorToCell(row, 2)
+        }
         break
       case 4: // Text — next row account
         ensureAutoRow()
