@@ -5,6 +5,7 @@ import groovy.transform.CompileDynamic
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
@@ -159,6 +160,10 @@ final class MainFrame implements PropertyChangeListener {
   private JButton englishButton
   private JButton swedishButton
   private JLabel languageLabel
+  private JLabel themeLabel
+  private JRadioButton themeSystemButton
+  private JRadioButton themeLightButton
+  private JRadioButton themeDarkButton
   private JTabbedPane tabbedPane
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
@@ -223,6 +228,10 @@ final class MainFrame implements PropertyChangeListener {
     editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     companyLabel.text = I18n.instance.getString('mainFrame.label.activeCompany')
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
+    themeLabel.text = I18n.instance.getString('settings.label.theme')
+    themeSystemButton.text = I18n.instance.getString('settings.theme.system')
+    themeLightButton.text = I18n.instance.getString('settings.theme.light')
+    themeDarkButton.text = I18n.instance.getString('settings.theme.dark')
     updateLanguageButtonBorders()
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
@@ -266,7 +275,6 @@ final class MainFrame implements PropertyChangeListener {
         locationByPlatform: true,
         show: false
     ) {
-      lookAndFeel 'system'
       menuBar {
         fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
           newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: { showNewCompanyDialog() })
@@ -311,12 +319,17 @@ final class MainFrame implements PropertyChangeListener {
     languageRow.add(languageLabel)
     languageRow.add(englishButton)
     languageRow.add(swedishButton)
-    topPanel.add(languageRow, BorderLayout.NORTH)
+    JPanel settingsRows = new JPanel()
+    settingsRows.layout = new BoxLayout(settingsRows, BoxLayout.Y_AXIS)
+    settingsRows.add(languageRow)
+    settingsRows.add(buildThemeRow())
 
     JPanel companyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     editCompanySettingsButton = new JButton(I18n.instance.getString('mainFrame.button.editCompanySettings'))
     editCompanySettingsButton.addActionListener { showCompanySettingsDialog() }
     companyRow.add(editCompanySettingsButton)
+
+    topPanel.add(settingsRows, BorderLayout.NORTH)
     topPanel.add(companyRow, BorderLayout.SOUTH)
 
     panel.add(topPanel, BorderLayout.NORTH)
@@ -332,6 +345,47 @@ final class MainFrame implements PropertyChangeListener {
     I18n.instance.setLocale(locale)
     userPreferencesService.setLanguage(locale)
     updateLanguageButtonBorders()
+  }
+
+  private JPanel buildThemeRow() {
+    JPanel themeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    themeLabel = new JLabel(I18n.instance.getString('settings.label.theme'))
+    themeSystemButton = new JRadioButton(I18n.instance.getString('settings.theme.system'))
+    themeLightButton = new JRadioButton(I18n.instance.getString('settings.theme.light'))
+    themeDarkButton = new JRadioButton(I18n.instance.getString('settings.theme.dark'))
+    ButtonGroup themeGroup = new ButtonGroup()
+    themeGroup.add(themeSystemButton)
+    themeGroup.add(themeLightButton)
+    themeGroup.add(themeDarkButton)
+    selectThemeButton(userPreferencesService.getTheme())
+    themeSystemButton.addActionListener { switchTheme(ThemeMode.SYSTEM) }
+    themeLightButton.addActionListener { switchTheme(ThemeMode.LIGHT) }
+    themeDarkButton.addActionListener { switchTheme(ThemeMode.DARK) }
+    themeRow.add(themeLabel)
+    themeRow.add(themeSystemButton)
+    themeRow.add(themeLightButton)
+    themeRow.add(themeDarkButton)
+    themeRow
+  }
+
+  private void switchTheme(ThemeMode mode) {
+    userPreferencesService.setTheme(mode)
+    ThemeApplier.applyAndUpdateUI(mode)
+    setStatus(I18n.instance.getString('settings.status.themeChanged'))
+  }
+
+  private void selectThemeButton(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.LIGHT:
+        themeLightButton.selected = true
+        break
+      case ThemeMode.DARK:
+        themeDarkButton.selected = true
+        break
+      default:
+        themeSystemButton.selected = true
+        break
+    }
   }
 
   private void updateLanguageButtonBorders() {
