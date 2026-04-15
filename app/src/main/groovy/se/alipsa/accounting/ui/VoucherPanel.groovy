@@ -167,7 +167,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     nextButton.addActionListener { navigateNext() }
     panel.add(nextButton)
 
-    newButton = new JButton('\u2795')
+    newButton = new JButton('\uD83E\uDDF9')
     newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
     newButton.addActionListener { showBlankVoucher() }
     panel.add(newButton)
