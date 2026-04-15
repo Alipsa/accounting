@@ -154,11 +154,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JPanel buildNavigationToolbar() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2))
 
-    prevButton = new JButton(I18n.instance.getString('voucherPanel.button.prev'))
+    prevButton = new JButton('\u25C0')
+    prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     prevButton.addActionListener { navigatePrev() }
     panel.add(prevButton)
 
-    nextButton = new JButton(I18n.instance.getString('voucherPanel.button.next'))
+    nextButton = new JButton('\u25B6')
+    nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     nextButton.addActionListener { navigateNext() }
     panel.add(nextButton)
 
@@ -167,19 +169,23 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     jumpField.addActionListener { jumpToVoucher(jumpField.text) }
     panel.add(jumpField)
 
-    newButton = new JButton(I18n.instance.getString('voucherPanel.button.new'))
+    newButton = new JButton('\u2795')
+    newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
     newButton.addActionListener { showBlankVoucher() }
     panel.add(newButton)
 
-    saveButton = new JButton(I18n.instance.getString('voucherPanel.button.save'))
+    saveButton = new JButton('\uD83D\uDCBE')
+    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     saveButton.addActionListener { saveVoucher() }
     panel.add(saveButton)
 
-    correctionButton = new JButton(I18n.instance.getString('voucherPanel.button.createCorrection'))
+    correctionButton = new JButton('\u270E')
+    correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     correctionButton.addActionListener { createCorrection() }
     panel.add(correctionButton)
 
-    voidButton = new JButton(I18n.instance.getString('voucherPanel.button.void'))
+    voidButton = new JButton('\u2716')
+    voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
     voidButton.addActionListener { voidVoucher() }
     panel.add(voidButton)
 
@@ -605,12 +611,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void updateLabels() {
-    prevButton.text = I18n.instance.getString('voucherPanel.button.prev')
-    nextButton.text = I18n.instance.getString('voucherPanel.button.next')
-    newButton.text = I18n.instance.getString('voucherPanel.button.new')
-    saveButton.text = I18n.instance.getString('voucherPanel.button.save')
-    correctionButton.text = I18n.instance.getString('voucherPanel.button.createCorrection')
-    voidButton.text = I18n.instance.getString('voucherPanel.button.void')
+    prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
+    nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
+    newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
+    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
+    correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
+    voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
     removeLineButton.text = I18n.instance.getString('voucherPanel.button.removeLine')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
