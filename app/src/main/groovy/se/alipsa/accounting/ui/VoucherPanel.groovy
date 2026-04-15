@@ -306,10 +306,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       if (row < lineTable.rowCount) {
         lineTable.requestFocusInWindow()
         lineTable.changeSelection(row, col, false, false)
-        lineTable.editCellAt(row, col)
-        java.awt.Component editor = lineTable.editorComponent
-        if (editor != null) {
-          editor.requestFocusInWindow()
+        SwingUtilities.invokeLater {
+          lineTable.editCellAt(row, col)
+          java.awt.Component editor = lineTable.editorComponent
+          if (editor != null) {
+            editor.requestFocusInWindow()
+          }
         }
       }
     }
