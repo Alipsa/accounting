@@ -214,6 +214,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
       clearInputs()
       reloadData()
       selectFiscalYear(year.id)
+      activeCompanyManager.reloadFiscalYears()
       showInfo(I18n.instance.format('fiscalYearPanel.message.created', year.name))
     } catch (IllegalArgumentException exception) {
       showValidation([ValidationSupport.fieldError('', exception.message)])

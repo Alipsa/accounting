@@ -202,6 +202,8 @@ final class MainFrame implements PropertyChangeListener {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater { onCompanyChanged() }
+    } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater { reloadFiscalYearComboBox() }
     }
   }
 

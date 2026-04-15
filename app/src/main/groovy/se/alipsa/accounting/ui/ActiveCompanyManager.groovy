@@ -74,7 +74,7 @@ final class ActiveCompanyManager {
     companyId > 0 ? fiscalYearService.listFiscalYears(companyId) : []
   }
 
-  private void reloadFiscalYears() {
+  void reloadFiscalYears() {
     List<FiscalYear> years = listFiscalYears()
     FiscalYear newYear = years.isEmpty() ? null : years.first()
     setFiscalYear(newYear)
