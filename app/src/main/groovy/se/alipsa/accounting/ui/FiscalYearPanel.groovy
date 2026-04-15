@@ -12,6 +12,7 @@ import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.ComponentOrientation
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -131,26 +132,36 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
         new Insets(0, 0, 8, 8), 0, 0
     )
     GridBagConstraints fieldConstraints = new GridBagConstraints(
-        1, 0, 1, 1, 1.0d, 0.0d,
-        GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
+        1, 0, 1, 1, 0.0d, 0.0d,
+        GridBagConstraints.WEST, GridBagConstraints.NONE,
         new Insets(0, 0, 8, 0), 0, 0
+    )
+    GridBagConstraints fillerConstraints = new GridBagConstraints(
+        2, 0, 1, 1, 1.0d, 0.0d,
+        GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
+        new Insets(0, 0, 0, 0), 0, 0
     )
 
     nameLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.name'))
     panel.add(nameLabel, labelConstraints)
     panel.add(nameField, fieldConstraints)
+    panel.add(new JLabel(), fillerConstraints)
 
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
+    fillerConstraints.gridy = 1
     startDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.startDate'))
     panel.add(startDateLabel, labelConstraints)
     panel.add(startDatePicker, fieldConstraints)
+    panel.add(new JLabel(), fillerConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
+    fillerConstraints.gridy = 2
     endDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.endDate'))
     panel.add(endDateLabel, labelConstraints)
     panel.add(endDatePicker, fieldConstraints)
+    panel.add(new JLabel(), fillerConstraints)
 
     panel
   }
@@ -291,7 +302,10 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
     settings.allowKeyboardEditing = false
-    new DatePicker(settings)
+    DatePicker picker = new DatePicker(settings)
+    picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
+    picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
+    picker
   }
 
   private Frame ownerFrame() {
