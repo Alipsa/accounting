@@ -21,11 +21,14 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Desktop
 import java.awt.FlowLayout
+import java.awt.event.ActionEvent
+import java.awt.event.KeyEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.time.LocalDate
 import java.util.function.Consumer
 
+import javax.swing.AbstractAction
 import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
 import javax.swing.JButton
@@ -37,6 +40,7 @@ import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
 import javax.swing.event.TableModelEvent
@@ -204,6 +208,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     lineTableModel.addTableModelListener { TableModelEvent event ->
       refreshTotals()
     }
+    installEnterKeyNavigation()
     installAccountLookupEditor()
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
@@ -217,34 +222,108 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     panel
   }
 
-  private void installAccountLookupEditor() {
-    JTextField lookupEditorField = new JTextField()
-    AccountLookupPopup lookupPopup = new AccountLookupPopup(
-        accountService,
-        activeCompanyManager.companyId,
-        { Account selected ->
+  private void installEnterKeyNavigation() {
+    KeyStroke enterKey = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
+    lineTable.getInputMap().put(enterKey, 'confirmAndAdvance')
+    lineTable.getActionMap().put('confirmAndAdvance', new AbstractAction() {
+      @Override
+      void actionPerformed(ActionEvent event) {
+        if (lineTable.editing) {
           int row = lineTable.editingRow
-          if (row >= 0) {
-            lineTableModel.setAccountFromLookup(row, selected.accountNumber, selected.accountName,
-                selected.normalBalanceSide)
-            recalculateBalances(row)
-            lookupEditorField.text = selected.accountName
-            if (lineTable.cellEditor != null) {
-              lineTable.cellEditor.stopCellEditing()
-            }
-            moveCursorToAmountColumn(row, selected.normalBalanceSide)
+          int col = lineTable.editingColumn
+          lineTable.cellEditor.stopCellEditing()
+          advanceFromCell(row, col)
+        } else {
+          int row = lineTable.selectedRow
+          int col = lineTable.selectedColumn
+          if (row >= 0 && col >= 0 && lineTable.isCellEditable(row, col)) {
+            lineTable.editCellAt(row, col)
           }
-        } as Consumer<Account>
-    )
-    DefaultCellEditor lookupEditor = new DefaultCellEditor(lookupEditorField) {
+        }
+      }
+    })
+  }
+
+  private void advanceFromCell(int row, int col) {
+    switch (col) {
+      case 0: // Account number — jump to debet/kredit based on normalBalanceSide
+        LineEntry entry = lineTableModel.rows[row]
+        if (hasText(entry.normalBalanceSide)) {
+          moveCursorToAmountColumn(row, entry.normalBalanceSide)
+        } else {
+          moveCursorToCell(row, 2)
+        }
+        break
+      case 1: // Account description — same as account number
+        LineEntry descEntry = lineTableModel.rows[row]
+        if (hasText(descEntry.normalBalanceSide)) {
+          moveCursorToAmountColumn(row, descEntry.normalBalanceSide)
+        } else {
+          moveCursorToCell(row, 2)
+        }
+        break
+      case 2: // Debet — next row account
+      case 3: // Kredit — next row account
+        ensureAutoRow()
+        moveCursorToCell(row + 1, 0)
+        break
+      case 4: // Text — next row account
+        ensureAutoRow()
+        moveCursorToCell(row + 1, 0)
+        break
+      default:
+        break
+    }
+  }
+
+  private void moveCursorToCell(int row, int col) {
+    SwingUtilities.invokeLater {
+      if (row < lineTable.rowCount) {
+        lineTable.changeSelection(row, col, false, false)
+        lineTable.editCellAt(row, col)
+      }
+    }
+  }
+
+  private void installAccountLookupEditor() {
+    Consumer<Account> onAccountSelected = { Account selected ->
+      int row = lineTable.editingRow
+      if (row >= 0) {
+        lineTableModel.setAccountFromLookup(row, selected.accountNumber, selected.accountName,
+            selected.normalBalanceSide)
+        recalculateBalances(row)
+        if (lineTable.cellEditor != null) {
+          lineTable.cellEditor.stopCellEditing()
+        }
+        moveCursorToAmountColumn(row, selected.normalBalanceSide)
+      }
+    } as Consumer<Account>
+
+    JTextField numberEditorField = new JTextField()
+    AccountLookupPopup numberPopup = new AccountLookupPopup(
+        accountService, activeCompanyManager.companyId, onAccountSelected)
+    DefaultCellEditor numberEditor = new DefaultCellEditor(numberEditorField) {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
         java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
-        lookupPopup.attachToEditor(lookupEditorField)
+        numberPopup.attachToEditor(numberEditorField)
         comp
       }
     }
-    lineTable.columnModel.getColumn(1).cellEditor = lookupEditor
+    lineTable.columnModel.getColumn(0).cellEditor = numberEditor
+
+    JTextField nameEditorField = new JTextField()
+    AccountLookupPopup namePopup = new AccountLookupPopup(
+        accountService, activeCompanyManager.companyId, onAccountSelected)
+    DefaultCellEditor nameEditor = new DefaultCellEditor(nameEditorField) {
+      @Override
+      java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+        java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
+        namePopup.attachToEditor(nameEditorField)
+        comp
+      }
+    }
+    lineTable.columnModel.getColumn(1).cellEditor = nameEditor
   }
 
   private JPanel buildAttachmentTab() {
@@ -678,13 +757,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void moveCursorToAmountColumn(int row, String normalBalanceSide) {
-    int column = 'CREDIT' == normalBalanceSide ? 3 : 2
-    SwingUtilities.invokeLater {
-      if (row < lineTable.rowCount) {
-        lineTable.changeSelection(row, column, false, false)
-        lineTable.editCellAt(row, column)
-      }
-    }
+    moveCursorToCell(row, 'CREDIT' == normalBalanceSide ? 3 : 2)
   }
 
   private static boolean hasText(String value) {
@@ -878,9 +951,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           row.accountName = lookedUp?.accountName ?: ''
           row.normalBalanceSide = lookedUp?.normalBalanceSide ?: ''
           recalculateBalances(rowIndex)
-          if (lookedUp != null) {
-            moveCursorToAmountColumn(rowIndex, lookedUp.normalBalanceSide)
-          }
           break
         case 1:
           row.accountName = text
