@@ -71,9 +71,12 @@ final class AccountService {
       String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
       if (normalizedQuery) {
         query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
-        String pattern = "%${normalizedQuery}%"
-        params << pattern
-        params << pattern
+        String numberPattern = normalizedQuery.matches('[0-9]+')
+            ? "${normalizedQuery}%" as String
+            : "%${normalizedQuery}%" as String
+        String namePattern = "%${normalizedQuery}%"
+        params << numberPattern
+        params << namePattern
       }
 
       if (classFilter?.trim()) {

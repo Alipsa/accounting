@@ -9,6 +9,7 @@ import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.VoucherSeries
 import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -286,22 +287,22 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void installAccountLookupEditor() {
-    Consumer<Account> onAccountSelected = { Account selected ->
+    JTextField numberEditorField = new JTextField()
+    Consumer<Account> onNumberSelected = { Account selected ->
       int row = lineTable.editingRow
       if (row >= 0) {
         lineTableModel.setAccountFromLookup(row, selected.accountNumber, selected.accountName,
             selected.normalBalanceSide)
         recalculateBalances(row)
+        numberEditorField.text = selected.accountNumber
         if (lineTable.cellEditor != null) {
           lineTable.cellEditor.stopCellEditing()
         }
         moveCursorToAmountColumn(row, selected.normalBalanceSide)
       }
     } as Consumer<Account>
-
-    JTextField numberEditorField = new JTextField()
     AccountLookupPopup numberPopup = new AccountLookupPopup(
-        accountService, activeCompanyManager.companyId, onAccountSelected)
+        accountService, activeCompanyManager.companyId, onNumberSelected)
     DefaultCellEditor numberEditor = new DefaultCellEditor(numberEditorField) {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
@@ -313,8 +314,21 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     lineTable.columnModel.getColumn(0).cellEditor = numberEditor
 
     JTextField nameEditorField = new JTextField()
+    Consumer<Account> onNameSelected = { Account selected ->
+      int row = lineTable.editingRow
+      if (row >= 0) {
+        lineTableModel.setAccountFromLookup(row, selected.accountNumber, selected.accountName,
+            selected.normalBalanceSide)
+        recalculateBalances(row)
+        nameEditorField.text = selected.accountName
+        if (lineTable.cellEditor != null) {
+          lineTable.cellEditor.stopCellEditing()
+        }
+        moveCursorToAmountColumn(row, selected.normalBalanceSide)
+      }
+    } as Consumer<Account>
     AccountLookupPopup namePopup = new AccountLookupPopup(
-        accountService, activeCompanyManager.companyId, onAccountSelected)
+        accountService, activeCompanyManager.companyId, onNameSelected)
     DefaultCellEditor nameEditor = new DefaultCellEditor(nameEditorField) {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
@@ -410,8 +424,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     currentVoucher = null
     readOnly = false
     balanceCache.clear()
-    voucherNumberLabel.text = ''
-    jumpField.text = ''
+    String nextNumber = previewNextVoucherNumber('A')
+    voucherNumberLabel.text = nextNumber
+    jumpField.text = nextNumber
     datePicker.date = defaultDate()
     descriptionField.text = ''
     seriesField.text = 'A'
@@ -424,6 +439,23 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     refreshTotals()
     applyReadOnlyState()
     feedbackArea.text = ''
+  }
+
+  private String previewNextVoucherNumber(String seriesCode) {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    if (fy == null) {
+      return "${seriesCode}-1" as String
+    }
+    try {
+      List<VoucherSeries> seriesList = voucherService.listSeries(fy.id)
+      VoucherSeries series = seriesList.find { it.seriesCode == seriesCode }
+      if (series != null) {
+        return "${series.seriesCode}-${series.nextRunningNumber}" as String
+      }
+    } catch (Exception ignored) {
+      // fall through
+    }
+    "${seriesCode}-1" as String
   }
 
   private LocalDate defaultDate() {
