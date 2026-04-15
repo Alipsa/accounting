@@ -1,5 +1,6 @@
 package se.alipsa.accounting
 
+import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
@@ -46,6 +47,8 @@ final class AlipsaAccounting {
       if (savedLanguage != null) {
         I18n.instance.setLocale(savedLanguage)
       }
+      ThemeMode theme = new UserPreferencesService().getTheme()
+      theme.apply()
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
         failOnStartupErrors(startupReport)
