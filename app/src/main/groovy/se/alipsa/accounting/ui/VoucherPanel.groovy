@@ -45,6 +45,7 @@ import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
@@ -302,19 +303,19 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void moveCursorToCell(int row, int col) {
-    SwingUtilities.invokeLater {
+    Timer timer = new Timer(50, {
       if (row < lineTable.rowCount) {
         lineTable.requestFocusInWindow()
         lineTable.changeSelection(row, col, false, false)
-        SwingUtilities.invokeLater {
-          lineTable.editCellAt(row, col)
-          java.awt.Component editor = lineTable.editorComponent
-          if (editor != null) {
-            editor.requestFocusInWindow()
-          }
+        lineTable.editCellAt(row, col)
+        java.awt.Component editor = lineTable.editorComponent
+        if (editor != null) {
+          editor.requestFocusInWindow()
         }
       }
-    }
+    })
+    timer.repeats = false
+    timer.start()
   }
 
   private void installAccountLookupEditor() {
