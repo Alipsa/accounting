@@ -68,7 +68,10 @@ final class ThemeApplier {
       Process process = ['reg', 'query',
           'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize',
           '/v', 'AppsUseLightTheme'].execute()
-      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      if (!process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return false
+      }
       return process.text.contains('0x0')
     } catch (Exception exception) {
       log.log(Level.FINE, 'Could not read Windows dark mode setting.', exception)
@@ -90,13 +93,19 @@ final class ThemeApplier {
   private static boolean isGnomeDarkMode() {
     try {
       Process process = ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'].execute()
-      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      if (!process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return false
+      }
       String output = process.text?.trim()
       if (output?.contains('dark')) {
         return true
       }
       Process gtkProcess = ['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'].execute()
-      gtkProcess.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      if (!gtkProcess.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        gtkProcess.destroyForcibly()
+        return false
+      }
       return gtkProcess.text?.toLowerCase()?.contains('dark')
     } catch (Exception exception) {
       log.log(Level.FINE, 'Could not read GNOME dark mode setting.', exception)
@@ -122,7 +131,10 @@ final class ThemeApplier {
   private static boolean isXfceDarkMode() {
     try {
       Process process = ['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName'].execute()
-      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      if (!process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return false
+      }
       return process.text?.toLowerCase()?.contains('dark')
     } catch (Exception exception) {
       log.log(Level.FINE, 'Could not read XFCE dark mode setting.', exception)
