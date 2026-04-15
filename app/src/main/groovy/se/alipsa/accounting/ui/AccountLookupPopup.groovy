@@ -48,7 +48,9 @@ final class AccountLookupPopup {
     resultList.addMouseListener(new MouseAdapter() {
       @Override
       void mouseClicked(MouseEvent event) {
-        if (event.clickCount == 1) {
+        int index = resultList.locationToIndex(event.point)
+        if (index >= 0) {
+          resultList.selectedIndex = index
           selectCurrent()
         }
       }
@@ -61,6 +63,7 @@ final class AccountLookupPopup {
           event.consume()
         } else if (event.keyCode == KeyEvent.VK_ESCAPE) {
           hide()
+          activeEditor?.requestFocusInWindow()
           event.consume()
         }
       }
@@ -68,7 +71,6 @@ final class AccountLookupPopup {
     JScrollPane scrollPane = new JScrollPane(resultList)
     popup.layout = new BorderLayout()
     popup.add(scrollPane, BorderLayout.CENTER)
-    popup.focusable = false
     debounceTimer = new Timer(DEBOUNCE_MILLIS, { search() })
     debounceTimer.repeats = false
   }
@@ -87,10 +89,16 @@ final class AccountLookupPopup {
       @Override
       void keyPressed(KeyEvent event) {
         if (event.keyCode == KeyEvent.VK_DOWN && popup.visible) {
-          resultList.requestFocusInWindow()
           if (resultList.selectedIndex < 0 && listModel.size() > 0) {
             resultList.selectedIndex = 0
           }
+          resultList.requestFocusInWindow()
+          event.consume()
+        } else if (event.keyCode == KeyEvent.VK_UP && popup.visible) {
+          if (resultList.selectedIndex < 0 && listModel.size() > 0) {
+            resultList.selectedIndex = listModel.size() - 1
+          }
+          resultList.requestFocusInWindow()
           event.consume()
         } else if (event.keyCode == KeyEvent.VK_ESCAPE) {
           hide()
