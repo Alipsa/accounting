@@ -670,21 +670,20 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       return
     }
     FiscalYear fy = activeCompanyManager.fiscalYear
-    if (fy == null) {
-      return
-    }
     String cacheKey = entry.accountNumber
     BigDecimal balance = balanceCache.get(cacheKey)
     if (balance == null) {
-      try {
-        balance = accountService.calculateAccountBalance(
-            activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher?.id)
-        balanceCache.put(cacheKey, balance)
-      } catch (Exception ignored) {
-        entry.balanceBefore = null
-        lineTableModel.fireTableRowsUpdated(rowIndex, rowIndex)
-        return
+      if (fy == null) {
+        balance = BigDecimal.ZERO
+      } else {
+        try {
+          balance = accountService.calculateAccountBalance(
+              activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher?.id)
+        } catch (Exception ignored) {
+          balance = BigDecimal.ZERO
+        }
       }
+      balanceCache.put(cacheKey, balance)
     }
     entry.balanceBefore = balance
     lineTableModel.fireTableRowsUpdated(rowIndex, rowIndex)
