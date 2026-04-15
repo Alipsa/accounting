@@ -4,8 +4,6 @@ import com.formdev.flatlaf.FlatDarkLaf
 import com.formdev.flatlaf.FlatLaf
 import com.formdev.flatlaf.FlatLightLaf
 
-import javax.swing.SwingUtilities
-import javax.swing.UIManager
 
 /**
  * Available theme modes for the application UI.
