@@ -74,7 +74,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JButton addAttachmentButton
   private JButton openAttachmentButton
   private JTabbedPane tabs
-  private JLabel jumpLabel
 
   private LineTableModel lineTableModel
   private JTable lineTable
@@ -159,15 +158,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     prevButton.addActionListener { navigatePrev() }
     panel.add(prevButton)
 
+    jumpField.addActionListener { jumpToVoucher(jumpField.text) }
+    jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
+    panel.add(jumpField)
+
     nextButton = new JButton('\u25B6')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     nextButton.addActionListener { navigateNext() }
     panel.add(nextButton)
-
-    jumpLabel = new JLabel(I18n.instance.getString('voucherPanel.label.jump'))
-    panel.add(jumpLabel)
-    jumpField.addActionListener { jumpToVoucher(jumpField.text) }
-    panel.add(jumpField)
 
     newButton = new JButton('\u2795')
     newButton.toolTipText = I18n.instance.getString('voucherPanel.button.new')
@@ -308,7 +306,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       showBlankVoucher()
       return
     }
-    voucherNumberLabel.text = v.voucherNumber ?: String.valueOf(v.id)
+    String displayNumber = v.voucherNumber ?: String.valueOf(v.id)
+    voucherNumberLabel.text = displayNumber
+    jumpField.text = displayNumber
     datePicker.date = v.accountingDate
     descriptionField.text = v.description ?: ''
     seriesField.text = v.seriesCode ?: 'A'
@@ -332,6 +332,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     readOnly = false
     balanceCache.clear()
     voucherNumberLabel.text = ''
+    jumpField.text = ''
     datePicker.date = defaultDate()
     descriptionField.text = ''
     seriesField.text = 'A'
@@ -620,7 +621,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     removeLineButton.text = I18n.instance.getString('voucherPanel.button.removeLine')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
-    jumpLabel.text = I18n.instance.getString('voucherPanel.label.jump')
+    jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
     tabs.setTitleAt(0, I18n.instance.getString('voucherPanel.tab.lines'))
     tabs.setTitleAt(1, I18n.instance.getString('voucherPanel.tab.attachments'))
     tabs.setTitleAt(2, I18n.instance.getString('voucherPanel.tab.history'))
