@@ -23,6 +23,7 @@ dependencies {
   implementation libs.sie.parser
   implementation libs.poi.ooxml
   implementation libs.journo.runtime
+  implementation libs.flatlaf
 
   testImplementation libs.junit.jupiter
   testImplementation libs.groovier.junit
