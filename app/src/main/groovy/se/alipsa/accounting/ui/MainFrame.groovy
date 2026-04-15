@@ -80,7 +80,7 @@ final class MainFrame implements PropertyChangeListener {
   private final MigrationService migrationService = new MigrationService(DatabaseService.instance)
   private final ReportDataService reportDataService = new ReportDataService(DatabaseService.instance, fiscalYearService, accountingPeriodService)
   private final ReportArchiveService reportArchiveService = new ReportArchiveService(DatabaseService.instance)
-  private final ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+  private final ReportIntegrityService reportIntegrityService = new ReportIntegrityService(attachmentService, auditLogService)
   private final BackupService backupService = new BackupService(
       DatabaseService.instance,
       attachmentService,
