@@ -1,6 +1,5 @@
 package se.alipsa.accounting
 
-import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
@@ -9,6 +8,7 @@ import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
+import se.alipsa.accounting.ui.ThemeApplier
 
 import java.awt.GraphicsEnvironment
 import java.util.logging.Level
@@ -43,12 +43,12 @@ final class AlipsaAccounting {
     try {
       LoggingConfigurer.configure()
       DatabaseService.instance.initialize()
-      Locale savedLanguage = new UserPreferencesService().getLanguage()
+      UserPreferencesService userPreferencesService = new UserPreferencesService()
+      Locale savedLanguage = userPreferencesService.getLanguage()
       if (savedLanguage != null) {
         I18n.instance.setLocale(savedLanguage)
       }
-      ThemeMode theme = new UserPreferencesService().getTheme()
-      theme.apply()
+      ThemeApplier.apply(userPreferencesService.getTheme())
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
         failOnStartupErrors(startupReport)

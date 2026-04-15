@@ -1,9 +1,7 @@
 package se.alipsa.accounting.domain
 
-import com.formdev.flatlaf.FlatDarkLaf
-import com.formdev.flatlaf.FlatLaf
-import com.formdev.flatlaf.FlatLightLaf
-
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Available theme modes for the application UI.
@@ -14,34 +12,7 @@ enum ThemeMode {
   LIGHT,
   DARK
 
-  void apply() {
-    switch (this) {
-      case LIGHT:
-        FlatLightLaf.setup()
-        break
-      case DARK:
-        FlatDarkLaf.setup()
-        break
-      default:
-        if (isOsDarkMode()) {
-          FlatDarkLaf.setup()
-        } else {
-          FlatLightLaf.setup()
-        }
-        break
-    }
-  }
-
-  void applyAndUpdateUI() {
-    apply()
-    FlatLaf.updateUI()
-  }
-
-  private static boolean isOsDarkMode() {
-    Object hint = java.awt.Toolkit.defaultToolkit
-        .getDesktopProperty('awt.os.isDarkMode')
-    hint instanceof Boolean && hint
-  }
+  private static final Logger log = Logger.getLogger(ThemeMode.name)
 
   static ThemeMode fromName(String name) {
     if (name == null) {
@@ -50,6 +21,7 @@ enum ThemeMode {
     try {
       return valueOf(name)
     } catch (IllegalArgumentException ignored) {
+      log.log(Level.WARNING, "Unknown theme preference ''{0}'', falling back to SYSTEM.", name)
       return SYSTEM
     }
   }

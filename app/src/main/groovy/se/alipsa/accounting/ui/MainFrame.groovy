@@ -370,7 +370,7 @@ final class MainFrame implements PropertyChangeListener {
 
   private void switchTheme(ThemeMode mode) {
     userPreferencesService.setTheme(mode)
-    mode.applyAndUpdateUI()
+    ThemeApplier.applyAndUpdateUI(mode)
     setStatus(I18n.instance.getString('settings.status.themeChanged'))
   }
 

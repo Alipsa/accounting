@@ -1,4 +1,4 @@
-package unit
+package unit.se.alipsa.accounting.domain
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull

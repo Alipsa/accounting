@@ -1,4 +1,4 @@
-package unit
+package unit.se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 
@@ -30,5 +30,12 @@ class UserPreferencesThemeTest {
 
     service.setTheme(ThemeMode.LIGHT)
     assertEquals(ThemeMode.LIGHT, service.getTheme())
+  }
+
+  @Test
+  void setSystemRemovesPreference() {
+    service.setTheme(ThemeMode.DARK)
+    service.setTheme(ThemeMode.SYSTEM)
+    assertEquals(ThemeMode.SYSTEM, service.getTheme())
   }
 }
