@@ -5,6 +5,7 @@ import groovy.transform.CompileDynamic
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -137,13 +138,15 @@ final class MainFrame implements PropertyChangeListener {
       auditLogService,
       DatabaseService.instance
   )
-  private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService)
+  private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
 
   private JLabel statusLabel
   private JLabel companySummaryLabel
   private JLabel overviewDescriptionLabel
   private JLabel companyLabel
   private JComboBox<Company> companyComboBox
+  private JComboBox<FiscalYear> fiscalYearComboBox
+  private JLabel fiscalYearLabel
   private JMenu fileMenu
   private JMenuItem companySettingsMenuItem
   private JMenuItem newCompanyMenuItem
@@ -199,12 +202,15 @@ final class MainFrame implements PropertyChangeListener {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater { onCompanyChanged() }
+    } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
+      // Panels listen for this directly via ActiveCompanyManager; MainFrame doesn't need action.
     }
   }
 
   private void onCompanyChanged() {
     refreshTitle()
     refreshCompanySettingsSummary()
+    reloadFiscalYearComboBox()
     Company active = activeCompanyManager.activeCompany
     if (active != null) {
       setStatus(I18n.instance.format('mainFrame.status.companySwitched', active.companyName))
@@ -227,6 +233,7 @@ final class MainFrame implements PropertyChangeListener {
     applyTabLocale()
     editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     companyLabel.text = I18n.instance.getString('mainFrame.label.activeCompany')
+    fiscalYearLabel.text = I18n.instance.getString('mainFrame.label.fiscalYear')
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
     themeLabel.text = I18n.instance.getString('settings.label.theme')
     themeSystemButton.text = I18n.instance.getString('settings.theme.system')
@@ -416,6 +423,13 @@ final class MainFrame implements PropertyChangeListener {
     leftPanel.add(companyLabel)
     leftPanel.add(companyComboBox)
 
+    fiscalYearLabel = new JLabel(I18n.instance.getString('mainFrame.label.fiscalYear'))
+    fiscalYearComboBox = new JComboBox<>()
+    reloadFiscalYearComboBox()
+    fiscalYearComboBox.addActionListener { onFiscalYearComboBoxChanged() }
+    leftPanel.add(fiscalYearLabel)
+    leftPanel.add(fiscalYearComboBox)
+
     statusLabel = new JLabel(I18n.instance.getString('mainFrame.status.ready'))
     statusLabel.border = BorderFactory.createEmptyBorder(0, 12, 0, 0)
 
@@ -471,6 +485,41 @@ final class MainFrame implements PropertyChangeListener {
     }
   }
 
+  private void reloadFiscalYearComboBox() {
+    if (fiscalYearComboBox == null) {
+      return
+    }
+    FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
+    java.awt.event.ActionListener[] listeners = fiscalYearComboBox.actionListeners
+    listeners.each { fiscalYearComboBox.removeActionListener(it) }
+    try {
+      fiscalYearComboBox.removeAllItems()
+      activeCompanyManager.listFiscalYears().each { FiscalYear fy ->
+        fiscalYearComboBox.addItem(fy)
+      }
+      if (selected != null) {
+        for (int i = 0; i < fiscalYearComboBox.itemCount; i++) {
+          FiscalYear item = fiscalYearComboBox.getItemAt(i)
+          if (item.id == selected.id) {
+            fiscalYearComboBox.selectedItem = item
+            break
+          }
+        }
+      } else if (fiscalYearComboBox.itemCount > 0) {
+        fiscalYearComboBox.selectedIndex = 0
+      }
+    } finally {
+      listeners.each { fiscalYearComboBox.addActionListener(it) }
+    }
+  }
+
+  private void onFiscalYearComboBoxChanged() {
+    FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
+    if (selected != null) {
+      activeCompanyManager.fiscalYear = selected
+    }
+  }
+
   private JPanel buildOverviewPanel() {
     String safeTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
     String safeDescription = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
@@ -487,7 +536,7 @@ final class MainFrame implements PropertyChangeListener {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherListPanel(voucherService, fiscalYearService, accountService, attachmentService, auditLogService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
