@@ -88,7 +88,7 @@ final class ReportDataService {
             join voucher_series s on s.id = v.voucher_series_id
             join voucher_line vl on vl.voucher_id = v.id
            where v.fiscal_year_id = ?
-             and v.status in ('BOOKED', 'CORRECTION')
+             and v.status in ('ACTIVE', 'CORRECTION')
              and v.accounting_date between ? and ?
            group by v.id, v.accounting_date, v.voucher_number, s.series_code, v.description, v.status
            order by v.accounting_date, coalesce(v.running_number, 2147483647), v.id
@@ -512,7 +512,7 @@ final class ReportDataService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
          group by a.account_number, a.normal_balance_side
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
@@ -538,7 +538,7 @@ final class ReportDataService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
          group by vl.account_id, a.account_number
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
@@ -569,7 +569,7 @@ final class ReportDataService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).collect { GroovyRowResult row ->
       new PostingLine(

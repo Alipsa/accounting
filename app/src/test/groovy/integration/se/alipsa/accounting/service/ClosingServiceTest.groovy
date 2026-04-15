@@ -51,7 +51,7 @@ class ClosingServiceTest {
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     attachmentService = new AttachmentService(databaseService, auditLogService)
-    reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+    reportIntegrityService = new ReportIntegrityService(attachmentService, auditLogService)
     closingService = new ClosingService(
         databaseService,
         accountingPeriodService,
@@ -83,7 +83,7 @@ class ClosingServiceTest {
           ) values (?, ?, ?, current_timestamp, current_timestamp)
       ''', [fiscalYear.id, accountId, 500.00G])
     }
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -93,7 +93,7 @@ class ClosingServiceTest {
             new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
         ]
     )
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 2, 10),

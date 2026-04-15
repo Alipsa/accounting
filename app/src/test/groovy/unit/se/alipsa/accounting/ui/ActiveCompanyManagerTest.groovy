@@ -10,8 +10,11 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.VatPeriodicity
+import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.DatabaseService
+import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.AppPaths
 
 import java.beans.PropertyChangeEvent
@@ -24,6 +27,7 @@ class ActiveCompanyManagerTest {
 
   private DatabaseService databaseService
   private CompanyService companyService
+  private FiscalYearService fiscalYearService
   private String previousHome
 
   @BeforeEach
@@ -33,6 +37,9 @@ class ActiveCompanyManagerTest {
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     companyService = new CompanyService(databaseService)
+    AuditLogService auditLogService = new AuditLogService(databaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
   }
 
   @AfterEach
@@ -46,7 +53,7 @@ class ActiveCompanyManagerTest {
 
   @Test
   void initializesToFirstCompany() {
-    ActiveCompanyManager manager = new ActiveCompanyManager(companyService)
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
 
     assertTrue(manager.hasActiveCompany())
     assertEquals(CompanyService.LEGACY_COMPANY_ID, manager.companyId)
@@ -58,23 +65,24 @@ class ActiveCompanyManagerTest {
         null, 'Zetterberg AB', '556000-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
     ))
 
-    ActiveCompanyManager manager = new ActiveCompanyManager(companyService)
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
     long initialId = manager.companyId
     List<PropertyChangeEvent> events = []
     manager.addPropertyChangeListener { PropertyChangeEvent evt -> events << evt }
 
     manager.companyId = second.id
 
-    assertEquals(1, events.size())
+    assertEquals(2, events.size())
     assertEquals(ActiveCompanyManager.COMPANY_ID_PROPERTY, events[0].propertyName)
     assertEquals(initialId, events[0].oldValue)
     assertEquals(second.id, events[0].newValue)
+    assertEquals(ActiveCompanyManager.FISCAL_YEAR_PROPERTY, events[1].propertyName)
     assertEquals(second.id, manager.companyId)
   }
 
   @Test
   void doesNotFireEventWhenSettingSameCompanyId() {
-    ActiveCompanyManager manager = new ActiveCompanyManager(companyService)
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
     long initialId = manager.companyId
     List<PropertyChangeEvent> events = []
     manager.addPropertyChangeListener { PropertyChangeEvent evt -> events << evt }
@@ -90,7 +98,7 @@ class ActiveCompanyManagerTest {
         null, 'Gamma AB', '556000-0003', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
     ))
 
-    ActiveCompanyManager manager = new ActiveCompanyManager(companyService)
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
     List<PropertyChangeEvent> events = []
     java.beans.PropertyChangeListener listener = { PropertyChangeEvent evt -> events << evt }
     manager.addPropertyChangeListener(listener)

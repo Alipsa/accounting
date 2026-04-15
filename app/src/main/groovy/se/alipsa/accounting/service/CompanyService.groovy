@@ -112,10 +112,6 @@ final class CompanyService {
     ])
     long companyId = ((Number) keys.first().first()).longValue()
     sql.executeInsert('''
-        insert into voucher_chain_head (company_id, last_content_hash, updated_at)
-        values (?, null, current_timestamp)
-    ''', [companyId])
-    sql.executeInsert('''
         insert into audit_log_chain_head (company_id, last_entry_hash, updated_at)
         values (?, null, current_timestamp)
     ''', [companyId])

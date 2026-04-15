@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -12,6 +13,7 @@ import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
+import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -55,7 +57,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private final ReportArchiveService reportArchiveService
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
-  private final VoucherEditor.Dependencies voucherEditorDependencies
+  private final VoucherService voucherService
   private final ActiveCompanyManager activeCompanyManager
   private final JComboBox<ReportType> reportTypeComboBox = new JComboBox<>(ReportType.values())
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
@@ -88,7 +90,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       ReportArchiveService reportArchiveService,
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
-      VoucherEditor.Dependencies voucherEditorDependencies,
+      VoucherService voucherService,
       ActiveCompanyManager activeCompanyManager
   ) {
     this.reportDataService = reportDataService
@@ -97,7 +99,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     this.reportArchiveService = reportArchiveService
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
-    this.voucherEditorDependencies = voucherEditorDependencies
+    this.voucherService = voucherService
     this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
@@ -389,9 +391,21 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     if (voucherId == null) {
       return
     }
-    VoucherEditor.showDialog(ownerFrame(), voucherEditorDependencies, activeCompanyManager.companyId, voucherId, {
-      reloadReport()
-    } as Runnable)
+    try {
+      Voucher voucher = voucherService.findVoucher(voucherId)
+      if (voucher == null) {
+        return
+      }
+      String info = "${voucher.voucherNumber ?: voucherId}\n${voucher.accountingDate}\n${voucher.description}"
+      javax.swing.JOptionPane.showMessageDialog(
+          ownerFrame(),
+          info,
+          I18n.instance.getString('reportPanel.button.openVoucher'),
+          javax.swing.JOptionPane.INFORMATION_MESSAGE
+      )
+    } catch (Exception ignored) {
+      // Voucher not found or error
+    }
   }
 
   private void openSelectedArchive() {

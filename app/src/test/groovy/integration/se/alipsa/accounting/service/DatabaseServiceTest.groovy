@@ -53,7 +53,6 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.tables where table_name = 'ACCOUNTING_PERIOD') as accountingPeriod,
               (select count(*) from information_schema.tables where table_name = 'ACCOUNT') as accountTable,
               (select count(*) from information_schema.tables where table_name = 'OPENING_BALANCE') as openingBalance,
-              (select count(*) from information_schema.tables where table_name = 'VOUCHER_CHAIN_HEAD') as voucherChainHead,
               (select count(*) from information_schema.tables where table_name = 'VOUCHER_SERIES') as voucherSeries,
               (select count(*) from information_schema.tables where table_name = 'VOUCHER') as voucher,
               (select count(*) from information_schema.tables where table_name = 'VOUCHER_LINE') as voucherLine,
@@ -75,14 +74,13 @@ class DatabaseServiceTest {
       ''') as GroovyRowResult
     }
 
-    assertEquals(16, ((Number) result.version).intValue())
+    assertEquals(17, ((Number) result.version).intValue())
     assertEquals(1, ((Number) result.company).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())
     assertEquals(1, ((Number) result.accountingPeriod).intValue())
     assertEquals(1, ((Number) result.accountTable).intValue())
     assertEquals(1, ((Number) result.openingBalance).intValue())
-    assertEquals(1, ((Number) result.voucherChainHead).intValue())
     assertEquals(1, ((Number) result.voucherSeries).intValue())
     assertEquals(1, ((Number) result.voucher).intValue())
     assertEquals(1, ((Number) result.voucherLine).intValue())

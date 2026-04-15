@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -10,15 +9,11 @@ import se.alipsa.accounting.domain.VoucherSeries
 import se.alipsa.accounting.domain.VoucherStatus
 
 import java.math.RoundingMode
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.sql.Date
-import java.sql.Timestamp
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
- * Handles safe voucher creation, booking, correction and number allocation.
+ * Handles safe voucher creation, correction and number allocation.
  */
 final class VoucherService {
 
@@ -64,7 +59,7 @@ final class VoucherService {
     }
   }
 
-  Voucher createDraft(
+  Voucher createVoucher(
       long fiscalYearId,
       String seriesCode,
       LocalDate accountingDate,
@@ -72,24 +67,11 @@ final class VoucherService {
       List<VoucherLine> lines
   ) {
     databaseService.withTransaction { Sql sql ->
-      insertDraft(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
+      insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
     }
   }
 
-  Voucher createAndBook(
-      long fiscalYearId,
-      String seriesCode,
-      LocalDate accountingDate,
-      String description,
-      List<VoucherLine> lines
-  ) {
-    databaseService.withTransaction { Sql sql ->
-      createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, false)
-    }
-  }
-
-  @PackageScope
-  Voucher createAndBook(
+  Voucher createVoucher(
       Sql sql,
       long fiscalYearId,
       String seriesCode,
@@ -97,61 +79,35 @@ final class VoucherService {
       String description,
       List<VoucherLine> lines
   ) {
-    createAndBook(sql, fiscalYearId, seriesCode, accountingDate, description, lines, PostingPermissions.DEFAULT)
+    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, false)
   }
 
-  @PackageScope
-  Voucher createAndBook(
+  /**
+   * Creates a voucher without checking the accounting period lock.
+   * Used exclusively by ClosingService for year-end closing vouchers.
+   */
+  Voucher createVoucherBypassLock(
       Sql sql,
       long fiscalYearId,
       String seriesCode,
       LocalDate accountingDate,
       String description,
-      List<VoucherLine> lines,
-      boolean allowReportedVatPeriod
+      List<VoucherLine> lines
   ) {
-    createAndBook(
-        sql,
-        fiscalYearId,
-        seriesCode,
-        accountingDate,
-        description,
-        lines,
-        new PostingPermissions(allowReportedVatPeriod, false)
-    )
+    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, true)
   }
 
-  @PackageScope
-  Voucher createAndBook(
-      Sql sql,
-      long fiscalYearId,
-      String seriesCode,
-      LocalDate accountingDate,
-      String description,
-      List<VoucherLine> lines,
-      PostingPermissions postingPermissions
-  ) {
-    PostingPermissions safePermissions = postingPermissions ?: PostingPermissions.DEFAULT
-    Voucher draft = insertDraft(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
-    bookVoucher(
-        sql,
-        draft.id,
-        VoucherStatus.BOOKED,
-        safePermissions.allowReportedVatPeriod,
-        safePermissions.allowLockedPeriod
-    )
-  }
-
-  Voucher updateDraft(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
+  Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
     databaseService.withTransaction { Sql sql ->
       Voucher current = requireVoucher(sql, voucherId)
-      if (current.status != VoucherStatus.DRAFT) {
-        throw new IllegalStateException('Bokförda verifikationer kan inte ändras direkt. Skapa en korrigering istället.')
+      if (current.status != VoucherStatus.ACTIVE) {
+        throw new IllegalStateException('Verifikationen kan inte ändras — den är inte aktiv.')
       }
 
       String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
+      ensurePeriodUnlocked(sql, current.fiscalYearId, accountingDate)
       long companyId = resolveCompanyId(sql, current.fiscalYearId)
-      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, true)
+      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, true)
       replaceLines(sql, voucherId, companyId, safeLines)
       sql.executeUpdate('''
           update voucher
@@ -159,30 +115,27 @@ final class VoucherService {
                  description = ?,
                  updated_at = current_timestamp
            where id = ?
-             and status = 'DRAFT'
+             and status = 'ACTIVE'
       ''', [Date.valueOf(accountingDate), safeDescription, voucherId])
-      requireVoucher(sql, voucherId)
+      Voucher updatedVoucher = requireVoucher(sql, voucherId)
+      auditLogService.recordVoucherUpdated(sql, updatedVoucher)
+      updatedVoucher
     }
   }
 
-  Voucher bookDraft(long voucherId) {
-    databaseService.withTransaction { Sql sql ->
-      bookVoucher(sql, voucherId, VoucherStatus.BOOKED, false, false)
-    }
-  }
-
-  Voucher cancelDraft(long voucherId) {
+  Voucher cancelVoucher(long voucherId) {
     databaseService.withTransaction { Sql sql ->
       Voucher current = requireVoucher(sql, voucherId)
-      if (current.status != VoucherStatus.DRAFT) {
-        throw new IllegalStateException('Endast utkast kan makuleras direkt. Bokförda verifikationer korrigeras.')
+      if (current.status != VoucherStatus.ACTIVE) {
+        throw new IllegalStateException('Endast aktiva verifikationer kan makuleras.')
       }
+      ensurePeriodUnlocked(sql, current.fiscalYearId, current.accountingDate)
       int updated = sql.executeUpdate('''
           update voucher
              set status = 'CANCELLED',
                  updated_at = current_timestamp
            where id = ?
-             and status = 'DRAFT'
+             and status = 'ACTIVE'
       ''', [voucherId])
       if (updated != 1) {
         throw new IllegalStateException("Verifikationen kunde inte makuleras: ${voucherId}")
@@ -193,20 +146,63 @@ final class VoucherService {
     }
   }
 
+  boolean isLastInSeries(long voucherId) {
+    databaseService.withSql { Sql sql ->
+      Voucher voucher = requireVoucher(sql, voucherId)
+      GroovyRowResult row = sql.firstRow('''
+          select max(running_number) as maxRunning
+            from voucher
+           where voucher_series_id = ?
+             and fiscal_year_id = ?
+      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
+      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
+      voucher.runningNumber != null && voucher.runningNumber == maxRunning
+    }
+  }
+
+  void deleteVoucher(long voucherId) {
+    databaseService.withTransaction { Sql sql ->
+      Voucher voucher = requireVoucher(sql, voucherId)
+      if (voucher.status != VoucherStatus.ACTIVE) {
+        throw new IllegalStateException('Endast aktiva verifikationer kan tas bort.')
+      }
+      ensurePeriodUnlocked(sql, voucher.fiscalYearId, voucher.accountingDate)
+      GroovyRowResult row = sql.firstRow('''
+          select max(running_number) as maxRunning
+            from voucher
+           where voucher_series_id = ?
+             and fiscal_year_id = ?
+      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
+      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
+      if (voucher.runningNumber == null || voucher.runningNumber != maxRunning) {
+        throw new IllegalStateException('Endast den sista verifikationen i serien kan tas bort.')
+      }
+      sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
+      sql.executeUpdate('delete from attachment where voucher_id = ?', [voucherId])
+      sql.executeUpdate('delete from voucher where id = ?', [voucherId])
+      sql.executeUpdate('''
+          update voucher_series
+             set next_running_number = ?,
+                 updated_at = current_timestamp
+           where id = ?
+      ''', [voucher.runningNumber, voucher.voucherSeriesId])
+    }
+  }
+
   Voucher createCorrectionVoucher(long originalVoucherId, String description = null) {
     databaseService.withTransaction { Sql sql ->
       Voucher original = requireVoucher(sql, originalVoucherId)
-      if (original.status != VoucherStatus.BOOKED) {
-        throw new IllegalStateException('Endast bokförda verifikationer kan korrigeras.')
+      if (original.status != VoucherStatus.ACTIVE) {
+        throw new IllegalStateException('Endast aktiva verifikationer kan korrigeras.')
       }
 
       String safeDescription = description?.trim()
       if (!safeDescription) {
         safeDescription = "Korrigering av ${original.voucherNumber ?: original.id}"
       }
-      // Conservative policy: the correction keeps the original accounting date.
-      // If that period has been locked after booking, the correction is blocked and
-      // the user must unlock the period before retrying.
+      // A correction keeps the original accounting date and is allowed even when
+      // that period has been locked — correction is the intended mechanism for
+      // amending vouchers whose period is no longer editable.
       List<VoucherLine> reversingLines = original.lines.collect { VoucherLine line ->
         new VoucherLine(
             null,
@@ -220,16 +216,25 @@ final class VoucherService {
             line.debitAmount
         )
       }
-      Voucher draft = insertDraft(
+      Voucher draft = insertVoucher(
           sql,
           original.fiscalYearId,
           original.seriesCode,
           original.accountingDate,
           safeDescription,
           reversingLines,
-          original.id
+          original.id,
+          true
       )
-      bookVoucher(sql, draft.id, VoucherStatus.CORRECTION, false, false)
+      sql.executeUpdate('''
+          update voucher
+             set status = 'CORRECTION',
+                 updated_at = current_timestamp
+           where id = ?
+      ''', [draft.id])
+      Voucher correctionVoucher = requireVoucher(sql, draft.id)
+      auditLogService.recordCorrectionVoucher(sql, correctionVoucher)
+      correctionVoucher
     }
   }
 
@@ -237,78 +242,6 @@ final class VoucherService {
     databaseService.withSql { Sql sql ->
       findVoucher(sql, voucherId)
     }
-  }
-
-  List<String> validateIntegrity() {
-    databaseService.withTransaction { Sql sql ->
-      List<String> problems = []
-      sql.rows('select distinct company_id as companyId from voucher').each { GroovyRowResult companyRow ->
-        long cid = ((Number) companyRow.get('companyId')).longValue()
-        problems.addAll(validateIntegrityForCompany(sql, cid))
-      }
-      problems
-    }
-  }
-
-  List<String> validateIntegrity(long companyId) {
-    CompanyService.requireValidCompanyId(companyId)
-    databaseService.withTransaction { Sql sql ->
-      validateIntegrityForCompany(sql, companyId)
-    }
-  }
-
-  private static List<String> validateIntegrityForCompany(Sql sql, long companyId) {
-    List<String> problems = []
-    String expectedPreviousHash = null
-    String actualLastHash = null
-    sql.rows('''
-        select v.id,
-               v.fiscal_year_id as fiscalYearId,
-               v.voucher_series_id as voucherSeriesId,
-               s.series_code as seriesCode,
-               s.series_name as seriesName,
-               v.running_number as runningNumber,
-               v.voucher_number as voucherNumber,
-               v.accounting_date as accountingDate,
-               v.description,
-               v.status,
-               v.original_voucher_id as originalVoucherId,
-               v.previous_hash as previousHash,
-               v.content_hash as contentHash,
-               v.booked_at as bookedAt
-          from voucher v
-          join voucher_series s on s.id = v.voucher_series_id
-         where v.status in ('BOOKED', 'CORRECTION')
-           and v.company_id = ?
-         order by v.id
-    ''', [companyId]).each { GroovyRowResult row ->
-      Voucher voucher = mapVoucher(row)
-      voucher.lines = loadLines(sql, voucher.id)
-      if (voucher.previousHash != expectedPreviousHash) {
-        problems << ("Verifikation ${voucher.id} har fel föregående hash." as String)
-      }
-      VoucherStatus status = VoucherStatus.valueOf(row.get('status') as String)
-      String calculated = calculateContentHash(
-          voucher,
-          voucher.lines,
-          status,
-          voucher.runningNumber,
-          voucher.voucherNumber,
-          voucher.previousHash
-      )
-      if (voucher.contentHash != calculated) {
-        problems << ("Verifikation ${voucher.id} har ogiltig innehållshash." as String)
-      }
-      expectedPreviousHash = voucher.contentHash
-      actualLastHash = voucher.contentHash
-    }
-    ChainHead chainHead = lockChainHead(sql, companyId)
-    if (chainHead == null) {
-      problems << 'Verifikationskedjans huvud saknas.'
-    } else if (chainHead.lastContentHash != actualLastHash) {
-      problems << 'Verifikationskedjans huvud pekar inte på sista bokförda verifikation.'
-    }
-    problems
   }
 
   List<Voucher> listVouchers(long companyId, Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
@@ -325,10 +258,7 @@ final class VoucherService {
                  v.accounting_date as accountingDate,
                  v.description,
                  v.status,
-                 v.original_voucher_id as originalVoucherId,
-                 v.previous_hash as previousHash,
-                 v.content_hash as contentHash,
-                 v.booked_at as bookedAt
+                 v.original_voucher_id as originalVoucherId
             from voucher v
             join voucher_series s on s.id = v.voucher_series_id
            where v.company_id = ?
@@ -367,20 +297,27 @@ final class VoucherService {
     }
   }
 
-  private Voucher insertDraft(
+  private Voucher insertVoucher(
       Sql sql,
       long fiscalYearId,
       String seriesCode,
       LocalDate accountingDate,
       String description,
       List<VoucherLine> lines,
-      Long originalVoucherId
+      Long originalVoucherId,
+      boolean skipLockCheck = false
   ) {
     String safeDescription = validateVoucherEnvelope(sql, fiscalYearId, accountingDate, description)
+    if (!skipLockCheck) {
+      ensurePeriodUnlocked(sql, fiscalYearId, accountingDate)
+    }
     boolean requireActiveAccounts = originalVoucherId == null
     long companyId = resolveCompanyId(sql, fiscalYearId)
-    List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, requireActiveAccounts)
+    List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, requireActiveAccounts)
+    ensureBalanced(safeLines)
     VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
+    int runningNumber = allocateRunningNumber(sql, series.id)
+    String voucherNumber = "${series.seriesCode}-${runningNumber}"
     List<List<Object>> keys = sql.executeInsert('''
         insert into voucher (
             fiscal_year_id,
@@ -391,16 +328,15 @@ final class VoucherService {
             description,
             status,
             original_voucher_id,
-            previous_hash,
-            content_hash,
-            booked_at,
             company_id,
             created_at,
             updated_at
-        ) values (?, ?, null, null, ?, ?, 'DRAFT', ?, null, null, null, ?, current_timestamp, current_timestamp)
+        ) values (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, current_timestamp, current_timestamp)
     ''', [
         fiscalYearId,
         series.id,
+        runningNumber,
+        voucherNumber,
         Date.valueOf(accountingDate),
         safeDescription,
         originalVoucherId,
@@ -408,71 +344,11 @@ final class VoucherService {
     ])
     long voucherId = ((Number) keys.first().first()).longValue()
     replaceLines(sql, voucherId, companyId, safeLines)
-    Voucher draft = requireVoucher(sql, voucherId)
+    Voucher created = requireVoucher(sql, voucherId)
     if (originalVoucherId == null) {
-      auditLogService.recordVoucherCreated(sql, draft)
+      auditLogService.recordVoucherCreated(sql, created)
     }
-    draft
-  }
-
-  private Voucher bookVoucher(
-      Sql sql,
-      long voucherId,
-      VoucherStatus targetStatus,
-      boolean allowReportedVatPeriod,
-      boolean allowLockedPeriod
-  ) {
-    Voucher current = requireVoucher(sql, voucherId)
-    if (current.status != VoucherStatus.DRAFT) {
-      throw new IllegalStateException('Endast utkast kan bokföras.')
-    }
-    if (!(targetStatus in [VoucherStatus.BOOKED, VoucherStatus.CORRECTION])) {
-      throw new IllegalArgumentException("Ogiltig bokföringsstatus: ${targetStatus}")
-    }
-
-    validateVoucherEnvelope(sql, current.fiscalYearId, current.accountingDate, current.description)
-    long companyId = resolveCompanyId(sql, current.fiscalYearId)
-    List<VoucherLine> safeLines = normalizeLines(sql, companyId, current.lines, true, targetStatus == VoucherStatus.BOOKED)
-    ensurePostingAllowed(sql, current.fiscalYearId, current.accountingDate, targetStatus, allowReportedVatPeriod, allowLockedPeriod)
-
-    int runningNumber = allocateRunningNumber(sql, current.voucherSeriesId)
-    String voucherNumber = "${current.seriesCode}-${runningNumber}"
-    ChainHead chainHead = lockChainHead(sql, companyId)
-    String previousHash = chainHead.lastContentHash
-    LocalDateTime bookedAt = currentDatabaseTimestamp(sql)
-    String contentHash = calculateContentHash(current, safeLines, targetStatus, runningNumber, voucherNumber, previousHash)
-
-    int updated = sql.executeUpdate('''
-        update voucher
-           set status = ?,
-               running_number = ?,
-               voucher_number = ?,
-               previous_hash = ?,
-               content_hash = ?,
-               booked_at = ?,
-               updated_at = current_timestamp
-         where id = ?
-           and status = 'DRAFT'
-    ''', [
-        targetStatus.name(),
-        runningNumber,
-        voucherNumber,
-        previousHash,
-        contentHash,
-        Timestamp.valueOf(bookedAt),
-        voucherId
-    ])
-    if (updated != 1) {
-      throw new IllegalStateException("Verifikationen kunde inte bokföras: ${voucherId}")
-    }
-    updateChainHead(sql, companyId, contentHash)
-    Voucher bookedVoucher = requireVoucher(sql, voucherId)
-    if (targetStatus == VoucherStatus.CORRECTION) {
-      auditLogService.recordCorrectionVoucher(sql, bookedVoucher)
-    } else {
-      auditLogService.recordVoucherBooked(sql, bookedVoucher)
-    }
-    bookedVoucher
+    created
   }
 
   private VoucherSeries ensureSeries(Sql sql, long fiscalYearId, String seriesCode, String seriesName) {
@@ -561,11 +437,31 @@ final class VoucherService {
     }
   }
 
+  private static void ensurePeriodUnlocked(Sql sql, long fiscalYearId, LocalDate accountingDate) {
+    GroovyRowResult row = sql.firstRow('''
+        select locked
+          from accounting_period
+         where fiscal_year_id = ?
+           and ? between start_date and end_date
+    ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
+    if (row != null && Boolean.TRUE == row.get('locked')) {
+      throw new LockedAccountingPeriodException('Perioden är låst och verifikationen kan inte ändras.')
+    }
+  }
+
+  private static void ensureBalanced(List<VoucherLine> lines) {
+    BigDecimal debitTotal = lines.sum(BigDecimal.ZERO) { VoucherLine line -> line.debitAmount ?: BigDecimal.ZERO } as BigDecimal
+    BigDecimal creditTotal = lines.sum(BigDecimal.ZERO) { VoucherLine line -> line.creditAmount ?: BigDecimal.ZERO } as BigDecimal
+    if (debitTotal != creditTotal) {
+      throw new IllegalArgumentException(
+          "Verifikationen är inte balanserad: debet=${debitTotal}, kredit=${creditTotal}")
+    }
+  }
+
   private static List<VoucherLine> normalizeLines(
       Sql sql,
       long companyId,
       List<VoucherLine> lines,
-      boolean requireBalanced,
       boolean requireActiveAccounts
   ) {
     if (lines == null || lines.isEmpty()) {
@@ -575,10 +471,6 @@ final class VoucherService {
     List<VoucherLine> safeLines = []
     lines.eachWithIndex { VoucherLine line, int index ->
       safeLines << normalizeLine(sql, companyId, line, index + 1, requireActiveAccounts)
-    }
-
-    if (requireBalanced) {
-      validateBalanced(safeLines)
     }
     safeLines
   }
@@ -632,20 +524,6 @@ final class VoucherService {
     )
   }
 
-  private static void validateBalanced(List<VoucherLine> safeLines) {
-    if (safeLines.size() < 2) {
-      throw new IllegalArgumentException('En bokförd verifikation måste ha minst två rader.')
-    }
-    BigDecimal debitTotal = safeLines.sum(BigDecimal.ZERO) { VoucherLine line -> line.debitAmount } as BigDecimal
-    BigDecimal creditTotal = safeLines.sum(BigDecimal.ZERO) { VoucherLine line -> line.creditAmount } as BigDecimal
-    if (debitTotal <= BigDecimal.ZERO) {
-      throw new IllegalArgumentException('Debetbelopp måste vara större än noll.')
-    }
-    if (debitTotal != creditTotal) {
-      throw new IllegalArgumentException("Verifikationen balanserar inte: debet ${debitTotal}, kredit ${creditTotal}.")
-    }
-  }
-
   private static String normalizeAccountNumber(String accountNumber) {
     String normalized = accountNumber?.trim()
     if (!(normalized ==~ /\d{4}/)) {
@@ -681,45 +559,6 @@ final class VoucherService {
     safeAmount
   }
 
-  private static void ensurePostingAllowed(
-      Sql sql,
-      long fiscalYearId,
-      LocalDate accountingDate,
-      VoucherStatus targetStatus,
-      boolean allowReportedVatPeriod,
-      boolean allowLockedPeriod
-  ) {
-    GroovyRowResult row = sql.firstRow('''
-        select locked
-          from accounting_period
-         where fiscal_year_id = ?
-           and ? between start_date and end_date
-    ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalStateException('Bokföringsdatumet saknar bokföringsperiod.')
-    }
-    if (Boolean.TRUE == row.get('locked') && !allowLockedPeriod) {
-      throw new LockedAccountingPeriodException('Perioden är låst och kan inte bokföras på.')
-    }
-    VatService.ensurePeriodsForFiscalYear(sql, fiscalYearId)
-    GroovyRowResult vatRow = sql.firstRow('''
-        select status
-          from vat_period
-         where fiscal_year_id = ?
-           and ? between start_date and end_date
-    ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
-    if (vatRow == null) {
-      return
-    }
-    String vatStatus = vatRow.get('status') as String
-    if (VatService.LOCKED == vatStatus && !allowLockedPeriod) {
-      throw new IllegalStateException('Momsperioden är låst och tillåter inte fler bokningar.')
-    }
-    if (VatService.REPORTED == vatStatus && targetStatus != VoucherStatus.CORRECTION && !allowReportedVatPeriod) {
-      throw new IllegalStateException('Momsperioden är rapporterad. Använd korrigeringsflödet för ändringar.')
-    }
-  }
-
   private static int allocateRunningNumber(Sql sql, long voucherSeriesId) {
     GroovyRowResult row = sql.firstRow('''
         select next_running_number as nextRunningNumber
@@ -743,74 +582,8 @@ final class VoucherService {
     runningNumber
   }
 
-  private static String calculateContentHash(
-      Voucher voucher,
-      List<VoucherLine> lines,
-      VoucherStatus status,
-      int runningNumber,
-      String voucherNumber,
-      String previousHash
-  ) {
-    StringBuilder payload = new StringBuilder()
-    payload.append(previousHash ?: '').append('\n')
-    payload.append(voucher.id).append('|')
-    payload.append(voucher.fiscalYearId).append('|')
-    payload.append(voucher.voucherSeriesId).append('|')
-    payload.append(voucher.seriesCode).append('|')
-    payload.append(runningNumber).append('|')
-    payload.append(voucherNumber).append('|')
-    payload.append(voucher.accountingDate).append('|')
-    payload.append(voucher.description).append('|')
-    payload.append(status.name()).append('|')
-    payload.append(voucher.originalVoucherId ?: '').append('\n')
-    new ArrayList<>(lines).sort { VoucherLine line -> line.lineIndex }.each { VoucherLine line ->
-      payload.append(line.lineIndex).append('|')
-      payload.append(line.accountNumber).append('|')
-      payload.append(line.description ?: '').append('|')
-      payload.append(line.debitAmount.toPlainString()).append('|')
-      payload.append(line.creditAmount.toPlainString()).append('\n')
-    }
-    MessageDigest digest = MessageDigest.getInstance('SHA-256')
-    byte[] hash = digest.digest(payload.toString().getBytes(StandardCharsets.UTF_8))
-    HexFormat.of().formatHex(hash)
-  }
-
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {
     CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
-  }
-
-  private static ChainHead lockChainHead(Sql sql, long companyId) {
-    GroovyRowResult row = sql.firstRow('''
-        select company_id as id,
-               last_content_hash as lastContentHash
-          from voucher_chain_head
-         where company_id = ?
-         for update
-    ''', [companyId]) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalStateException('Kedjehuvudet för verifikationer saknas.')
-    }
-    new ChainHead(
-        ((Number) row.get('id')).longValue(),
-        row.get('lastContentHash') as String
-    )
-  }
-
-  private static void updateChainHead(Sql sql, long companyId, String contentHash) {
-    int updated = sql.executeUpdate('''
-        update voucher_chain_head
-           set last_content_hash = ?,
-               updated_at = current_timestamp
-         where company_id = ?
-    ''', [contentHash, companyId])
-    if (updated != 1) {
-      throw new IllegalStateException('Kedjehuvudet för verifikationer kunde inte uppdateras.')
-    }
-  }
-
-  private static LocalDateTime currentDatabaseTimestamp(Sql sql) {
-    GroovyRowResult row = sql.firstRow('select current_timestamp as bookedAt') as GroovyRowResult
-    SqlValueMapper.toLocalDateTime(row.get('bookedAt'))
   }
 
   private static void replaceLines(Sql sql, long voucherId, long companyId, List<VoucherLine> lines) {
@@ -866,10 +639,7 @@ final class VoucherService {
                v.accounting_date as accountingDate,
                v.description,
                v.status,
-               v.original_voucher_id as originalVoucherId,
-               v.previous_hash as previousHash,
-               v.content_hash as contentHash,
-               v.booked_at as bookedAt
+               v.original_voucher_id as originalVoucherId
           from voucher v
           join voucher_series s on s.id = v.voucher_series_id
          where v.id = ?
@@ -924,9 +694,6 @@ final class VoucherService {
         row.get('description') as String,
         VoucherStatus.valueOf(row.get('status') as String),
         row.get('originalVoucherId') == null ? null : Long.valueOf(row.get('originalVoucherId').toString()),
-        row.get('previousHash') as String,
-        row.get('contentHash') as String,
-        SqlValueMapper.toLocalDateTime(row.get('bookedAt')),
         []
     )
   }
@@ -939,29 +706,5 @@ final class VoucherService {
         row.get('seriesName') as String,
         ((Number) row.get('nextRunningNumber')).intValue()
     )
-  }
-
-  private static final class ChainHead {
-
-    final long id
-    final String lastContentHash
-
-    private ChainHead(long id, String lastContentHash) {
-      this.id = id
-      this.lastContentHash = lastContentHash
-    }
-  }
-
-  static final class PostingPermissions {
-
-    static final PostingPermissions DEFAULT = new PostingPermissions(false, false)
-
-    final boolean allowReportedVatPeriod
-    final boolean allowLockedPeriod
-
-    PostingPermissions(boolean allowReportedVatPeriod, boolean allowLockedPeriod) {
-      this.allowReportedVatPeriod = allowReportedVatPeriod
-      this.allowLockedPeriod = allowLockedPeriod
-    }
   }
 }

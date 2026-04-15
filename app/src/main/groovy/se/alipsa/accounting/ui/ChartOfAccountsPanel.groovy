@@ -59,7 +59,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private JLabel classLabel
   private JLabel filterLabel
   private JButton importButton
-  private JButton searchButton
   private JButton resetButton
   private JButton toggleActiveButton
   private JButton openingBalanceButton
@@ -96,7 +95,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     filterLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.filter')
     activeOnlyCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly')
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
-    searchButton.text = I18n.instance.getString('chartOfAccountsPanel.button.refresh')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
     toggleActiveButton.text = I18n.instance.getString('chartOfAccountsPanel.button.toggleActive')
     openingBalanceButton.text = I18n.instance.getString('chartOfAccountsPanel.button.openingBalance')
@@ -165,6 +163,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
     searchLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.search'))
     filterPanel.add(searchLabel, labelConstraints)
+    searchField.addActionListener { reloadAccounts() }
     filterPanel.add(searchField, fieldConstraints)
 
     labelConstraints.gridx = 2
@@ -186,8 +185,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     importButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.import'))
     importButton.addActionListener { importChartOfAccounts() }
-    searchButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.refresh'))
-    searchButton.addActionListener { reloadAccounts() }
     resetButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.reset'))
     resetButton.addActionListener { resetFilters() }
     toggleActiveButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.toggleActive'))
@@ -196,7 +193,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     openingBalanceButton.addActionListener { openOpeningBalanceDialog() }
 
     actionPanel.add(importButton)
-    actionPanel.add(searchButton)
     actionPanel.add(resetButton)
     actionPanel.add(toggleActiveButton)
     actionPanel.add(openingBalanceButton)
@@ -234,6 +230,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         manualReviewOnly
     )
     accountTableModel.setRows(accounts)
+    if (accountTable.rowCount > 0) {
+      accountTable.setRowSelectionInterval(0, 0)
+    }
     refreshOverview()
     refreshSelectedAccountDetails()
   }

@@ -60,7 +60,7 @@ class MultiCompanyIsolationTest {
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService)
     AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
-    reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+    reportIntegrityService = new ReportIntegrityService(attachmentService, auditLogService)
     reportArchiveService = new ReportArchiveService(databaseService)
     reportDataService = new ReportDataService(databaseService, fiscalYearService, accountingPeriodService)
     journoReportService = new JournoReportService(
@@ -103,9 +103,9 @@ class MultiCompanyIsolationTest {
     seedAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedAccounts(companyB.id)
 
-    Voucher vA = voucherService.createAndBook(
+    Voucher vA = voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A', balancedLines(500.00G))
-    Voucher vB = voucherService.createAndBook(
+    Voucher vB = voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B', balancedLines(800.00G))
 
     assertEquals(500.00G, vA.debitTotal())
@@ -133,11 +133,11 @@ class MultiCompanyIsolationTest {
     seedAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedAccounts(companyB.id)
 
-    Voucher v1A = voucherService.createAndBook(
+    Voucher v1A = voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 10), 'Första i A', balancedLines(100.00G))
-    Voucher v1B = voucherService.createAndBook(
+    Voucher v1B = voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 10), 'Första i B', balancedLines(200.00G))
-    Voucher v2A = voucherService.createAndBook(
+    Voucher v2A = voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 11), 'Andra i A', balancedLines(300.00G))
 
     assertEquals('A-1', v1A.voucherNumber)
@@ -155,9 +155,9 @@ class MultiCompanyIsolationTest {
     seedVatAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedVatAccounts(companyB.id)
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A', saleLines(1000.00G))
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B', saleLines(2000.00G))
 
     List<VatPeriod> periodsA = vatService.listPeriods(fyA.id)
@@ -189,9 +189,9 @@ class MultiCompanyIsolationTest {
     seedAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedAccounts(companyB.id)
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A', balancedLines(500.00G))
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B', balancedLines(800.00G))
 
     ReportSelection selA = new ReportSelection(
@@ -222,9 +222,9 @@ class MultiCompanyIsolationTest {
     seedAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedAccounts(companyB.id)
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A', balancedLines(500.00G))
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B', balancedLines(800.00G))
 
     Path sieA = tempDir.resolve('export-a.sie')
@@ -255,13 +255,13 @@ class MultiCompanyIsolationTest {
     seedClosingAccounts(CompanyService.LEGACY_COMPANY_ID)
     seedClosingAccounts(companyB.id)
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning A',
         [
             new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
             new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
         ])
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning B',
         [
             new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 2000.00G, 0.00G),

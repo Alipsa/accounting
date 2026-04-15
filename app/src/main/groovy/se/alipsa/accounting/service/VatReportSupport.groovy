@@ -39,7 +39,7 @@ final class VatReportSupport {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
            and a.vat_code is not null
     ''')

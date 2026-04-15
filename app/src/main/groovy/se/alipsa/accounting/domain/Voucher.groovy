@@ -3,10 +3,9 @@ package se.alipsa.accounting.domain
 import groovy.transform.Canonical
 
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
- * Accounting voucher with immutable booked lines and hash-chain metadata.
+ * Accounting voucher with editable lines until its period is locked.
  */
 @Canonical
 final class Voucher {
@@ -22,9 +21,6 @@ final class Voucher {
   String description
   VoucherStatus status
   Long originalVoucherId
-  String previousHash
-  String contentHash
-  LocalDateTime bookedAt
   List<VoucherLine> lines = []
 
   BigDecimal debitTotal() {
