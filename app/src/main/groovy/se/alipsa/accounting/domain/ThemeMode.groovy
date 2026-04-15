@@ -23,8 +23,11 @@ enum ThemeMode {
         FlatDarkLaf.setup()
         break
       default:
-        FlatLaf.setup(new FlatLightLaf())
-        FlatLaf.setUseNativeWindowDecorations(true)
+        if (isOsDarkMode()) {
+          FlatDarkLaf.setup()
+        } else {
+          FlatLightLaf.setup()
+        }
         break
     }
   }
@@ -32,6 +35,12 @@ enum ThemeMode {
   void applyAndUpdateUI() {
     apply()
     FlatLaf.updateUI()
+  }
+
+  private static boolean isOsDarkMode() {
+    Object hint = java.awt.Toolkit.defaultToolkit
+        .getDesktopProperty('awt.os.isDarkMode')
+    hint instanceof Boolean && hint
   }
 
   static ThemeMode fromName(String name) {
