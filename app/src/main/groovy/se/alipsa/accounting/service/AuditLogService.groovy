@@ -24,7 +24,6 @@ import java.time.format.DateTimeFormatter
 final class AuditLogService {
 
   static final String CREATE_VOUCHER = 'CREATE_VOUCHER'
-  static final String BOOK_VOUCHER = 'BOOK_VOUCHER'
   static final String CANCEL_VOUCHER = 'CANCEL_VOUCHER'
   static final String CORRECTION_VOUCHER = 'CORRECTION_VOUCHER'
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
@@ -230,19 +229,6 @@ final class AuditLogService {
   }
 
   @PackageScope
-  AuditLogEntry recordVoucherBooked(Sql sql, Voucher voucher) {
-    recordEvent(sql, BOOK_VOUCHER, new AuditReferences(voucherId: voucher.id, fiscalYearId: voucher.fiscalYearId),
-        "Verifikation bokförd: ${voucher.voucherNumber ?: voucher.id}", formatDetails([
-            voucherId      : voucher.id,
-            voucherNumber  : voucher.voucherNumber,
-            runningNumber  : voucher.runningNumber,
-            accountingDate : voucher.accountingDate,
-            status         : voucher.status?.name(),
-            contentHash    : voucher.contentHash
-        ]))
-  }
-
-  @PackageScope
   AuditLogEntry recordVoucherCancelled(Sql sql, Voucher voucher) {
     recordEvent(sql, CANCEL_VOUCHER, new AuditReferences(voucherId: voucher.id, fiscalYearId: voucher.fiscalYearId),
         "Verifikation makulerad: ${voucher.id}", formatDetails([
@@ -261,8 +247,7 @@ final class AuditLogService {
             voucherNumber     : voucher.voucherNumber,
             originalVoucherId : voucher.originalVoucherId,
             accountingDate    : voucher.accountingDate,
-            status            : voucher.status?.name(),
-            contentHash       : voucher.contentHash
+            status            : voucher.status?.name()
         ]))
   }
 

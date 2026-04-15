@@ -71,17 +71,28 @@ final class VoucherService {
     }
   }
 
+  Voucher createVoucher(
+      Sql sql,
+      long fiscalYearId,
+      String seriesCode,
+      LocalDate accountingDate,
+      String description,
+      List<VoucherLine> lines
+  ) {
+    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
+  }
+
   Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
     databaseService.withTransaction { Sql sql ->
       Voucher current = requireVoucher(sql, voucherId)
       if (current.status != VoucherStatus.ACTIVE) {
-        throw new IllegalStateException('Verifikationen kan inte ändras — perioden är låst eller verifikationen är makulerad.')
+        throw new IllegalStateException('Verifikationen kan inte ändras — den är inte aktiv.')
       }
 
       String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
       ensurePeriodUnlocked(sql, current.fiscalYearId, accountingDate)
       long companyId = resolveCompanyId(sql, current.fiscalYearId)
-      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, true)
+      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, true)
       replaceLines(sql, voucherId, companyId, safeLines)
       sql.executeUpdate('''
           update voucher
@@ -238,7 +249,7 @@ final class VoucherService {
     ensurePeriodUnlocked(sql, fiscalYearId, accountingDate)
     boolean requireActiveAccounts = originalVoucherId == null
     long companyId = resolveCompanyId(sql, fiscalYearId)
-    List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, false, requireActiveAccounts)
+    List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, requireActiveAccounts)
     VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
     int runningNumber = allocateRunningNumber(sql, series.id)
     String voucherNumber = "${series.seriesCode}-${runningNumber}"
@@ -377,7 +388,6 @@ final class VoucherService {
       Sql sql,
       long companyId,
       List<VoucherLine> lines,
-      boolean requireBalanced,
       boolean requireActiveAccounts
   ) {
     if (lines == null || lines.isEmpty()) {
@@ -387,10 +397,6 @@ final class VoucherService {
     List<VoucherLine> safeLines = []
     lines.eachWithIndex { VoucherLine line, int index ->
       safeLines << normalizeLine(sql, companyId, line, index + 1, requireActiveAccounts)
-    }
-
-    if (requireBalanced) {
-      validateBalanced(safeLines)
     }
     safeLines
   }
@@ -442,20 +448,6 @@ final class VoucherService {
         debit,
         credit
     )
-  }
-
-  private static void validateBalanced(List<VoucherLine> safeLines) {
-    if (safeLines.size() < 2) {
-      throw new IllegalArgumentException('En bokförd verifikation måste ha minst två rader.')
-    }
-    BigDecimal debitTotal = safeLines.sum(BigDecimal.ZERO) { VoucherLine line -> line.debitAmount } as BigDecimal
-    BigDecimal creditTotal = safeLines.sum(BigDecimal.ZERO) { VoucherLine line -> line.creditAmount } as BigDecimal
-    if (debitTotal <= BigDecimal.ZERO) {
-      throw new IllegalArgumentException('Debetbelopp måste vara större än noll.')
-    }
-    if (debitTotal != creditTotal) {
-      throw new IllegalArgumentException("Verifikationen balanserar inte: debet ${debitTotal}, kredit ${creditTotal}.")
-    }
   }
 
   private static String normalizeAccountNumber(String accountNumber) {

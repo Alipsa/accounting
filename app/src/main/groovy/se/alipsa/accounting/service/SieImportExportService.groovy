@@ -491,14 +491,13 @@ final class SieImportExportService {
     int lineCount = 0
     for (SieVoucher voucher : sortedVouchers) {
       List<VoucherLine> lines = buildVoucherLines(voucher)
-      voucherService.createAndBook(
+      voucherService.createVoucher(
           sql,
           fiscalYearId,
           normalizeSeriesCode(voucher.series),
           voucher.voucherDate,
           normalizeVoucherText(voucher.text),
-          lines,
-          false
+          lines
       )
       voucherCount++
       lineCount += lines.size()
@@ -602,7 +601,7 @@ final class SieImportExportService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
          group by vl.account_number, a.normal_balance_side
     ''', [fiscalYearId]).each { GroovyRowResult row ->
@@ -727,7 +726,7 @@ final class SieImportExportService {
           join voucher_series s on s.id = v.voucher_series_id
           join voucher_line vl on vl.voucher_id = v.id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
          order by v.accounting_date, v.running_number, v.id, vl.line_index
     ''', [fiscalYearId]).each { GroovyRowResult row ->
       long voucherId = ((Number) row.get('voucherId')).longValue()
