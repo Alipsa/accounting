@@ -31,8 +31,10 @@ import java.math.RoundingMode
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.BiFunction
 
 import javax.swing.JButton
+import javax.swing.JOptionPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
@@ -67,7 +69,7 @@ class VatPeriodPanelTest {
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService, auditLogService)
-    activeCompanyManager = new ActiveCompanyManager(companyService)
+    activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
     fiscalYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID,
         '2026',
@@ -88,7 +90,11 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+      VatPeriodPanel vatPanel = new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      vatPanel.lockPeriodsConfirmer = { String message, String title ->
+        Integer.valueOf(JOptionPane.NO_OPTION)
+      } as BiFunction<String, String, Integer>
+      vatPanel
     }
 
     JTable periodTable = findTable(panel, 'Period')
@@ -106,7 +112,11 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+      VatPeriodPanel vatPanel = new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
+      vatPanel.lockPeriodsConfirmer = { String message, String title ->
+        Integer.valueOf(JOptionPane.NO_OPTION)
+      } as BiFunction<String, String, Integer>
+      vatPanel
     }
 
     JTable periodTable = findTable(panel, 'Period')
@@ -137,7 +147,7 @@ class VatPeriodPanelTest {
   }
 
   private Voucher bookSaleVoucher() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -148,7 +158,7 @@ class VatPeriodPanelTest {
 
   private Voucher bookPurchaseVoucher() {
     BigDecimal vatAmount = (200.00G * 0.25G).setScale(2, RoundingMode.HALF_UP)
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 18),
@@ -162,7 +172,7 @@ class VatPeriodPanelTest {
   }
 
   private Voucher bookEuAcquisitionVoucher() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 25),

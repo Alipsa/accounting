@@ -47,8 +47,7 @@ class StartupVerificationServiceTest {
     FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     ReportArchiveService reportArchiveService = new ReportArchiveService(databaseService)
     AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
-    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
-    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(attachmentService, auditLogService)
 
     def fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     def archive = reportArchiveService.archiveReport(

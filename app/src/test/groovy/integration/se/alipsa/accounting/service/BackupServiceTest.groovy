@@ -76,7 +76,7 @@ class BackupServiceTest {
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
-      assertEquals(16, countSchemaVersion(sql))
+      assertEquals(17, countSchemaVersion(sql))
     }
   }
 
@@ -114,7 +114,7 @@ class BackupServiceTest {
       insertAccount(sql, '2099', 'Årets resultat', 'EQUITY', 'CREDIT')
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
     }
-    def voucher = voucherService.createAndBook(
+    def voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 10),
@@ -138,14 +138,13 @@ class BackupServiceTest {
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
     ReportArchiveService reportArchiveService = new ReportArchiveService(databaseService)
-    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     new BackupService(
         databaseService,
         attachmentService,
         reportArchiveService,
         auditLogService,
         new MigrationService(databaseService),
-        new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+        new ReportIntegrityService(attachmentService, auditLogService)
     )
   }
 

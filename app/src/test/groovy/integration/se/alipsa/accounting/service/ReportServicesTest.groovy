@@ -63,14 +63,14 @@ class ReportServicesTest {
     reportExportService = new ReportExportService(
         reportDataService,
         reportArchiveService,
-        new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
+        new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         auditLogService,
         databaseService
     )
     journoReportService = new JournoReportService(
         reportDataService,
         reportArchiveService,
-        new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
+        new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         new CompanyService(databaseService),
         auditLogService,
         databaseService
@@ -106,8 +106,8 @@ class ReportServicesTest {
     assertEquals(ReportType.VOUCHER_LIST, archive.reportType)
     assertEquals(
         '''﻿Datum;Verifikation;Serie;Text;Status;Debet;Kredit
-2026-01-10;A-1;A;Försäljning januari;BOOKED;1250.00;1250.00
-2026-01-18;A-2;A;Leverantörsfaktura;BOOKED;250.00;250.00
+2026-01-10;A-1;A;Försäljning januari;ACTIVE;1250.00;1250.00
+2026-01-18;A-2;A;Leverantörsfaktura;ACTIVE;250.00;250.00
 ''',
         new String(archivedCsv, StandardCharsets.UTF_8)
     )
@@ -170,7 +170,7 @@ class ReportServicesTest {
 
   @Test
   void csvExportAddsBomAndEscapesFormulaLookingCells() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 20),
@@ -192,35 +192,13 @@ class ReportServicesTest {
     String csv = new String(reportExportService.renderCsv(reportDataService.generate(selection)), StandardCharsets.UTF_8)
 
     assertTrue(csv.startsWith('\uFEFF'))
-    assertTrue(csv.contains("2026-01-20;A-3;A;'=2+2;BOOKED;10.00;10.00"))
-  }
-
-  @Test
-  void tamperedVoucherBlocksCsvExport() {
-    ReportSelection selection = new ReportSelection(
-        ReportType.VOUCHER_LIST,
-        fiscalYear.id,
-        null,
-        LocalDate.of(2026, 1, 1),
-        LocalDate.of(2026, 1, 31)
-    )
-
-    databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate(
-          'update voucher_line set debit_amount = ? where voucher_id = ? and account_number = ?',
-          [9999.00G, 1L, '1510']
-      )
-    }
-
-    assertThrows(IllegalStateException) {
-      reportExportService.exportCsv(selection)
-    }
+    assertTrue(csv.contains("2026-01-20;A-3;A;'=2+2;ACTIVE;10.00;10.00"))
   }
 
   @Test
   void generalLedgerUsesPriorBalancesForMidYearSelections() {
     insertOpeningBalance('1510', 100.00G)
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 2, 10),
@@ -338,7 +316,7 @@ class ReportServicesTest {
   }
 
   private void bookFixtures() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 10),
@@ -349,7 +327,7 @@ class ReportServicesTest {
             new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 250.00G)
         ]
     )
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 18),

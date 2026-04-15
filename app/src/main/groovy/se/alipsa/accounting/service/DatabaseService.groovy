@@ -40,7 +40,8 @@ final class DatabaseService {
       new MigrationDefinition(13, 'V13__multi_company_foundation.sql', '/db/migrations/V13__multi_company_foundation.sql'),
       new MigrationDefinition(14, 'V14__company_chain_heads.sql', '/db/migrations/V14__company_chain_heads.sql'),
       new MigrationDefinition(15, 'V15__account_id_normalization.sql', '/db/migrations/V15__account_id_normalization.sql'),
-      new MigrationDefinition(16, 'V16__quarterly_vat.sql', '/db/migrations/V16__quarterly_vat.sql')
+      new MigrationDefinition(16, 'V16__quarterly_vat.sql', '/db/migrations/V16__quarterly_vat.sql'),
+      new MigrationDefinition(17, 'V17__voucher_lifecycle_simplification.sql', '/db/migrations/V17__voucher_lifecycle_simplification.sql')
   ]
 
   static DatabaseService newForTesting() {

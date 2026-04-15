@@ -250,14 +250,13 @@ final class ClosingService {
       Map<String, ResultAccountBalance> resultBalances
   ) {
     List<VoucherLine> lines = buildClosingVoucherLines(resultBalances, closingAccountNumber)
-    voucherService.createAndBook(
+    voucherService.createVoucherBypassLock(
         sql,
         fiscalYear.id,
         DEFAULT_CLOSING_SERIES,
         fiscalYear.endDate,
         "Årsbokslut ${fiscalYear.name}",
-        lines,
-        new VoucherService.PostingPermissions(true, true)
+        lines
     )
   }
 
@@ -428,7 +427,7 @@ final class ClosingService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and a.account_class in ('INCOME', 'EXPENSE')
          group by vl.account_number, a.account_name, a.account_class, a.normal_balance_side
     ''', [fiscalYearId]).each { GroovyRowResult row ->
@@ -473,7 +472,7 @@ final class ClosingService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
          group by vl.account_number, a.normal_balance_side
     ''', [fiscalYearId]).each { GroovyRowResult row ->

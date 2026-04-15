@@ -357,7 +357,7 @@ final class VatService {
           join voucher_line vl on vl.voucher_id = v.id
           join account a on a.id = vl.account_id
          where v.fiscal_year_id = ?
-           and v.status in ('BOOKED', 'CORRECTION')
+           and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
            and a.vat_code is not null
            and a.account_class in ('ASSET', 'LIABILITY')
@@ -513,7 +513,7 @@ final class VatService {
       List<VoucherLine> lines
   ) {
     try {
-      return voucherService.createAndBook(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines, true)
+      return voucherService.createVoucher(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines)
     } catch (LockedAccountingPeriodException exception) {
       throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom redovisningsperioden är låst.', exception)
     }

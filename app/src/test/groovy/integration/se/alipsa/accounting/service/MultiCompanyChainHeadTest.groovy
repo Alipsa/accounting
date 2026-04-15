@@ -58,14 +58,14 @@ class MultiCompanyChainHeadTest {
     reportExportService = new ReportExportService(
         reportDataService,
         reportArchiveService,
-        new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
+        new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         auditLogService,
         databaseService
     )
     journoReportService = new JournoReportService(
         reportDataService,
         reportArchiveService,
-        new ReportIntegrityService(voucherService, new AttachmentService(databaseService, auditLogService), auditLogService),
+        new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         companyService,
         auditLogService,
         databaseService
@@ -113,7 +113,7 @@ class MultiCompanyChainHeadTest {
       id
     }
 
-    def voucher = voucherService.createAndBook(
+    def voucher = voucherService.createVoucher(
         fyId,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -125,12 +125,11 @@ class MultiCompanyChainHeadTest {
     )
 
     assertNotNull(voucher.voucherNumber)
-    assertEquals('BOOKED', voucher.status.name())
+    assertEquals('ACTIVE', voucher.status.name())
 
     AuditLogEntry entry = auditLogService.logImport('SIE-import för bolag 2', 'test', company2.id)
     assertNotNull(entry)
 
-    assertEquals([], voucherService.validateIntegrity())
     assertEquals([], auditLogService.validateIntegrity())
   }
 
@@ -163,7 +162,7 @@ class MultiCompanyChainHeadTest {
       id
     }
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fyId,
         'A',
         LocalDate.of(2026, 1, 15),
