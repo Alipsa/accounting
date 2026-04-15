@@ -165,6 +165,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
     searchLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.search'))
     filterPanel.add(searchLabel, labelConstraints)
+    searchField.addActionListener { reloadAccounts() }
     filterPanel.add(searchField, fieldConstraints)
 
     labelConstraints.gridx = 2
