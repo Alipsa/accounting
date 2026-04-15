@@ -76,8 +76,18 @@ final class ThemeApplier {
     }
   }
 
-  // Best-effort: only covers GNOME (gsettings). KDE, XFCE, etc. fall back to light.
   private static boolean isLinuxDarkMode() {
+    String desktop = System.getenv('XDG_CURRENT_DESKTOP')?.toLowerCase() ?: ''
+    if (desktop.contains('kde')) {
+      return isKdeDarkMode()
+    }
+    if (desktop.contains('xfce')) {
+      return isXfceDarkMode()
+    }
+    isGnomeDarkMode()
+  }
+
+  private static boolean isGnomeDarkMode() {
     try {
       Process process = ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'].execute()
       process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -89,7 +99,33 @@ final class ThemeApplier {
       gtkProcess.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
       return gtkProcess.text?.toLowerCase()?.contains('dark')
     } catch (Exception exception) {
-      log.log(Level.FINE, 'Could not read Linux dark mode setting.', exception)
+      log.log(Level.FINE, 'Could not read GNOME dark mode setting.', exception)
+      return false
+    }
+  }
+
+  private static boolean isKdeDarkMode() {
+    try {
+      File kdeglobals = new File(System.getProperty('user.home'), '.config/kdeglobals')
+      if (!kdeglobals.isFile()) {
+        return false
+      }
+      return kdeglobals.text.readLines().any { String line ->
+        line.trim().toLowerCase().matches(/colorscheme\s*=.*dark.*/)
+      }
+    } catch (Exception exception) {
+      log.log(Level.FINE, 'Could not read KDE dark mode setting.', exception)
+      return false
+    }
+  }
+
+  private static boolean isXfceDarkMode() {
+    try {
+      Process process = ['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName'].execute()
+      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      return process.text?.toLowerCase()?.contains('dark')
+    } catch (Exception exception) {
+      log.log(Level.FINE, 'Could not read XFCE dark mode setting.', exception)
       return false
     }
   }
