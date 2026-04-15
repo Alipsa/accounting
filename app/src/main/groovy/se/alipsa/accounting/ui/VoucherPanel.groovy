@@ -224,9 +224,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
             lineTableModel.setAccountFromLookup(row, selected.accountNumber, selected.accountName,
                 selected.normalBalanceSide)
             recalculateBalances(row)
+            lookupEditorField.text = selected.accountName
             if (lineTable.cellEditor != null) {
               lineTable.cellEditor.stopCellEditing()
             }
+            moveCursorToAmountColumn(row, selected.normalBalanceSide)
           }
         } as Consumer<Account>
     )
@@ -650,6 +652,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     feedbackArea.text = message
   }
 
+  private void moveCursorToAmountColumn(int row, String normalBalanceSide) {
+    int column = 'CREDIT' == normalBalanceSide ? 3 : 2
+    SwingUtilities.invokeLater {
+      if (row < lineTable.rowCount) {
+        lineTable.changeSelection(row, column, false, false)
+        lineTable.editCellAt(row, column)
+      }
+    }
+  }
+
   private static boolean hasText(String value) {
     value != null && !value.isBlank()
   }
@@ -841,6 +853,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           row.accountName = lookedUp?.accountName ?: ''
           row.normalBalanceSide = lookedUp?.normalBalanceSide ?: ''
           recalculateBalances(rowIndex)
+          if (lookedUp != null) {
+            moveCursorToAmountColumn(rowIndex, lookedUp.normalBalanceSide)
+          }
           break
         case 1:
           row.accountName = text
