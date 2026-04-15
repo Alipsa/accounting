@@ -6,6 +6,7 @@ import com.formdev.flatlaf.FlatLightLaf
 
 import se.alipsa.accounting.domain.ThemeMode
 
+import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -60,32 +61,33 @@ final class ThemeApplier {
     false
   }
 
+  private static final long SUBPROCESS_TIMEOUT_SECONDS = 2
+
   private static boolean isWindowsDarkMode() {
     try {
       Process process = ['reg', 'query',
           'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize',
           '/v', 'AppsUseLightTheme'].execute()
-      String output = process.text
-      process.waitFor()
-      return output.contains('0x0')
+      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      return process.text.contains('0x0')
     } catch (Exception exception) {
       log.log(Level.FINE, 'Could not read Windows dark mode setting.', exception)
       return false
     }
   }
 
+  // Best-effort: only covers GNOME (gsettings). KDE, XFCE, etc. fall back to light.
   private static boolean isLinuxDarkMode() {
     try {
       Process process = ['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'].execute()
+      process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
       String output = process.text?.trim()
-      process.waitFor()
       if (output?.contains('dark')) {
         return true
       }
       Process gtkProcess = ['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'].execute()
-      String gtkOutput = gtkProcess.text?.trim()
-      gtkProcess.waitFor()
-      return gtkOutput?.toLowerCase()?.contains('dark')
+      gtkProcess.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      return gtkProcess.text?.toLowerCase()?.contains('dark')
     } catch (Exception exception) {
       log.log(Level.FINE, 'Could not read Linux dark mode setting.', exception)
       return false
