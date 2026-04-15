@@ -1,5 +1,8 @@
 package se.alipsa.accounting.ui
 
+import com.github.lgooddatepicker.components.DatePicker
+import com.github.lgooddatepicker.components.DatePickerSettings
+
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -17,7 +20,6 @@ import java.awt.Insets
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.time.LocalDate
-import java.time.format.DateTimeParseException
 
 import javax.swing.*
 import javax.swing.event.ListSelectionEvent
@@ -34,8 +36,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager
 
   private final JTextField nameField = new JTextField(20)
-  private final JTextField startDateField = new JTextField(10)
-  private final JTextField endDateField = new JTextField(10)
+  private final DatePicker startDatePicker = createDatePicker()
+  private final DatePicker endDatePicker = createDatePicker()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final FiscalYearTableModel fiscalYearTableModel = new FiscalYearTableModel()
   private final AccountingPeriodTableModel periodTableModel = new AccountingPeriodTableModel()
@@ -78,8 +80,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     nameLabel.text = I18n.instance.getString('fiscalYearPanel.label.name')
     startDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.startDate')
     endDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.endDate')
-    startDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
-    endDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
+    startDatePicker.settings.locale = I18n.instance.locale
+    endDatePicker.settings.locale = I18n.instance.locale
     createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
     lockButton.text = I18n.instance.getString('fiscalYearPanel.button.lockPeriod')
@@ -142,16 +144,14 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     fieldConstraints.gridy = 1
     startDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.startDate'))
     panel.add(startDateLabel, labelConstraints)
-    panel.add(startDateField, fieldConstraints)
+    panel.add(startDatePicker, fieldConstraints)
 
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
     endDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.endDate'))
     panel.add(endDateLabel, labelConstraints)
-    panel.add(endDateField, fieldConstraints)
+    panel.add(endDatePicker, fieldConstraints)
 
-    startDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
-    endDateField.toolTipText = I18n.instance.getString('fiscalYearPanel.tooltip.dateFormat')
     panel
   }
 
@@ -179,16 +179,20 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
 
   private void createFiscalYearRequested() {
     List<ValidationMessage> messages = []
-    LocalDate startDate = parseDate(
-        startDateField.text,
-        I18n.instance.getString('fiscalYearPanel.label.startDate'),
-        messages
-    )
-    LocalDate endDate = parseDate(
-        endDateField.text,
-        I18n.instance.getString('fiscalYearPanel.label.endDate'),
-        messages
-    )
+    LocalDate startDate = startDatePicker.date
+    LocalDate endDate = endDatePicker.date
+    if (startDate == null) {
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('fiscalYearPanel.label.startDate'),
+          I18n.instance.getString('fiscalYearPanel.error.dateRequired')
+      )
+    }
+    if (endDate == null) {
+      messages << ValidationSupport.fieldError(
+          I18n.instance.getString('fiscalYearPanel.label.endDate'),
+          I18n.instance.getString('fiscalYearPanel.error.dateRequired')
+      )
+    }
     if (!messages.isEmpty()) {
       showValidation(messages)
       return
@@ -277,33 +281,17 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     selectedRow < 0 ? null : periodTableModel.rowAt(selectedRow)
   }
 
-  private static LocalDate parseDate(String raw, String fieldName, List<ValidationMessage> messages) {
-    String text = raw?.trim()
-    if (!text) {
-      messages << ValidationSupport.fieldError(
-          fieldName,
-          I18n.instance.getString('fiscalYearPanel.error.dateRequired'),
-          I18n.instance.getString('fiscalYearPanel.error.dateHint')
-      )
-      return null
-    }
-    LocalDate parsedDate = null
-    try {
-      parsedDate = LocalDate.parse(text)
-    } catch (DateTimeParseException ignored) {
-      messages << ValidationSupport.fieldError(
-          fieldName,
-          I18n.instance.getString('fiscalYearPanel.error.dateInvalid'),
-          I18n.instance.getString('fiscalYearPanel.error.dateHint')
-      )
-    }
-    parsedDate
-  }
-
   private void clearInputs() {
     nameField.text = ''
-    startDateField.text = ''
-    endDateField.text = ''
+    startDatePicker.date = null
+    endDatePicker.date = null
+  }
+
+  private static DatePicker createDatePicker() {
+    DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
+    settings.formatForDatesCommonEra = 'yyyy-MM-dd'
+    settings.allowKeyboardEditing = false
+    new DatePicker(settings)
   }
 
   private Frame ownerFrame() {
