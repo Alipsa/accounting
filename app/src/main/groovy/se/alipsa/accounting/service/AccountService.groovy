@@ -196,6 +196,72 @@ final class AccountService {
     }
   }
 
+  BigDecimal calculateAccountBalance(long companyId, long fiscalYearId, String accountNumber, Long excludeVoucherId) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult accountRow = sql.firstRow('''
+          select id, normal_balance_side as normalBalanceSide
+            from account
+           where company_id = ?
+             and account_number = ?
+      ''', [companyId, normalized]) as GroovyRowResult
+      if (accountRow == null) {
+        return BigDecimal.ZERO.setScale(2)
+      }
+      long accountId = ((Number) accountRow.get('id')).longValue()
+      String normalSide = accountRow.get('normalBalanceSide') as String
+
+      GroovyRowResult openingRow = sql.firstRow('''
+          select coalesce(amount, 0) as amount
+            from opening_balance
+           where fiscal_year_id = ?
+             and account_id = ?
+      ''', [fiscalYearId, accountId]) as GroovyRowResult
+      BigDecimal opening = openingRow == null
+          ? BigDecimal.ZERO
+          : new BigDecimal(openingRow.get('amount').toString())
+
+      StringBuilder query = new StringBuilder('''
+          select coalesce(sum(vl.debit_amount), 0) as totalDebit,
+                 coalesce(sum(vl.credit_amount), 0) as totalCredit
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id = ?
+             and v.fiscal_year_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+      ''')
+      List<Object> params = [accountId, fiscalYearId]
+      if (excludeVoucherId != null) {
+        query.append(' and v.id != ?')
+        params << excludeVoucherId
+      }
+      GroovyRowResult transactionRow = sql.firstRow(query.toString(), params) as GroovyRowResult
+      BigDecimal totalDebit = new BigDecimal(transactionRow.get('totalDebit').toString())
+      BigDecimal totalCredit = new BigDecimal(transactionRow.get('totalCredit').toString())
+
+      BigDecimal net = normalSide == 'CREDIT'
+          ? totalCredit.subtract(totalDebit)
+          : totalDebit.subtract(totalCredit)
+      opening.add(net).setScale(2)
+    }
+  }
+
+  static BigDecimal calculateBalanceAfter(
+      BigDecimal balanceBefore,
+      BigDecimal debitAmount,
+      BigDecimal creditAmount,
+      String normalBalanceSide
+  ) {
+    BigDecimal safeBefore = balanceBefore ?: BigDecimal.ZERO
+    BigDecimal safeDebit = debitAmount ?: BigDecimal.ZERO
+    BigDecimal safeCredit = creditAmount ?: BigDecimal.ZERO
+    BigDecimal net = normalBalanceSide == 'CREDIT'
+        ? safeCredit.subtract(safeDebit)
+        : safeDebit.subtract(safeCredit)
+    safeBefore.add(net).setScale(2)
+  }
+
   private static String normalizeAccountNumber(String accountNumber) {
     String normalized = accountNumber?.trim()
     if (!(normalized ==~ /\d{4}/)) {
