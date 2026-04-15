@@ -83,6 +83,38 @@ final class AccountingPeriodService {
     }
   }
 
+  List<AccountingPeriod> lockPeriodsUpTo(long fiscalYearId, LocalDate endDate, String reason) {
+    if (endDate == null) {
+      throw new IllegalArgumentException('End date is required.')
+    }
+    String safeReason = reason?.trim()
+    databaseService.withTransaction { Sql sql ->
+      List<GroovyRowResult> rows = sql.rows('''
+          select id
+            from accounting_period
+           where fiscal_year_id = ?
+             and locked = false
+             and end_date <= ?
+           order by period_index
+      ''', [fiscalYearId, Date.valueOf(endDate)]) as List<GroovyRowResult>
+      List<AccountingPeriod> locked = []
+      rows.each { GroovyRowResult row ->
+        long periodId = ((Number) row.get('id')).longValue()
+        sql.executeUpdate('''
+            update accounting_period
+               set locked = true,
+                   lock_reason = ?,
+                   locked_at = current_timestamp
+             where id = ?
+        ''', [safeReason, periodId])
+        AccountingPeriod lockedPeriod = findPeriod(sql, periodId)
+        auditLogService.recordPeriodLocked(sql, lockedPeriod)
+        locked << lockedPeriod
+      }
+      locked
+    }
+  }
+
   boolean isDateLocked(long companyId, LocalDate accountingDate) {
     CompanyService.requireValidCompanyId(companyId)
     if (accountingDate == null) {

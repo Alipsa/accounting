@@ -143,6 +143,18 @@ Unchanged in principle, adapted to new statuses:
 - New voucher gets status `CORRECTION` and references the original via `original_voucher_id`
 - Only available for vouchers in locked periods (since unlocked vouchers can be edited directly)
 
+### Period Locking and Audit Integrity
+
+- The accounting period is the single source of truth for "is this voucher editable?". An `ACTIVE` voucher remains editable as long as `accounting_period.locked = false` for the period containing its date.
+- After the VAT transfer voucher for a VAT period is booked successfully, the UI prompts the user to lock all accounting periods up to and including the VAT period's end date. Locking is irreversible through the UI.
+- Because edit surface is bounded by the unlocked window, a hash chain on voucher content is no longer required. Audit integrity is provided by:
+  - The audit log (hash-chained), which records `CREATE_VOUCHER`, `UPDATE_VOUCHER`, `CANCEL_VOUCHER`, `CORRECTION_VOUCHER` events including the full line content (account, debit, credit, text) for before/after traceability.
+  - Period locking, which prevents further edits once VAT is reported or bokslut is done.
+
+### Fiscal-year closing and separate series
+
+Bokslut runs after all regular accounting periods have been locked (either through successive VAT reports or an explicit lock at year end). The result-allocation voucher therefore cannot be booked in any of the ordinary series — those series only accept dates whose accounting period is still unlocked. Year-end closing uses a dedicated series (`ClosingService.createVoucherBypassLock`) so the closing voucher can be registered against a date inside a locked period without reopening it.
+
 ### Database Migration
 
 A new migration:

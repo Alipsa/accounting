@@ -117,7 +117,9 @@ final class VoucherService {
            where id = ?
              and status = 'ACTIVE'
       ''', [Date.valueOf(accountingDate), safeDescription, voucherId])
-      requireVoucher(sql, voucherId)
+      Voucher updatedVoucher = requireVoucher(sql, voucherId)
+      auditLogService.recordVoucherUpdated(sql, updatedVoucher)
+      updatedVoucher
     }
   }
 

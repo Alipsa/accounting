@@ -88,7 +88,7 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+      new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
     }
 
     JTable periodTable = findTable(panel, 'Period')
@@ -106,7 +106,7 @@ class VatPeriodPanelTest {
     bookVatFixtures()
 
     VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+      new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)
     }
 
     JTable periodTable = findTable(panel, 'Period')

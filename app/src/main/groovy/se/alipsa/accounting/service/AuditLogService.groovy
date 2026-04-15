@@ -10,6 +10,7 @@ import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
+import se.alipsa.accounting.domain.VoucherLine
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -24,6 +25,7 @@ import java.time.format.DateTimeFormatter
 final class AuditLogService {
 
   static final String CREATE_VOUCHER = 'CREATE_VOUCHER'
+  static final String UPDATE_VOUCHER = 'UPDATE_VOUCHER'
   static final String CANCEL_VOUCHER = 'CANCEL_VOUCHER'
   static final String CORRECTION_VOUCHER = 'CORRECTION_VOUCHER'
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
@@ -224,7 +226,22 @@ final class AuditLogService {
             fiscalYearId   : voucher.fiscalYearId,
             accountingDate : voucher.accountingDate,
             description    : voucher.description,
-            status         : voucher.status?.name()
+            status         : voucher.status?.name(),
+            lines          : formatLines(voucher.lines)
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordVoucherUpdated(Sql sql, Voucher voucher) {
+    recordEvent(sql, UPDATE_VOUCHER, new AuditReferences(voucherId: voucher.id, fiscalYearId: voucher.fiscalYearId),
+        "Verifikation ändrad: ${voucher.voucherNumber ?: voucher.id}", formatDetails([
+            voucherId      : voucher.id,
+            voucherNumber  : voucher.voucherNumber,
+            fiscalYearId   : voucher.fiscalYearId,
+            accountingDate : voucher.accountingDate,
+            description    : voucher.description,
+            status         : voucher.status?.name(),
+            lines          : formatLines(voucher.lines)
         ]))
   }
 
@@ -235,7 +252,8 @@ final class AuditLogService {
             voucherId      : voucher.id,
             accountingDate : voucher.accountingDate,
             description    : voucher.description,
-            status         : voucher.status?.name()
+            status         : voucher.status?.name(),
+            lines          : formatLines(voucher.lines)
         ]))
   }
 
@@ -247,7 +265,8 @@ final class AuditLogService {
             voucherNumber     : voucher.voucherNumber,
             originalVoucherId : voucher.originalVoucherId,
             accountingDate    : voucher.accountingDate,
-            status            : voucher.status?.name()
+            status            : voucher.status?.name(),
+            lines             : formatLines(voucher.lines)
         ]))
   }
 
@@ -526,6 +545,15 @@ final class AuditLogService {
 
   private static String formatCreatedAt(LocalDateTime createdAt) {
     createdAt == null ? '' : createdAt.format(HASH_TIMESTAMP_FORMAT)
+  }
+
+  private static String formatLines(List<VoucherLine> lines) {
+    if (lines == null || lines.isEmpty()) {
+      return ''
+    }
+    lines.collect { VoucherLine line ->
+      "${line.lineIndex}:${line.accountNumber ?: ''}|debit=${line.debitAmount ?: 0}|credit=${line.creditAmount ?: 0}|text=${line.description ?: ''}"
+    }.join(';')
   }
 
   private static String formatDetails(Map<String, Object> details) {
