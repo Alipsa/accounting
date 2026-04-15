@@ -202,8 +202,6 @@ final class MainFrame implements PropertyChangeListener {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater { onCompanyChanged() }
-    } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
-      // Panels listen for this directly via ActiveCompanyManager; MainFrame doesn't need action.
     }
   }
 
@@ -545,7 +543,7 @@ final class MainFrame implements PropertyChangeListener {
             reportArchiveService,
             fiscalYearService,
             accountingPeriodService,
-            new VoucherEditor.Dependencies(voucherService, fiscalYearService, accountService, attachmentService, auditLogService),
+            voucherService,
             activeCompanyManager
         )],
         [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService, activeCompanyManager)],

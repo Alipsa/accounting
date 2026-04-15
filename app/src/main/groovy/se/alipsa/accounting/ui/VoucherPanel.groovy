@@ -234,7 +234,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
         java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
-        lookupPopup.attachToEditor(lookupEditorField, table, row, column)
+        lookupPopup.attachToEditor(lookupEditorField)
         comp
       }
     }

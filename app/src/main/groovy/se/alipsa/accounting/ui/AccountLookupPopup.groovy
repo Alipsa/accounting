@@ -5,7 +5,6 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
-import java.awt.Point
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -16,10 +15,8 @@ import javax.swing.DefaultListModel
 import javax.swing.JList
 import javax.swing.JPopupMenu
 import javax.swing.JScrollPane
-import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
-import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -76,7 +73,7 @@ final class AccountLookupPopup {
     debounceTimer.repeats = false
   }
 
-  void attachToEditor(JTextField editor, JTable table, int row, int column) {
+  void attachToEditor(JTextField editor) {
     activeEditor = editor
     editor.document.addDocumentListener(new DocumentListener() {
       @Override
@@ -135,7 +132,6 @@ final class AccountLookupPopup {
     resultList.visibleRowCount = Math.min(listModel.size(), MAX_VISIBLE_ROWS)
     popup.pack()
     if (activeEditor != null) {
-      Point location = activeEditor.locationOnScreen
       popup.show(activeEditor, 0, activeEditor.height)
     }
   }
