@@ -10,38 +10,38 @@ class AccountBalanceTest {
 
   @Test
   void applyDebitToDebitNormalAccount() {
-    BigDecimal before = new BigDecimal('1000.00')
-    BigDecimal debit = new BigDecimal('500.00')
+    BigDecimal before = 1000.00G
+    BigDecimal debit = 500.00G
     BigDecimal credit = BigDecimal.ZERO
     BigDecimal after = AccountService.calculateBalanceAfter(before, debit, credit, 'DEBIT')
-    assertEquals(new BigDecimal('1500.00'), after)
+    assertEquals(1500.00G, after)
   }
 
   @Test
   void applyCreditToDebitNormalAccount() {
-    BigDecimal before = new BigDecimal('1000.00')
+    BigDecimal before = 1000.00G
     BigDecimal debit = BigDecimal.ZERO
-    BigDecimal credit = new BigDecimal('300.00')
+    BigDecimal credit = 300.00G
     BigDecimal after = AccountService.calculateBalanceAfter(before, debit, credit, 'DEBIT')
-    assertEquals(new BigDecimal('700.00'), after)
+    assertEquals(700.00G, after)
   }
 
   @Test
   void applyDebitToCreditNormalAccount() {
-    BigDecimal before = new BigDecimal('5000.00')
-    BigDecimal debit = new BigDecimal('200.00')
+    BigDecimal before = 5000.00G
+    BigDecimal debit = 200.00G
     BigDecimal credit = BigDecimal.ZERO
     BigDecimal after = AccountService.calculateBalanceAfter(before, debit, credit, 'CREDIT')
-    assertEquals(new BigDecimal('4800.00'), after)
+    assertEquals(4800.00G, after)
   }
 
   @Test
   void applyCreditToCreditNormalAccount() {
-    BigDecimal before = new BigDecimal('5000.00')
+    BigDecimal before = 5000.00G
     BigDecimal debit = BigDecimal.ZERO
-    BigDecimal credit = new BigDecimal('1000.00')
+    BigDecimal credit = 1000.00G
     BigDecimal after = AccountService.calculateBalanceAfter(before, debit, credit, 'CREDIT')
-    assertEquals(new BigDecimal('6000.00'), after)
+    assertEquals(6000.00G, after)
   }
 
   @Test

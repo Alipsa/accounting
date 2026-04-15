@@ -79,7 +79,22 @@ final class VoucherService {
       String description,
       List<VoucherLine> lines
   ) {
-    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null)
+    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, false)
+  }
+
+  /**
+   * Creates a voucher without checking the accounting period lock.
+   * Used exclusively by ClosingService for year-end closing vouchers.
+   */
+  Voucher createVoucherBypassLock(
+      Sql sql,
+      long fiscalYearId,
+      String seriesCode,
+      LocalDate accountingDate,
+      String description,
+      List<VoucherLine> lines
+  ) {
+    insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, true)
   }
 
   Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
@@ -243,13 +258,17 @@ final class VoucherService {
       LocalDate accountingDate,
       String description,
       List<VoucherLine> lines,
-      Long originalVoucherId
+      Long originalVoucherId,
+      boolean skipLockCheck = false
   ) {
     String safeDescription = validateVoucherEnvelope(sql, fiscalYearId, accountingDate, description)
-    ensurePeriodUnlocked(sql, fiscalYearId, accountingDate)
+    if (!skipLockCheck) {
+      ensurePeriodUnlocked(sql, fiscalYearId, accountingDate)
+    }
     boolean requireActiveAccounts = originalVoucherId == null
     long companyId = resolveCompanyId(sql, fiscalYearId)
     List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, requireActiveAccounts)
+    ensureBalanced(safeLines)
     VoucherSeries series = ensureSeries(sql, fiscalYearId, seriesCode, null)
     int runningNumber = allocateRunningNumber(sql, series.id)
     String voucherNumber = "${series.seriesCode}-${runningNumber}"
@@ -381,6 +400,15 @@ final class VoucherService {
     ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
     if (row != null && Boolean.TRUE == row.get('locked')) {
       throw new LockedAccountingPeriodException('Perioden är låst och verifikationen kan inte ändras.')
+    }
+  }
+
+  private static void ensureBalanced(List<VoucherLine> lines) {
+    BigDecimal debitTotal = lines.sum(BigDecimal.ZERO) { VoucherLine line -> line.debitAmount ?: BigDecimal.ZERO } as BigDecimal
+    BigDecimal creditTotal = lines.sum(BigDecimal.ZERO) { VoucherLine line -> line.creditAmount ?: BigDecimal.ZERO } as BigDecimal
+    if (debitTotal != creditTotal) {
+      throw new IllegalArgumentException(
+          "Verifikationen är inte balanserad: debet=${debitTotal}, kredit=${creditTotal}")
     }
   }
 

@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
-import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -67,8 +66,8 @@ class VoucherServiceTest {
   }
 
   @Test
-  void balancedVoucherIsBookedWithRunningNumberAndHashChain() {
-    Voucher first = voucherService.createAndBook(
+  void voucherIsCreatedWithRunningNumber() {
+    Voucher first = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -76,7 +75,7 @@ class VoucherServiceTest {
         balancedLines(100.00G)
     )
 
-    Voucher second = voucherService.createAndBook(
+    Voucher second = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 16),
@@ -84,18 +83,13 @@ class VoucherServiceTest {
         balancedLines(250.00G)
     )
 
-    assertEquals(VoucherStatus.BOOKED, first.status)
+    assertEquals(VoucherStatus.ACTIVE, first.status)
     assertEquals(1, first.runningNumber)
     assertEquals('A-1', first.voucherNumber)
-    assertNull(first.previousHash)
-    assertNotNull(first.contentHash)
-    assertEquals(64, first.contentHash.length())
     assertEquals(100.00G, first.debitTotal())
     assertEquals(100.00G, first.creditTotal())
 
     assertEquals(2, second.runningNumber)
-    assertEquals(first.contentHash, second.previousHash)
-    assertNotNull(voucherService.findVoucher(second.id).contentHash)
 
     VoucherSeries series = voucherService.listSeries(fiscalYear.id).find { VoucherSeries item ->
       item.seriesCode == 'A'
@@ -104,8 +98,8 @@ class VoucherServiceTest {
   }
 
   @Test
-  void bookedVoucherLinesHaveNonNullAccountId() {
-    Voucher booked = voucherService.createAndBook(
+  void voucherLinesHaveNonNullAccountId() {
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -113,14 +107,14 @@ class VoucherServiceTest {
         balancedLines(100.00G)
     )
 
-    booked.lines.each { VoucherLine line ->
+    voucher.lines.each { VoucherLine line ->
       assertNotNull(line.accountId, "accountId ska inte vara null för rad ${line.accountNumber}")
     }
   }
 
   @Test
-  void unbalancedBookingDoesNotAdvanceNumberSeries() {
-    Voucher first = voucherService.createAndBook(
+  void unbalancedVoucherDoesNotAdvanceNumberSeries() {
+    Voucher first = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -129,7 +123,7 @@ class VoucherServiceTest {
     )
 
     Executable action = {
-      voucherService.createAndBook(
+      voucherService.createVoucher(
           fiscalYear.id,
           'A',
           LocalDate.of(2026, 1, 16),
@@ -143,7 +137,7 @@ class VoucherServiceTest {
 
     assertThrows(IllegalArgumentException, action)
 
-    Voucher second = voucherService.createAndBook(
+    Voucher second = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 17),
@@ -156,8 +150,8 @@ class VoucherServiceTest {
   }
 
   @Test
-  void bookedVoucherCannotBeUpdatedButCanBeCorrected() {
-    Voucher booked = voucherService.createAndBook(
+  void activeVoucherCanBeUpdatedAndCorrected() {
+    Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -165,85 +159,68 @@ class VoucherServiceTest {
         balancedLines(100.00G)
     )
 
-    Executable updateAction = {
-      voucherService.updateDraft(
-          booked.id,
-          LocalDate.of(2026, 1, 16),
-          'Ändrad text',
-          balancedLines(120.00G)
-      )
-    } as Executable
+    Voucher updated = voucherService.updateVoucher(
+        active.id,
+        LocalDate.of(2026, 1, 16),
+        'Ändrad text',
+        balancedLines(120.00G)
+    )
 
-    assertThrows(IllegalStateException, updateAction)
+    assertEquals(LocalDate.of(2026, 1, 16), updated.accountingDate)
+    assertEquals('Ändrad text', updated.description)
+    assertEquals(120.00G, updated.debitTotal())
 
-    Voucher correction = voucherService.createCorrectionVoucher(booked.id)
-    Voucher originalAfterCorrection = voucherService.findVoucher(booked.id)
+    Voucher correction = voucherService.createCorrectionVoucher(active.id)
+    Voucher originalAfterCorrection = voucherService.findVoucher(active.id)
 
-    assertEquals(VoucherStatus.BOOKED, originalAfterCorrection.status)
+    assertEquals(VoucherStatus.ACTIVE, originalAfterCorrection.status)
     assertEquals(VoucherStatus.CORRECTION, correction.status)
-    assertEquals(booked.id, correction.originalVoucherId)
+    assertEquals(active.id, correction.originalVoucherId)
     assertEquals(2, correction.runningNumber)
-    assertEquals(booked.contentHash, correction.previousHash)
     assertEquals(0.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.debitAmount)
-    assertEquals(100.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.creditAmount)
-    assertEquals(100.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.debitAmount)
+    assertEquals(120.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.creditAmount)
+    assertEquals(120.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.debitAmount)
     assertEquals(0.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.creditAmount)
   }
 
   @Test
-  void lockedPeriodRejectsBookingBeforeNumberAllocation() {
+  void lockedPeriodRejectsVoucherCreation() {
     AccountingPeriod january = accountingPeriodService.listPeriods(fiscalYear.id).first()
     accountingPeriodService.lockPeriod(january.id, 'Avstämd period.')
-    Voucher draft = voucherService.createDraft(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 1, 15),
-        'Försäljning i låst period',
-        balancedLines(100.00G)
-    )
 
     Executable action = {
-      voucherService.bookDraft(draft.id)
+      voucherService.createVoucher(
+          fiscalYear.id,
+          'A',
+          LocalDate.of(2026, 1, 15),
+          'Försäljning i låst period',
+          balancedLines(100.00G)
+      )
     } as Executable
 
     assertThrows(IllegalStateException, action)
-    assertEquals(VoucherStatus.DRAFT, voucherService.findVoucher(draft.id).status)
-    assertEquals(1, voucherService.listSeries(fiscalYear.id).first().nextRunningNumber)
+    assertTrue(voucherService.listSeries(fiscalYear.id).isEmpty())
   }
 
   @Test
-  void draftCanBeUpdatedAndCancelled() {
-    Voucher draft = voucherService.createDraft(
+  void voucherCanBeCancelled() {
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 2, 15),
-        'Första utkastet',
+        'Verifikation att makulera',
         balancedLines(100.00G)
     )
 
-    Voucher updated = voucherService.updateDraft(
-        draft.id,
-        LocalDate.of(2026, 2, 16),
-        'Uppdaterat utkast',
-        [
-            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 125.00G, 0.00G),
-            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 125.00G)
-        ]
-    )
-
-    assertEquals(LocalDate.of(2026, 2, 16), updated.accountingDate)
-    assertEquals('Uppdaterat utkast', updated.description)
-    assertEquals(125.00G, updated.debitTotal())
-
-    Voucher cancelled = voucherService.cancelDraft(draft.id)
+    Voucher cancelled = voucherService.cancelVoucher(voucher.id)
 
     assertEquals(VoucherStatus.CANCELLED, cancelled.status)
   }
 
   @Test
-  void bookingRejectsInvalidDateUnknownAccountAndInactiveAccount() {
+  void creationRejectsInvalidDateUnknownAccountAndInactiveAccount() {
     Executable outsideFiscalYear = {
-      voucherService.createAndBook(
+      voucherService.createVoucher(
           fiscalYear.id,
           'A',
           LocalDate.of(2025, 12, 31),
@@ -252,7 +229,7 @@ class VoucherServiceTest {
       )
     } as Executable
     Executable unknownAccount = {
-      voucherService.createAndBook(
+      voucherService.createVoucher(
           fiscalYear.id,
           'A',
           LocalDate.of(2026, 3, 1),
@@ -266,7 +243,7 @@ class VoucherServiceTest {
 
     deactivateAccount('1510')
     Executable inactiveAccount = {
-      voucherService.createAndBook(
+      voucherService.createVoucher(
           fiscalYear.id,
           'A',
           LocalDate.of(2026, 3, 2),
@@ -282,21 +259,21 @@ class VoucherServiceTest {
 
   @Test
   void differentSeriesKeepIndependentRunningNumbers() {
-    Voucher firstInA = voucherService.createAndBook(
+    Voucher firstInA = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 4, 1),
         'Serie A',
         balancedLines(100.00G)
     )
-    Voucher firstInB = voucherService.createAndBook(
+    Voucher firstInB = voucherService.createVoucher(
         fiscalYear.id,
         'B',
         LocalDate.of(2026, 4, 2),
         'Serie B',
         balancedLines(200.00G)
     )
-    Voucher secondInA = voucherService.createAndBook(
+    Voucher secondInA = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 4, 3),
@@ -310,8 +287,8 @@ class VoucherServiceTest {
   }
 
   @Test
-  void correctionIsBlockedIfOriginalPeriodWasLockedAfterBooking() {
-    Voucher booked = voucherService.createAndBook(
+  void correctionIsBlockedIfOriginalPeriodWasLockedAfterCreation() {
+    Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 10),
@@ -322,88 +299,40 @@ class VoucherServiceTest {
     accountingPeriodService.lockPeriod(january.id, 'Januari är låst.')
 
     Executable action = {
-      voucherService.createCorrectionVoucher(booked.id)
+      voucherService.createCorrectionVoucher(active.id)
     } as Executable
 
     IllegalStateException exception = assertThrows(IllegalStateException, action)
-    assertEquals('Perioden är låst och kan inte bokföras på.', exception.message)
+    assertEquals('Perioden är låst och verifikationen kan inte ändras.', exception.message)
   }
 
   @Test
   void voucherLifecycleIsLoggedInAuditTrail() {
-    Voucher draft = voucherService.createDraft(
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 5, 1),
-        'Audit utkast',
+        'Audit verifikation',
         balancedLines(100.00G)
     )
-    voucherService.cancelDraft(draft.id)
 
-    Voucher booked = voucherService.createAndBook(
+    Voucher correctable = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 5, 2),
         'Audit bokförd',
         balancedLines(200.00G)
     )
-    Voucher correction = voucherService.createCorrectionVoucher(booked.id)
+    Voucher correction = voucherService.createCorrectionVoucher(correctable.id)
 
-    List<AuditLogEntry> draftEntries = auditLogService.listEntriesForVoucher(draft.id)
-    List<AuditLogEntry> bookedEntries = auditLogService.listEntriesForVoucher(booked.id)
+    List<AuditLogEntry> voucherEntries = auditLogService.listEntriesForVoucher(voucher.id)
+    List<AuditLogEntry> correctableEntries = auditLogService.listEntriesForVoucher(correctable.id)
     List<AuditLogEntry> correctionEntries = auditLogService.listEntriesForVoucher(correction.id)
 
-    assertTrue(draftEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
-    assertTrue(draftEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CANCEL_VOUCHER })
-    assertTrue(bookedEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
-    assertTrue(bookedEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.BOOK_VOUCHER })
+    assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
+    assertTrue(correctableEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
     assertTrue(correctionEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CORRECTION_VOUCHER })
     assertEquals([], auditLogService.validateIntegrity())
-  }
-
-  @Test
-  void validateIntegrityDetectsTamperedVoucherDescription() {
-    Voucher voucher = voucherService.createAndBook(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 6, 10),
-        'Originaltext',
-        balancedLines(100.00G)
-    )
-
-    databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('update voucher set description = ? where id = ?', ['Manipulerad text', voucher.id])
-    }
-
-    List<String> problems = voucherService.validateIntegrity()
-
-    assertEquals(1, problems.size())
-    assertEquals("Verifikation ${voucher.id} har ogiltig innehållshash.", problems.first())
-  }
-
-  @Test
-  void validateIntegrityDetectsTamperedVoucherLineAmounts() {
-    Voucher voucher = voucherService.createAndBook(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 6, 11),
-        'Originalrader',
-        balancedLines(100.00G)
-    )
-
-    databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('''
-          update voucher_line
-             set debit_amount = ?
-           where voucher_id = ?
-             and account_id = (select id from account where account_number = ?)
-      ''', [125.00G, voucher.id, '1510'])
-    }
-
-    List<String> problems = voucherService.validateIntegrity()
-
-    assertEquals(1, problems.size())
-    assertEquals("Verifikation ${voucher.id} har ogiltig innehållshash.", problems.first())
   }
 
   @Test
@@ -431,11 +360,11 @@ class VoucherServiceTest {
       id
     }
 
-    Voucher v1 = voucherService.createAndBook(
+    Voucher v1 = voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2026, 1, 15),
         'Försäljning bolag 1', balancedLines(100.00G)
     )
-    Voucher v2 = voucherService.createAndBook(
+    Voucher v2 = voucherService.createVoucher(
         fy2Id, 'A', LocalDate.of(2026, 1, 15),
         'Försäljning bolag 2', balancedLines(200.00G)
     )

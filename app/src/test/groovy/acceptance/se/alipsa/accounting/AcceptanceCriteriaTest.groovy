@@ -87,7 +87,7 @@ class AcceptanceCriteriaTest {
     configureVatAccounts(databaseService)
     services.accountService.saveOpeningBalance(fiscalYear.id, '1510', 100.00G)
 
-    Voucher bookedVoucher = services.voucherService.createAndBook(
+    Voucher bookedVoucher = services.voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -98,7 +98,7 @@ class AcceptanceCriteriaTest {
             new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
         ]
     )
-    Voucher correctedVoucher = services.voucherService.createAndBook(
+    Voucher correctedVoucher = services.voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 16),
@@ -203,14 +203,14 @@ class AcceptanceCriteriaTest {
     seedCompanyAccounts(databaseService, companyA.id)
     seedCompanyAccounts(databaseService, companyB.id)
 
-    services.voucherService.createAndBook(
+    services.voucherService.createVoucher(
         fyA.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Alfa',
         [
             new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
             new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
             new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
         ])
-    services.voucherService.createAndBook(
+    services.voucherService.createVoucher(
         fyB.id, 'A', LocalDate.of(2026, 1, 15), 'Försäljning i Bravo',
         [
             new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 2500.00G, 0.00G),
@@ -351,7 +351,7 @@ class AcceptanceCriteriaTest {
     AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     ReportArchiveService reportArchiveService = new ReportArchiveService(databaseService)
-    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(voucherService, attachmentService, auditLogService)
+    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(attachmentService, auditLogService)
     ReportDataService reportDataService = new ReportDataService(databaseService, fiscalYearService, accountingPeriodService)
     new AcceptanceServices(
         accountService: new AccountService(databaseService),

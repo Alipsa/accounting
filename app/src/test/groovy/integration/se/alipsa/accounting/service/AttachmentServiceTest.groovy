@@ -66,7 +66,7 @@ class AttachmentServiceTest {
 
   @Test
   void attachmentIsStoredWithChecksumAndVoucherAuditEntry() {
-    Voucher voucher = voucherService.createDraft(
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 6, 1),
@@ -91,7 +91,7 @@ class AttachmentServiceTest {
 
   @Test
   void checksumValidationDetectsTamperedAttachment() {
-    Voucher voucher = voucherService.createDraft(
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 6, 2),
@@ -110,7 +110,7 @@ class AttachmentServiceTest {
 
   @Test
   void pathTraversalAttemptInStoredMetadataIsRejected() {
-    Voucher voucher = voucherService.createDraft(
+    Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 6, 3),

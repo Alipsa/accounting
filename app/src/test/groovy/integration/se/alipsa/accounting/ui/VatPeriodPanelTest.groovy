@@ -67,7 +67,7 @@ class VatPeriodPanelTest {
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService, auditLogService)
-    activeCompanyManager = new ActiveCompanyManager(companyService)
+    activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
     fiscalYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID,
         '2026',
@@ -137,7 +137,7 @@ class VatPeriodPanelTest {
   }
 
   private Voucher bookSaleVoucher() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -148,7 +148,7 @@ class VatPeriodPanelTest {
 
   private Voucher bookPurchaseVoucher() {
     BigDecimal vatAmount = (200.00G * 0.25G).setScale(2, RoundingMode.HALF_UP)
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 18),
@@ -162,7 +162,7 @@ class VatPeriodPanelTest {
   }
 
   private Voucher bookEuAcquisitionVoucher() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 25),

@@ -44,6 +44,9 @@ final class ActiveCompanyManager {
 
   void setCompanyId(long newCompanyId) {
     long old = this.companyId
+    if (old == newCompanyId) {
+      return
+    }
     this.companyId = newCompanyId
     support.firePropertyChange(COMPANY_ID_PROPERTY, old, newCompanyId)
     reloadFiscalYears()

@@ -88,25 +88,6 @@ class SieImportExportServiceTest {
   }
 
   @Test
-  void exportIsBlockedWhenIntegrityValidationFindsCriticalProblems() {
-    switchHome(tempDir.resolve('source-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-    Path exportPath = tempDir.resolve('blocked.sie')
-
-    databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate('update voucher_line set debit_amount = ? where voucher_id = 1 and account_id = (select id from account where account_number = ?)', [999.00G, '1510'])
-    }
-
-    IllegalStateException exception = assertThrows(IllegalStateException) {
-      services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath)
-    }
-
-    assertTrue(exception.message.contains('integritetskontrollerna'))
-  }
-
-  @Test
   void malformedSieFileIsRejectedAndRecordedAsFailedJob() {
     switchHome(tempDir.resolve('malformed-db'))
     DatabaseService databaseService = DatabaseService.newForTesting()
@@ -261,7 +242,7 @@ class SieImportExportServiceTest {
       ''', [fiscalYear.id, '2010', 100.00G])
     }
 
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -288,7 +269,6 @@ class SieImportExportServiceTest {
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
-        voucherService,
         new AttachmentService(databaseService, auditLogService),
         auditLogService
     )

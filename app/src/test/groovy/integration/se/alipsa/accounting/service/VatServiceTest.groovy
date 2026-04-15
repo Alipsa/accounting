@@ -9,7 +9,6 @@ import groovy.sql.Sql
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
@@ -85,7 +84,7 @@ class VatServiceTest {
 
   @Test
   void vatReportComputesOutputVatWhenTaxLineIsMissing() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -104,7 +103,7 @@ class VatServiceTest {
   }
 
   @Test
-  void reportedPeriodBlocksRegularBookingsButAllowsCorrections() {
+  void reportedPeriodAllowsVoucherCreationAndCorrections() {
     Voucher saleVoucher = bookSaleVoucher()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
 
@@ -117,20 +116,15 @@ class VatServiceTest {
           entry.vatPeriodId == reportedPeriod.id &&
           entry.details.contains(reportedPeriod.reportHash)
     })
-    Voucher draft = voucherService.createDraft(
+
+    Voucher lateInvoice = voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 20),
         'Sen faktura',
         saleLines(250.00G)
     )
-
-    Executable regularBooking = {
-      voucherService.bookDraft(draft.id)
-    } as Executable
-
-    IllegalStateException bookingException = assertThrows(IllegalStateException, regularBooking)
-    assertTrue(bookingException.message.contains('Momsperioden är rapporterad'))
+    assertEquals(VoucherStatus.ACTIVE, lateInvoice.status)
 
     Voucher correction = voucherService.createCorrectionVoucher(saleVoucher.id)
 
@@ -140,7 +134,7 @@ class VatServiceTest {
 
   @Test
   void bookingTransferLocksVatPeriodAndCreatesSettlementVoucher() {
-    Voucher saleVoucher = bookVatFixtures().first()
+    bookVatFixtures()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
     vatService.reportPeriod(january.id)
 
@@ -162,13 +156,6 @@ class VatServiceTest {
           entry.voucherId == transferVoucher.id &&
           entry.vatPeriodId == lockedPeriod.id
     })
-
-    Executable correctionAction = {
-      voucherService.createCorrectionVoucher(saleVoucher.id)
-    } as Executable
-
-    IllegalStateException exception = assertThrows(IllegalStateException, correctionAction)
-    assertTrue(exception.message.contains('Momsperioden är låst'))
   }
 
   @Test
@@ -388,7 +375,7 @@ class VatServiceTest {
   }
 
   private Voucher bookSaleVoucher(BigDecimal baseAmount) {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 15),
@@ -403,7 +390,7 @@ class VatServiceTest {
 
   private Voucher bookPurchaseVoucher(BigDecimal baseAmount) {
     BigDecimal vatAmount = (baseAmount * 0.25G).setScale(2, RoundingMode.HALF_UP)
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 18),
@@ -417,7 +404,7 @@ class VatServiceTest {
   }
 
   private Voucher bookEuAcquisitionVoucher() {
-    voucherService.createAndBook(
+    voucherService.createVoucher(
         fiscalYear.id,
         'A',
         LocalDate.of(2026, 1, 25),

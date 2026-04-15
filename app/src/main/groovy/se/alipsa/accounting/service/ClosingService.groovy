@@ -250,7 +250,7 @@ final class ClosingService {
       Map<String, ResultAccountBalance> resultBalances
   ) {
     List<VoucherLine> lines = buildClosingVoucherLines(resultBalances, closingAccountNumber)
-    voucherService.createVoucher(
+    voucherService.createVoucherBypassLock(
         sql,
         fiscalYear.id,
         DEFAULT_CLOSING_SERIES,
