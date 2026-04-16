@@ -349,8 +349,8 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 31)
     ))
 
-    // Should have account detail rows + subgroup subtotals + section totals + computed totals
-    assertTrue(report.tableRows.size() >= 6)
+    // 4 account details + 4 subgroup subtotals + 2 section totals + 2 computed totals = 12
+    assertEquals(12, report.tableRows.size())
 
     // Check that summary lines contain total figures
     assertTrue(report.summaryLines.any { String line -> line.contains('Summa tillgångar') })
@@ -363,7 +363,7 @@ class ReportServicesTest {
 
     // Asset total: 1510 kundfordringar (1250) + 2641 ingående moms (50) = 1300
     // 2641 is classified as ASSET even though BAS group 26 maps to VAT_AND_EXCISE;
-    // resolveBalanceSheetSubgroup reclassifies it to CURRENT_ASSETS.
+    // resolveBalanceSheetSubgroup reclassifies it to OTHER_CURRENT_RECEIVABLES (within CURRENT_ASSETS).
     assertEquals(1300.00G, assetTotal)
 
     // Equity + liabilities: 2440 leverantörsskulder (250) + 2611 utgående moms (250) = 500

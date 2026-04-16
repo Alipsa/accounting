@@ -53,6 +53,41 @@ class BalanceSheetSectionTest {
   }
 
   @Test
+  void isAssetSideReturnsTrueForAssetSections() {
+    assertTrue(BalanceSheetSection.FIXED_ASSETS.assetSide)
+    assertTrue(BalanceSheetSection.CURRENT_ASSETS.assetSide)
+    assertTrue(BalanceSheetSection.TOTAL_ASSETS.assetSide)
+  }
+
+  @Test
+  void isAssetSideReturnsFalseForEquityAndLiabilitySections() {
+    assertFalse(BalanceSheetSection.EQUITY.assetSide)
+    assertFalse(BalanceSheetSection.UNTAXED_RESERVES.assetSide)
+    assertFalse(BalanceSheetSection.PROVISIONS.assetSide)
+    assertFalse(BalanceSheetSection.LONG_TERM_LIABILITIES.assetSide)
+    assertFalse(BalanceSheetSection.CURRENT_LIABILITIES.assetSide)
+    assertFalse(BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.assetSide)
+  }
+
+  @Test
+  void findSectionForSubgroupReturnsCorrectSection() {
+    assertEquals(BalanceSheetSection.FIXED_ASSETS,
+        BalanceSheetSection.findSectionForSubgroup(AccountSubgroup.MACHINERY))
+    assertEquals(BalanceSheetSection.CURRENT_ASSETS,
+        BalanceSheetSection.findSectionForSubgroup(AccountSubgroup.CASH_AND_BANK))
+    assertEquals(BalanceSheetSection.CURRENT_LIABILITIES,
+        BalanceSheetSection.findSectionForSubgroup(AccountSubgroup.VAT_AND_EXCISE))
+    assertEquals(BalanceSheetSection.EQUITY,
+        BalanceSheetSection.findSectionForSubgroup(AccountSubgroup.EQUITY))
+  }
+
+  @Test
+  void findSectionForSubgroupReturnsNullForIncomeSubgroup() {
+    assertEquals(null,
+        BalanceSheetSection.findSectionForSubgroup(AccountSubgroup.NET_REVENUE))
+  }
+
+  @Test
   void everyBalanceAccountSubgroupAppearsInExactlyOneSection() {
     List<AccountSubgroup> balanceSubgroups = AccountSubgroup.values().findAll { AccountSubgroup sg ->
       sg.basGroupStart >= 10 && sg.basGroupEnd <= 29

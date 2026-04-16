@@ -3,7 +3,7 @@ package se.alipsa.accounting.domain.report
 import groovy.transform.Canonical
 
 /**
- * One balance-sheet row — an account detail line, a subgroup subtotal, or a computed total.
+ * One balance-sheet row — an account detail line, a subgroup subtotal, a section subtotal, or a computed total.
  */
 @Canonical
 final class BalanceSheetRow {

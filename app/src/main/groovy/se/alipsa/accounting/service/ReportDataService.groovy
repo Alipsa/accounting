@@ -366,7 +366,8 @@ final class ReportDataService {
       Map<String, BigDecimal> movements = loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
 
       Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
-      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildSubgroupAccounts(accountInfos, closingBalances)
+      List<String> skippedAccounts = []
+      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildSubgroupAccounts(accountInfos, closingBalances, skippedAccounts)
       Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
         [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
       } as Map<AccountSubgroup, BigDecimal>
@@ -402,12 +403,17 @@ final class ReportDataService {
       BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS] ?: BigDecimal.ZERO
       BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
 
+      List<String> summaryLines = [
+          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmount(scale(assetTotal))}".toString(),
+          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmount(scale(equityAndLiabilitiesTotal))}".toString()
+      ]
+      if (skippedAccounts) {
+        summaryLines.add("Konton utan undergrupp (ej med i rapporten): ${skippedAccounts.join(', ')}".toString())
+      }
+
       createResult(
           effective,
-          [
-              "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmount(scale(assetTotal))}".toString(),
-              "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmount(scale(equityAndLiabilitiesTotal))}".toString()
-          ],
+          summaryLines,
           [I18n.instance.getString('balanceSheetSection.column.item'), I18n.instance.getString('balanceSheetSection.column.amount')],
           rows.collect { BalanceSheetRow row ->
             String label = row.accountNumber
@@ -441,7 +447,8 @@ final class ReportDataService {
 
   private Map<AccountSubgroup, List<AccountDetail>> buildSubgroupAccounts(
       Map<String, AccountInfo> accountInfos,
-      Map<String, BigDecimal> closingBalances
+      Map<String, BigDecimal> closingBalances,
+      List<String> skippedAccounts
   ) {
     Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
     closingBalances.keySet().sort().each { String accountNumber ->
@@ -451,6 +458,7 @@ final class ReportDataService {
           : AccountSubgroup.fromAccountNumber(accountNumber)
       if (subgroup == null) {
         log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från balansrapporten.")
+        skippedAccounts.add("${accountNumber} ${info.accountName}".toString())
         return
       }
       subgroup = resolveBalanceSheetSubgroup(subgroup, info.accountClass)
@@ -464,7 +472,7 @@ final class ReportDataService {
   private static AccountSubgroup resolveBalanceSheetSubgroup(AccountSubgroup subgroup, String accountClass) {
     BalanceSheetSection section = BalanceSheetSection.findSectionForSubgroup(subgroup)
     if (section == null) {
-      return subgroup
+      throw new IllegalStateException("AccountSubgroup ${subgroup.name()} har ingen mappning till BalanceSheetSection")
     }
     boolean accountIsAsset = accountClass == 'ASSET'
     if (accountIsAsset && !section.assetSide) {
