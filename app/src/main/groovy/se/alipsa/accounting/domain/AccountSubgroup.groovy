@@ -72,12 +72,10 @@ enum AccountSubgroup {
     if (!normalized || normalized.length() < 2) {
       return null
     }
-    int prefix
-    try {
-      prefix = Integer.parseInt(normalized.substring(0, 2))
-    } catch (NumberFormatException ignored) {
+    if (!normalized.substring(0, 2).every { ((String) it).matches('[0-9]') }) {
       return null
     }
+    int prefix = Integer.parseInt(normalized.substring(0, 2))
     values().find { AccountSubgroup subgroup -> subgroup.contains(prefix) }
   }
 
