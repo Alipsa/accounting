@@ -19,6 +19,7 @@ import se.alipsa.accounting.domain.report.TransactionReportRow
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.domain.report.VatReportEntry
 import se.alipsa.accounting.domain.report.VoucherListRow
+import se.alipsa.accounting.support.I18n
 
 import java.math.RoundingMode
 import java.sql.Date
@@ -297,7 +298,7 @@ final class ReportDataService {
               "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmount(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
               "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmount(scale(netResult))}".toString()
           ],
-          ['Post', 'Belopp'],
+          [I18n.instance.getString('incomeStatementSection.column.item'), I18n.instance.getString('incomeStatementSection.column.amount')],
           rows.collect { IncomeStatementRow row ->
             stringRow(row.subgroupDisplayName ?: row.section, formatAmount(row.amount))
           },

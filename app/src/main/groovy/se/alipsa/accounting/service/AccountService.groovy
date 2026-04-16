@@ -63,7 +63,7 @@ final class AccountService {
                  active,
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote,
-               account_subgroup as accountSubgroup
+                 account_subgroup as accountSubgroup
             from account
            where company_id = ?
       ''')
@@ -113,7 +113,7 @@ final class AccountService {
                  active,
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote,
-               account_subgroup as accountSubgroup
+                 account_subgroup as accountSubgroup
             from account
            where company_id = ?
              and account_number = ?
