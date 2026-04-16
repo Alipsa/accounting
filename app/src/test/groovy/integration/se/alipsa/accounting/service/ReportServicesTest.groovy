@@ -25,7 +25,6 @@ import se.alipsa.accounting.support.I18n
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.time.LocalDate
 
 class ReportServicesTest {
@@ -399,11 +398,6 @@ class ReportServicesTest {
     }.sum(BigDecimal.ZERO) { List<String> row ->
       new BigDecimal(row[3])
     } as BigDecimal
-  }
-
-  private static String sha256(byte[] content) {
-    MessageDigest digest = MessageDigest.getInstance('SHA-256')
-    HexFormat.of().formatHex(digest.digest(content))
   }
 
   private static void insertAccount(
