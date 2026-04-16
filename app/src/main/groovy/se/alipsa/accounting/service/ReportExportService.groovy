@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
+import groovy.transform.TupleConstructor
 
 import org.apache.poi.ss.usermodel.BorderStyle
 import org.apache.poi.ss.usermodel.Cell
@@ -410,6 +411,7 @@ final class ReportExportService {
     normalized.length() > 31 ? normalized.substring(0, 31) : normalized
   }
 
+  @TupleConstructor
   private static final class IncomeStatementStyles {
 
     final CellStyle titleStyle
@@ -422,29 +424,5 @@ final class ReportExportService {
     final CellStyle boldNumberStyle
     final CellStyle sectionTextStyle
     final CellStyle sectionNumberStyle
-
-    private IncomeStatementStyles(
-        CellStyle titleStyle,
-        CellStyle metaStyle,
-        CellStyle headerStyle,
-        CellStyle headerNumberStyle,
-        CellStyle detailTextStyle,
-        CellStyle detailNumberStyle,
-        CellStyle boldTextStyle,
-        CellStyle boldNumberStyle,
-        CellStyle sectionTextStyle,
-        CellStyle sectionNumberStyle
-    ) {
-      this.titleStyle = titleStyle
-      this.metaStyle = metaStyle
-      this.headerStyle = headerStyle
-      this.headerNumberStyle = headerNumberStyle
-      this.detailTextStyle = detailTextStyle
-      this.detailNumberStyle = detailNumberStyle
-      this.boldTextStyle = boldTextStyle
-      this.boldNumberStyle = boldNumberStyle
-      this.sectionTextStyle = sectionTextStyle
-      this.sectionNumberStyle = sectionNumberStyle
-    }
   }
 }

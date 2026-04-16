@@ -92,6 +92,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private JButton previewButton
   private ReportResult currentReport
   private boolean pdfGenerationInProgress
+  private boolean excelExportInProgress
 
   ReportPanel(
       ReportDataService reportDataService,
@@ -361,13 +362,38 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void exportExcel() {
+    ReportSelection selection
     try {
-      ReportArchive archive = reportExportService.exportExcel(currentSelection())
-      reloadArchives()
-      showInfo(I18n.instance.format('reportPanel.message.excelExported', archive.fileName))
-    } catch (IllegalArgumentException | IllegalStateException exception) {
+      selection = currentSelection()
+    } catch (IllegalArgumentException exception) {
       showError(exception.message)
+      return
     }
+    excelExportInProgress = true
+    updateActionButtons()
+    new SwingWorker<ReportArchive, Void>() {
+      @Override
+      protected ReportArchive doInBackground() {
+        reportExportService.exportExcel(selection)
+      }
+
+      @Override
+      protected void done() {
+        excelExportInProgress = false
+        updateActionButtons()
+        try {
+          ReportArchive archive = get()
+          reloadArchives()
+          showInfo(I18n.instance.format('reportPanel.message.excelExported', archive.fileName))
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          showError(I18n.instance.getString('reportPanel.error.excelInterrupted'))
+        } catch (ExecutionException exception) {
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: I18n.instance.getString('reportPanel.error.excelFailed'))
+        }
+      }
+    }.execute()
   }
 
   private void generatePdf() {
@@ -516,7 +542,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
 
   private void updateActionButtons() {
     exportCsvButton.enabled = currentReport?.reportType?.csvSupported ?: false
-    exportExcelButton.enabled = currentReport != null
+    exportExcelButton.enabled = currentReport != null && !excelExportInProgress
     generatePdfButton.enabled = currentReport != null && !pdfGenerationInProgress
     Long voucherId = selectedVoucherId()
     openVoucherButton.enabled = voucherId != null
@@ -619,6 +645,9 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
     settings.allowKeyboardEditing = false
     DatePicker picker = new DatePicker(settings)
+    // RIGHT_TO_LEFT places the calendar button on the left, which looks better
+    // in this layout, but the text field itself must stay LTR so dates read
+    // correctly left-to-right.
     picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
     picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
     picker

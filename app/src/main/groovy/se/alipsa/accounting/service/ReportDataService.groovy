@@ -559,8 +559,7 @@ final class ReportDataService {
   }
 
   private static String i18nOrFallback(String key, String fallback) {
-    String value = I18n.instance.getString(key)
-    value == "[${key}]" ? fallback : value
+    I18n.instance.hasString(key) ? I18n.instance.getString(key) : fallback
   }
 
   private static BigDecimal computeSectionResult(
@@ -1067,18 +1066,24 @@ final class ReportDataService {
     scale(amount).toPlainString()
   }
 
+  // One cached DecimalFormat per thread per locale; avoids repeated NumberFormat.getNumberInstance()
+  // calls (expensive) while keeping thread-safety (DecimalFormat is not thread-safe).
+  private static final ThreadLocal<Map<Locale, DecimalFormat>> AMOUNT_FORMATTERS =
+      ThreadLocal.withInitial { [:] }
+
   private static String formatAmountLocale(BigDecimal amount) {
-    NumberFormat formatter = NumberFormat.getNumberInstance(I18n.instance.locale)
-    formatter.minimumFractionDigits = AMOUNT_SCALE
-    formatter.maximumFractionDigits = AMOUNT_SCALE
-    if (formatter instanceof DecimalFormat) {
+    Locale locale = I18n.instance.locale
+    DecimalFormat formatter = AMOUNT_FORMATTERS.get().computeIfAbsent(locale) { Locale loc ->
+      DecimalFormat fmt = (DecimalFormat) NumberFormat.getNumberInstance(loc)
+      fmt.minimumFractionDigits = AMOUNT_SCALE
+      fmt.maximumFractionDigits = AMOUNT_SCALE
       // The locale-provided minus sign (U+2212) is missing from openhtmltopdf's default
       // WinAnsi PDF fonts and renders as '#'. ASCII hyphen-minus avoids that and is
       // equally valid in CSV and Excel output.
-      DecimalFormat decimalFormat = (DecimalFormat) formatter
-      DecimalFormatSymbols symbols = decimalFormat.decimalFormatSymbols
+      DecimalFormatSymbols symbols = fmt.decimalFormatSymbols
       symbols.minusSign = (char) '-'
-      decimalFormat.decimalFormatSymbols = symbols
+      fmt.decimalFormatSymbols = symbols
+      fmt
     }
     formatter.format(scale(amount))
   }
