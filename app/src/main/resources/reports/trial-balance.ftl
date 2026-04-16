@@ -1,6 +1,6 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
-  <h2>Provbalans</h2>
+  <h2>${title}</h2>
   <div class="metrics">
     <#list summaryLines as line>
       <div class="metric">

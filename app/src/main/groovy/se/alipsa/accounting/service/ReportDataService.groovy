@@ -83,6 +83,7 @@ final class ReportDataService {
     }
   }
 
+  @SuppressWarnings('AbcMetric')
   private ReportResult buildVoucherListReport(EffectiveSelection effective) {
     List<VoucherListRow> rows = databaseService.withSql { Sql sql ->
       sql.rows('''
@@ -115,7 +116,15 @@ final class ReportDataService {
         )
       }
     }
-    List<String> headers = ['Datum', 'Verifikation', 'Serie', 'Text', 'Status', 'Debet', 'Kredit']
+    List<String> headers = [
+        I18n.instance.getString('voucherListReport.column.date'),
+        I18n.instance.getString('voucherListReport.column.voucher'),
+        I18n.instance.getString('voucherListReport.column.series'),
+        I18n.instance.getString('voucherListReport.column.text'),
+        I18n.instance.getString('voucherListReport.column.status'),
+        I18n.instance.getString('voucherListReport.column.debit'),
+        I18n.instance.getString('voucherListReport.column.credit')
+    ]
     List<List<String>> tableRows = rows.collect { VoucherListRow row ->
       stringRow(
           row.accountingDate.toString(),
@@ -132,14 +141,14 @@ final class ReportDataService {
     createResult(
         effective,
         [
-            "Antal verifikationer: ${rows.size()}".toString(),
-            "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
-            "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
+            I18n.instance.format('voucherListReport.summary.count', rows.size()),
+            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmount(scale(debitTotal))),
+            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmount(scale(creditTotal)))
         ],
         headers,
         tableRows,
         rows.collect { VoucherListRow row -> row.voucherId },
-        [typedRows: rows]
+        [typedRows: rows, lead: I18n.instance.getString('report.voucherList.lead')]
     )
   }
 
@@ -169,7 +178,7 @@ final class ReportDataService {
             info.accountName,
             null,
             null,
-            'Ingående balans',
+            I18n.instance.getString('generalLedgerReport.row.openingBalance'),
             BigDecimal.ZERO,
             BigDecimal.ZERO,
             opening,
@@ -191,7 +200,16 @@ final class ReportDataService {
           )
         }
       }
-      List<String> headers = ['Konto', 'Namn', 'Datum', 'Verifikation', 'Text', 'Debet', 'Kredit', 'Saldo']
+      List<String> headers = [
+          I18n.instance.getString('generalLedgerReport.column.account'),
+          I18n.instance.getString('generalLedgerReport.column.name'),
+          I18n.instance.getString('generalLedgerReport.column.date'),
+          I18n.instance.getString('generalLedgerReport.column.voucher'),
+          I18n.instance.getString('generalLedgerReport.column.text'),
+          I18n.instance.getString('generalLedgerReport.column.debit'),
+          I18n.instance.getString('generalLedgerReport.column.credit'),
+          I18n.instance.getString('generalLedgerReport.column.balance')
+      ]
       List<List<String>> tableRows = rows.collect { GeneralLedgerRow row ->
         stringRow(
             row.accountNumber,
@@ -206,11 +224,15 @@ final class ReportDataService {
       }
       createResult(
           effective,
-          ["Antal rader: ${rows.size()}".toString()],
+          [I18n.instance.format('generalLedgerReport.summary.rowCount', rows.size())],
           headers,
           tableRows,
           rows.collect { GeneralLedgerRow row -> row.voucherId },
-          [typedRows: rows]
+          [
+              typedRows: rows,
+              lead: I18n.instance.getString('report.generalLedger.lead'),
+              note: I18n.instance.getString('report.generalLedger.note')
+          ]
       )
     } as ReportResult
   }
@@ -241,12 +263,19 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "Ingående saldo: ${formatAmount(scale(openingTotal))}".toString(),
-              "Periodens debet: ${formatAmount(scale(debitTotal))}".toString(),
-              "Periodens kredit: ${formatAmount(scale(creditTotal))}".toString(),
-              "Utgående saldo: ${formatAmount(scale(closingTotal))}".toString()
+              I18n.instance.format('trialBalanceReport.summary.openingBalance', formatAmount(scale(openingTotal))),
+              I18n.instance.format('trialBalanceReport.summary.periodDebit', formatAmount(scale(debitTotal))),
+              I18n.instance.format('trialBalanceReport.summary.periodCredit', formatAmount(scale(creditTotal))),
+              I18n.instance.format('trialBalanceReport.summary.closingBalance', formatAmount(scale(closingTotal)))
           ],
-          ['Konto', 'Namn', 'Ingående', 'Debet', 'Kredit', 'Utgående'],
+          [
+              I18n.instance.getString('trialBalanceReport.column.account'),
+              I18n.instance.getString('trialBalanceReport.column.name'),
+              I18n.instance.getString('trialBalanceReport.column.opening'),
+              I18n.instance.getString('trialBalanceReport.column.debit'),
+              I18n.instance.getString('trialBalanceReport.column.credit'),
+              I18n.instance.getString('trialBalanceReport.column.closing')
+          ],
           rows.collect { TrialBalanceRow row ->
             stringRow(
                 row.accountNumber,
@@ -608,7 +637,7 @@ final class ReportDataService {
           "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmountLocale(scale(equityAndLiabilitiesTotal))}".toString()
       ]
       if (skippedAccounts) {
-        summaryLines.add("Konton utan undergrupp (ej med i rapporten): ${skippedAccounts.join(', ')}".toString())
+        summaryLines.add(I18n.instance.format('balanceSheetReport.summary.unmappedAccounts', skippedAccounts.join(', ')))
       }
 
       createResult(
@@ -703,6 +732,7 @@ final class ReportDataService {
     }
   }
 
+  @SuppressWarnings('AbcMetric')
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
     List<TransactionReportRow> rows = databaseService.withSql { Sql sql ->
       loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
@@ -728,11 +758,21 @@ final class ReportDataService {
     createResult(
         effective,
         [
-            "Antal transaktioner: ${rows.size()}".toString(),
-            "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
-            "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
+            I18n.instance.format('transactionReport.summary.count', rows.size()),
+            I18n.instance.format('transactionReport.summary.debitTotal', formatAmount(scale(debitTotal))),
+            I18n.instance.format('transactionReport.summary.creditTotal', formatAmount(scale(creditTotal)))
         ],
-        ['Datum', 'Verifikation', 'Konto', 'Kontonamn', 'Verifikationstext', 'Radtext', 'Debet', 'Kredit', 'Status'],
+        [
+            I18n.instance.getString('transactionReport.column.date'),
+            I18n.instance.getString('transactionReport.column.voucher'),
+            I18n.instance.getString('transactionReport.column.account'),
+            I18n.instance.getString('transactionReport.column.accountName'),
+            I18n.instance.getString('transactionReport.column.voucherText'),
+            I18n.instance.getString('transactionReport.column.lineText'),
+            I18n.instance.getString('transactionReport.column.debit'),
+            I18n.instance.getString('transactionReport.column.credit'),
+            I18n.instance.getString('transactionReport.column.status')
+        ],
         rows.collect { TransactionReportRow row ->
           stringRow(
               row.accountingDate.toString(),
@@ -747,7 +787,7 @@ final class ReportDataService {
           )
         },
         rows.collect { TransactionReportRow row -> row.voucherId },
-        [typedRows: rows]
+        [typedRows: rows, lead: I18n.instance.getString('report.transactionReport.lead')]
     )
   }
 
@@ -785,16 +825,30 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "Utgående moms: ${formatAmount(scale(outputTotal))}".toString(),
-              "Ingående moms: ${formatAmount(scale(inputTotal))}".toString(),
-              "Netto: ${formatAmount(netTotal)}".toString()
+              I18n.instance.format('vatReport.summary.outputVat', formatAmount(scale(outputTotal))),
+              I18n.instance.format('vatReport.summary.inputVat', formatAmount(scale(inputTotal))),
+              I18n.instance.format('vatReport.summary.net', formatAmount(netTotal))
           ],
-          ['Momskod', 'Benämning', 'Bas', 'Utgående moms', 'Ingående moms'],
+          [
+              I18n.instance.getString('vatReport.column.code'),
+              I18n.instance.getString('vatReport.column.label'),
+              I18n.instance.getString('vatReport.column.base'),
+              I18n.instance.getString('vatReport.column.outputVat'),
+              I18n.instance.getString('vatReport.column.inputVat')
+          ],
           rows.collect { VatReportEntry row ->
             stringRow(row.vatCode, row.label, formatAmount(row.baseAmount), formatAmount(row.outputVatAmount), formatAmount(row.inputVatAmount))
           },
           rows.collect { VatReportEntry ignored -> null as Long } as List<Long>,
-          [typedRows: rows, outputTotal: scale(outputTotal), inputTotal: scale(inputTotal), netTotal: netTotal]
+          [
+              typedRows: rows,
+              outputTotal: scale(outputTotal),
+              inputTotal: scale(inputTotal),
+              netTotal: netTotal,
+              outputVatLabel: I18n.instance.getString('report.vatReport.metric.outputVat'),
+              inputVatLabel: I18n.instance.getString('report.vatReport.metric.inputVat'),
+              netLabel: I18n.instance.getString('report.vatReport.metric.net')
+          ]
       )
     } as ReportResult
   }
@@ -818,8 +872,8 @@ final class ReportDataService {
     }
     long companyId = resolveCompanyId(fiscalYear.id)
     String selectionLabel = period == null
-        ? "Intervall ${startDate} - ${endDate}"
-        : "Period ${period.periodName} (${startDate} - ${endDate})"
+        ? I18n.instance.format('report.selection.interval', startDate.toString(), endDate.toString())
+        : I18n.instance.format('report.selection.period', period.periodName, startDate.toString(), endDate.toString())
     new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel)
   }
 
@@ -969,7 +1023,9 @@ final class ReportDataService {
         endDate       : effective.endDate,
         summaryLines  : summaryLines,
         tableHeaders  : headers,
-        tableRows     : tableRows
+        tableRows     : tableRows,
+        htmlLang      : I18n.instance.getString('report.common.htmlLang'),
+        orgNumberLabel: I18n.instance.getString('report.common.orgNumber')
     ] + (extraModel ?: [:])
     new ReportResult(
         effective.selection.reportType,

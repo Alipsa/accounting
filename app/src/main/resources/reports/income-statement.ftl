@@ -1,7 +1,7 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
   <section class="income-statement-report">
-    <h2 class="report-heading">Resultatrapport</h2>
+    <h2 class="report-heading">${title}</h2>
     <table class="statement-table">
       <thead>
         <tr>

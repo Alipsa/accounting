@@ -1,6 +1,6 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
-  <h2>Balansrapport</h2>
+  <h2>${title}</h2>
   <p>${selectionLabel}</p>
   <table>
     <thead>

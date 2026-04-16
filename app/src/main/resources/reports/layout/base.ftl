@@ -1,6 +1,6 @@
 <#macro page title>
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="${htmlLang!'en'}">
 <head>
   <meta charset="utf-8" />
   <title>${title}</title>
@@ -13,7 +13,7 @@
     <h1>${companyName}</h1>
     <p class="meta">${selectionLabel}</p>
     <#if organizationNumber?has_content>
-      <p class="meta">Org.nr: ${organizationNumber}</p>
+      <p class="meta">${orgNumberLabel!'Org. no.:'} ${organizationNumber}</p>
     </#if>
   </header>
   <main>
