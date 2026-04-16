@@ -72,7 +72,7 @@ enum AccountSubgroup {
     if (!normalized || normalized.length() < 2) {
       return null
     }
-    if (!normalized.substring(0, 2).every { ((String) it).matches('[0-9]') }) {
+    if (!normalized.substring(0, 2).matches('[0-9]{2}')) {
       return null
     }
     int prefix = Integer.parseInt(normalized.substring(0, 2))
@@ -81,6 +81,9 @@ enum AccountSubgroup {
 
   static AccountSubgroup fromDatabaseValue(String value) {
     String normalized = value?.trim()
-    normalized ? valueOf(normalized) : null
+    if (!normalized) {
+      return null
+    }
+    values().find { AccountSubgroup subgroup -> subgroup.name() == normalized }
   }
 }

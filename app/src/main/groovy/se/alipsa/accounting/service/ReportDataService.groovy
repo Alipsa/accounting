@@ -23,12 +23,14 @@ import se.alipsa.accounting.domain.report.VoucherListRow
 import java.math.RoundingMode
 import java.sql.Date
 import java.time.LocalDate
+import java.util.logging.Logger
 
 /**
  * Builds reusable report data for UI previews, CSV export and Journo PDF rendering.
  */
 final class ReportDataService {
 
+  private static final Logger log = Logger.getLogger(ReportDataService.name)
   private static final int AMOUNT_SCALE = 2
 
   private final DatabaseService databaseService
@@ -269,19 +271,19 @@ final class ReportDataService {
         if (section.computed) {
           BigDecimal computedAmount = computeSectionResult(section, sectionTotals)
           sectionTotals[section] = computedAmount
-          rows << new IncomeStatementRow(section.name(), null, null, scale(computedAmount), null, true)
+          rows << new IncomeStatementRow(section.name(), scale(computedAmount), null, true)
         } else {
           BigDecimal sectionSum = BigDecimal.ZERO
           section.subgroups.each { AccountSubgroup subgroup ->
             BigDecimal amount = subgroupTotals[subgroup] ?: BigDecimal.ZERO
             if (amount != BigDecimal.ZERO) {
-              rows << new IncomeStatementRow(section.name(), null, null, scale(amount), subgroup.displayName, false)
+              rows << new IncomeStatementRow(section.name(), scale(amount), subgroup.displayName, false)
             }
             sectionSum = sectionSum + amount
           }
           sectionTotals[section] = sectionSum
           if (sectionSum != BigDecimal.ZERO) {
-            rows << new IncomeStatementRow(section.name(), null, null, scale(sectionSum), section.displayName, true)
+            rows << new IncomeStatementRow(section.name(), scale(sectionSum), section.displayName, true)
           }
         }
       }
@@ -291,9 +293,9 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "Rörelseresultat: ${formatAmount(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO))}".toString(),
-              "Resultat efter finansiella poster: ${formatAmount(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
-              "Årets resultat: ${formatAmount(scale(netResult))}".toString()
+              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmount(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO))}".toString(),
+              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmount(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
+              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmount(scale(netResult))}".toString()
           ],
           ['Post', 'Belopp'],
           rows.collect { IncomeStatementRow row ->
@@ -326,6 +328,7 @@ final class ReportDataService {
           ? AccountSubgroup.fromDatabaseValue(info.accountSubgroup)
           : AccountSubgroup.fromAccountNumber(accountNumber)
       if (subgroup == null) {
+        log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från resultatrapporten.")
         return
       }
       subgroupTotals[subgroup] = (subgroupTotals[subgroup] ?: BigDecimal.ZERO) + amount
@@ -349,7 +352,7 @@ final class ReportDataService {
             (sectionTotals[IncomeStatementSection.APPROPRIATIONS] ?: BigDecimal.ZERO) +
             (sectionTotals[IncomeStatementSection.TAX] ?: BigDecimal.ZERO)
       default:
-        return BigDecimal.ZERO
+        throw new IllegalStateException("Okänd beräknad sektion: ${section}")
     }
   }
 

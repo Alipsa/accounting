@@ -9,8 +9,6 @@ import groovy.transform.Canonical
 final class IncomeStatementRow {
 
   String section
-  String accountNumber
-  String accountName
   BigDecimal amount
   String subgroupDisplayName
   boolean summaryRow
