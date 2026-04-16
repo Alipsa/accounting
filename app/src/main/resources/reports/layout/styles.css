@@ -96,7 +96,85 @@ th {
   text-align: left;
 }
 
+th.number {
+  text-align: right;
+}
+
 td.number {
   text-align: right;
   white-space: nowrap;
+}
+
+.income-statement-report {
+  margin-top: 6px;
+}
+
+.income-statement-report .report-heading {
+  margin: 0 0 4px 0;
+  font-size: 18pt;
+}
+
+.income-statement-report .report-period {
+  margin: 0 0 14px 0;
+  color: #334155;
+}
+
+.income-statement-report .statement-table {
+  margin-top: 0;
+}
+
+.income-statement-report .statement-table thead {
+  background: #f1f5f9;
+}
+
+.income-statement-report .statement-table th,
+.income-statement-report .statement-table td {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  padding: 4px 0;
+}
+
+.income-statement-report .statement-table thead th {
+  border-bottom: 1px solid #94a3b8;
+  padding: 6px 0;
+}
+
+.income-statement-report .statement-row.section-header td {
+  padding-top: 16px;
+  padding-bottom: 3px;
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.income-statement-report .statement-row.group-header td {
+  padding-top: 9px;
+  padding-bottom: 2px;
+  font-weight: 700;
+}
+
+.income-statement-report .statement-row.detail td.label {
+  padding-left: 12px;
+}
+
+.income-statement-report .statement-row.subtotal td {
+  padding-top: 5px;
+  font-weight: 700;
+}
+
+.income-statement-report .statement-row.section-total td,
+.income-statement-report .statement-row.result-line td {
+  padding-top: 10px;
+  padding-bottom: 4px;
+  font-weight: 700;
+}
+
+.income-statement-report .statement-row.grand-total td {
+  padding-top: 12px;
+  padding-bottom: 5px;
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
 }

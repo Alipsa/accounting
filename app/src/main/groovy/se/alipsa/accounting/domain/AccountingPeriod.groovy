@@ -1,6 +1,7 @@
 package se.alipsa.accounting.domain
 
-import groovy.transform.Canonical
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.TupleConstructor
 
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -8,7 +9,8 @@ import java.time.LocalDateTime
 /**
  * One fiscal year period used for lock checks and monthly rollups.
  */
-@Canonical
+@TupleConstructor
+@EqualsAndHashCode
 final class AccountingPeriod {
 
   Long id
@@ -20,4 +22,9 @@ final class AccountingPeriod {
   boolean locked
   String lockReason
   LocalDateTime lockedAt
+
+  @Override
+  String toString() {
+    periodName
+  }
 }

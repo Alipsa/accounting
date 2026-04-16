@@ -31,9 +31,11 @@ enum IncomeStatementSection {
       AccountSubgroup.FINANCIAL_COSTS
   ]),
   RESULT_AFTER_FINANCIAL([]),
+  RESULT_AFTER_EXTRAORDINARY([]),
   APPROPRIATIONS([
       AccountSubgroup.APPROPRIATIONS
   ]),
+  PROFIT_BEFORE_TAX([]),
   TAX([
       AccountSubgroup.TAX_AND_RESULT
   ]),

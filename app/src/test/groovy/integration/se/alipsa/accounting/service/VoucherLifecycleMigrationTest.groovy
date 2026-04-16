@@ -44,14 +44,14 @@ class VoucherLifecycleMigrationTest {
   }
 
   @Test
-  void schemaVersionReachesSeventeen() {
+  void schemaVersionReachesCurrentVersion() {
     int version = databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow(
           'select coalesce(max(version), 0) as version from schema_version'
       ) as GroovyRowResult
       ((Number) row.get('version')).intValue()
     } as int
-    assertEquals(18, version)
+    assertEquals(databaseService.expectedSchemaVersion(), version)
   }
 
   @Test

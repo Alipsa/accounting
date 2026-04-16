@@ -74,7 +74,7 @@ class DatabaseServiceTest {
       ''') as GroovyRowResult
     }
 
-    assertEquals(18, ((Number) result.version).intValue())
+    assertEquals(databaseService.expectedSchemaVersion(), ((Number) result.version).intValue())
     assertEquals(1, ((Number) result.company).intValue())
     assertEquals(1, ((Number) result.companySettings).intValue())
     assertEquals(1, ((Number) result.fiscalYear).intValue())

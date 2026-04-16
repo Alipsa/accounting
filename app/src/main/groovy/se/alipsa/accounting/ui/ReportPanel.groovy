@@ -1,5 +1,8 @@
 package se.alipsa.accounting.ui
 
+import com.github.lgooddatepicker.components.DatePicker
+import com.github.lgooddatepicker.components.DatePickerSettings
+
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
@@ -18,29 +21,33 @@ import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.ComponentOrientation
 import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
-import java.time.format.DateTimeParseException
 import java.util.concurrent.ExecutionException
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
 import javax.swing.JTable
 import javax.swing.JTextArea
-import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
@@ -62,8 +69,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private final JComboBox<ReportType> reportTypeComboBox = new JComboBox<>(ReportType.values())
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JComboBox<Object> accountingPeriodComboBox = new JComboBox<>()
-  private final JTextField startDateField = new JTextField(10)
-  private final JTextField endDateField = new JTextField(10)
+  private final DatePicker startDatePicker = createDatePicker()
+  private final DatePicker endDatePicker = createDatePicker()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel summaryLabel = new JLabel(I18n.instance.getString('reportPanel.summary.initial'))
   private final PreviewTableModel previewTableModel = new PreviewTableModel()
@@ -71,9 +78,12 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private final ArchiveTableModel archiveTableModel = new ArchiveTableModel()
   private final JTable archiveTable = new JTable(archiveTableModel)
   private final JButton exportCsvButton = new JButton(I18n.instance.getString('reportPanel.button.exportCsv'))
+  private final JButton exportExcelButton = new JButton(I18n.instance.getString('reportPanel.button.exportExcel'))
   private final JButton generatePdfButton = new JButton(I18n.instance.getString('reportPanel.button.generatePdf'))
   private final JButton openVoucherButton = new JButton(I18n.instance.getString('reportPanel.button.openVoucher'))
-  private final JButton openArchiveButton = new JButton(I18n.instance.getString('reportPanel.button.openArchive'))
+  private final JPopupMenu archivePopupMenu = new JPopupMenu()
+  private final JMenuItem openArchiveMenuItem = new JMenuItem(I18n.instance.getString('reportPanel.menu.open'))
+  private final JMenuItem copyArchivePathMenuItem = new JMenuItem(I18n.instance.getString('reportPanel.menu.copyPath'))
   private JLabel reportLabel
   private JLabel fiscalYearLabel
   private JLabel periodLabel
@@ -130,9 +140,13 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     toLabel.text = I18n.instance.getString('reportPanel.label.to')
     previewButton.text = I18n.instance.getString('reportPanel.button.preview')
     exportCsvButton.text = I18n.instance.getString('reportPanel.button.exportCsv')
+    exportExcelButton.text = I18n.instance.getString('reportPanel.button.exportExcel')
     generatePdfButton.text = I18n.instance.getString('reportPanel.button.generatePdf')
     openVoucherButton.text = I18n.instance.getString('reportPanel.button.openVoucher')
-    openArchiveButton.text = I18n.instance.getString('reportPanel.button.openArchive')
+    openArchiveMenuItem.text = I18n.instance.getString('reportPanel.menu.open')
+    copyArchivePathMenuItem.text = I18n.instance.getString('reportPanel.menu.copyPath')
+    startDatePicker.settings.locale = I18n.instance.locale
+    endDatePicker.settings.locale = I18n.instance.locale
     reloadAccountingPeriods()
     reloadReport()
     archiveTableModel.fireTableStructureChanged()
@@ -153,6 +167,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     archiveTable.selectionModel.addListSelectionListener {
       updateActionButtons()
     }
+    configureArchivePopupMenu()
     reportTypeComboBox.addActionListener {
       updateActionButtons()
     }
@@ -161,8 +176,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private JPanel buildToolbar() {
     JPanel panel = new JPanel(new BorderLayout(0, 8))
     panel.add(buildFilterGrid(), BorderLayout.NORTH)
-    panel.add(summaryLabel, BorderLayout.CENTER)
-    panel.add(buildActionButtons(), BorderLayout.SOUTH)
+    panel.add(buildActionButtons(), BorderLayout.CENTER)
+    panel.add(summaryLabel, BorderLayout.SOUTH)
     fiscalYearComboBox.addActionListener {
       reloadAccountingPeriods()
     }
@@ -207,13 +222,13 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     fieldConstraints.gridy = 1
     fromLabel = new JLabel(I18n.instance.getString('reportPanel.label.from'))
     filters.add(fromLabel, labelConstraints)
-    filters.add(startDateField, fieldConstraints)
+    filters.add(startDatePicker, fieldConstraints)
 
     labelConstraints.gridx = 2
     fieldConstraints.gridx = 3
     toLabel = new JLabel(I18n.instance.getString('reportPanel.label.to'))
     filters.add(toLabel, labelConstraints)
-    filters.add(endDateField, fieldConstraints)
+    filters.add(endDatePicker, fieldConstraints)
     filters
   }
 
@@ -226,20 +241,20 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     exportCsvButton.addActionListener {
       exportCsv()
     }
+    exportExcelButton.addActionListener {
+      exportExcel()
+    }
     generatePdfButton.addActionListener {
       generatePdf()
     }
     openVoucherButton.addActionListener {
       openSelectedVoucher()
     }
-    openArchiveButton.addActionListener {
-      openSelectedArchive()
-    }
     actions.add(previewButton)
     actions.add(exportCsvButton)
+    actions.add(exportExcelButton)
     actions.add(generatePdfButton)
     actions.add(openVoucherButton)
-    actions.add(openArchiveButton)
     actions
   }
 
@@ -301,14 +316,14 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     Object periodSelection = accountingPeriodComboBox.selectedItem
     if (periodSelection instanceof AccountingPeriod) {
       AccountingPeriod period = (AccountingPeriod) periodSelection
-      startDateField.text = period.startDate.toString()
-      endDateField.text = period.endDate.toString()
+      startDatePicker.date = period.startDate
+      endDatePicker.date = period.endDate
     } else if (fiscalYear != null) {
-      startDateField.text = fiscalYear.startDate.toString()
-      endDateField.text = fiscalYear.endDate.toString()
+      startDatePicker.date = fiscalYear.startDate
+      endDatePicker.date = fiscalYear.endDate
     } else {
-      startDateField.text = ''
-      endDateField.text = ''
+      startDatePicker.date = null
+      endDatePicker.date = null
     }
   }
 
@@ -340,6 +355,16 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       ReportArchive archive = reportExportService.exportCsv(currentSelection())
       reloadArchives()
       showInfo(I18n.instance.format('reportPanel.message.csvExported', archive.fileName))
+    } catch (IllegalArgumentException | IllegalStateException exception) {
+      showError(exception.message)
+    }
+  }
+
+  private void exportExcel() {
+    try {
+      ReportArchive archive = reportExportService.exportExcel(currentSelection())
+      reloadArchives()
+      showInfo(I18n.instance.format('reportPanel.message.excelExported', archive.fileName))
     } catch (IllegalArgumentException | IllegalStateException exception) {
       showError(exception.message)
     }
@@ -408,14 +433,16 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private void openSelectedArchive() {
-    ReportArchive archive = selectedArchive()
+  private void openArchive(ReportArchive archive) {
     if (archive == null) {
       showError(I18n.instance.getString('reportPanel.error.selectArchive'))
       return
     }
     try {
       Path path = reportArchiveService.resolveStoredPath(archive)
+      if (!Files.isRegularFile(path)) {
+        throw new IllegalStateException(I18n.instance.getString('reportPanel.error.archiveMissing'))
+      }
       if (Desktop.isDesktopSupported()) {
         Desktop.desktop.open(path.toFile())
       } else {
@@ -431,8 +458,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     if (fiscalYear == null) {
       throw new IllegalArgumentException(I18n.instance.getString('reportPanel.error.selectFiscalYear'))
     }
-    LocalDate startDate = parseDate(startDateField.text, I18n.instance.getString('reportPanel.label.from'))
-    LocalDate endDate = parseDate(endDateField.text, I18n.instance.getString('reportPanel.label.to'))
+    LocalDate startDate = requireDate(startDatePicker.date, I18n.instance.getString('reportPanel.label.from'))
+    LocalDate endDate = requireDate(endDatePicker.date, I18n.instance.getString('reportPanel.label.to'))
     AccountingPeriod period = selectedAccountingPeriod()
     boolean usesSelectedPeriod = period != null && startDate == period.startDate && endDate == period.endDate
     new ReportSelection(
@@ -489,6 +516,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
 
   private void updateActionButtons() {
     exportCsvButton.enabled = currentReport?.reportType?.csvSupported ?: false
+    exportExcelButton.enabled = currentReport != null
     generatePdfButton.enabled = currentReport != null && !pdfGenerationInProgress
     Long voucherId = selectedVoucherId()
     openVoucherButton.enabled = voucherId != null
@@ -499,7 +527,6 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     } else {
       openVoucherButton.toolTipText = I18n.instance.getString('reportPanel.tooltip.selectRow')
     }
-    openArchiveButton.enabled = selectedArchive() != null
   }
 
   private Frame ownerFrame() {
@@ -507,12 +534,11 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     window instanceof Frame ? (Frame) window : null
   }
 
-  private static LocalDate parseDate(String value, String label) {
-    try {
-      return LocalDate.parse(value?.trim())
-    } catch (DateTimeParseException exception) {
-      throw new IllegalArgumentException(I18n.instance.format('reportPanel.error.dateFormat', label))
+  private static LocalDate requireDate(LocalDate value, String label) {
+    if (value == null) {
+      throw new IllegalArgumentException(I18n.instance.format('reportPanel.error.dateRequired', label))
     }
+    value
   }
 
   private void showInfo(String message) {
@@ -533,6 +559,69 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
         .replace('&', '&amp;')
         .replace('<', '&lt;')
         .replace('>', '&gt;')
+  }
+
+  private void configureArchivePopupMenu() {
+    openArchiveMenuItem.addActionListener {
+      openArchive(selectedArchive())
+    }
+    copyArchivePathMenuItem.addActionListener {
+      copySelectedArchivePath()
+    }
+    archivePopupMenu.add(openArchiveMenuItem)
+    archivePopupMenu.add(copyArchivePathMenuItem)
+    archiveTable.addMouseListener(new java.awt.event.MouseAdapter() {
+      @Override
+      void mousePressed(java.awt.event.MouseEvent event) {
+        showArchivePopupIfNeeded(event)
+      }
+
+      @Override
+      void mouseReleased(java.awt.event.MouseEvent event) {
+        showArchivePopupIfNeeded(event)
+      }
+    })
+  }
+
+  private void showArchivePopupIfNeeded(java.awt.event.MouseEvent event) {
+    if (!event.popupTrigger) {
+      return
+    }
+    int row = archiveTable.rowAtPoint(event.point)
+    if (row >= 0) {
+      archiveTable.selectionModel.setSelectionInterval(row, row)
+    } else {
+      archiveTable.clearSelection()
+    }
+    boolean hasArchive = selectedArchive() != null
+    openArchiveMenuItem.enabled = hasArchive
+    copyArchivePathMenuItem.enabled = hasArchive
+    archivePopupMenu.show(event.component, event.x, event.y)
+  }
+
+  private void copySelectedArchivePath() {
+    ReportArchive archive = selectedArchive()
+    if (archive == null) {
+      showError(I18n.instance.getString('reportPanel.error.selectArchive'))
+      return
+    }
+    try {
+      Path path = reportArchiveService.resolveStoredPath(archive).toAbsolutePath()
+      Toolkit.defaultToolkit.systemClipboard.setContents(new StringSelection(path.toString()), null)
+      showInfo(I18n.instance.format('reportPanel.message.archivePathCopied', path))
+    } catch (Exception exception) {
+      showError(exception.message ?: I18n.instance.getString('reportPanel.error.archivePathCopyFailed'))
+    }
+  }
+
+  private static DatePicker createDatePicker() {
+    DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
+    settings.formatForDatesCommonEra = 'yyyy-MM-dd'
+    settings.allowKeyboardEditing = false
+    DatePicker picker = new DatePicker(settings)
+    picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
+    picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
+    picker
   }
 
   private static final class PreviewTableModel extends AbstractTableModel {

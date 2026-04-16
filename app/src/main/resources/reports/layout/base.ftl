@@ -11,7 +11,6 @@
 <body>
   <header>
     <h1>${companyName}</h1>
-    <p class="meta">${title}</p>
     <p class="meta">${selectionLabel}</p>
     <#if organizationNumber?has_content>
       <p class="meta">Org.nr: ${organizationNumber}</p>

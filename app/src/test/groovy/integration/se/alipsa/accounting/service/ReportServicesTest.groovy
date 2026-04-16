@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
 
+import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.IncomeStatementRowType
 import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -134,7 +137,26 @@ class ReportServicesTest {
     String html = journoReportService.renderHtml(preview).replace('\r\n', '\n').replace('\r', '\n')
     assertTrue(html.contains('Resultatrapport'))
     assertTrue(html.contains('Post'))
-    assertTrue(html.contains('Belopp'))
+    assertTrue(html.contains('Utgående saldo'))
+  }
+
+  @Test
+  void reExportingTheSameSelectionProducesDistinctArchiveEntries() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.VOUCHER_LIST,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    ReportArchive first = reportExportService.exportCsv(selection)
+    ReportArchive second = reportExportService.exportCsv(selection)
+
+    assertTrue(first.id != second.id)
+    assertTrue(first.storagePath != second.storagePath)
+    assertTrue(Files.isRegularFile(reportArchiveService.resolveStoredPath(first)))
+    assertTrue(Files.isRegularFile(reportArchiveService.resolveStoredPath(second)))
   }
 
   @Test
@@ -167,6 +189,78 @@ class ReportServicesTest {
 ''',
         csv
     )
+  }
+
+  @Test
+  void incomeStatementCanBeExportedAsCsv() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    ReportArchive archive = reportExportService.exportCsv(selection)
+    String csv = new String(reportArchiveService.readArchive(archive.id), StandardCharsets.UTF_8)
+
+    assertEquals('CSV', archive.reportFormat)
+    assertTrue(csv.contains('Post;Utgående saldo'))
+    assertTrue(csv ==~ /(?s).*3010 Försäljning;1[\u00A0\u202F ]000,00.*/)
+    assertTrue(csv ==~ /(?s).*SUMMA RÖRELSEINTÄKTER;1[\u00A0\u202F ]000,00.*/)
+    assertTrue(csv.contains('ÅRETS RESULTAT;800,00'))
+  }
+
+  @Test
+  void incomeStatementExcelExportUsesReferenceLikeHierarchy() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    ReportArchive archive = reportExportService.exportExcel(selection)
+    byte[] workbookBytes = reportArchiveService.readArchive(archive.id)
+
+    WorkbookFactory.create(new ByteArrayInputStream(workbookBytes)).withCloseable { workbook ->
+      def sheet = workbook.getSheetAt(0)
+      assertEquals('Resultatrapport', sheet.getRow(0).getCell(0).stringCellValue)
+      assertEquals('Default company', sheet.getRow(1).getCell(0).stringCellValue)
+      assertEquals('Post', sheet.getRow(4).getCell(0).stringCellValue)
+      assertEquals('Utgående saldo', sheet.getRow(4).getCell(1).stringCellValue)
+      assertEquals('RÖRELSEINTÄKTER', sheet.getRow(5).getCell(0).stringCellValue)
+    }
+  }
+
+  @Test
+  void allReportsCanBeExportedAsExcel() {
+    ReportType.values().each { ReportType type ->
+      ReportSelection selection = new ReportSelection(
+          type,
+          fiscalYear.id,
+          null,
+          LocalDate.of(2026, 1, 1),
+          LocalDate.of(2026, 1, 31)
+      )
+
+      ReportArchive archive = reportExportService.exportExcel(selection)
+      byte[] workbookBytes = reportArchiveService.readArchive(archive.id)
+
+      assertEquals('XLSX', archive.reportFormat)
+      assertEquals(type, archive.reportType)
+      assertTrue(Files.isRegularFile(reportArchiveService.resolveStoredPath(archive)))
+
+      WorkbookFactory.create(new ByteArrayInputStream(workbookBytes)).withCloseable { workbook ->
+        assertTrue(workbook.numberOfSheets >= 1)
+        String firstCell = workbook.getSheetAt(0).getRow(0).getCell(0).stringCellValue
+        String expectedFirstCell = type == ReportType.INCOME_STATEMENT
+            ? 'Resultatrapport'
+            : reportDataService.generate(selection).tableHeaders[0]
+        assertEquals(expectedFirstCell, firstCell)
+      }
+    }
   }
 
   @Test
@@ -333,10 +427,43 @@ class ReportServicesTest {
     // Check that summary lines contain result figures
     assertTrue(report.summaryLines.any { String line -> line.contains('Rörelseresultat') })
     assertTrue(report.summaryLines.any { String line -> line.contains('Årets resultat') })
+    assertEquals('Utgående saldo', report.tableHeaders[1])
+
+    List<IncomeStatementRow> typedRows = report.templateModel.get('typedRows') as List<IncomeStatementRow>
+    assertEquals(IncomeStatementRowType.SECTION_HEADER, typedRows.first().rowType)
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'SUMMA RÖRELSEINTÄKTER' })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'ÅRETS RESULTAT' })
 
     // Verify the net result: income 1000 - expenses 200 = 800
     Map<String, Object> model = report.templateModel
     assertEquals(800.00G, model.result)
+  }
+
+  @Test
+  void incomeStatementIncludesFinancialIncomeAccountsEvenWhenLegacyClassificationIsMissing() {
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '8314', 'Ränteintäkter skattekonto', null, 'CREDIT', null, null)
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'Ränta skattekonto',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 73.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '8314', null, 'Ränteintäkter skattekonto', 0.00G, 73.00G)
+        ]
+    )
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == '8314 Ränteintäkter skattekonto' && row[1] == '73,00' })
   }
 
   @Test
