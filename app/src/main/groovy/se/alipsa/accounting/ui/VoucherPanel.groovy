@@ -451,7 +451,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       showBlankVoucher()
       return
     }
-    voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id)
+    voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
     currentIndex = -1
     showBlankVoucher()
   }

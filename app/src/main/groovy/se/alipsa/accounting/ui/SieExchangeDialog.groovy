@@ -45,6 +45,7 @@ final class SieExchangeDialog extends JDialog {
   private final SieImportExportService sieImportExportService
   private final FiscalYearService fiscalYearService
   private final long companyId
+  private final Runnable onImportSuccess
 
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea summaryArea = new JTextArea(5, 50)
@@ -55,19 +56,20 @@ final class SieExchangeDialog extends JDialog {
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
-  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId) {
+  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId, Runnable onImportSuccess = null) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
     this.companyId = companyId
+    this.onImportSuccess = onImportSuccess
     buildUi()
     reloadFiscalYears()
     reloadJobs()
     showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
-  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId) {
-    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyId)
+  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId, Runnable onImportSuccess = null) {
+    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyId, onImportSuccess)
     dialog.visible = true
   }
 
@@ -122,7 +124,11 @@ final class SieExchangeDialog extends JDialog {
     JPanel resultPanel = new JPanel(new BorderLayout(0, 8))
     resultPanel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.result')), BorderLayout.NORTH)
     resultPanel.add(new JScrollPane(summaryArea), BorderLayout.CENTER)
-    resultPanel.add(new JScrollPane(errorLogArea), BorderLayout.SOUTH)
+
+    JPanel detailsPanel = new JPanel(new BorderLayout(0, 4))
+    detailsPanel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.details')), BorderLayout.NORTH)
+    detailsPanel.add(new JScrollPane(errorLogArea), BorderLayout.CENTER)
+    resultPanel.add(detailsPanel, BorderLayout.SOUTH)
 
     JPanel jobsPanel = new JPanel(new BorderLayout(0, 8))
     jobsPanel.add(new JLabel(I18n.instance.getString('sieExchangeDialog.label.recentJobs')), BorderLayout.NORTH)
@@ -188,6 +194,7 @@ final class SieExchangeDialog extends JDialog {
           reloadFiscalYears()
           reloadJobs()
           renderImportResult(result)
+          onImportSuccess?.run()
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
           showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
@@ -259,6 +266,9 @@ final class SieExchangeDialog extends JDialog {
       )
     }
     errorLogArea.text = result.job.errorLog ?: ''
+    errorLogArea.foreground = result.job.errorLog
+        ? new Color(146, 64, 14)
+        : summaryArea.foreground
     selectJob(result.job.id)
   }
 

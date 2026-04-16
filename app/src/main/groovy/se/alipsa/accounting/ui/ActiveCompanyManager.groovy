@@ -5,6 +5,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 
+import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 
@@ -72,6 +73,10 @@ final class ActiveCompanyManager {
 
   List<FiscalYear> listFiscalYears() {
     companyId > 0 ? fiscalYearService.listFiscalYears(companyId) : []
+  }
+
+  void refreshFiscalYear() {
+    support.firePropertyChange(new PropertyChangeEvent(this, FISCAL_YEAR_PROPERTY, fiscalYear, fiscalYear))
   }
 
   void reloadFiscalYears() {
