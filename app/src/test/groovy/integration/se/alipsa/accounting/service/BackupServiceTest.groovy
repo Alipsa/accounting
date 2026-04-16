@@ -76,7 +76,7 @@ class BackupServiceTest {
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
-      assertEquals(17, countSchemaVersion(sql))
+      assertEquals(18, countSchemaVersion(sql))
     }
   }
 

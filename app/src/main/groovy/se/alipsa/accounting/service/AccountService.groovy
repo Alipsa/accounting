@@ -62,7 +62,8 @@ final class AccountService {
                  vat_code as vatCode,
                  active,
                  manual_review_required as manualReviewRequired,
-                 classification_note as classificationNote
+                 classification_note as classificationNote,
+                 account_subgroup as accountSubgroup
             from account
            where company_id = ?
       ''')
@@ -111,7 +112,8 @@ final class AccountService {
                  vat_code as vatCode,
                  active,
                  manual_review_required as manualReviewRequired,
-                 classification_note as classificationNote
+                 classification_note as classificationNote,
+                 account_subgroup as accountSubgroup
             from account
            where company_id = ?
              and account_number = ?
@@ -309,7 +311,8 @@ final class AccountService {
                vat_code as vatCode,
                active,
                manual_review_required as manualReviewRequired,
-               classification_note as classificationNote
+               classification_note as classificationNote,
+               account_subgroup as accountSubgroup
           from account
          where company_id = ?
            and account_number = ?
@@ -335,7 +338,8 @@ final class AccountService {
         row.get('vatCode') as String,
         Boolean.TRUE == row.get('active'),
         Boolean.TRUE == row.get('manualReviewRequired'),
-        row.get('classificationNote') as String
+        row.get('classificationNote') as String,
+        row.get('accountSubgroup') as String
     )
   }
 

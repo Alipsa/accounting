@@ -65,6 +65,7 @@ final class AccountClassification {
   String normalBalanceSide
   boolean manualReviewRequired
   String note
+  String accountSubgroup
 }
 
 @Canonical

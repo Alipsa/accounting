@@ -11,6 +11,7 @@ import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.usermodel.WorkbookFactory
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.AccountSubgroup
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -75,9 +76,10 @@ final class ChartOfAccountsImportService {
                 active,
                 manual_review_required,
                 classification_note,
+                account_subgroup,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
             companyId,
             account.accountNumber,
@@ -87,7 +89,8 @@ final class ChartOfAccountsImportService {
             account.vatCode,
             account.active,
             account.manualReviewRequired,
-            account.classificationNote
+            account.classificationNote,
+            account.accountSubgroup
         ])
         created++
       } else {
@@ -99,6 +102,7 @@ final class ChartOfAccountsImportService {
                    normal_balance_side = ?,
                    manual_review_required = ?,
                    classification_note = ?,
+                   account_subgroup = ?,
                    updated_at = current_timestamp
              where company_id = ?
                and account_number = ?
@@ -108,6 +112,7 @@ final class ChartOfAccountsImportService {
             account.normalBalanceSide,
             account.manualReviewRequired,
             account.classificationNote,
+            account.accountSubgroup,
             companyId,
             account.accountNumber
         ])
@@ -166,7 +171,8 @@ final class ChartOfAccountsImportService {
         vatCode: null,
         active: true,
         manualReviewRequired: classification.manualReviewRequired,
-        classificationNote: classification.note
+        classificationNote: classification.note,
+        accountSubgroup: classification.accountSubgroup
     )
   }
 
@@ -187,51 +193,55 @@ final class ChartOfAccountsImportService {
   private static Classification classifyAccount(String accountNumber, String accountName) {
     int prefix = Integer.parseInt(accountNumber.substring(0, 1))
     int subgroup = Integer.parseInt(accountNumber.substring(0, 2))
+    String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
 
     switch (prefix) {
       case 1:
-        return new Classification('ASSET', 'DEBIT', false, null)
+        return new Classification('ASSET', 'DEBIT', false, null, accountSubgroup)
       case 2:
         if (subgroup <= 20) {
-          return new Classification('EQUITY', 'CREDIT', false, null)
+          return new Classification('EQUITY', 'CREDIT', false, null, accountSubgroup)
         }
-        return new Classification('LIABILITY', 'CREDIT', false, null)
+        return new Classification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
       case 3:
-        return new Classification('INCOME', 'CREDIT', false, null)
+        return new Classification('INCOME', 'CREDIT', false, null, accountSubgroup)
       case 4:
       case 5:
       case 6:
       case 7:
-        return new Classification('EXPENSE', 'DEBIT', false, null)
+        return new Classification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
       case 8:
-        return classifyMixedResultAccount(accountName)
+        return classifyMixedResultAccount(accountNumber, accountName)
       default:
         return new Classification(
             null,
             null,
             true,
-            'Kontot kunde inte klassificeras automatiskt från BAS-importen.'
+            'Kontot kunde inte klassificeras automatiskt från BAS-importen.',
+            accountSubgroup
         )
     }
   }
 
-  private static Classification classifyMixedResultAccount(String accountName) {
+  private static Classification classifyMixedResultAccount(String accountNumber, String accountName) {
+    String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
     String normalized = stripDiacritics(accountName).toUpperCase(Locale.ROOT)
     boolean incomeMatch = INCOME_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
     boolean expenseMatch = EXPENSE_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
 
     if (incomeMatch && !expenseMatch) {
-      return new Classification('INCOME', 'CREDIT', false, null)
+      return new Classification('INCOME', 'CREDIT', false, null, accountSubgroup)
     }
     if (expenseMatch && !incomeMatch) {
-      return new Classification('EXPENSE', 'DEBIT', false, null)
+      return new Classification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
     }
 
     new Classification(
         null,
         null,
         true,
-        'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.'
+        'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.',
+        accountSubgroup
     )
   }
 
@@ -269,5 +279,6 @@ final class ChartOfAccountsImportService {
     String normalBalanceSide
     boolean manualReviewRequired
     String note
+    String accountSubgroup
   }
 }

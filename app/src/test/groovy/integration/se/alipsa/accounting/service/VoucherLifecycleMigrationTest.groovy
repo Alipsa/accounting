@@ -51,7 +51,7 @@ class VoucherLifecycleMigrationTest {
       ) as GroovyRowResult
       ((Number) row.get('version')).intValue()
     } as int
-    assertEquals(17, version)
+    assertEquals(18, version)
   }
 
   @Test

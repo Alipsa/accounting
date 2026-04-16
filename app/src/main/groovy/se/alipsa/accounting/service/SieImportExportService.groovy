@@ -15,6 +15,7 @@ import alipsa.sieparser.SieType
 import alipsa.sieparser.SieVoucher
 import alipsa.sieparser.SieVoucherRow
 
+import se.alipsa.accounting.domain.AccountSubgroup
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
@@ -389,9 +390,10 @@ final class SieImportExportService {
                 active,
                 manual_review_required,
                 classification_note,
+                account_subgroup,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
             companyId,
             accountNumber,
@@ -400,7 +402,8 @@ final class SieImportExportService {
             classification.normalBalanceSide,
             null,
             classification.manualReviewRequired,
-            classification.note
+            classification.note,
+            classification.accountSubgroup
         ])
         created++
       } else if (Boolean.TRUE == existing.get('manualReviewRequired')) {
@@ -411,6 +414,7 @@ final class SieImportExportService {
                    normal_balance_side = ?,
                    manual_review_required = ?,
                    classification_note = ?,
+                   account_subgroup = ?,
                    updated_at = current_timestamp
              where company_id = ?
                and account_number = ?
@@ -420,6 +424,7 @@ final class SieImportExportService {
             classification.normalBalanceSide,
             classification.manualReviewRequired,
             classification.note,
+            classification.accountSubgroup,
             companyId,
             accountNumber
         ])
@@ -427,11 +432,13 @@ final class SieImportExportService {
         sql.executeUpdate('''
             update account
                set account_name = ?,
+                   account_subgroup = ?,
                    updated_at = current_timestamp
              where company_id = ?
                and account_number = ?
         ''', [
             accountName,
+            classification.accountSubgroup,
             companyId,
             accountNumber
         ])
@@ -1006,48 +1013,52 @@ final class SieImportExportService {
   private static AccountClassification classifyAccount(String accountNumber, String accountName) {
     int prefix = Integer.parseInt(accountNumber.substring(0, 1))
     int subgroup = Integer.parseInt(accountNumber.substring(0, 2))
+    String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
     switch (prefix) {
       case 1:
-        return new AccountClassification('ASSET', 'DEBIT', false, null)
+        return new AccountClassification('ASSET', 'DEBIT', false, null, accountSubgroup)
       case 2:
         if (subgroup <= 20) {
-          return new AccountClassification('EQUITY', 'CREDIT', false, null)
+          return new AccountClassification('EQUITY', 'CREDIT', false, null, accountSubgroup)
         }
-        return new AccountClassification('LIABILITY', 'CREDIT', false, null)
+        return new AccountClassification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
       case 3:
-        return new AccountClassification('INCOME', 'CREDIT', false, null)
+        return new AccountClassification('INCOME', 'CREDIT', false, null, accountSubgroup)
       case 4:
       case 5:
       case 6:
       case 7:
-        return new AccountClassification('EXPENSE', 'DEBIT', false, null)
+        return new AccountClassification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
       case 8:
-        return classifyMixedResultAccount(accountName)
+        return classifyMixedResultAccount(accountNumber, accountName)
       default:
         return new AccountClassification(
             null,
             null,
             true,
-            'Kontot kunde inte klassificeras automatiskt från SIE-importen.'
+            'Kontot kunde inte klassificeras automatiskt från SIE-importen.',
+            accountSubgroup
         )
     }
   }
 
-  private static AccountClassification classifyMixedResultAccount(String accountName) {
+  private static AccountClassification classifyMixedResultAccount(String accountNumber, String accountName) {
+    String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
     String normalized = stripDiacritics(accountName).toUpperCase(Locale.ROOT)
     boolean incomeMatch = INCOME_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
     boolean expenseMatch = EXPENSE_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
     if (incomeMatch && !expenseMatch) {
-      return new AccountClassification('INCOME', 'CREDIT', false, null)
+      return new AccountClassification('INCOME', 'CREDIT', false, null, accountSubgroup)
     }
     if (expenseMatch && !incomeMatch) {
-      return new AccountClassification('EXPENSE', 'DEBIT', false, null)
+      return new AccountClassification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
     }
     new AccountClassification(
         null,
         null,
         true,
-        'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.'
+        'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.',
+        accountSubgroup
     )
   }
 
