@@ -1,5 +1,5 @@
 alter table account
-    add column account_subgroup varchar(32);
+    add column account_subgroup varchar(40);
 
 -- Balance accounts (10-29)
 update account set account_subgroup = 'INTANGIBLE_ASSETS'
@@ -100,7 +100,7 @@ update account set account_subgroup = 'FINANCIAL_INCOME'
  where cast(substring(account_number, 1, 2) as int) between 80 and 83;
 
 update account set account_subgroup = 'FINANCIAL_COSTS'
- where cast(substring(account_number, 1, 2) as int) = 84;
+ where cast(substring(account_number, 1, 2) as int) between 84 and 87;
 
 update account set account_subgroup = 'APPROPRIATIONS'
  where cast(substring(account_number, 1, 2) as int) = 88;
