@@ -361,13 +361,15 @@ class ReportServicesTest {
     BigDecimal assetTotal = model.assetTotal as BigDecimal
     BigDecimal equityAndLiabilitiesTotal = model.equityAndLiabilitiesTotal as BigDecimal
 
-    // Asset total: 1510 kundfordringar (1250) in RECEIVABLES subgroup under CURRENT_ASSETS.
-    // 2641 ingående moms (50) has subgroup VAT_AND_EXCISE which maps to CURRENT_LIABILITIES.
-    assertEquals(1250.00G, assetTotal)
+    // Asset total: 1510 kundfordringar (1250) + 2641 ingående moms (50) = 1300
+    // 2641 is classified as ASSET even though BAS group 26 maps to VAT_AND_EXCISE;
+    // resolveBalanceSheetSubgroup reclassifies it to CURRENT_ASSETS.
+    assertEquals(1300.00G, assetTotal)
 
-    // Equity + liabilities: 2440 leverantörsskulder (250) + 2611 utgående moms (250) + 2641 (50) = 550
+    // Equity + liabilities: 2440 leverantörsskulder (250) + 2611 utgående moms (250) = 500
+    // Amounts are sign-normalized by normalBalanceSide (credit-normal → positive).
     // Note: totals don't balance because the income–expense result (800) hasn't been posted to equity.
-    assertEquals(550.00G, equityAndLiabilitiesTotal)
+    assertEquals(500.00G, equityAndLiabilitiesTotal)
   }
 
   private void bookFixtures() {

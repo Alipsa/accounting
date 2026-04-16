@@ -57,6 +57,14 @@ enum BalanceSheetSection {
     subgroups.isEmpty()
   }
 
+  boolean isAssetSide() {
+    this in [FIXED_ASSETS, CURRENT_ASSETS, TOTAL_ASSETS]
+  }
+
+  static BalanceSheetSection findSectionForSubgroup(AccountSubgroup subgroup) {
+    values().find { BalanceSheetSection section -> subgroup in section.subgroups }
+  }
+
   String getDisplayName() {
     I18n.instance.getString("balanceSheetSection.${name()}")
   }

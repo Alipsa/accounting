@@ -453,11 +453,27 @@ final class ReportDataService {
         log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från balansrapporten.")
         return
       }
+      subgroup = resolveBalanceSheetSubgroup(subgroup, info.accountClass)
       BigDecimal amount = closingBalances[accountNumber]
-      subgroupAccounts.computeIfAbsent(subgroup) { [] as List<AccountDetail> }
-          .add(new AccountDetail(accountNumber, info.accountName, amount))
+      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(new AccountDetail(accountNumber, info.accountName, amount))
     }
     subgroupAccounts
+  }
+
+  private static AccountSubgroup resolveBalanceSheetSubgroup(AccountSubgroup subgroup, String accountClass) {
+    BalanceSheetSection section = BalanceSheetSection.findSectionForSubgroup(subgroup)
+    if (section == null) {
+      return subgroup
+    }
+    boolean accountIsAsset = accountClass == 'ASSET'
+    if (accountIsAsset && !section.assetSide) {
+      return AccountSubgroup.OTHER_CURRENT_RECEIVABLES
+    }
+    if (!accountIsAsset && section.assetSide) {
+      return AccountSubgroup.OTHER_CURRENT_LIABILITIES
+    }
+    subgroup
   }
 
   private static BigDecimal computeBalanceSheetTotal(
