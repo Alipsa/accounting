@@ -379,7 +379,7 @@ final class ReportDataService {
         if (section.computed) {
           BigDecimal computedAmount = computeBalanceSheetTotal(section, sectionTotals)
           sectionTotals[section] = computedAmount
-          rows << new BalanceSheetRow(section.name(), null, null, scale(computedAmount), null, true)
+          rows << new BalanceSheetRow(section.name(), null, null, scale(computedAmount), section.displayName, true)
         } else {
           BigDecimal sectionSum = BigDecimal.ZERO
           section.subgroups.each { AccountSubgroup subgroup ->
