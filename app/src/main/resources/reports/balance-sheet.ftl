@@ -1,20 +1,7 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
   <h2>Balansrapport</h2>
-  <div class="metrics">
-    <div class="metric">
-      <span class="metric-label">Tillgångar</span>
-      <span class="metric-value">${assetTotal}</span>
-    </div>
-    <div class="metric">
-      <span class="metric-label">Skulder</span>
-      <span class="metric-value">${liabilityTotal}</span>
-    </div>
-    <div class="metric">
-      <span class="metric-label">Eget kapital</span>
-      <span class="metric-value">${equityTotal}</span>
-    </div>
-  </div>
+  <p>${selectionLabel}</p>
   <table>
     <thead>
       <tr>
@@ -25,7 +12,8 @@
     </thead>
     <tbody>
       <#list tableRows as row>
-        <tr>
+        <#assign isSummary = typedRows[row?index].summaryRow>
+        <tr<#if isSummary> style="font-weight: bold; border-top: 1px solid #333;"</#if>>
           <#list row as cell>
             <td>${cell}</td>
           </#list>

@@ -9,6 +9,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.IncomeStatementSection
@@ -357,55 +358,149 @@ final class ReportDataService {
     }
   }
 
+  @SuppressWarnings('AbcMetric')
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
       Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> movements = loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
-      List<BalanceSheetRow> rows = accountInfos.keySet().sort().collect { String accountNumber ->
-        AccountInfo info = accountInfos[accountNumber]
-        if (!(info.accountClass in ['ASSET', 'LIABILITY', 'EQUITY'])) {
-          return null
+
+      Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
+      List<String> skippedAccounts = []
+      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildSubgroupAccounts(accountInfos, closingBalances, skippedAccounts)
+      Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
+        [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
+      } as Map<AccountSubgroup, BigDecimal>
+
+      List<BalanceSheetRow> rows = []
+      Map<BalanceSheetSection, BigDecimal> sectionTotals = [:]
+
+      BalanceSheetSection.values().each { BalanceSheetSection section ->
+        if (section.computed) {
+          BigDecimal computedAmount = computeBalanceSheetTotal(section, sectionTotals)
+          sectionTotals[section] = computedAmount
+          rows << new BalanceSheetRow(section.name(), null, null, scale(computedAmount), section.displayName, true)
+        } else {
+          BigDecimal sectionSum = BigDecimal.ZERO
+          section.subgroups.each { AccountSubgroup subgroup ->
+            List<AccountDetail> accounts = subgroupAccounts[subgroup] ?: []
+            BigDecimal sgTotal = subgroupTotals[subgroup] ?: BigDecimal.ZERO
+            accounts.each { AccountDetail detail ->
+              rows << new BalanceSheetRow(section.name(), detail.accountNumber, detail.accountName, scale(detail.amount), null, false)
+            }
+            if (accounts.size() > 0 && sgTotal != BigDecimal.ZERO) {
+              rows << new BalanceSheetRow(section.name(), null, null, scale(sgTotal), subgroup.displayName, true)
+            }
+            sectionSum = sectionSum + sgTotal
+          }
+          sectionTotals[section] = sectionSum
+          if (sectionSum != BigDecimal.ZERO) {
+            rows << new BalanceSheetRow(section.name(), null, null, scale(sectionSum), section.displayName, true)
+          }
         }
-        BigDecimal amount = scale((openingBalances[accountNumber] ?: BigDecimal.ZERO) + (movements[accountNumber] ?: BigDecimal.ZERO))
-        if (amount == BigDecimal.ZERO) {
-          return null
-        }
-        String section
-        switch (info.accountClass) {
-          case 'ASSET':
-            section = 'Tillgångar'
-            break
-          case 'LIABILITY':
-            section = 'Skulder'
-            break
-          default:
-            section = 'Eget kapital'
-        }
-        new BalanceSheetRow(section, accountNumber, info.accountName, amount)
-      }.findAll { BalanceSheetRow row -> row != null }
-      BigDecimal assetTotal = rows.findAll { BalanceSheetRow row -> row.section == 'Tillgångar' }
-          .sum(BigDecimal.ZERO) { BalanceSheetRow row -> row.amount } as BigDecimal
-      BigDecimal liabilityTotal = rows.findAll { BalanceSheetRow row -> row.section == 'Skulder' }
-          .sum(BigDecimal.ZERO) { BalanceSheetRow row -> row.amount } as BigDecimal
-      BigDecimal equityTotal = rows.findAll { BalanceSheetRow row -> row.section == 'Eget kapital' }
-          .sum(BigDecimal.ZERO) { BalanceSheetRow row -> row.amount } as BigDecimal
+      }
+
+      BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS] ?: BigDecimal.ZERO
+      BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
+
+      List<String> summaryLines = [
+          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmount(scale(assetTotal))}".toString(),
+          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmount(scale(equityAndLiabilitiesTotal))}".toString()
+      ]
+      if (skippedAccounts) {
+        summaryLines.add("Konton utan undergrupp (ej med i rapporten): ${skippedAccounts.join(', ')}".toString())
+      }
+
       createResult(
           effective,
-          [
-              "Tillgångar: ${formatAmount(scale(assetTotal))}".toString(),
-              "Skulder: ${formatAmount(scale(liabilityTotal))}".toString(),
-              "Eget kapital: ${formatAmount(scale(equityTotal))}".toString(),
-              "Skulder + eget kapital: ${formatAmount(scale(liabilityTotal + equityTotal))}".toString()
-          ],
-          ['Sektion', 'Konto', 'Namn', 'Belopp'],
+          summaryLines,
+          [I18n.instance.getString('balanceSheetSection.column.item'), I18n.instance.getString('balanceSheetSection.column.amount')],
           rows.collect { BalanceSheetRow row ->
-            stringRow(row.section, row.accountNumber, row.accountName, formatAmount(row.amount))
+            String label = row.accountNumber
+                ? "${row.accountNumber} ${row.accountName}"
+                : (row.subgroupDisplayName ?: row.section)
+            stringRow(label, formatAmount(row.amount))
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
-          [typedRows: rows, assetTotal: scale(assetTotal), liabilityTotal: scale(liabilityTotal), equityTotal: scale(equityTotal)]
+          [typedRows: rows, assetTotal: scale(assetTotal), equityAndLiabilitiesTotal: scale(equityAndLiabilitiesTotal)]
       )
     } as ReportResult
+  }
+
+  private Map<String, BigDecimal> buildClosingBalances(
+      Map<String, AccountInfo> accountInfos,
+      Map<String, BigDecimal> openingBalances,
+      Map<String, BigDecimal> movements
+  ) {
+    Map<String, BigDecimal> closingBalances = [:]
+    accountInfos.each { String accountNumber, AccountInfo info ->
+      if (!(info.accountClass in ['ASSET', 'LIABILITY', 'EQUITY'])) {
+        return
+      }
+      BigDecimal amount = (openingBalances[accountNumber] ?: BigDecimal.ZERO) + (movements[accountNumber] ?: BigDecimal.ZERO)
+      if (amount != BigDecimal.ZERO) {
+        closingBalances[accountNumber] = amount
+      }
+    }
+    closingBalances
+  }
+
+  private Map<AccountSubgroup, List<AccountDetail>> buildSubgroupAccounts(
+      Map<String, AccountInfo> accountInfos,
+      Map<String, BigDecimal> closingBalances,
+      List<String> skippedAccounts
+  ) {
+    Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
+    closingBalances.keySet().sort().each { String accountNumber ->
+      AccountInfo info = accountInfos[accountNumber]
+      AccountSubgroup subgroup = info.accountSubgroup
+          ? AccountSubgroup.fromDatabaseValue(info.accountSubgroup)
+          : AccountSubgroup.fromAccountNumber(accountNumber)
+      if (subgroup == null) {
+        log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från balansrapporten.")
+        skippedAccounts.add("${accountNumber} ${info.accountName}".toString())
+        return
+      }
+      subgroup = resolveBalanceSheetSubgroup(subgroup, info.accountClass)
+      BigDecimal amount = closingBalances[accountNumber]
+      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(new AccountDetail(accountNumber, info.accountName, amount))
+    }
+    subgroupAccounts
+  }
+
+  private static AccountSubgroup resolveBalanceSheetSubgroup(AccountSubgroup subgroup, String accountClass) {
+    BalanceSheetSection section = BalanceSheetSection.findSectionForSubgroup(subgroup)
+    if (section == null) {
+      throw new IllegalStateException("AccountSubgroup ${subgroup.name()} har ingen mappning till BalanceSheetSection")
+    }
+    boolean accountIsAsset = accountClass == 'ASSET'
+    if (accountIsAsset && !section.assetSide) {
+      return AccountSubgroup.OTHER_CURRENT_RECEIVABLES
+    }
+    if (!accountIsAsset && section.assetSide) {
+      return AccountSubgroup.OTHER_CURRENT_LIABILITIES
+    }
+    subgroup
+  }
+
+  private static BigDecimal computeBalanceSheetTotal(
+      BalanceSheetSection section,
+      Map<BalanceSheetSection, BigDecimal> sectionTotals
+  ) {
+    switch (section) {
+      case BalanceSheetSection.TOTAL_ASSETS:
+        return (sectionTotals[BalanceSheetSection.FIXED_ASSETS] ?: BigDecimal.ZERO) +
+            (sectionTotals[BalanceSheetSection.CURRENT_ASSETS] ?: BigDecimal.ZERO)
+      case BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES:
+        return (sectionTotals[BalanceSheetSection.EQUITY] ?: BigDecimal.ZERO) +
+            (sectionTotals[BalanceSheetSection.UNTAXED_RESERVES] ?: BigDecimal.ZERO) +
+            (sectionTotals[BalanceSheetSection.PROVISIONS] ?: BigDecimal.ZERO) +
+            (sectionTotals[BalanceSheetSection.LONG_TERM_LIABILITIES] ?: BigDecimal.ZERO) +
+            (sectionTotals[BalanceSheetSection.CURRENT_LIABILITIES] ?: BigDecimal.ZERO)
+      default:
+        throw new IllegalStateException("Okänd beräknad sektion: ${section}")
+    }
   }
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
@@ -791,6 +886,13 @@ final class ReportDataService {
 
     BigDecimal debitAmount
     BigDecimal creditAmount
+  }
+
+  @Canonical
+  private static final class AccountDetail {
+    String accountNumber
+    String accountName
+    BigDecimal amount
   }
 
   private static final class VatBucket {
