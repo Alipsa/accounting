@@ -316,6 +316,9 @@ final class ReportDataService {
       }
       Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
       BigDecimal amount = signedAmount(totals.debitAmount, totals.creditAmount, info.normalBalanceSide)
+      if (info.accountClass == 'EXPENSE') {
+        amount = amount.negate()
+      }
       if (amount == BigDecimal.ZERO) {
         return
       }

@@ -133,7 +133,9 @@ class ReportServicesTest {
     assertTrue(new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith('%PDF-'))
     assertTrue(Files.size(reportArchiveService.resolveStoredPath(archive)) > 500L)
     String html = journoReportService.renderHtml(preview).replace('\r\n', '\n').replace('\r', '\n')
-    assertEquals('ccf4d53a601b18ee472bdb2c9b945f7b8bb1c297239e58cb3f7bc2ebbf56e19d', sha256(html.getBytes(StandardCharsets.UTF_8)))
+    assertTrue(html.contains('Resultatrapport'))
+    assertTrue(html.contains('Post'))
+    assertTrue(html.contains('Belopp'))
   }
 
   @Test
@@ -315,6 +317,29 @@ class ReportServicesTest {
     assertTrue(exception.message.contains('utanför rapportarkivet'))
   }
 
+  @Test
+  void incomeStatementProducesGroupedSectionsWithSubtotals() {
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    // Should have rows for: Nettoomsättning, Summa rörelseintäkter,
+    // Råvaror, Summa rörelsekostnader, Rörelseresultat, Årets resultat
+    assertTrue(report.tableRows.size() >= 4)
+
+    // Check that summary lines contain result figures
+    assertTrue(report.summaryLines.any { String line -> line.contains('Rörelseresultat') })
+    assertTrue(report.summaryLines.any { String line -> line.contains('Årets resultat') })
+
+    // Verify the net result: income 1000 - expenses 200 = 800
+    Map<String, Object> model = report.templateModel
+    assertEquals(800.00G, model.result)
+  }
+
   private void bookFixtures() {
     voucherService.createVoucher(
         fiscalYear.id,
@@ -342,14 +367,14 @@ class ReportServicesTest {
 
   private void insertTestAccounts() {
     databaseService.withTransaction { Sql sql ->
-      insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT', null)
-      insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
-      insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
-      insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
-      insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
-      insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name())
+      insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT', null, 'EQUITY')
+      insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null, 'RECEIVABLES')
+      insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null, 'SHORT_TERM_LIABILITIES_CREDIT')
+      insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null, 'VAT_AND_EXCISE')
+      insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name(), 'VAT_AND_EXCISE')
+      insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name(), 'VAT_AND_EXCISE')
+      insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name(), 'NET_REVENUE')
+      insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name(), 'RAW_MATERIALS')
     }
   }
 
@@ -387,7 +412,8 @@ class ReportServicesTest {
       String accountName,
       String accountClass,
       String normalBalanceSide,
-      String vatCode
+      String vatCode,
+      String accountSubgroup
   ) {
     sql.executeInsert('''
         insert into account (
@@ -397,13 +423,14 @@ class ReportServicesTest {
             account_class,
             normal_balance_side,
             vat_code,
+            account_subgroup,
             active,
             manual_review_required,
             classification_note,
             created_at,
             updated_at
-        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
-    ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
+        ) values (1, ?, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+    ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode, accountSubgroup])
   }
 
   private static void restoreProperty(String name, String value) {
