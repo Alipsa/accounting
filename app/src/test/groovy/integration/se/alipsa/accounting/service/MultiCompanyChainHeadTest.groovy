@@ -60,7 +60,7 @@ class MultiCompanyChainHeadTest {
         reportArchiveService,
         new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         auditLogService,
-        databaseService
+        new CompanyService(databaseService)
     )
     journoReportService = new JournoReportService(
         reportDataService,

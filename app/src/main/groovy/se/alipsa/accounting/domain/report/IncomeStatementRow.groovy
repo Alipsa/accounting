@@ -12,5 +12,4 @@ final class IncomeStatementRow {
   String displayLabel
   BigDecimal amount
   IncomeStatementRowType rowType
-  boolean summaryRow
 }

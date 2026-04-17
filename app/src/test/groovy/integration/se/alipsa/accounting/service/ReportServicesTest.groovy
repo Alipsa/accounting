@@ -68,7 +68,7 @@ class ReportServicesTest {
         reportArchiveService,
         new ReportIntegrityService(new AttachmentService(databaseService, auditLogService), auditLogService),
         auditLogService,
-        databaseService
+        new CompanyService(databaseService)
     )
     journoReportService = new JournoReportService(
         reportDataService,
@@ -514,6 +514,23 @@ class ReportServicesTest {
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Resultat före skatt' && row[1] == '750,00' })
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'ÅRETS RESULTAT' && row[1] == '600,00' })
     assertEquals(600.00G, report.templateModel.result)
+  }
+
+  @Test
+  void incomeStatementWithZeroActivityProducesComputedResultLinesAtZero() {
+    FiscalYear emptyYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2027',
+        LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        emptyYear.id,
+        null,
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    ))
+
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'ÅRETS RESULTAT' && row[1] == '0,00' })
+    assertEquals(0.00G, report.templateModel.result)
   }
 
   @Test

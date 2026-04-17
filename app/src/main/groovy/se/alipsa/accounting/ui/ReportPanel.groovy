@@ -35,6 +35,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.ExecutionException
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -56,6 +57,8 @@ import javax.swing.table.AbstractTableModel
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
 final class ReportPanel extends JPanel implements PropertyChangeListener {
+
+  private static final Logger log = Logger.getLogger(ReportPanel.name)
 
   private final ReportDataService reportDataService
   private final JournoReportService journoReportService
@@ -347,6 +350,13 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       summaryLabel.text = I18n.instance.getString('reportPanel.summary.buildFailed')
       updateActionButtons()
       showError(exception.message)
+    } catch (Exception exception) {
+      log.warning("Oväntat fel vid rapportgenerering: ${exception.message}")
+      currentReport = null
+      previewTableModel.clear()
+      summaryLabel.text = I18n.instance.getString('reportPanel.summary.buildFailed')
+      updateActionButtons()
+      showError(exception.message)
     }
   }
 
@@ -356,6 +366,9 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       reloadArchives()
       showInfo(I18n.instance.format('reportPanel.message.csvExported', archive.fileName))
     } catch (IllegalArgumentException | IllegalStateException exception) {
+      showError(exception.message)
+    } catch (Exception exception) {
+      log.warning("Oväntat fel vid CSV-export: ${exception.message}")
       showError(exception.message)
     }
   }

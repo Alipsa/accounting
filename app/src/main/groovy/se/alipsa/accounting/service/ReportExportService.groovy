@@ -1,7 +1,5 @@
 package se.alipsa.accounting.service
 
-import groovy.sql.GroovyRowResult
-import groovy.sql.Sql
 import groovy.transform.TupleConstructor
 
 import org.apache.poi.ss.usermodel.BorderStyle
@@ -12,6 +10,7 @@ import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.xssf.usermodel.XSSFFont
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 import se.alipsa.accounting.domain.report.IncomeStatementRow
@@ -25,8 +24,8 @@ import java.nio.charset.StandardCharsets
 import java.util.logging.Logger
 
 /**
- * Exports tabular reports as CSV using the same selection and row order as the UI preview.
- * The export intentionally uses ';' as separator because Swedish Excel defaults expect it.
+ * Exports tabular reports as CSV and Excel using the same selection and row order as the UI preview.
+ * CSV export intentionally uses ';' as separator because Swedish Excel defaults expect it.
  */
 final class ReportExportService {
 
@@ -36,7 +35,7 @@ final class ReportExportService {
   private final ReportArchiveService reportArchiveService
   private final ReportIntegrityService reportIntegrityService
   private final AuditLogService auditLogService
-  private final DatabaseService databaseService
+  private final CompanyService companyService
 
   ReportExportService() {
     this(
@@ -44,7 +43,7 @@ final class ReportExportService {
         new ReportArchiveService(),
         new ReportIntegrityService(),
         new AuditLogService(),
-        DatabaseService.instance
+        new CompanyService()
     )
   }
 
@@ -53,13 +52,13 @@ final class ReportExportService {
       ReportArchiveService reportArchiveService,
       ReportIntegrityService reportIntegrityService,
       AuditLogService auditLogService,
-      DatabaseService databaseService
+      CompanyService companyService
   ) {
     this.reportDataService = reportDataService
     this.reportArchiveService = reportArchiveService
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
-    this.databaseService = databaseService
+    this.companyService = companyService
   }
 
   ReportResult preview(ReportSelection selection) {
@@ -170,46 +169,21 @@ final class ReportExportService {
   }
 
   private String resolveCompanyName(long fiscalYearId) {
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow('''
-          select c.company_name as companyName
-            from fiscal_year fy
-            join company c on c.id = fy.company_id
-           where fy.id = ?
-      ''', [fiscalYearId]) as GroovyRowResult
-      if (row == null) {
-        log.warning("Inget företag kopplat till räkenskapsår ${fiscalYearId} – företagsnamn utelämnas i exporten.")
-        return ''
-      }
-      row.get('companyName') as String
+    try {
+      long companyId = companyService.resolveFromFiscalYear(fiscalYearId)
+      companyService.findById(companyId)?.companyName ?: ''
+    } catch (IllegalArgumentException ex) {
+      log.warning("Inget företag kopplat till räkenskapsår ${fiscalYearId} – företagsnamn utelämnas i exporten.")
+      ''
     }
   }
 
-  @SuppressWarnings('AbcMetric')
   private static IncomeStatementStyles createIncomeStatementStyles(XSSFWorkbook workbook) {
-    def titleFont = workbook.createFont()
-    titleFont.fontName = 'Arial'
-    titleFont.fontHeightInPoints = 20
-    titleFont.bold = true
-
-    def metaFont = workbook.createFont()
-    metaFont.fontName = 'Arial'
-    metaFont.fontHeightInPoints = 10
-
-    def sectionFont = workbook.createFont()
-    sectionFont.fontName = 'Arial'
-    sectionFont.fontHeightInPoints = 12
-    sectionFont.bold = true
-
-    def boldFont = workbook.createFont()
-    boldFont.fontName = 'Arial'
-    boldFont.fontHeightInPoints = 10
-    boldFont.bold = true
-
-    def textFont = workbook.createFont()
-    textFont.fontName = 'Arial'
-    textFont.fontHeightInPoints = 10
-
+    XSSFFont titleFont = createFont(workbook, (short) 20, true)
+    XSSFFont metaFont = createFont(workbook, (short) 10, false)
+    XSSFFont sectionFont = createFont(workbook, (short) 12, true)
+    XSSFFont boldFont = createFont(workbook, (short) 10, true)
+    XSSFFont textFont = createFont(workbook, (short) 10, false)
     short numberFormat = workbook.createDataFormat().getFormat(excelNumberFormat())
 
     CellStyle titleStyle = workbook.createCellStyle()
@@ -224,33 +198,16 @@ final class ReportExportService {
     headerStyle.fillPattern = FillPatternType.SOLID_FOREGROUND
     headerStyle.borderBottom = BorderStyle.THIN
 
-    CellStyle headerNumberStyle = workbook.createCellStyle()
-    headerNumberStyle.cloneStyleFrom(headerStyle)
-    headerNumberStyle.alignment = HorizontalAlignment.RIGHT
+    CellStyle headerNumberStyle = deriveNumberStyle(workbook, headerStyle, numberFormat)
 
     CellStyle detailTextStyle = workbook.createCellStyle()
     detailTextStyle.setFont(textFont)
 
-    CellStyle detailNumberStyle = workbook.createCellStyle()
-    detailNumberStyle.cloneStyleFrom(detailTextStyle)
-    detailNumberStyle.alignment = HorizontalAlignment.RIGHT
-    detailNumberStyle.dataFormat = numberFormat
-
     CellStyle boldTextStyle = workbook.createCellStyle()
     boldTextStyle.setFont(boldFont)
 
-    CellStyle boldNumberStyle = workbook.createCellStyle()
-    boldNumberStyle.cloneStyleFrom(boldTextStyle)
-    boldNumberStyle.alignment = HorizontalAlignment.RIGHT
-    boldNumberStyle.dataFormat = numberFormat
-
     CellStyle sectionTextStyle = workbook.createCellStyle()
     sectionTextStyle.setFont(sectionFont)
-
-    CellStyle sectionNumberStyle = workbook.createCellStyle()
-    sectionNumberStyle.cloneStyleFrom(sectionTextStyle)
-    sectionNumberStyle.alignment = HorizontalAlignment.RIGHT
-    sectionNumberStyle.dataFormat = numberFormat
 
     new IncomeStatementStyles(
         titleStyle,
@@ -258,12 +215,28 @@ final class ReportExportService {
         headerStyle,
         headerNumberStyle,
         detailTextStyle,
-        detailNumberStyle,
+        deriveNumberStyle(workbook, detailTextStyle, numberFormat),
         boldTextStyle,
-        boldNumberStyle,
+        deriveNumberStyle(workbook, boldTextStyle, numberFormat),
         sectionTextStyle,
-        sectionNumberStyle
+        deriveNumberStyle(workbook, sectionTextStyle, numberFormat)
     )
+  }
+
+  private static XSSFFont createFont(XSSFWorkbook workbook, short sizePoints, boolean bold) {
+    XSSFFont font = workbook.createFont()
+    font.fontName = 'Arial'
+    font.fontHeightInPoints = sizePoints
+    font.bold = bold
+    font
+  }
+
+  private static CellStyle deriveNumberStyle(XSSFWorkbook workbook, CellStyle base, short numberFormat) {
+    CellStyle style = workbook.createCellStyle()
+    style.cloneStyleFrom(base)
+    style.alignment = HorizontalAlignment.RIGHT
+    style.dataFormat = numberFormat
+    style
   }
 
   private static String excelNumberFormat() {
@@ -386,9 +359,7 @@ final class ReportExportService {
   }
 
   private long resolveCompanyId(long fiscalYearId) {
-    databaseService.withSql { Sql sql ->
-      CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
-    }
+    companyService.resolveFromFiscalYear(fiscalYearId)
   }
 
   private static String escapeCsv(String value) {

@@ -32,7 +32,7 @@ import java.time.LocalDate
 import java.util.logging.Logger
 
 /**
- * Builds reusable report data for UI previews, CSV export and Journo PDF rendering.
+ * Builds reusable report data for UI previews, CSV/Excel export and Journo (FreeMarker) PDF rendering.
  */
 final class ReportDataService {
 
@@ -321,8 +321,7 @@ final class ReportDataService {
               section.name(),
               computedSectionLabel(section),
               scale(computedAmount),
-              section == IncomeStatementSection.NET_RESULT ? IncomeStatementRowType.GRAND_TOTAL : IncomeStatementRowType.RESULT_LINE,
-              true
+              section == IncomeStatementSection.NET_RESULT ? IncomeStatementRowType.GRAND_TOTAL : IncomeStatementRowType.RESULT_LINE
           )
         } else {
           IncomeSectionBuildResult sectionBuild = buildIncomeSectionRows(section, subgroupAccounts, subgroupTotals, summaryPrefix)
@@ -332,16 +331,14 @@ final class ReportDataService {
                 section.name(),
                 sectionHeaderLabel(section),
                 null,
-                IncomeStatementRowType.SECTION_HEADER,
-                false
+                IncomeStatementRowType.SECTION_HEADER
             )
             rows.addAll(sectionBuild.rows)
             rows << new IncomeStatementRow(
                 section.name(),
                 sectionTotalLabel(section, summaryPrefix),
                 scale(sectionBuild.total),
-                IncomeStatementRowType.SECTION_TOTAL,
-                true
+                IncomeStatementRowType.SECTION_TOTAL
             )
           }
         }
@@ -432,8 +429,7 @@ final class ReportDataService {
           section.name(),
           incomeSubgroupHeadingLabel(subgroup),
           null,
-          IncomeStatementRowType.GROUP_HEADER,
-          false
+          IncomeStatementRowType.GROUP_HEADER
       )
     }
     accounts.each { AccountDetail detail ->
@@ -441,16 +437,14 @@ final class ReportDataService {
           section.name(),
           "${detail.accountNumber} ${detail.accountName}".toString(),
           scale(detail.amount),
-          IncomeStatementRowType.DETAIL,
-          false
+          IncomeStatementRowType.DETAIL
       )
     }
     subgroupRows << new IncomeStatementRow(
         section.name(),
         summaryLabel(summaryPrefix, incomeSubgroupSummaryLabel(subgroup)),
         scale(subgroupTotal),
-        IncomeStatementRowType.SUBTOTAL,
-        true
+        IncomeStatementRowType.SUBTOTAL
     )
     subgroupRows
   }

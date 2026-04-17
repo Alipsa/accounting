@@ -15,11 +15,14 @@ import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.logging.Logger
 
 /**
  * Stores generated report artifacts on disk and keeps archive metadata in the database.
  */
 final class ReportArchiveService {
+
+  private static final Logger log = Logger.getLogger(ReportArchiveService.name)
 
   private final DatabaseService databaseService
   private final RetentionPolicyService retentionPolicyService
@@ -302,7 +305,8 @@ final class ReportArchiveService {
     Path path
     try {
       path = resolveStoragePath(archive.storagePath)
-    } catch (SecurityException ignored) {
+    } catch (SecurityException ex) {
+      log.warning("Arkivets lagringsväg misslyckades vid säkerhetskontroll: ${archive.storagePath} – ${ex.message}")
       return false
     }
     if (!Files.isRegularFile(path)) {

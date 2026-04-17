@@ -7,6 +7,9 @@ import se.alipsa.accounting.support.I18n
  * Logical sections of the income statement report, each mapping to one or more
  * {@link AccountSubgroup} values. Sections with an empty subgroup list are computed
  * result rows (subtotals).
+ *
+ * <p><strong>Important:</strong> The constant ordering defines the report layout.
+ * Reordering, inserting, or removing constants will change the rendered report.</p>
  */
 enum IncomeStatementSection {
 
