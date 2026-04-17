@@ -12,7 +12,6 @@ import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
-import java.awt.ComponentOrientation
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -303,13 +302,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
     settings.allowKeyboardEditing = false
-    DatePicker picker = new DatePicker(settings)
-    // RIGHT_TO_LEFT places the calendar button on the left, which looks better
-    // in this layout, but the text field itself must stay LTR so dates read
-    // correctly left-to-right.
-    picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
-    picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
-    picker
+    settings.setTextFieldPosition(DatePickerSettings.TextFieldPosition.RIGHT)
+    new DatePicker(settings)
   }
 
   private Frame ownerFrame() {
