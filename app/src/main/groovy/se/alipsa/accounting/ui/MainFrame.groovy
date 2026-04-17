@@ -275,9 +275,10 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private JFrame buildFrame() {
+    List<Integer> size = scaledWindowSize(1100, 720)
     JFrame f = swing.frame(
         title: I18n.instance.getString('mainFrame.title'),
-        size: [1100, 720],
+        size: size,
         defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
         locationByPlatform: true,
         show: false
@@ -606,7 +607,10 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void showSieExchangeDialog() {
-    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, activeCompanyManager.companyId)
+    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, activeCompanyManager.companyId, {
+      reloadFiscalYearComboBox()
+      activeCompanyManager.refreshFiscalYear()
+    } as Runnable)
     setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
   }
 
@@ -696,6 +700,19 @@ final class MainFrame implements PropertyChangeListener {
     stream.withCloseable { InputStream input ->
       new ImageIcon(ImageIO.read(input))
     }
+  }
+
+  private static List<Integer> scaledWindowSize(int baseWidth, int baseHeight) {
+    float scale = 1.0f
+    try {
+      scale = com.formdev.flatlaf.util.UIScale.getUserScaleFactor()
+    } catch (Exception ex) {
+      log.warning("FlatLaf UIScale unavailable, using unscaled size: ${ex.message}")
+    }
+    [
+        (int) (baseWidth * scale),
+        (int) (baseHeight * scale)
+    ]
   }
 
   private static String escapeHtml(String text) {

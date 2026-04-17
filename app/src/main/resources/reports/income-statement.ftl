@@ -1,24 +1,25 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
-  <h2>Resultatrapport</h2>
-  <p>${selectionLabel}</p>
-  <table>
-    <thead>
-      <tr>
-        <#list tableHeaders as header>
-          <th>${header}</th>
-        </#list>
-      </tr>
-    </thead>
-    <tbody>
-      <#list tableRows as row>
-        <#assign isSummary = typedRows[row?index].summaryRow>
-        <tr<#if isSummary> style="font-weight: bold; border-top: 1px solid #333;"</#if>>
-          <#list row as cell>
-            <td>${cell}</td>
+  <section class="income-statement-report">
+    <h2 class="report-heading">${title}</h2>
+    <table class="statement-table">
+      <thead>
+        <tr>
+          <#list tableHeaders as header>
+            <th<#if header?index == 1> class="number"</#if>>${header}</th>
           </#list>
         </tr>
-      </#list>
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        <#list tableRows as row>
+          <#assign typedRow = typedRows[row?index]>
+          <#assign rowType = typedRow.rowType.name()?lower_case?replace("_", "-")>
+          <tr class="statement-row ${rowType}">
+            <td class="label">${row[0]}</td>
+            <td class="number">${row[1]!}</td>
+          </tr>
+        </#list>
+      </tbody>
+    </table>
+  </section>
 </@layout.page>

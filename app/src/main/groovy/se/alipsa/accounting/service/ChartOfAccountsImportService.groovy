@@ -22,7 +22,7 @@ import java.nio.file.Path
 final class ChartOfAccountsImportService {
 
   private static final Set<String> INCOME_KEYWORDS = [
-      'INTAKT', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
+      'INTAKT', 'RANTEINTAKT', 'RANTEINTAKTER', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
       'BIDRAG', 'OVERSKOTT', 'ATERFORING', 'RABATT'
   ] as Set<String>
   private static final Set<String> EXPENSE_KEYWORDS = [

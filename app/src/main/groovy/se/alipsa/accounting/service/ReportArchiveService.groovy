@@ -14,11 +14,15 @@ import java.security.MessageDigest
 import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.logging.Logger
 
 /**
  * Stores generated report artifacts on disk and keeps archive metadata in the database.
  */
 final class ReportArchiveService {
+
+  private static final Logger log = Logger.getLogger(ReportArchiveService.name)
 
   private final DatabaseService databaseService
   private final RetentionPolicyService retentionPolicyService
@@ -244,7 +248,7 @@ final class ReportArchiveService {
 
   private static String normalizeFormat(String reportFormat) {
     String safeFormat = reportFormat?.trim()?.toUpperCase(Locale.ROOT)
-    if (!(safeFormat in ['PDF', 'CSV'])) {
+    if (!(safeFormat in ['PDF', 'CSV', 'XLSX'])) {
       throw new IllegalArgumentException("Ogiltigt rapportformat: ${reportFormat}")
     }
     safeFormat
@@ -255,10 +259,17 @@ final class ReportArchiveService {
     "${selection.reportType.name().toLowerCase(Locale.ROOT)}-${selection.startDate}-${selection.endDate}.${suffix}"
   }
 
+  private static final DateTimeFormatter STORAGE_TIMESTAMP_FORMATTER =
+      DateTimeFormatter.ofPattern('yyyyMMdd-HHmmssSSS')
+
   private static String buildStoragePath(long companyId, String fileName) {
     LocalDateTime now = LocalDateTime.now()
     String safeFileName = fileName.replaceAll(/[^A-Za-z0-9._-]/, '_')
-    "c${companyId}/${now.year}/${String.format('%02d', now.monthValue)}/${safeFileName}"
+    String timestamp = now.format(STORAGE_TIMESTAMP_FORMATTER)
+    int dot = safeFileName.lastIndexOf('.')
+    String stem = dot > 0 ? safeFileName.substring(0, dot) : safeFileName
+    String ext = dot > 0 ? safeFileName.substring(dot) : ''
+    "c${companyId}/${now.year}/${String.format('%02d', now.monthValue)}/${stem}-${timestamp}${ext}"
   }
 
   private static Path resolveStoragePath(String storagePath) {
@@ -294,7 +305,8 @@ final class ReportArchiveService {
     Path path
     try {
       path = resolveStoragePath(archive.storagePath)
-    } catch (SecurityException ignored) {
+    } catch (SecurityException ex) {
+      log.warning("Arkivets lagringsväg misslyckades vid säkerhetskontroll: ${archive.storagePath} – ${ex.message}")
       return false
     }
     if (!Files.isRegularFile(path)) {

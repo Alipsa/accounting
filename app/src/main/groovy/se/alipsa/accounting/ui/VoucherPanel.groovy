@@ -30,6 +30,7 @@ import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.time.LocalDate
 import java.util.function.Consumer
+import java.util.logging.Logger
 
 import javax.swing.AbstractAction
 import javax.swing.BorderFactory
@@ -59,6 +60,8 @@ import javax.swing.table.DefaultTableCellRenderer
  * Replaces VoucherListPanel and VoucherEditor.
  */
 final class VoucherPanel extends JPanel implements PropertyChangeListener {
+
+  private static final Logger log = Logger.getLogger(VoucherPanel.name)
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -451,7 +454,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       showBlankVoucher()
       return
     }
-    voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id)
+    // Reversed so navigatePrev() (which starts from the end) shows the most recent voucher first.
+    voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
     currentIndex = -1
     showBlankVoucher()
   }
@@ -518,8 +522,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       if (series != null) {
         return "${series.seriesCode}-${series.nextRunningNumber}" as String
       }
-    } catch (Exception ignored) {
-      // fall through
+    } catch (Exception ex) {
+      log.warning("Kunde inte förhandsgranska verifikatnummer: ${ex.message}")
     }
     "${seriesCode}-1" as String
   }
@@ -676,8 +680,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       try {
         readOnly = accountingPeriodService.isDateLocked(
             activeCompanyManager.companyId, currentVoucher.accountingDate)
-      } catch (Exception ignored) {
-        readOnly = false
+      } catch (Exception ex) {
+        log.warning("Kunde inte avgöra om perioden är låst – skrivskyddar verifikatet: ${ex.message}")
+        readOnly = true
       }
     } else {
       readOnly = false
@@ -1095,7 +1100,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
       try {
         accountService.findAccount(activeCompanyManager.companyId, normalized)
-      } catch (Exception ignored) {
+      } catch (Exception ex) {
+        log.warning("Kontouppslagning misslyckades för ${normalized}: ${ex.message}")
         null
       }
     }

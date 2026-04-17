@@ -39,7 +39,7 @@ final class SieImportExportService {
   private static final String PROGRAM_VERSION = '1.0.0'
   private static final String GENERATOR_NAME = 'desktop-app'
   private static final Set<String> INCOME_KEYWORDS = [
-      'INTAKT', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
+      'INTAKT', 'RANTEINTAKT', 'RANTEINTAKTER', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
       'BIDRAG', 'OVERSKOTT', 'ATERFORING', 'RABATT'
   ] as Set<String>
   private static final Set<String> EXPENSE_KEYWORDS = [

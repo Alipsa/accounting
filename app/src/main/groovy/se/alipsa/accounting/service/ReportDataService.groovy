@@ -12,6 +12,7 @@ import se.alipsa.accounting.domain.report.BalanceSheetRow
 import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.IncomeStatementRowType
 import se.alipsa.accounting.domain.report.IncomeStatementSection
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -24,11 +25,14 @@ import se.alipsa.accounting.support.I18n
 
 import java.math.RoundingMode
 import java.sql.Date
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.text.NumberFormat
 import java.time.LocalDate
 import java.util.logging.Logger
 
 /**
- * Builds reusable report data for UI previews, CSV export and Journo PDF rendering.
+ * Builds reusable report data for UI previews, CSV/Excel export and Journo (FreeMarker) PDF rendering.
  */
 final class ReportDataService {
 
@@ -80,7 +84,36 @@ final class ReportDataService {
   }
 
   private ReportResult buildVoucherListReport(EffectiveSelection effective) {
-    List<VoucherListRow> rows = databaseService.withSql { Sql sql ->
+    List<VoucherListRow> rows = loadVoucherListRows(effective)
+    List<List<String>> tableRows = rows.collect { VoucherListRow row ->
+      stringRow(
+          row.accountingDate.toString(),
+          row.voucherNumber,
+          row.seriesCode,
+          row.description,
+          row.status,
+          formatAmount(row.debitAmount),
+          formatAmount(row.creditAmount)
+      )
+    }
+    BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.debitAmount } as BigDecimal
+    BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.creditAmount } as BigDecimal
+    createResult(
+        effective,
+        [
+            I18n.instance.format('voucherListReport.summary.count', rows.size()),
+            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmount(scale(debitTotal))),
+            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmount(scale(creditTotal)))
+        ],
+        voucherListHeaders(),
+        tableRows,
+        rows.collect { VoucherListRow row -> row.voucherId },
+        [typedRows: rows, lead: I18n.instance.getString('report.voucherList.lead')]
+    )
+  }
+
+  private List<VoucherListRow> loadVoucherListRows(EffectiveSelection effective) {
+    databaseService.withSql { Sql sql ->
       sql.rows('''
           select v.id as voucherId,
                  v.accounting_date as accountingDate,
@@ -111,32 +144,18 @@ final class ReportDataService {
         )
       }
     }
-    List<String> headers = ['Datum', 'Verifikation', 'Serie', 'Text', 'Status', 'Debet', 'Kredit']
-    List<List<String>> tableRows = rows.collect { VoucherListRow row ->
-      stringRow(
-          row.accountingDate.toString(),
-          row.voucherNumber,
-          row.seriesCode,
-          row.description,
-          row.status,
-          formatAmount(row.debitAmount),
-          formatAmount(row.creditAmount)
-      )
-    }
-    BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.debitAmount } as BigDecimal
-    BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.creditAmount } as BigDecimal
-    createResult(
-        effective,
-        [
-            "Antal verifikationer: ${rows.size()}".toString(),
-            "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
-            "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
-        ],
-        headers,
-        tableRows,
-        rows.collect { VoucherListRow row -> row.voucherId },
-        [typedRows: rows]
-    )
+  }
+
+  private static List<String> voucherListHeaders() {
+    [
+        I18n.instance.getString('voucherListReport.column.date'),
+        I18n.instance.getString('voucherListReport.column.voucher'),
+        I18n.instance.getString('voucherListReport.column.series'),
+        I18n.instance.getString('voucherListReport.column.text'),
+        I18n.instance.getString('voucherListReport.column.status'),
+        I18n.instance.getString('voucherListReport.column.debit'),
+        I18n.instance.getString('voucherListReport.column.credit')
+    ]
   }
 
   @SuppressWarnings('AbcMetric')
@@ -165,7 +184,7 @@ final class ReportDataService {
             info.accountName,
             null,
             null,
-            'Ingående balans',
+            I18n.instance.getString('generalLedgerReport.row.openingBalance'),
             BigDecimal.ZERO,
             BigDecimal.ZERO,
             opening,
@@ -187,7 +206,16 @@ final class ReportDataService {
           )
         }
       }
-      List<String> headers = ['Konto', 'Namn', 'Datum', 'Verifikation', 'Text', 'Debet', 'Kredit', 'Saldo']
+      List<String> headers = [
+          I18n.instance.getString('generalLedgerReport.column.account'),
+          I18n.instance.getString('generalLedgerReport.column.name'),
+          I18n.instance.getString('generalLedgerReport.column.date'),
+          I18n.instance.getString('generalLedgerReport.column.voucher'),
+          I18n.instance.getString('generalLedgerReport.column.text'),
+          I18n.instance.getString('generalLedgerReport.column.debit'),
+          I18n.instance.getString('generalLedgerReport.column.credit'),
+          I18n.instance.getString('generalLedgerReport.column.balance')
+      ]
       List<List<String>> tableRows = rows.collect { GeneralLedgerRow row ->
         stringRow(
             row.accountNumber,
@@ -202,11 +230,15 @@ final class ReportDataService {
       }
       createResult(
           effective,
-          ["Antal rader: ${rows.size()}".toString()],
+          [I18n.instance.format('generalLedgerReport.summary.rowCount', rows.size())],
           headers,
           tableRows,
           rows.collect { GeneralLedgerRow row -> row.voucherId },
-          [typedRows: rows]
+          [
+              typedRows: rows,
+              lead: I18n.instance.getString('report.generalLedger.lead'),
+              note: I18n.instance.getString('report.generalLedger.note')
+          ]
       )
     } as ReportResult
   }
@@ -237,12 +269,19 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "Ingående saldo: ${formatAmount(scale(openingTotal))}".toString(),
-              "Periodens debet: ${formatAmount(scale(debitTotal))}".toString(),
-              "Periodens kredit: ${formatAmount(scale(creditTotal))}".toString(),
-              "Utgående saldo: ${formatAmount(scale(closingTotal))}".toString()
+              I18n.instance.format('trialBalanceReport.summary.openingBalance', formatAmount(scale(openingTotal))),
+              I18n.instance.format('trialBalanceReport.summary.periodDebit', formatAmount(scale(debitTotal))),
+              I18n.instance.format('trialBalanceReport.summary.periodCredit', formatAmount(scale(creditTotal))),
+              I18n.instance.format('trialBalanceReport.summary.closingBalance', formatAmount(scale(closingTotal)))
           ],
-          ['Konto', 'Namn', 'Ingående', 'Debet', 'Kredit', 'Utgående'],
+          [
+              I18n.instance.getString('trialBalanceReport.column.account'),
+              I18n.instance.getString('trialBalanceReport.column.name'),
+              I18n.instance.getString('trialBalanceReport.column.opening'),
+              I18n.instance.getString('trialBalanceReport.column.debit'),
+              I18n.instance.getString('trialBalanceReport.column.credit'),
+              I18n.instance.getString('trialBalanceReport.column.closing')
+          ],
           rows.collect { TrialBalanceRow row ->
             stringRow(
                 row.accountNumber,
@@ -265,7 +304,12 @@ final class ReportDataService {
       Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, Totals> periodTotals = loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
 
-      Map<AccountSubgroup, BigDecimal> subgroupTotals = buildSubgroupTotals(accountInfos, periodTotals)
+      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildIncomeAccounts(accountInfos, periodTotals)
+      Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
+        [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
+      } as Map<AccountSubgroup, BigDecimal>
+
+      String summaryPrefix = I18n.instance.getString('incomeStatementSection.summary.prefix')
       List<IncomeStatementRow> rows = []
       Map<IncomeStatementSection, BigDecimal> sectionTotals = [:]
 
@@ -273,19 +317,29 @@ final class ReportDataService {
         if (section.computed) {
           BigDecimal computedAmount = computeSectionResult(section, sectionTotals)
           sectionTotals[section] = computedAmount
-          rows << new IncomeStatementRow(section.name(), scale(computedAmount), null, true)
+          rows << new IncomeStatementRow(
+              section.name(),
+              computedSectionLabel(section),
+              scale(computedAmount),
+              section == IncomeStatementSection.NET_RESULT ? IncomeStatementRowType.GRAND_TOTAL : IncomeStatementRowType.RESULT_LINE
+          )
         } else {
-          BigDecimal sectionSum = BigDecimal.ZERO
-          section.subgroups.each { AccountSubgroup subgroup ->
-            BigDecimal amount = subgroupTotals[subgroup] ?: BigDecimal.ZERO
-            if (amount != BigDecimal.ZERO) {
-              rows << new IncomeStatementRow(section.name(), scale(amount), subgroup.displayName, false)
-            }
-            sectionSum = sectionSum + amount
-          }
-          sectionTotals[section] = sectionSum
-          if (sectionSum != BigDecimal.ZERO) {
-            rows << new IncomeStatementRow(section.name(), scale(sectionSum), section.displayName, true)
+          IncomeSectionBuildResult sectionBuild = buildIncomeSectionRows(section, subgroupAccounts, subgroupTotals, summaryPrefix)
+          sectionTotals[section] = sectionBuild.total
+          if (!sectionBuild.rows.isEmpty()) {
+            rows << new IncomeStatementRow(
+                section.name(),
+                sectionHeaderLabel(section),
+                null,
+                IncomeStatementRowType.SECTION_HEADER
+            )
+            rows.addAll(sectionBuild.rows)
+            rows << new IncomeStatementRow(
+                section.name(),
+                sectionTotalLabel(section, summaryPrefix),
+                scale(sectionBuild.total),
+                IncomeStatementRowType.SECTION_TOTAL
+            )
           }
         }
       }
@@ -295,13 +349,13 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmount(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO))}".toString(),
-              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmount(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
-              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmount(scale(netResult))}".toString()
+              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO))}".toString(),
+              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
+              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmountLocale(scale(netResult))}".toString()
           ],
-          [I18n.instance.getString('incomeStatementSection.column.item'), I18n.instance.getString('incomeStatementSection.column.amount')],
+          [I18n.instance.getString('incomeStatementSection.column.item'), i18nOrFallback('incomeStatementSection.column.closingBalance', I18n.instance.getString('incomeStatementSection.column.amount'))],
           rows.collect { IncomeStatementRow row ->
-            stringRow(row.subgroupDisplayName ?: row.section, formatAmount(row.amount))
+            stringRow(row.displayLabel, row.amount == null ? '' : formatAmountLocale(row.amount))
           },
           rows.collect { IncomeStatementRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, result: scale(netResult)]
@@ -309,23 +363,13 @@ final class ReportDataService {
     } as ReportResult
   }
 
-  private Map<AccountSubgroup, BigDecimal> buildSubgroupTotals(
+  private Map<AccountSubgroup, List<AccountDetail>> buildIncomeAccounts(
       Map<String, AccountInfo> accountInfos,
       Map<String, Totals> periodTotals
   ) {
-    Map<AccountSubgroup, BigDecimal> subgroupTotals = [:]
-    accountInfos.each { String accountNumber, AccountInfo info ->
-      if (!(info.accountClass in ['INCOME', 'EXPENSE'])) {
-        return
-      }
-      Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
-      BigDecimal amount = signedAmount(totals.debitAmount, totals.creditAmount, info.normalBalanceSide)
-      if (info.accountClass == 'EXPENSE') {
-        amount = amount.negate()
-      }
-      if (amount == BigDecimal.ZERO) {
-        return
-      }
+    Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
+    accountInfos.keySet().sort().each { String accountNumber ->
+      AccountInfo info = accountInfos[accountNumber]
       AccountSubgroup subgroup = info.accountSubgroup
           ? AccountSubgroup.fromDatabaseValue(info.accountSubgroup)
           : AccountSubgroup.fromAccountNumber(accountNumber)
@@ -333,9 +377,191 @@ final class ReportDataService {
         log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från resultatrapporten.")
         return
       }
-      subgroupTotals[subgroup] = (subgroupTotals[subgroup] ?: BigDecimal.ZERO) + amount
+      String incomeAccountClass = resolveIncomeAccountClass(accountNumber, info, subgroup)
+      if (!(incomeAccountClass in ['INCOME', 'EXPENSE'])) {
+        return
+      }
+      String incomeNormalBalanceSide = resolveIncomeNormalBalanceSide(accountNumber, info, incomeAccountClass)
+      Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
+      BigDecimal amount = signedAmount(totals.debitAmount, totals.creditAmount, incomeNormalBalanceSide)
+      if (incomeAccountClass == 'EXPENSE') {
+        amount = amount.negate()
+      }
+      if (amount == BigDecimal.ZERO) {
+        return
+      }
+      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(new AccountDetail(accountNumber, info.accountName, amount))
     }
-    subgroupTotals
+    subgroupAccounts
+  }
+
+  private IncomeSectionBuildResult buildIncomeSectionRows(
+      IncomeStatementSection section,
+      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts,
+      Map<AccountSubgroup, BigDecimal> subgroupTotals,
+      String summaryPrefix
+  ) {
+    List<IncomeStatementRow> sectionRows = []
+    BigDecimal sectionSum = BigDecimal.ZERO
+    section.subgroups.each { AccountSubgroup subgroup ->
+      List<AccountDetail> accounts = subgroupAccounts[subgroup] ?: []
+      if (accounts.isEmpty()) {
+        return
+      }
+      BigDecimal subgroupTotal = subgroupTotals[subgroup] ?: BigDecimal.ZERO
+      sectionRows.addAll(buildIncomeSubgroupRows(section, subgroup, accounts, subgroupTotal, summaryPrefix))
+      sectionSum = sectionSum + subgroupTotal
+    }
+    new IncomeSectionBuildResult(sectionRows, sectionSum)
+  }
+
+  private List<IncomeStatementRow> buildIncomeSubgroupRows(
+      IncomeStatementSection section,
+      AccountSubgroup subgroup,
+      List<AccountDetail> accounts,
+      BigDecimal subgroupTotal,
+      String summaryPrefix
+  ) {
+    List<IncomeStatementRow> subgroupRows = []
+    if (shouldAddIncomeGroupHeader(section, accounts)) {
+      subgroupRows << new IncomeStatementRow(
+          section.name(),
+          incomeSubgroupHeadingLabel(subgroup),
+          null,
+          IncomeStatementRowType.GROUP_HEADER
+      )
+    }
+    accounts.each { AccountDetail detail ->
+      subgroupRows << new IncomeStatementRow(
+          section.name(),
+          "${detail.accountNumber} ${detail.accountName}".toString(),
+          scale(detail.amount),
+          IncomeStatementRowType.DETAIL
+      )
+    }
+    subgroupRows << new IncomeStatementRow(
+        section.name(),
+        summaryLabel(summaryPrefix, incomeSubgroupSummaryLabel(subgroup)),
+        scale(subgroupTotal),
+        IncomeStatementRowType.SUBTOTAL
+    )
+    subgroupRows
+  }
+
+  private String resolveIncomeAccountClass(String accountNumber, AccountInfo info, AccountSubgroup subgroup) {
+    String normalized = info.accountClass?.trim()?.toUpperCase(Locale.ROOT)
+    if (normalized in ['INCOME', 'EXPENSE']) {
+      return normalized
+    }
+    String inferred = inferIncomeAccountClassFromAccountNumber(accountNumber)
+    if (inferred != null) {
+      log.info("Konto ${accountNumber} (${info.accountName}) saknar resultatklassning. Härleder ${inferred} från kontonummerprefix ${accountNumber.take(2)}.")
+      return inferred
+    }
+    inferred = inferIncomeAccountClass(subgroup)
+    if (inferred != null) {
+      log.info("Konto ${accountNumber} (${info.accountName}) saknar resultatklassning. Härleder ${inferred} från undergruppen ${subgroup.name()}.")
+    } else {
+      log.warning("Konto ${accountNumber} (${info.accountName}) kunde inte klassificeras som INCOME eller EXPENSE – utesluts från resultatrapporten.")
+    }
+    inferred
+  }
+
+  private String resolveIncomeNormalBalanceSide(String accountNumber, AccountInfo info, String incomeAccountClass) {
+    String normalized = info.normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
+    if (normalized) {
+      return normalized
+    }
+    String inferred = inferNormalBalanceSide(incomeAccountClass)
+    if (inferred != null) {
+      log.info("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida. Härleder ${inferred} från kontoklassen ${incomeAccountClass}.")
+      return inferred
+    }
+    throw new IllegalStateException("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida för rapportering.")
+  }
+
+  private static String inferIncomeAccountClass(AccountSubgroup subgroup) {
+    switch (subgroup) {
+      case AccountSubgroup.NET_REVENUE:
+      case AccountSubgroup.INVOICED_COSTS:
+      case AccountSubgroup.SECONDARY_INCOME:
+      case AccountSubgroup.REVENUE_ADJUSTMENTS:
+      case AccountSubgroup.CAPITALIZED_WORK:
+      case AccountSubgroup.OTHER_OPERATING_INCOME:
+      case AccountSubgroup.FINANCIAL_INCOME:
+        return 'INCOME'
+      case AccountSubgroup.RAW_MATERIALS:
+      case AccountSubgroup.OTHER_EXTERNAL_COSTS:
+      case AccountSubgroup.PERSONNEL_COSTS:
+      case AccountSubgroup.DEPRECIATION:
+      case AccountSubgroup.OTHER_OPERATING_COSTS:
+      case AccountSubgroup.FINANCIAL_COSTS:
+      case AccountSubgroup.APPROPRIATIONS:
+      case AccountSubgroup.TAX_AND_RESULT:
+        return 'EXPENSE'
+      default:
+        return null
+    }
+  }
+
+  private static String inferIncomeAccountClassFromAccountNumber(String accountNumber) {
+    inferIncomeAccountClass(AccountSubgroup.fromAccountNumber(accountNumber))
+  }
+
+  private static String inferNormalBalanceSide(String accountClass) {
+    switch (accountClass) {
+      case 'INCOME':
+        return 'CREDIT'
+      case 'EXPENSE':
+        return 'DEBIT'
+      default:
+        return null
+    }
+  }
+
+  private static String summaryLabel(String prefix, String displayName) {
+    if (!displayName) {
+      return prefix
+    }
+    "${prefix} ${displayName.substring(0, 1).toLowerCase(I18n.instance.locale)}${displayName.substring(1)}".toString()
+  }
+
+  private static String sectionHeaderLabel(IncomeStatementSection section) {
+    if (section in [IncomeStatementSection.OPERATING_INCOME, IncomeStatementSection.OPERATING_EXPENSES]) {
+      return section.displayName.toUpperCase(I18n.instance.locale)
+    }
+    section.displayName
+  }
+
+  private static String sectionTotalLabel(IncomeStatementSection section, String summaryPrefix) {
+    String label = summaryLabel(summaryPrefix, section.displayName)
+    if (section in [IncomeStatementSection.OPERATING_INCOME, IncomeStatementSection.OPERATING_EXPENSES]) {
+      return label.toUpperCase(I18n.instance.locale)
+    }
+    label
+  }
+
+  private static String computedSectionLabel(IncomeStatementSection section) {
+    section == IncomeStatementSection.NET_RESULT
+        ? section.displayName.toUpperCase(I18n.instance.locale)
+        : section.displayName
+  }
+
+  private static boolean shouldAddIncomeGroupHeader(IncomeStatementSection section, List<AccountDetail> accounts) {
+    section in [IncomeStatementSection.OPERATING_INCOME, IncomeStatementSection.OPERATING_EXPENSES] && accounts.size() > 1
+  }
+
+  private static String incomeSubgroupHeadingLabel(AccountSubgroup subgroup) {
+    i18nOrFallback("incomeStatementSubgroup.${subgroup.name()}.heading", subgroup.displayName)
+  }
+
+  private static String incomeSubgroupSummaryLabel(AccountSubgroup subgroup) {
+    i18nOrFallback("incomeStatementSubgroup.${subgroup.name()}.summary", subgroup.displayName)
+  }
+
+  private static String i18nOrFallback(String key, String fallback) {
+    I18n.instance.hasString(key) ? I18n.instance.getString(key) : fallback
   }
 
   private static BigDecimal computeSectionResult(
@@ -349,9 +575,13 @@ final class ReportDataService {
       case IncomeStatementSection.RESULT_AFTER_FINANCIAL:
         return (sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO) +
             (sectionTotals[IncomeStatementSection.FINANCIAL_ITEMS] ?: BigDecimal.ZERO)
+      case IncomeStatementSection.RESULT_AFTER_EXTRAORDINARY:
+        return sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO
+      case IncomeStatementSection.PROFIT_BEFORE_TAX:
+        return (sectionTotals[IncomeStatementSection.RESULT_AFTER_EXTRAORDINARY] ?: BigDecimal.ZERO) +
+            (sectionTotals[IncomeStatementSection.APPROPRIATIONS] ?: BigDecimal.ZERO)
       case IncomeStatementSection.NET_RESULT:
-        return (sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO) +
-            (sectionTotals[IncomeStatementSection.APPROPRIATIONS] ?: BigDecimal.ZERO) +
+        return (sectionTotals[IncomeStatementSection.PROFIT_BEFORE_TAX] ?: BigDecimal.ZERO) +
             (sectionTotals[IncomeStatementSection.TAX] ?: BigDecimal.ZERO)
       default:
         throw new IllegalStateException("Okänd beräknad sektion: ${section}")
@@ -404,11 +634,11 @@ final class ReportDataService {
       BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
 
       List<String> summaryLines = [
-          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmount(scale(assetTotal))}".toString(),
-          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmount(scale(equityAndLiabilitiesTotal))}".toString()
+          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmountLocale(scale(assetTotal))}".toString(),
+          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmountLocale(scale(equityAndLiabilitiesTotal))}".toString()
       ]
       if (skippedAccounts) {
-        summaryLines.add("Konton utan undergrupp (ej med i rapporten): ${skippedAccounts.join(', ')}".toString())
+        summaryLines.add(I18n.instance.format('balanceSheetReport.summary.unmappedAccounts', skippedAccounts.join(', ')))
       }
 
       createResult(
@@ -419,7 +649,7 @@ final class ReportDataService {
             String label = row.accountNumber
                 ? "${row.accountNumber} ${row.accountName}"
                 : (row.subgroupDisplayName ?: row.section)
-            stringRow(label, formatAmount(row.amount))
+            stringRow(label, formatAmountLocale(row.amount))
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, assetTotal: scale(assetTotal), equityAndLiabilitiesTotal: scale(equityAndLiabilitiesTotal)]
@@ -528,11 +758,11 @@ final class ReportDataService {
     createResult(
         effective,
         [
-            "Antal transaktioner: ${rows.size()}".toString(),
-            "Debet totalt: ${formatAmount(scale(debitTotal))}".toString(),
-            "Kredit totalt: ${formatAmount(scale(creditTotal))}".toString()
+            I18n.instance.format('transactionReport.summary.count', rows.size()),
+            I18n.instance.format('transactionReport.summary.debitTotal', formatAmount(scale(debitTotal))),
+            I18n.instance.format('transactionReport.summary.creditTotal', formatAmount(scale(creditTotal)))
         ],
-        ['Datum', 'Verifikation', 'Konto', 'Kontonamn', 'Verifikationstext', 'Radtext', 'Debet', 'Kredit', 'Status'],
+        transactionReportHeaders(),
         rows.collect { TransactionReportRow row ->
           stringRow(
               row.accountingDate.toString(),
@@ -547,8 +777,22 @@ final class ReportDataService {
           )
         },
         rows.collect { TransactionReportRow row -> row.voucherId },
-        [typedRows: rows]
+        [typedRows: rows, lead: I18n.instance.getString('report.transactionReport.lead')]
     )
+  }
+
+  private static List<String> transactionReportHeaders() {
+    [
+        I18n.instance.getString('transactionReport.column.date'),
+        I18n.instance.getString('transactionReport.column.voucher'),
+        I18n.instance.getString('transactionReport.column.account'),
+        I18n.instance.getString('transactionReport.column.accountName'),
+        I18n.instance.getString('transactionReport.column.voucherText'),
+        I18n.instance.getString('transactionReport.column.lineText'),
+        I18n.instance.getString('transactionReport.column.debit'),
+        I18n.instance.getString('transactionReport.column.credit'),
+        I18n.instance.getString('transactionReport.column.status')
+    ]
   }
 
   @SuppressWarnings('AbcMetric')
@@ -585,16 +829,30 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "Utgående moms: ${formatAmount(scale(outputTotal))}".toString(),
-              "Ingående moms: ${formatAmount(scale(inputTotal))}".toString(),
-              "Netto: ${formatAmount(netTotal)}".toString()
+              I18n.instance.format('vatReport.summary.outputVat', formatAmount(scale(outputTotal))),
+              I18n.instance.format('vatReport.summary.inputVat', formatAmount(scale(inputTotal))),
+              I18n.instance.format('vatReport.summary.net', formatAmount(netTotal))
           ],
-          ['Momskod', 'Benämning', 'Bas', 'Utgående moms', 'Ingående moms'],
+          [
+              I18n.instance.getString('vatReport.column.code'),
+              I18n.instance.getString('vatReport.column.label'),
+              I18n.instance.getString('vatReport.column.base'),
+              I18n.instance.getString('vatReport.column.outputVat'),
+              I18n.instance.getString('vatReport.column.inputVat')
+          ],
           rows.collect { VatReportEntry row ->
             stringRow(row.vatCode, row.label, formatAmount(row.baseAmount), formatAmount(row.outputVatAmount), formatAmount(row.inputVatAmount))
           },
           rows.collect { VatReportEntry ignored -> null as Long } as List<Long>,
-          [typedRows: rows, outputTotal: scale(outputTotal), inputTotal: scale(inputTotal), netTotal: netTotal]
+          [
+              typedRows: rows,
+              outputTotal: scale(outputTotal),
+              inputTotal: scale(inputTotal),
+              netTotal: netTotal,
+              outputVatLabel: I18n.instance.getString('report.vatReport.metric.outputVat'),
+              inputVatLabel: I18n.instance.getString('report.vatReport.metric.inputVat'),
+              netLabel: I18n.instance.getString('report.vatReport.metric.net')
+          ]
       )
     } as ReportResult
   }
@@ -618,8 +876,8 @@ final class ReportDataService {
     }
     long companyId = resolveCompanyId(fiscalYear.id)
     String selectionLabel = period == null
-        ? "Intervall ${startDate} - ${endDate}"
-        : "Period ${period.periodName} (${startDate} - ${endDate})"
+        ? I18n.instance.format('report.selection.interval', startDate.toString(), endDate.toString())
+        : I18n.instance.format('report.selection.period', period.periodName, startDate.toString(), endDate.toString())
     new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel)
   }
 
@@ -769,7 +1027,9 @@ final class ReportDataService {
         endDate       : effective.endDate,
         summaryLines  : summaryLines,
         tableHeaders  : headers,
-        tableRows     : tableRows
+        tableRows     : tableRows,
+        htmlLang      : I18n.instance.getString('report.common.htmlLang'),
+        orgNumberLabel: I18n.instance.getString('report.common.orgNumber')
     ] + (extraModel ?: [:])
     new ReportResult(
         effective.selection.reportType,
@@ -809,6 +1069,28 @@ final class ReportDataService {
 
   private static String formatAmount(BigDecimal amount) {
     scale(amount).toPlainString()
+  }
+
+  // One cached DecimalFormat per thread per locale; avoids repeated NumberFormat.getNumberInstance()
+  // calls (expensive) while keeping thread-safety (DecimalFormat is not thread-safe).
+  private static final ThreadLocal<Map<Locale, DecimalFormat>> AMOUNT_FORMATTERS =
+      ThreadLocal.withInitial { [:] }
+
+  private static String formatAmountLocale(BigDecimal amount) {
+    Locale locale = I18n.instance.locale
+    DecimalFormat formatter = AMOUNT_FORMATTERS.get().computeIfAbsent(locale) { Locale loc ->
+      DecimalFormat fmt = (DecimalFormat) NumberFormat.getNumberInstance(loc)
+      fmt.minimumFractionDigits = AMOUNT_SCALE
+      fmt.maximumFractionDigits = AMOUNT_SCALE
+      // The locale-provided minus sign (U+2212) is missing from openhtmltopdf's default
+      // WinAnsi PDF fonts and renders as '#'. ASCII hyphen-minus avoids that and is
+      // equally valid in CSV and Excel output.
+      DecimalFormatSymbols symbols = fmt.decimalFormatSymbols
+      symbols.minusSign = (char) '-'
+      fmt.decimalFormatSymbols = symbols
+      fmt
+    }
+    formatter.format(scale(amount))
   }
 
   private static List<String> stringRow(String... values) {
@@ -893,6 +1175,12 @@ final class ReportDataService {
     String accountNumber
     String accountName
     BigDecimal amount
+  }
+
+  @Canonical
+  private static final class IncomeSectionBuildResult {
+    List<IncomeStatementRow> rows
+    BigDecimal total
   }
 
   private static final class VatBucket {

@@ -25,6 +25,10 @@ final class I18n {
     this.bundle = loadBundle(locale)
   }
 
+  boolean hasString(String key) {
+    bundle.containsKey(key)
+  }
+
   String getString(String key) {
     try {
       bundle.getString(key)

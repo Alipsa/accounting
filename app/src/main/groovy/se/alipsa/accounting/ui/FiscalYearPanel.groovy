@@ -12,7 +12,6 @@ import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
-import java.awt.ComponentOrientation
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -303,10 +302,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
     settings.allowKeyboardEditing = false
-    DatePicker picker = new DatePicker(settings)
-    picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
-    picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
-    picker
+    settings.setTextFieldPosition(DatePickerSettings.TextFieldPosition.RIGHT)
+    new DatePicker(settings)
   }
 
   private Frame ownerFrame() {
