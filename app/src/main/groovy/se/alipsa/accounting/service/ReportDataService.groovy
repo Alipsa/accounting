@@ -255,8 +255,9 @@ final class ReportDataService {
       List<TrialBalanceRow> rows = accountInfos.keySet().sort().collect { String accountNumber ->
         AccountInfo info = accountInfos[accountNumber]
         Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
+        String balanceSide = resolveTrialBalanceNormalSide(accountNumber, info)
         BigDecimal opening = scale((openingBalances[accountNumber] ?: BigDecimal.ZERO) + (priorBalances[accountNumber] ?: BigDecimal.ZERO))
-        BigDecimal closing = scale(opening + signedAmount(totals.debitAmount, totals.creditAmount, info.normalBalanceSide))
+        BigDecimal closing = scale(opening + signedAmount(totals.debitAmount, totals.creditAmount, balanceSide))
         if (opening == BigDecimal.ZERO && totals.debitAmount == BigDecimal.ZERO && totals.creditAmount == BigDecimal.ZERO && closing == BigDecimal.ZERO) {
           return null
         }
@@ -507,6 +508,31 @@ final class ReportDataService {
 
   private static String inferIncomeAccountClassFromAccountNumber(String accountNumber) {
     inferIncomeAccountClass(AccountSubgroup.fromAccountNumber(accountNumber))
+  }
+
+  private String resolveTrialBalanceNormalSide(String accountNumber, AccountInfo info) {
+    String stored = info.normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
+    if (stored) {
+      return stored
+    }
+    AccountSubgroup subgroup = AccountSubgroup.fromAccountNumber(accountNumber)
+    if (subgroup == null) {
+      log.warning("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida och kan inte härledas.")
+      return 'DEBIT'
+    }
+    if (subgroup.basGroupStart >= 10 && subgroup.basGroupEnd <= 19) {
+      return 'DEBIT'
+    }
+    if (subgroup.basGroupStart >= 20 && subgroup.basGroupEnd <= 29) {
+      return 'CREDIT'
+    }
+    String incomeClass = inferIncomeAccountClass(subgroup)
+    String inferred = inferNormalBalanceSide(incomeClass)
+    if (inferred != null) {
+      return inferred
+    }
+    log.warning("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida – använder DEBIT som standard.")
+    'DEBIT'
   }
 
   private static String inferNormalBalanceSide(String accountClass) {
