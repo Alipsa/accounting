@@ -194,7 +194,11 @@ final class SieExchangeDialog extends JDialog {
           reloadFiscalYears()
           reloadJobs()
           renderImportResult(result)
-          onImportSuccess?.run()
+          try {
+            onImportSuccess?.run()
+          } catch (Exception callbackEx) {
+            showError(callbackEx.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+          }
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
           showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)

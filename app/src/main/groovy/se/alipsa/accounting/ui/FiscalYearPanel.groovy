@@ -304,6 +304,9 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     settings.formatForDatesCommonEra = 'yyyy-MM-dd'
     settings.allowKeyboardEditing = false
     DatePicker picker = new DatePicker(settings)
+    // RIGHT_TO_LEFT places the calendar button on the left, which looks better
+    // in this layout, but the text field itself must stay LTR so dates read
+    // correctly left-to-right.
     picker.componentOrientation = ComponentOrientation.RIGHT_TO_LEFT
     picker.getComponentDateTextField().componentOrientation = ComponentOrientation.LEFT_TO_RIGHT
     picker

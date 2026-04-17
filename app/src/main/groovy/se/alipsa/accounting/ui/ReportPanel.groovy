@@ -454,8 +454,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
           I18n.instance.getString('reportPanel.button.openVoucher'),
           javax.swing.JOptionPane.INFORMATION_MESSAGE
       )
-    } catch (Exception ignored) {
-      // Voucher not found or error
+    } catch (Exception ex) {
+      showError(ex.message ?: I18n.instance.getString('reportPanel.error.openVoucherFailed'))
     }
   }
 

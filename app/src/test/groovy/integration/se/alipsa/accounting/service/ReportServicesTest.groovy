@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
 
+import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -226,11 +227,23 @@ class ReportServicesTest {
 
     WorkbookFactory.create(new ByteArrayInputStream(workbookBytes)).withCloseable { workbook ->
       def sheet = workbook.getSheetAt(0)
-      assertEquals('Resultatrapport', sheet.getRow(0).getCell(0).stringCellValue)
+      assertEquals(ReportType.INCOME_STATEMENT.displayName, sheet.getRow(0).getCell(0).stringCellValue)
       assertEquals('Default company', sheet.getRow(1).getCell(0).stringCellValue)
       assertEquals('Post', sheet.getRow(4).getCell(0).stringCellValue)
       assertEquals('Utgående saldo', sheet.getRow(4).getCell(1).stringCellValue)
       assertEquals('RÖRELSEINTÄKTER', sheet.getRow(5).getCell(0).stringCellValue)
+
+      // Verify that at least one amount cell is written as NUMERIC (not STRING)
+      // so that formulas and sums work correctly in Excel.
+      boolean foundNumeric = false
+      for (int r = 5; r <= sheet.lastRowNum; r++) {
+        def amountCell = sheet.getRow(r)?.getCell(1)
+        if (amountCell != null && amountCell.cellType == CellType.NUMERIC) {
+          foundNumeric = true
+          break
+        }
+      }
+      assertTrue(foundNumeric, 'Expected at least one NUMERIC amount cell in income statement Excel export')
     }
   }
 
@@ -256,7 +269,7 @@ class ReportServicesTest {
         assertTrue(workbook.numberOfSheets >= 1)
         String firstCell = workbook.getSheetAt(0).getRow(0).getCell(0).stringCellValue
         String expectedFirstCell = type == ReportType.INCOME_STATEMENT
-            ? 'Resultatrapport'
+            ? ReportType.INCOME_STATEMENT.displayName
             : reportDataService.generate(selection).tableHeaders[0]
         assertEquals(expectedFirstCell, firstCell)
       }
@@ -464,6 +477,43 @@ class ReportServicesTest {
     ))
 
     assertTrue(report.tableRows.any { List<String> row -> row[0] == '8314 Ränteintäkter skattekonto' && row[1] == '73,00' })
+  }
+
+  @Test
+  void incomeStatementComputesAppropriationsAndTaxSectionsCorrectly() {
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '8810', 'Koncernbidrag', 'EXPENSE', 'DEBIT', null, 'APPROPRIATIONS')
+      insertAccount(sql, '8910', 'Skatt på årets resultat', 'EXPENSE', 'DEBIT', null, 'TAX_AND_RESULT')
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 28),
+        'Bokslutsdisposition och skatt',
+        [
+            new VoucherLine(null, null, 0, null, '8810', null, 'Koncernbidrag', 50.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '8910', null, 'Skatt på årets resultat', 150.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 200.00G)
+        ]
+    )
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    // Base fixture: income 1000 - expenses 200 = operating result 800
+    // Appropriations: -50, Tax: -150
+    // PROFIT_BEFORE_TAX = 800 + (-50) = 750
+    // NET_RESULT = 750 + (-150) = 600
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == '8810 Koncernbidrag' })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == '8910 Skatt på årets resultat' })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Resultat före skatt' && row[1] == '750,00' })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'ÅRETS RESULTAT' && row[1] == '600,00' })
+    assertEquals(600.00G, report.templateModel.result)
   }
 
   @Test

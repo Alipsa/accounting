@@ -22,12 +22,15 @@ import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 
 import java.nio.charset.StandardCharsets
+import java.util.logging.Logger
 
 /**
  * Exports tabular reports as CSV using the same selection and row order as the UI preview.
  * The export intentionally uses ';' as separator because Swedish Excel defaults expect it.
  */
 final class ReportExportService {
+
+  private static final Logger log = Logger.getLogger(ReportExportService.name)
 
   private final ReportDataService reportDataService
   private final ReportArchiveService reportArchiveService
@@ -148,11 +151,14 @@ final class ReportExportService {
   private void renderIncomeStatementWorkbook(XSSFWorkbook workbook, ReportResult report) {
     def sheet = workbook.createSheet(sheetNameFor(report))
     List<IncomeStatementRow> typedRows = report.templateModel.get('typedRows') as List<IncomeStatementRow>
+    if (typedRows == null) {
+      throw new IllegalStateException("templateModel saknar 'typedRows' för resultatrapportens Excel-export.")
+    }
     String companyName = resolveCompanyName(report.fiscalYearId)
     IncomeStatementStyles styles = createIncomeStatementStyles(workbook)
 
     int rowIndex = 0
-    rowIndex = writeSingleCellRow(sheet, rowIndex, 'Resultatrapport', styles.titleStyle)
+    rowIndex = writeSingleCellRow(sheet, rowIndex, report.title, styles.titleStyle)
     rowIndex = writeSingleCellRow(sheet, rowIndex, companyName, styles.metaStyle)
     rowIndex = writeSingleCellRow(sheet, rowIndex, report.selectionLabel ?: '', styles.metaStyle)
     rowIndex++
@@ -171,7 +177,11 @@ final class ReportExportService {
             join company c on c.id = fy.company_id
            where fy.id = ?
       ''', [fiscalYearId]) as GroovyRowResult
-      row == null ? '' : (row.get('companyName') as String)
+      if (row == null) {
+        log.warning("Inget företag kopplat till räkenskapsår ${fiscalYearId} – företagsnamn utelämnas i exporten.")
+        return ''
+      }
+      row.get('companyName') as String
     }
   }
 

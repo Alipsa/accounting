@@ -451,7 +451,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       showBlankVoucher()
       return
     }
-    // Reversed so the most recently created voucher appears first in the navigation list.
+    // Reversed so navigatePrev() (which starts from the end) shows the most recent voucher first.
     voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
     currentIndex = -1
     showBlankVoucher()

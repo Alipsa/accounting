@@ -83,9 +83,37 @@ final class ReportDataService {
     }
   }
 
-  @SuppressWarnings('AbcMetric')
   private ReportResult buildVoucherListReport(EffectiveSelection effective) {
-    List<VoucherListRow> rows = databaseService.withSql { Sql sql ->
+    List<VoucherListRow> rows = loadVoucherListRows(effective)
+    List<List<String>> tableRows = rows.collect { VoucherListRow row ->
+      stringRow(
+          row.accountingDate.toString(),
+          row.voucherNumber,
+          row.seriesCode,
+          row.description,
+          row.status,
+          formatAmount(row.debitAmount),
+          formatAmount(row.creditAmount)
+      )
+    }
+    BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.debitAmount } as BigDecimal
+    BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.creditAmount } as BigDecimal
+    createResult(
+        effective,
+        [
+            I18n.instance.format('voucherListReport.summary.count', rows.size()),
+            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmount(scale(debitTotal))),
+            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmount(scale(creditTotal)))
+        ],
+        voucherListHeaders(),
+        tableRows,
+        rows.collect { VoucherListRow row -> row.voucherId },
+        [typedRows: rows, lead: I18n.instance.getString('report.voucherList.lead')]
+    )
+  }
+
+  private List<VoucherListRow> loadVoucherListRows(EffectiveSelection effective) {
+    databaseService.withSql { Sql sql ->
       sql.rows('''
           select v.id as voucherId,
                  v.accounting_date as accountingDate,
@@ -116,7 +144,10 @@ final class ReportDataService {
         )
       }
     }
-    List<String> headers = [
+  }
+
+  private static List<String> voucherListHeaders() {
+    [
         I18n.instance.getString('voucherListReport.column.date'),
         I18n.instance.getString('voucherListReport.column.voucher'),
         I18n.instance.getString('voucherListReport.column.series'),
@@ -125,31 +156,6 @@ final class ReportDataService {
         I18n.instance.getString('voucherListReport.column.debit'),
         I18n.instance.getString('voucherListReport.column.credit')
     ]
-    List<List<String>> tableRows = rows.collect { VoucherListRow row ->
-      stringRow(
-          row.accountingDate.toString(),
-          row.voucherNumber,
-          row.seriesCode,
-          row.description,
-          row.status,
-          formatAmount(row.debitAmount),
-          formatAmount(row.creditAmount)
-      )
-    }
-    BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.debitAmount } as BigDecimal
-    BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.creditAmount } as BigDecimal
-    createResult(
-        effective,
-        [
-            I18n.instance.format('voucherListReport.summary.count', rows.size()),
-            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmount(scale(debitTotal))),
-            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmount(scale(creditTotal)))
-        ],
-        headers,
-        tableRows,
-        rows.collect { VoucherListRow row -> row.voucherId },
-        [typedRows: rows, lead: I18n.instance.getString('report.voucherList.lead')]
-    )
   }
 
   @SuppressWarnings('AbcMetric')
@@ -462,6 +468,8 @@ final class ReportDataService {
     inferred = inferIncomeAccountClass(subgroup)
     if (inferred != null) {
       log.info("Konto ${accountNumber} (${info.accountName}) saknar resultatklassning. Härleder ${inferred} från undergruppen ${subgroup.name()}.")
+    } else {
+      log.warning("Konto ${accountNumber} (${info.accountName}) kunde inte klassificeras som INCOME eller EXPENSE – utesluts från resultatrapporten.")
     }
     inferred
   }
@@ -731,7 +739,6 @@ final class ReportDataService {
     }
   }
 
-  @SuppressWarnings('AbcMetric')
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
     List<TransactionReportRow> rows = databaseService.withSql { Sql sql ->
       loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
@@ -761,17 +768,7 @@ final class ReportDataService {
             I18n.instance.format('transactionReport.summary.debitTotal', formatAmount(scale(debitTotal))),
             I18n.instance.format('transactionReport.summary.creditTotal', formatAmount(scale(creditTotal)))
         ],
-        [
-            I18n.instance.getString('transactionReport.column.date'),
-            I18n.instance.getString('transactionReport.column.voucher'),
-            I18n.instance.getString('transactionReport.column.account'),
-            I18n.instance.getString('transactionReport.column.accountName'),
-            I18n.instance.getString('transactionReport.column.voucherText'),
-            I18n.instance.getString('transactionReport.column.lineText'),
-            I18n.instance.getString('transactionReport.column.debit'),
-            I18n.instance.getString('transactionReport.column.credit'),
-            I18n.instance.getString('transactionReport.column.status')
-        ],
+        transactionReportHeaders(),
         rows.collect { TransactionReportRow row ->
           stringRow(
               row.accountingDate.toString(),
@@ -788,6 +785,20 @@ final class ReportDataService {
         rows.collect { TransactionReportRow row -> row.voucherId },
         [typedRows: rows, lead: I18n.instance.getString('report.transactionReport.lead')]
     )
+  }
+
+  private static List<String> transactionReportHeaders() {
+    [
+        I18n.instance.getString('transactionReport.column.date'),
+        I18n.instance.getString('transactionReport.column.voucher'),
+        I18n.instance.getString('transactionReport.column.account'),
+        I18n.instance.getString('transactionReport.column.accountName'),
+        I18n.instance.getString('transactionReport.column.voucherText'),
+        I18n.instance.getString('transactionReport.column.lineText'),
+        I18n.instance.getString('transactionReport.column.debit'),
+        I18n.instance.getString('transactionReport.column.credit'),
+        I18n.instance.getString('transactionReport.column.status')
+    ]
   }
 
   @SuppressWarnings('AbcMetric')

@@ -706,10 +706,8 @@ final class MainFrame implements PropertyChangeListener {
     float scale = 1.0f
     try {
       scale = com.formdev.flatlaf.util.UIScale.getUserScaleFactor()
-    } catch (Exception ignored) {
-      java.awt.GraphicsConfiguration gc = java.awt.GraphicsEnvironment
-          .localGraphicsEnvironment.defaultScreenDevice.defaultConfiguration
-      scale = (float) gc.defaultTransform.scaleX
+    } catch (Exception ex) {
+      log.warning("FlatLaf UIScale unavailable, using unscaled size: ${ex.message}")
     }
     [
         (int) (baseWidth * scale),
