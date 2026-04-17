@@ -120,7 +120,7 @@ final class MainFrame implements PropertyChangeListener {
       reportArchiveService,
       reportIntegrityService,
       auditLogService,
-      DatabaseService.instance
+      companyService
   )
   private final SieImportExportService sieImportExportService = new SieImportExportService(
       DatabaseService.instance,

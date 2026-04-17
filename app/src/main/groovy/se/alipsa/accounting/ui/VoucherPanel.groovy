@@ -214,7 +214,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       refreshTotals()
     }
     installEnterKeyNavigation()
+    installTabKeyNavigation()
     installAccountLookupEditor()
+    installAmountAndTextEditors()
     installRightAlignedColumns()
     installDeleteKeyBinding()
     installLineTableContextMenu()
@@ -270,9 +272,47 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
+  private void installTabKeyNavigation() {
+    KeyStroke tabKey = KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0)
+    lineTable.getInputMap().put(tabKey, 'tabAdvance')
+    lineTable.getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+        .put(tabKey, 'tabAdvance')
+    lineTable.getActionMap().put('tabAdvance', new AbstractAction() {
+      @Override
+      void actionPerformed(ActionEvent event) {
+        if (lineTable.editing) {
+          int row = lineTable.editingRow
+          int col = lineTable.editingColumn
+          lineTable.cellEditor.stopCellEditing()
+          tabFromCell(row, col)
+        } else {
+          int row = lineTable.selectedRow
+          int col = lineTable.selectedColumn
+          if (row >= 0 && col >= 0) {
+            tabFromCell(row, col)
+          }
+        }
+      }
+    })
+  }
+
+  private static final List<Integer> EDITABLE_COLUMNS = [0, 1, 2, 3, 4]
+
+  private void tabFromCell(int row, int col) {
+    int currentIndex = EDITABLE_COLUMNS.indexOf(col)
+    if (currentIndex >= 0 && currentIndex < EDITABLE_COLUMNS.size() - 1) {
+      moveCursorToCell(row, EDITABLE_COLUMNS[currentIndex + 1])
+    } else {
+      ensureAutoRow()
+      moveCursorToCell(row + 1, EDITABLE_COLUMNS[0])
+    }
+  }
+
   private void installEnterKeyNavigation() {
     KeyStroke enterKey = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
     lineTable.getInputMap().put(enterKey, 'confirmAndAdvance')
+    lineTable.getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+        .put(enterKey, 'confirmAndAdvance')
     lineTable.getActionMap().put('confirmAndAdvance', new AbstractAction() {
       @Override
       void actionPerformed(ActionEvent event) {
@@ -310,23 +350,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           moveCursorToCell(row, 2)
         }
         break
-      case 2: // Debet
-        LineEntry debitEntry = lineTableModel.rows[row]
-        if (hasText(debitEntry.debit)) {
-          ensureAutoRow()
-          moveCursorToCell(row + 1, 0)
-        } else {
-          moveCursorToCell(row, 3)
-        }
+      case 2: // Debet — always advance to kredit
+        moveCursorToCell(row, 3)
         break
-      case 3: // Kredit
-        LineEntry creditEntry = lineTableModel.rows[row]
-        if (hasText(creditEntry.credit)) {
-          ensureAutoRow()
-          moveCursorToCell(row + 1, 0)
-        } else {
-          moveCursorToCell(row, 2)
-        }
+      case 3: // Kredit — advance to next row account number
+        ensureAutoRow()
+        moveCursorToCell(row + 1, 0)
         break
       case 4: // Text — next row account
         ensureAutoRow()
@@ -353,8 +382,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     timer.start()
   }
 
+  /**
+   * Suppress Enter on a cell-editor JTextField so the JTable's
+   * confirmAndAdvance action handles it instead of DefaultCellEditor.
+   */
+  private static void suppressEditorKeys(JTextField field) {
+    field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), 'none')
+    field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0), 'none')
+  }
+
   private void installAccountLookupEditor() {
     JTextField numberEditorField = new JTextField()
+    suppressEditorKeys(numberEditorField)
     Consumer<Account> onNumberSelected = { Account selected ->
       int row = lineTable.editingRow
       if (row >= 0) {
@@ -381,6 +420,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     lineTable.columnModel.getColumn(0).cellEditor = numberEditor
 
     JTextField nameEditorField = new JTextField()
+    suppressEditorKeys(nameEditorField)
     Consumer<Account> onNameSelected = { Account selected ->
       int row = lineTable.editingRow
       if (row >= 0) {
@@ -405,6 +445,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
     }
     lineTable.columnModel.getColumn(1).cellEditor = nameEditor
+  }
+
+  private void installAmountAndTextEditors() {
+    [2, 3, 4].each { int col ->
+      JTextField field = new JTextField()
+      suppressEditorKeys(field)
+      lineTable.columnModel.getColumn(col).cellEditor = new DefaultCellEditor(field)
+    }
   }
 
   private JPanel buildAttachmentTab() {
@@ -669,6 +717,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private void removeSelectedLine() {
     int selectedRow = lineTable.selectedRow
+    if (lineTable.editing) {
+      lineTable.cellEditor.cancelCellEditing()
+    }
     if (selectedRow >= 0 && selectedRow < lineTableModel.rowCount - 1) {
       lineTableModel.removeRow(selectedRow)
       refreshTotals()
@@ -1050,6 +1101,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
     @Override
     void setValueAt(Object value, int rowIndex, int columnIndex) {
+      if (rowIndex < 0 || rowIndex >= rows.size()) {
+        log.warning("setValueAt anropades med ogiltigt radindex ${rowIndex} (antal rader: ${rows.size()})")
+        return
+      }
       LineEntry row = rows[rowIndex]
       String text = value?.toString() ?: ''
       switch (columnIndex) {

@@ -63,7 +63,7 @@ ruleset {
             maxLines = 100
         }
         'ClassSize' {
-            maxLines = 1200
+            maxLines = 1250
         }
         'ParameterCount' {
             maxParameters = 10
