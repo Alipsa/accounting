@@ -5,12 +5,14 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
+import java.awt.IllegalComponentStateException
 import java.awt.Point
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.function.Consumer
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.DefaultListModel
@@ -30,6 +32,7 @@ import javax.swing.event.DocumentListener
  */
 final class AccountLookupPopup {
 
+  private static final Logger log = Logger.getLogger(AccountLookupPopup.name)
   private static final int DEBOUNCE_MILLIS = 200
   private static final int MAX_VISIBLE_ROWS = 10
 
@@ -133,7 +136,13 @@ final class AccountLookupPopup {
       hide()
       return
     }
-    currentResults = accountService.searchAccounts(companyId, query, null, true, false)
+    try {
+      currentResults = accountService.searchAccounts(companyId, query, null, true, false)
+    } catch (Exception ex) {
+      log.warning("Kontosökning misslyckades: ${ex.message}")
+      hide()
+      return
+    }
     listModel.clear()
     if (currentResults.isEmpty()) {
       listModel.addElement(I18n.instance.getString('voucherPanel.lookup.noMatches'))
@@ -161,12 +170,16 @@ final class AccountLookupPopup {
       popupWindow.contentPane.layout = new BorderLayout()
       popupWindow.contentPane.add(scrollPane, BorderLayout.CENTER)
     }
-    Point location = activeEditor.locationOnScreen
-    popupWindow.pack()
-    int width = Math.max(popupWindow.width, activeEditor.width)
-    popupWindow.setSize(width, popupWindow.height)
-    popupWindow.setLocation(location.x as int, (location.y + activeEditor.height) as int)
-    popupWindow.visible = true
+    try {
+      Point location = activeEditor.locationOnScreen
+      popupWindow.pack()
+      int width = Math.max(popupWindow.width, activeEditor.width)
+      popupWindow.setSize(width, popupWindow.height)
+      popupWindow.setLocation(location.x as int, (location.y + activeEditor.height) as int)
+      popupWindow.visible = true
+    } catch (IllegalComponentStateException ignored) {
+      hide()
+    }
   }
 
   private void selectCurrent() {

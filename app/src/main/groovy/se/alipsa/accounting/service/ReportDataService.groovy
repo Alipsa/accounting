@@ -510,15 +510,14 @@ final class ReportDataService {
     inferIncomeAccountClass(AccountSubgroup.fromAccountNumber(accountNumber))
   }
 
-  private String resolveTrialBalanceNormalSide(String accountNumber, AccountInfo info) {
+  private static String resolveTrialBalanceNormalSide(String accountNumber, AccountInfo info) {
     String stored = info.normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
     if (stored) {
       return stored
     }
     AccountSubgroup subgroup = AccountSubgroup.fromAccountNumber(accountNumber)
     if (subgroup == null) {
-      log.warning("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida och kan inte härledas.")
-      return 'DEBIT'
+      throw new IllegalStateException("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida för rapportering.")
     }
     if (subgroup.basGroupStart >= 10 && subgroup.basGroupEnd <= 19) {
       return 'DEBIT'
@@ -531,8 +530,7 @@ final class ReportDataService {
     if (inferred != null) {
       return inferred
     }
-    log.warning("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida – använder DEBIT som standard.")
-    'DEBIT'
+    throw new IllegalStateException("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida för rapportering.")
   }
 
   private static String inferNormalBalanceSide(String accountClass) {

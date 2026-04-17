@@ -348,6 +348,29 @@ class ReportServicesTest {
   }
 
   @Test
+  void trialBalanceInfersNormalBalanceSideWhenMissing() {
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '1930', 'Företagskonto', null, null, null, null)
+    }
+    voucherService.createVoucher(fiscalYear.id, 'A', LocalDate.of(2026, 1, 20), 'Insättning',
+        [new VoucherLine(null, null, 0, null, '1930', 'Företagskonto', null, 500.00G, 0.00G),
+         new VoucherLine(null, null, 0, null, '1510', 'Kundfordringar', null, 0.00G, 500.00G)])
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.TRIAL_BALANCE,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    List<String> row1930 = report.tableRows.find { List<String> row -> row[0] == '1930' }
+    assertEquals('500.00', row1930[3])
+    assertEquals('0.00', row1930[4])
+    assertEquals('500.00', row1930[5])
+  }
+
+  @Test
   void balanceSheetBalancesAssetsAgainstLiabilitiesAndEquityWhenSelectionHasOnlyOpeningBalances() {
     insertOpeningBalance('1510', 1000.00G)
     insertOpeningBalance('2010', 1000.00G)

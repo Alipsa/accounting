@@ -716,10 +716,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void removeSelectedLine() {
+    int selectedRow = lineTable.selectedRow
     if (lineTable.editing) {
       lineTable.cellEditor.cancelCellEditing()
     }
-    int selectedRow = lineTable.selectedRow
     if (selectedRow >= 0 && selectedRow < lineTableModel.rowCount - 1) {
       lineTableModel.removeRow(selectedRow)
       refreshTotals()
@@ -1102,6 +1102,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     @Override
     void setValueAt(Object value, int rowIndex, int columnIndex) {
       if (rowIndex < 0 || rowIndex >= rows.size()) {
+        log.warning("setValueAt anropades med ogiltigt radindex ${rowIndex} (antal rader: ${rows.size()})")
         return
       }
       LineEntry row = rows[rowIndex]
