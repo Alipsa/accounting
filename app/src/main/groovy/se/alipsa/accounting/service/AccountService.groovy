@@ -154,18 +154,22 @@ final class AccountService {
       GroovyRowResult row = sql.firstRow('''
           select fiscal_year_id as fiscalYearId,
                  account_id as accountId,
-                 amount
+                 amount,
+                 origin_type as originType,
+                 source_fiscal_year_id as sourceFiscalYearId
             from opening_balance
            where fiscal_year_id = ?
              and account_id = ?
       ''', [fiscalYearId, accountId]) as GroovyRowResult
       row == null
-          ? new OpeningBalance(fiscalYearId, accountId, normalized, BigDecimal.ZERO)
+          ? new OpeningBalance(fiscalYearId, accountId, normalized, BigDecimal.ZERO, OpeningBalanceService.ORIGIN_MANUAL, null)
           : new OpeningBalance(
               Long.valueOf(row.get('fiscalYearId').toString()),
               row.get('accountId') as Long,
               normalized,
-              new BigDecimal(row.get('amount').toString())
+              new BigDecimal(row.get('amount').toString()),
+              row.get('originType') as String,
+              row.get('sourceFiscalYearId') as Long
           )
     }
   }
@@ -182,22 +186,33 @@ final class AccountService {
         sql.executeUpdate('''
             update opening_balance
                set amount = ?,
+                   origin_type = ?,
+                   source_fiscal_year_id = null,
                    updated_at = current_timestamp
              where fiscal_year_id = ?
                and account_id = ?
-        ''', [normalizedAmount, fiscalYearId, account.id])
+        ''', [normalizedAmount, OpeningBalanceService.ORIGIN_MANUAL, fiscalYearId, account.id])
       } else {
         sql.executeInsert('''
             insert into opening_balance (
                 fiscal_year_id,
                 account_id,
                 amount,
+                origin_type,
+                source_fiscal_year_id,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, current_timestamp, current_timestamp)
-        ''', [fiscalYearId, account.id, normalizedAmount])
+            ) values (?, ?, ?, ?, null, current_timestamp, current_timestamp)
+        ''', [fiscalYearId, account.id, normalizedAmount, OpeningBalanceService.ORIGIN_MANUAL])
       }
-      new OpeningBalance(fiscalYearId, account.id, account.accountNumber, normalizedAmount)
+      new OpeningBalance(
+          fiscalYearId,
+          account.id,
+          account.accountNumber,
+          normalizedAmount,
+          OpeningBalanceService.ORIGIN_MANUAL,
+          null
+      )
     }
   }
 

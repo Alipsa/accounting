@@ -22,6 +22,7 @@ import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.MigrationService
+import se.alipsa.accounting.service.OpeningBalanceService
 import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
@@ -79,6 +80,7 @@ final class MainFrame implements PropertyChangeListener {
   private final AttachmentService attachmentService = new AttachmentService(DatabaseService.instance, auditLogService)
   private final ChartOfAccountsImportService chartOfAccountsImportService = new ChartOfAccountsImportService()
   private final FiscalYearService fiscalYearService = new FiscalYearService(DatabaseService.instance, accountingPeriodService, auditLogService)
+  private final OpeningBalanceService openingBalanceService = new OpeningBalanceService(DatabaseService.instance)
   private final VoucherService voucherService = new VoucherService(DatabaseService.instance, auditLogService)
   private final VatService vatService = new VatService(DatabaseService.instance, voucherService)
   private final MigrationService migrationService = new MigrationService(DatabaseService.instance)
@@ -553,8 +555,8 @@ final class MainFrame implements PropertyChangeListener {
             voucherService,
             activeCompanyManager
         )],
-        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, fiscalYearService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.system'), component: new SystemDocumentationPanel(
             systemDocumentationService,
             diagnosticsService,
