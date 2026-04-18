@@ -31,6 +31,7 @@ final class ClosingService {
   private final FiscalYearService fiscalYearService
   private final VoucherService voucherService
   private final ReportIntegrityService reportIntegrityService
+  private final OpeningBalanceService openingBalanceService
   private final Clock clock
 
   ClosingService() {
@@ -40,6 +41,7 @@ final class ClosingService {
         new FiscalYearService(DatabaseService.instance),
         new VoucherService(DatabaseService.instance),
         new ReportIntegrityService(),
+        new OpeningBalanceService(DatabaseService.instance),
         Clock.systemDefaultZone()
     )
   }
@@ -51,7 +53,15 @@ final class ClosingService {
       VoucherService voucherService,
       ReportIntegrityService reportIntegrityService
   ) {
-    this(databaseService, accountingPeriodService, fiscalYearService, voucherService, reportIntegrityService, Clock.systemDefaultZone())
+    this(
+        databaseService,
+        accountingPeriodService,
+        fiscalYearService,
+        voucherService,
+        reportIntegrityService,
+        new OpeningBalanceService(databaseService),
+        Clock.systemDefaultZone()
+    )
   }
 
   ClosingService(
@@ -62,11 +72,32 @@ final class ClosingService {
       ReportIntegrityService reportIntegrityService,
       Clock clock
   ) {
+    this(
+        databaseService,
+        accountingPeriodService,
+        fiscalYearService,
+        voucherService,
+        reportIntegrityService,
+        new OpeningBalanceService(databaseService),
+        clock
+    )
+  }
+
+  ClosingService(
+      DatabaseService databaseService,
+      AccountingPeriodService accountingPeriodService,
+      FiscalYearService fiscalYearService,
+      VoucherService voucherService,
+      ReportIntegrityService reportIntegrityService,
+      OpeningBalanceService openingBalanceService,
+      Clock clock
+  ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
     this.fiscalYearService = fiscalYearService
     this.voucherService = voucherService
     this.reportIntegrityService = reportIntegrityService
+    this.openingBalanceService = openingBalanceService
     this.clock = clock
   }
 
@@ -204,8 +235,12 @@ final class ClosingService {
     } else if (nextPlan.fiscalYear?.id != null) {
       if (nextPlan.fiscalYear.closed) {
         blockers << ("Nästa räkenskapsår ${nextPlan.fiscalYear.name} är redan stängt." as String)
-      } else if (fiscalYearHasActivity(sql, nextPlan.fiscalYear.id)) {
-        blockers << ("Nästa räkenskapsår ${nextPlan.fiscalYear.name} innehåller redan ingående balanser eller verifikationer." as String)
+      } else if (openingBalanceService.hasVoucherActivity(sql, nextPlan.fiscalYear.id)) {
+        blockers << ("Nästa räkenskapsår ${nextPlan.fiscalYear.name} innehåller redan verifikationer." as String)
+      } else if (openingBalanceService.hasManualOpeningBalances(sql, nextPlan.fiscalYear.id)) {
+        blockers << ("Nästa räkenskapsår ${nextPlan.fiscalYear.name} innehåller manuellt justerade ingående balanser." as String)
+      } else if (openingBalanceService.hasAutoManagedOpeningBalances(sql, nextPlan.fiscalYear.id)) {
+        warnings << ("Nästa räkenskapsårs automatiska ingående balanser kommer att uppdateras från ${fiscalYear.name}." as String)
       }
     }
 
@@ -237,8 +272,13 @@ final class ClosingService {
         preview.closingAccountNumber,
         resultBalances
     )
-    Map<String, BigDecimal> closingBalances = loadBalanceClosingBalances(sql, preview.fiscalYear.id)
-    int openingBalanceCount = persistOpeningBalances(sql, preview.nextFiscalYear.id, companyId, closingBalances)
+    Map<String, BigDecimal> closingBalances = openingBalanceService.loadBalanceClosingBalances(sql, preview.fiscalYear.id)
+    int openingBalanceCount = openingBalanceService.replaceYearEndClosingBalances(
+        sql,
+        preview.fiscalYear.id,
+        preview.nextFiscalYear.id,
+        closingBalances
+    )
     closingEntryCount += persistOpeningBalanceEntries(sql, preview.fiscalYear.id, preview.nextFiscalYear.id, companyId, closingBalances)
     new ClosingExecution(closingVoucher, openingBalanceCount, closingEntryCount)
   }
@@ -356,33 +396,6 @@ final class ClosingService {
     created
   }
 
-  private static int persistOpeningBalances(
-      Sql sql,
-      long nextFiscalYearId,
-      long companyId,
-      Map<String, BigDecimal> closingBalances
-  ) {
-    int created = 0
-    closingBalances.keySet().sort().each { String accountNumber ->
-      BigDecimal amount = scale(closingBalances[accountNumber])
-      if (amount == BigDecimal.ZERO) {
-        return
-      }
-      long accountId = resolveAccountId(sql, companyId, accountNumber)
-      sql.executeInsert('''
-          insert into opening_balance (
-              fiscal_year_id,
-              account_id,
-              amount,
-              created_at,
-              updated_at
-          ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [nextFiscalYearId, accountId, amount])
-      created++
-    }
-    created
-  }
-
   private static int persistOpeningBalanceEntries(
       Sql sql,
       long fiscalYearId,
@@ -447,51 +460,6 @@ final class ClosingService {
       }
     }
     balances
-  }
-
-  private static Map<String, BigDecimal> loadBalanceClosingBalances(Sql sql, long fiscalYearId) {
-    Map<String, BigDecimal> openings = [:]
-    sql.rows('''
-        select a.account_number as accountNumber,
-               ob.amount
-          from opening_balance ob
-          join account a on a.id = ob.account_id
-         where ob.fiscal_year_id = ?
-           and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
-    ''', [fiscalYearId]).each { GroovyRowResult row ->
-      openings[row.get('accountNumber') as String] = scale(new BigDecimal(row.get('amount').toString()))
-    }
-
-    Map<String, BigDecimal> movements = [:]
-    sql.rows('''
-        select vl.account_number as accountNumber,
-               a.normal_balance_side as normalBalanceSide,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.id = vl.account_id
-         where v.fiscal_year_id = ?
-           and v.status in ('ACTIVE', 'CORRECTION')
-           and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
-         group by vl.account_number, a.normal_balance_side
-    ''', [fiscalYearId]).each { GroovyRowResult row ->
-      movements[row.get('accountNumber') as String] = signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          row.get('normalBalanceSide') as String
-      )
-    }
-
-    Set<String> accounts = []
-    accounts.addAll(openings.keySet())
-    accounts.addAll(movements.keySet())
-
-    Map<String, BigDecimal> closingBalances = [:]
-    accounts.each { String accountNumber ->
-      closingBalances[accountNumber] = scale((openings[accountNumber] ?: BigDecimal.ZERO) + (movements[accountNumber] ?: BigDecimal.ZERO))
-    }
-    closingBalances
   }
 
   private NextFiscalYearPlan planNextFiscalYear(Sql sql, long companyId, FiscalYear fiscalYear) {
@@ -579,18 +547,6 @@ final class ClosingService {
            and locked = false
     ''', [fiscalYearId]) as GroovyRowResult
     ((Number) row.get('total')).intValue() > 0
-  }
-
-  private static boolean fiscalYearHasActivity(Sql sql, long fiscalYearId) {
-    GroovyRowResult voucherRow = sql.firstRow(
-        'select count(*) as total from voucher where fiscal_year_id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    GroovyRowResult openingRow = sql.firstRow(
-        'select count(*) as total from opening_balance where fiscal_year_id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    ((Number) voucherRow.get('total')).intValue() > 0 || ((Number) openingRow.get('total')).intValue() > 0
   }
 
   private static boolean hasClosingEntries(Sql sql, long fiscalYearId) {

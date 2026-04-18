@@ -5,6 +5,8 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.OpeningBalanceService
+import se.alipsa.accounting.service.OpeningBalanceService.OpeningBalanceDrift
 import se.alipsa.accounting.support.I18n
 import se.alipsa.datepicker.DatePicker
 import se.alipsa.datepicker.TextFieldPosition
@@ -32,6 +34,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
   private final ClosingService closingService
+  private final OpeningBalanceService openingBalanceService
   private final ActiveCompanyManager activeCompanyManager
 
   private final JTextField nameField = new JTextField(20)
@@ -49,16 +52,20 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private JButton createButton
   private JButton closeButton
   private JButton lockButton
+  private JButton openingBalancesButton
+  private final Set<Long> driftPromptedFiscalYears = [] as Set<Long>
 
   FiscalYearPanel(
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
       ClosingService closingService,
+      OpeningBalanceService openingBalanceService,
       ActiveCompanyManager activeCompanyManager
   ) {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.closingService = closingService
+    this.openingBalanceService = openingBalanceService
     this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
@@ -84,6 +91,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
     lockButton.text = I18n.instance.getString('fiscalYearPanel.button.lockPeriod')
+    openingBalancesButton.text = I18n.instance.getString('fiscalYearPanel.button.openingBalances')
     fiscalYearTable.tableHeader.repaint()
     periodTable.tableHeader.repaint()
   }
@@ -114,9 +122,12 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     closeButton.addActionListener { closeSelectedFiscalYear() }
     lockButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.lockPeriod'))
     lockButton.addActionListener { lockSelectedPeriod() }
+    openingBalancesButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.openingBalances'))
+    openingBalancesButton.addActionListener { openOpeningBalances() }
     actionPanel.add(createButton)
     actionPanel.add(closeButton)
     actionPanel.add(lockButton)
+    actionPanel.add(openingBalancesButton)
     panel.add(actionPanel, BorderLayout.SOUTH)
 
     panel
@@ -212,6 +223,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
       clearInputs()
       reloadData()
       selectFiscalYear(year.id)
+      maybeTransferOpeningBalances(year)
       activeCompanyManager.reloadFiscalYears()
       showInfo(I18n.instance.format('fiscalYearPanel.message.created', year.name))
     } catch (IllegalArgumentException exception) {
@@ -269,6 +281,9 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
         ? []
         : accountingPeriodService.listPeriods(selected.id)
     periodTableModel.setRows(periods)
+    if (selected != null) {
+      maybePromptForOpeningBalanceRefresh(selected)
+    }
   }
 
   private void selectFiscalYear(Long fiscalYearId) {
@@ -307,6 +322,77 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private Frame ownerFrame() {
     Object window = SwingUtilities.getWindowAncestor(this)
     window instanceof Frame ? (Frame) window : null
+  }
+
+  private void maybeTransferOpeningBalances(FiscalYear targetFiscalYear) {
+    FiscalYear sourceFiscalYear = openingBalanceService.findImmediatePreviousFiscalYear(activeCompanyManager.companyId, targetFiscalYear.id)
+    if (sourceFiscalYear == null) {
+      return
+    }
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('fiscalYearPanel.confirm.transferOpeningBalances', sourceFiscalYear.name, targetFiscalYear.name),
+        I18n.instance.getString('fiscalYearPanel.confirm.transferTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      return
+    }
+    int transferred = openingBalanceService.transferFromPreviousFiscalYear(sourceFiscalYear.id, targetFiscalYear.id)
+    showInfo(I18n.instance.format(
+        'fiscalYearPanel.message.openingBalancesTransferred',
+        transferred as Object,
+        sourceFiscalYear.name,
+        targetFiscalYear.name
+    ))
+  }
+
+  private void maybePromptForOpeningBalanceRefresh(FiscalYear fiscalYear) {
+    if (!driftPromptedFiscalYears.add(fiscalYear.id)) {
+      return
+    }
+    List<OpeningBalanceDrift> drift = openingBalanceService.detectDrift(fiscalYear.id)
+    if (drift.isEmpty()) {
+      return
+    }
+    FiscalYear sourceFiscalYear = openingBalanceService.findAutoManagedSourceFiscalYear(fiscalYear.id)
+    String sourceName = sourceFiscalYear?.name ?: I18n.instance.getString('fiscalYearPanel.label.previousFiscalYearFallback')
+    String promptKey = openingBalanceService.hasVoucherActivity(fiscalYear.id)
+        ? 'fiscalYearPanel.confirm.refreshOpeningBalancesWithVouchers'
+        : 'fiscalYearPanel.confirm.refreshOpeningBalances'
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format(promptKey, drift.size() as Object, sourceName, fiscalYear.name),
+        I18n.instance.getString('fiscalYearPanel.confirm.refreshTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      showValidation([ValidationSupport.fieldError(
+          '',
+          I18n.instance.format('fiscalYearPanel.message.openingBalanceDriftDetected', drift.size() as Object, fiscalYear.name)
+      )])
+      return
+    }
+    int refreshed = openingBalanceService.refreshTransferredBalances(fiscalYear.id)
+    showInfo(I18n.instance.format('fiscalYearPanel.message.openingBalancesRefreshed', refreshed as Object, fiscalYear.name))
+  }
+
+  private void openOpeningBalances() {
+    FiscalYear fiscalYear = selectedFiscalYear()
+    if (fiscalYear == null) {
+      showValidation([ValidationSupport.fieldError(
+          '',
+          I18n.instance.getString('fiscalYearPanel.error.selectFiscalYear')
+      )])
+      return
+    }
+    FiscalYearOpeningBalanceDialog.showDialog(
+        ownerFrame(),
+        openingBalanceService,
+        activeCompanyManager.companyId,
+        fiscalYear,
+        { driftPromptedFiscalYears.remove(fiscalYear.id) } as Runnable
+    )
   }
 
   private void showValidation(List<ValidationMessage> messages) {

@@ -166,6 +166,50 @@ class ClosingServiceTest {
     assertTrue(exception.message.contains('redan stängt'))
   }
 
+  @Test
+  void yearEndClosingReplacesTransferredOpeningBalancesWhenNextYearHasNoVouchers() {
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
+    seedClosingAccounts()
+    new OpeningBalanceService(databaseService).transferFromPreviousFiscalYear(fiscalYear.id, nextFiscalYear.id)
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 15),
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
+      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
+    }
+
+    def result = closingService.closeFiscalYear(fiscalYear.id)
+
+    assertEquals(nextFiscalYear.id, result.nextFiscalYear.id)
+    databaseService.withSql { Sql sql ->
+      assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '1510'))
+      assertEquals(OpeningBalanceService.ORIGIN_YEAR_END_CLOSE, openingBalanceOriginFor(sql, nextFiscalYear.id, '1510'))
+    }
+  }
+
+  @Test
+  void yearEndClosingIsBlockedWhenNextYearContainsManualOpeningBalances() {
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
+    seedClosingAccounts()
+    accountService().saveOpeningBalance(nextFiscalYear.id, '1510', 123.00G)
+    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
+      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
+    }
+
+    def preview = closingService.previewClosing(fiscalYear.id)
+
+    assertTrue(preview.blockingIssues.any { String issue -> issue.contains('manuellt justerade ingående balanser') })
+  }
+
   private void seedClosingAccounts() {
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
@@ -207,6 +251,21 @@ class ClosingServiceTest {
            and a.account_number = ?
     ''', [fiscalYearId, accountNumber]) as GroovyRowResult
     new BigDecimal(row.get('amount').toString())
+  }
+
+  private static String openingBalanceOriginFor(Sql sql, long fiscalYearId, String accountNumber) {
+    GroovyRowResult row = sql.firstRow('''
+        select ob.origin_type as originType
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
+           and a.account_number = ?
+    ''', [fiscalYearId, accountNumber]) as GroovyRowResult
+    row.get('originType') as String
+  }
+
+  private AccountService accountService() {
+    new AccountService(databaseService)
   }
 
   private static void restoreProperty(String name, String value) {

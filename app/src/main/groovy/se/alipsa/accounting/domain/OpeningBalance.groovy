@@ -12,4 +12,6 @@ final class OpeningBalance {
   Long accountId
   String accountNumber
   BigDecimal amount = BigDecimal.ZERO
+  String originType = 'MANUAL'
+  Long sourceFiscalYearId
 }

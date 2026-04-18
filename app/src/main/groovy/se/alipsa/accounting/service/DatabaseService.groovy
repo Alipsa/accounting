@@ -43,7 +43,8 @@ final class DatabaseService {
       new MigrationDefinition(16, 'V16__quarterly_vat.sql', '/db/migrations/V16__quarterly_vat.sql'),
       new MigrationDefinition(17, 'V17__voucher_lifecycle_simplification.sql', '/db/migrations/V17__voucher_lifecycle_simplification.sql'),
       new MigrationDefinition(18, 'V18__account_subgroup.sql', '/db/migrations/V18__account_subgroup.sql'),
-      new MigrationDefinition(19, 'V19__report_archive_xlsx_format.sql', '/db/migrations/V19__report_archive_xlsx_format.sql')
+      new MigrationDefinition(19, 'V19__report_archive_xlsx_format.sql', '/db/migrations/V19__report_archive_xlsx_format.sql'),
+      new MigrationDefinition(20, 'V20__opening_balance_management.sql', '/db/migrations/V20__opening_balance_management.sql')
   ]
 
   static DatabaseService newForTesting() {

@@ -4,13 +4,11 @@ import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ChartOfAccountsImportService.ImportSummary
-import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
-import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
@@ -42,7 +40,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
-  private final FiscalYearService fiscalYearService
   private final ActiveCompanyManager activeCompanyManager
 
   private final JTextField searchField = new JTextField(18)
@@ -61,17 +58,14 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private JButton importButton
   private JButton resetButton
   private JButton toggleActiveButton
-  private JButton openingBalanceButton
 
   ChartOfAccountsPanel(
       AccountService accountService,
       ChartOfAccountsImportService importService,
-      FiscalYearService fiscalYearService,
       ActiveCompanyManager activeCompanyManager
   ) {
     this.accountService = accountService
     this.importService = importService
-    this.fiscalYearService = fiscalYearService
     this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
@@ -97,7 +91,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
     toggleActiveButton.text = I18n.instance.getString('chartOfAccountsPanel.button.toggleActive')
-    openingBalanceButton.text = I18n.instance.getString('chartOfAccountsPanel.button.openingBalance')
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
     refreshOverview()
@@ -189,13 +182,10 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     resetButton.addActionListener { resetFilters() }
     toggleActiveButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.toggleActive'))
     toggleActiveButton.addActionListener { toggleSelectedAccountActive() }
-    openingBalanceButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.openingBalance'))
-    openingBalanceButton.addActionListener { openOpeningBalanceDialog() }
 
     actionPanel.add(importButton)
     actionPanel.add(resetButton)
     actionPanel.add(toggleActiveButton)
-    actionPanel.add(openingBalanceButton)
 
     actionPanel
   }
@@ -317,22 +307,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     showInfo(I18n.instance.format('chartOfAccountsPanel.message.toggled', account.accountNumber, status))
   }
 
-  private void openOpeningBalanceDialog() {
-    Account account = selectedAccount()
-    if (account == null) {
-      showError(I18n.instance.getString('chartOfAccountsPanel.error.selectAccount'))
-      return
-    }
-    if (!account.isBalanceAccount()) {
-      showError(I18n.instance.getString('chartOfAccountsPanel.error.balanceAccountOnly'))
-      return
-    }
-
-    OpeningBalanceDialog.showDialog(ownerFrame(), accountService, fiscalYearService, activeCompanyManager.companyId, account, {
-      showInfo(I18n.instance.format('chartOfAccountsPanel.message.openingBalanceUpdated', account.accountNumber))
-    } as Runnable)
-  }
-
   private void resetFilters() {
     searchField.text = ''
     classFilter.selectedItem = allFilterLabel()
@@ -356,12 +330,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       accountTable.setRowSelectionInterval(index, index)
     }
   }
-
-  private Frame ownerFrame() {
-    Object window = SwingUtilities.getWindowAncestor(this)
-    window instanceof Frame ? (Frame) window : null
-  }
-
   private void showInfo(String message) {
     feedbackArea.foreground = new Color(22, 101, 52)
     feedbackArea.text = message
