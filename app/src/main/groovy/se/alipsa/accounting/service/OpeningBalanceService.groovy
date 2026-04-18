@@ -133,12 +133,13 @@ final class OpeningBalanceService {
       }
     }
 
+    long companyId = resolveCompanyId(sql, fiscalYearId)
     expectedBySource.each { Long sourceFiscalYearId, Map<String, BigDecimal> expected ->
       expected.each { String accountNumber, BigDecimal expectedAmount ->
         if (expectedAmount == BigDecimal.ZERO || autoByAccount.containsKey(accountNumber) || manualAccounts.contains(accountNumber)) {
           return
         }
-        String accountName = lookupAccountName(sql, resolveCompanyId(sql, fiscalYearId), accountNumber)
+        String accountName = lookupAccountName(sql, companyId, accountNumber)
         drift << new OpeningBalanceDrift(
             accountNumber,
             accountName,

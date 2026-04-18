@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertThrows
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
@@ -10,7 +11,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.support.AppPaths
 
@@ -29,6 +32,7 @@ class OpeningBalanceServiceTest {
   private VoucherService voucherService
   private OpeningBalanceService openingBalanceService
   private AccountService accountService
+  private CompanyService companyService
   private String previousHome
 
   @BeforeEach
@@ -43,6 +47,7 @@ class OpeningBalanceServiceTest {
     voucherService = new VoucherService(databaseService, auditLogService)
     openingBalanceService = new OpeningBalanceService(databaseService)
     accountService = new AccountService(databaseService)
+    companyService = new CompanyService(databaseService)
     seedAccounts()
   }
 
@@ -140,6 +145,23 @@ class OpeningBalanceServiceTest {
       assertEquals(550.00G, openingBalanceFor(sql, nextYear.id, '1930'))
       assertEquals(OpeningBalanceService.ORIGIN_TRANSFERRED, openingBalanceOriginFor(sql, nextYear.id, '1930'))
     }
+  }
+
+  @Test
+  void transferFromPreviousFiscalYearRejectsFiscalYearsFromDifferentCompanies() {
+    Company secondCompany = companyService.save(
+        new Company(null, 'Second AB', '556123-4567', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null)
+    )
+    FiscalYear previousYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2025', LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))
+    FiscalYear otherCompanyYear = fiscalYearService.createFiscalYear(
+        secondCompany.id, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      openingBalanceService.transferFromPreviousFiscalYear(previousYear.id, otherCompanyYear.id)
+    }
+
+    assertEquals('Fiscal years must belong to the same company.', exception.message)
   }
 
   private void seedAccounts() {
