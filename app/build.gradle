@@ -25,7 +25,7 @@ dependencies {
   implementation libs.poi.ooxml
   implementation libs.journo.runtime
   implementation libs.flatlaf
-  implementation libs.lgooddatepicker
+  implementation libs.swing.widgets
 
   testImplementation libs.junit.jupiter
   testImplementation libs.groovier.junit

@@ -1,8 +1,5 @@
 package se.alipsa.accounting.ui
 
-import com.github.lgooddatepicker.components.DatePicker
-import com.github.lgooddatepicker.components.DatePickerSettings
-
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
@@ -17,6 +14,7 @@ import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
+import se.alipsa.datepicker.DatePicker
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -870,6 +868,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void updateLabels() {
+    datePicker.locale = I18n.instance.locale
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
@@ -888,9 +887,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private static DatePicker createDatePicker() {
-    DatePickerSettings settings = new DatePickerSettings()
-    settings.allowKeyboardEditing = false
-    new DatePicker(settings)
+    DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale)
+    picker.textField.editable = false
+    picker
   }
 
   private static BigDecimal parseAmount(String value) {

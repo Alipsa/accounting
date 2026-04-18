@@ -3,6 +3,8 @@ package se.alipsa.accounting.ui
 import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
 
+import com.formdev.flatlaf.util.UIScale
+
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.FiscalYear
@@ -43,6 +45,7 @@ import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.Image
+import java.awt.Taskbar
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.util.logging.Level
@@ -64,6 +67,7 @@ final class MainFrame implements PropertyChangeListener {
       '/icons/logo64.png',
       '/icons/logo128.png'
   ]
+  private static final String TASKBAR_ICON_PATH = '/icons/logo512.png'
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
@@ -687,12 +691,29 @@ final class MainFrame implements PropertyChangeListener {
     }
     if (icons) {
       frame.iconImages = icons
+      applyTaskbarIcon(icons)
     } else {
       log.fine('No application icons were available on the classpath.')
     }
   }
 
-  private ImageIcon loadIcon(String path) {
+  private void applyTaskbarIcon(List<Image> icons) {
+    try {
+      if (!Taskbar.isTaskbarSupported()) {
+        return
+      }
+      Taskbar taskbar = Taskbar.getTaskbar()
+      if (!taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+        return
+      }
+      ImageIcon taskbarIcon = loadIcon(TASKBAR_ICON_PATH)
+      taskbar.setIconImage(taskbarIcon?.image ?: icons.last())
+    } catch (UnsupportedOperationException | SecurityException exception) {
+      log.fine("Taskbar icon not supported on this platform: ${exception.message}")
+    }
+  }
+
+  private static ImageIcon loadIcon(String path) {
     InputStream stream = MainFrame.getResourceAsStream(path)
     if (stream == null) {
       return null
@@ -705,7 +726,7 @@ final class MainFrame implements PropertyChangeListener {
   private static List<Integer> scaledWindowSize(int baseWidth, int baseHeight) {
     float scale = 1.0f
     try {
-      scale = com.formdev.flatlaf.util.UIScale.getUserScaleFactor()
+      scale = UIScale.getUserScaleFactor()
     } catch (Exception ex) {
       log.warning("FlatLaf UIScale unavailable, using unscaled size: ${ex.message}")
     }

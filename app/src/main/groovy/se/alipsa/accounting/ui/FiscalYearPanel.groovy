@@ -1,14 +1,13 @@
 package se.alipsa.accounting.ui
 
-import com.github.lgooddatepicker.components.DatePicker
-import com.github.lgooddatepicker.components.DatePickerSettings
-
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.support.I18n
+import se.alipsa.datepicker.DatePicker
+import se.alipsa.datepicker.TextFieldPosition
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -80,8 +79,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     nameLabel.text = I18n.instance.getString('fiscalYearPanel.label.name')
     startDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.startDate')
     endDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.endDate')
-    startDatePicker.settings.locale = I18n.instance.locale
-    endDatePicker.settings.locale = I18n.instance.locale
+    startDatePicker.locale = I18n.instance.locale
+    endDatePicker.locale = I18n.instance.locale
     createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
     lockButton.text = I18n.instance.getString('fiscalYearPanel.button.lockPeriod')
@@ -299,11 +298,10 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private static DatePicker createDatePicker() {
-    DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
-    settings.formatForDatesCommonEra = 'yyyy-MM-dd'
-    settings.allowKeyboardEditing = false
-    settings.setTextFieldPosition(DatePickerSettings.TextFieldPosition.RIGHT)
-    new DatePicker(settings)
+    DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale, 'yyyy-MM-dd')
+    picker.textFieldPosition = TextFieldPosition.RIGHT
+    picker.textField.editable = false
+    picker
   }
 
   private Frame ownerFrame() {

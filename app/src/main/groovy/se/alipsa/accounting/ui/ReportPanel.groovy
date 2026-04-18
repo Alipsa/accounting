@@ -1,8 +1,5 @@
 package se.alipsa.accounting.ui
 
-import com.github.lgooddatepicker.components.DatePicker
-import com.github.lgooddatepicker.components.DatePickerSettings
-
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
@@ -18,6 +15,8 @@ import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
+import se.alipsa.datepicker.DatePicker
+import se.alipsa.datepicker.TextFieldPosition
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -148,8 +147,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     openVoucherButton.text = I18n.instance.getString('reportPanel.button.openVoucher')
     openArchiveMenuItem.text = I18n.instance.getString('reportPanel.menu.open')
     copyArchivePathMenuItem.text = I18n.instance.getString('reportPanel.menu.copyPath')
-    startDatePicker.settings.locale = I18n.instance.locale
-    endDatePicker.settings.locale = I18n.instance.locale
+    startDatePicker.locale = I18n.instance.locale
+    endDatePicker.locale = I18n.instance.locale
     reloadAccountingPeriods()
     reloadReport()
     archiveTableModel.fireTableStructureChanged()
@@ -653,11 +652,10 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   }
 
   private static DatePicker createDatePicker() {
-    DatePickerSettings settings = new DatePickerSettings(I18n.instance.locale)
-    settings.formatForDatesCommonEra = 'yyyy-MM-dd'
-    settings.allowKeyboardEditing = false
-    settings.setTextFieldPosition(DatePickerSettings.TextFieldPosition.RIGHT)
-    new DatePicker(settings)
+    DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale, 'yyyy-MM-dd')
+    picker.textFieldPosition = TextFieldPosition.RIGHT
+    picker.textField.editable = false
+    picker
   }
 
   private static final class PreviewTableModel extends AbstractTableModel {

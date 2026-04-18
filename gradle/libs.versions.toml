@@ -5,7 +5,7 @@ sie-parser = "2.0"
 poi = "5.5.1"
 journo = "0.7.3"
 flatlaf = "3.7.1"
-lgooddatepicker = "11.3.1-SNAPSHOT"
+swing-widgets = "1.1.0"
 junit = "6.0.3"
 groovier-junit = "0.3.1"
 
@@ -19,7 +19,7 @@ sie-parser = { module = "se.alipsa:SieParser", version.ref = "sie-parser" }
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 journo-runtime = { module = "se.alipsa.journo:journo-runtime", version.ref = "journo" }
 flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
-lgooddatepicker = { module = "com.github.lgooddatepicker:LGoodDatePicker", version.ref = "lgooddatepicker" }
+swing-widgets = { module = "se.alipsa:swing-widgets", version.ref = "swing-widgets" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit" }
 groovier-junit = { module = "se.alipsa.groovy:groovier-junit", version.ref = "groovier-junit" }
