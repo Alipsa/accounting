@@ -11,6 +11,7 @@ import se.alipsa.accounting.domain.VoucherStatus
 import java.math.RoundingMode
 import java.sql.Date
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * Handles safe voucher creation, correction and number allocation.
@@ -294,6 +295,34 @@ final class VoucherService {
         voucher.lines = loadLines(sql, voucher.id)
         voucher
       }
+    }
+  }
+
+  int countVouchers(long companyId, long fiscalYearId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select count(*) as cnt
+            from voucher
+           where company_id = ?
+             and fiscal_year_id = ?
+             and status in ('ACTIVE', 'CORRECTION')
+      ''', [companyId, fiscalYearId])
+      ((Number) row.cnt).intValue()
+    }
+  }
+
+  boolean hasVouchersCreatedAfter(long companyId, LocalDateTime since) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select count(*) as cnt
+            from voucher
+           where company_id = ?
+             and status in ('ACTIVE', 'CORRECTION')
+             and created_at > ?
+      ''', [companyId, since])
+      ((Number) row.cnt).intValue() > 0
     }
   }
 
