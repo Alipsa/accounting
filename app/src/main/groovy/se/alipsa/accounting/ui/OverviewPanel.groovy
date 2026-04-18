@@ -30,6 +30,7 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.border.EtchedBorder
 
+/** Status dashboard shown on the Overview tab: company, fiscal year, vouchers, periods, backup, integrity. */
 final class OverviewPanel extends JPanel implements PropertyChangeListener {
 
   private static final Color GREY = new Color(108, 117, 125)
@@ -230,26 +231,28 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     add(buildStatGrid(), BorderLayout.CENTER)
   }
 
+  private void styleHeaderLabels() {
+    Font titleFont = companyNameLabel.font.deriveFont(Font.BOLD, 14.0f)
+    Font subtitleFont = companyTitleLabel.font.deriveFont(9.0f)
+    Font detailFont = titleFont.deriveFont(11.0f)
+    companyTitleLabel.foreground = GREY
+    companyTitleLabel.font = subtitleFont
+    companyNameLabel.font = titleFont
+    orgNumberLabel.foreground = GREY
+    orgNumberLabel.font = detailFont
+    fiscalYearTitleLabel.foreground = GREY
+    fiscalYearTitleLabel.font = subtitleFont
+    fiscalYearNameLabel.font = titleFont
+    fiscalYearDetailLabel.font = detailFont
+  }
+
   private JPanel buildHeaderStrip() {
+    styleHeaderLabels()
     JPanel strip = new JPanel(new GridBagLayout())
     strip.border = BorderFactory.createCompoundBorder(
         BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
         BorderFactory.createEmptyBorder(10, 14, 10, 14)
     )
-
-    Font titleFont = companyNameLabel.font.deriveFont(Font.BOLD, 14.0f)
-    Font subtitleFont = companyTitleLabel.font.deriveFont(9.0f)
-
-    companyTitleLabel.foreground = GREY
-    companyTitleLabel.font = subtitleFont
-    companyNameLabel.font = titleFont
-    orgNumberLabel.foreground = GREY
-    orgNumberLabel.font = companyNameLabel.font.deriveFont(11.0f)
-
-    fiscalYearTitleLabel.foreground = GREY
-    fiscalYearTitleLabel.font = subtitleFont
-    fiscalYearNameLabel.font = titleFont
-    fiscalYearDetailLabel.font = companyNameLabel.font.deriveFont(11.0f)
 
     GridBagConstraints gbc = new GridBagConstraints()
     gbc.anchor = GridBagConstraints.WEST
