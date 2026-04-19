@@ -10,3 +10,4 @@ build
 /.lca/
 /.claude/
 /.superpowers/
+/dist/

@@ -76,8 +76,7 @@ if [ "$BUILD" = true ]; then
   shopt -s nullglob
   for f in "$DIST_DIR"/extras/*/alipsa-accounting-*.zip \
            "$DIST_DIR"/extras/*/AlipsaAccounting-*.exe \
-           "$DIST_DIR"/extras/*/AlipsaAccounting-*.zip \
-           "$DIST_DIR"/extras/*/app-*.zip; do
+           "$DIST_DIR"/extras/*/AlipsaAccounting-*.zip; do
     mv "$f" "$DIST_DIR/"
   done
   shopt -u nullglob
@@ -106,7 +105,7 @@ if [ "$SIGN" = true ]; then
   for file in "$DIST_DIR"/*; do
     [ -f "$file" ] || continue
     case "$file" in
-      *.asc) continue ;;
+      *.asc|*.sha256) continue ;;
     esac
     gpg --armor --detach-sign "$file"
     echo "  Signed: $(basename "$file")"
@@ -139,10 +138,16 @@ ${notes}
 
   for file in "$DIST_DIR"/*; do
     [ -f "$file" ] || continue
-    case "$file" in *.asc) continue ;; esac
+    case "$file" in *.asc|*.sha256) continue ;; esac
     name=$(basename "$file")
+    case "$name" in
+      *.exe)      platform="Windows" ;;
+      *linux*)    platform="Linux" ;;
+      *macos*)    platform="macOS" ;;
+      *)          platform="$name" ;;
+    esac
     release_body="${release_body}
-| $(echo "$name" | sed 's/.*linux.*/Linux/;s/.*windows.*/Windows/;s/.*macos.*/macOS/;s/.*AlipsaAccounting.*/macOS/') | \`${name}\` |"
+| ${platform} | \`${name}\` |"
   done
 
   if [ "$SIGN" = true ]; then
