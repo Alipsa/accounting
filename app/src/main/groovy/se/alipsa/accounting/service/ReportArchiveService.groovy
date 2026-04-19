@@ -234,7 +234,7 @@ final class ReportArchiveService {
         row.get('fileName') as String,
         row.get('storagePath') as String,
         row.get('checksumSha256') as String,
-        row.get('parameters') as String,
+        SqlValueMapper.toClob(row.get('parameters')),
         SqlValueMapper.toLocalDateTime(row.get('createdAt'))
     )
   }

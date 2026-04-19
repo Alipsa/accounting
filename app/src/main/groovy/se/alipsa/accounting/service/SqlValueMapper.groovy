@@ -1,5 +1,6 @@
 package se.alipsa.accounting.service
 
+import java.sql.Clob
 import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDate
@@ -44,5 +45,16 @@ final class SqlValueMapper {
       return ((OffsetDateTime) value).toLocalDateTime()
     }
     throw new IllegalStateException("Unsupported timestamp value: ${value.class.name}")
+  }
+
+  static String toClob(Object value) {
+    if (value == null) {
+      return null
+    }
+    if (value instanceof Clob) {
+      Clob clob = (Clob) value
+      return clob.getSubString(1L, (int) clob.length())
+    }
+    value.toString()
   }
 }

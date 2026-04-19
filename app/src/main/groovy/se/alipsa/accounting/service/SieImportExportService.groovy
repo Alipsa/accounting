@@ -892,7 +892,7 @@ final class SieImportExportService {
         row.get('fiscalYearId') == null ? null : Long.valueOf(row.get('fiscalYearId').toString()),
         ImportJobStatus.valueOf(row.get('status') as String),
         row.get('summary') as String,
-        row.get('errorLog') as String,
+        SqlValueMapper.toClob(row.get('errorLog')),
         SqlValueMapper.toLocalDateTime(row.get('startedAt')),
         SqlValueMapper.toLocalDateTime(row.get('completedAt'))
     )
