@@ -196,6 +196,7 @@ tasks.register('generateSplashImage') {
   description = 'Generates splash.png from the application logo using Java2D'
   File splashOutput = layout.projectDirectory.file('src/main/resources/splash.png').asFile
   File logoInput = layout.projectDirectory.file('src/main/resources/icons/logo128.png').asFile
+  inputs.file(logoInput)
   outputs.file(splashOutput)
   doLast {
     System.setProperty('java.awt.headless', 'true')

@@ -11,6 +11,7 @@ final class ReportAccountSupport {
   }
 
   static boolean shouldExcludeFromIncomeStatement(String accountNumber, AccountSubgroup subgroup) {
+    // 8999 = "Årets resultat" (BAS): balance-sheet result transfer, not an income statement line.
     subgroup == AccountSubgroup.TAX_AND_RESULT && accountNumber == '8999'
   }
 
@@ -76,9 +77,11 @@ final class ReportAccountSupport {
     if (subgroup == null) {
       throw new IllegalStateException("Konto ${accountNumber} saknar normal balanssida för rapportering.")
     }
+    // BAS groups 10-19: asset accounts with DEBIT as normal balance side.
     if (subgroup.basGroupStart >= 10 && subgroup.basGroupEnd <= 19) {
       return 'DEBIT'
     }
+    // BAS groups 20-29: equity and liability accounts with CREDIT as normal balance side.
     if (subgroup.basGroupStart >= 20 && subgroup.basGroupEnd <= 29) {
       return 'CREDIT'
     }
