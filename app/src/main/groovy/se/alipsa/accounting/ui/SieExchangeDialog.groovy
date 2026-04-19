@@ -1,7 +1,12 @@
 package se.alipsa.accounting.ui
 
+import alipsa.sieparser.SieCompany
+
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
+import se.alipsa.accounting.domain.VatPeriodicity
+import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
@@ -25,6 +30,7 @@ import javax.swing.JComboBox
 import javax.swing.JDialog
 import javax.swing.JFileChooser
 import javax.swing.JLabel
+import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
@@ -42,8 +48,11 @@ final class SieExchangeDialog extends JDialog {
 
   private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm')
 
+  private static final long CANCELLED = -1L
+
   private final SieImportExportService sieImportExportService
   private final FiscalYearService fiscalYearService
+  private final CompanyService companyService
   private final long companyId
   private final Runnable onImportSuccess
 
@@ -56,10 +65,11 @@ final class SieExchangeDialog extends JDialog {
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
-  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId, Runnable onImportSuccess = null) {
+  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Runnable onImportSuccess = null) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
+    this.companyService = companyService
     this.companyId = companyId
     this.onImportSuccess = onImportSuccess
     buildUi()
@@ -68,8 +78,8 @@ final class SieExchangeDialog extends JDialog {
     showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
-  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, long companyId, Runnable onImportSuccess = null) {
-    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyId, onImportSuccess)
+  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Runnable onImportSuccess = null) {
+    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyService, companyId, onImportSuccess)
     dialog.visible = true
   }
 
@@ -180,10 +190,100 @@ final class SieExchangeDialog extends JDialog {
     Path selectedPath = chooser.selectedFile.toPath()
     setWorkingState(true)
     showInfo(I18n.instance.format('sieExchangeDialog.status.importing', selectedPath.fileName))
+    new SwingWorker<SieCompany, Void>() {
+      @Override
+      protected SieCompany doInBackground() {
+        sieImportExportService.peekSieCompany(selectedPath)
+      }
+
+      @Override
+      protected void done() {
+        SieCompany sieCompany
+        try {
+          sieCompany = get()
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          setWorkingState(false)
+          showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
+          return
+        } catch (ExecutionException exception) {
+          setWorkingState(false)
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+          return
+        }
+        long targetCompanyId = resolveImportTarget(sieCompany)
+        if (targetCompanyId == CANCELLED) {
+          setWorkingState(false)
+          showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+          return
+        }
+        doImport(selectedPath, targetCompanyId)
+      }
+    }.execute()
+  }
+
+  private long resolveImportTarget(SieCompany sieCompany) {
+    Company currentCompany = companyService.findById(companyId)
+    if (companiesMatch(currentCompany, sieCompany)) {
+      return companyId
+    }
+    String sieName = sieCompany.name ?: '-'
+    String sieOrg = sieCompany.orgIdentifier ?: '-'
+    String dbName = currentCompany?.companyName ?: '-'
+    String dbOrg = currentCompany?.organizationNumber ?: '-'
+    boolean canCreateNew = sieCompany.name?.trim() && sieCompany.orgIdentifier?.trim()
+    String message = "<html>" +
+        I18n.instance.format('sieExchangeDialog.company.mismatchSieLine', sieName, sieOrg) + "<br>" +
+        I18n.instance.format('sieExchangeDialog.company.mismatchCurrentLine', dbName, dbOrg) + "<br><br>" +
+        I18n.instance.getString('sieExchangeDialog.company.mismatchQuestion') +
+        "</html>"
+    String[] options = canCreateNew
+        ? [
+            I18n.instance.getString('sieExchangeDialog.company.importAnyway'),
+            I18n.instance.getString('sieExchangeDialog.company.createNew'),
+            I18n.instance.getString('sieExchangeDialog.company.cancel')
+          ]
+        : [
+            I18n.instance.getString('sieExchangeDialog.company.importAnyway'),
+            I18n.instance.getString('sieExchangeDialog.company.cancel')
+          ]
+    int choice = JOptionPane.showOptionDialog(
+        this, message,
+        I18n.instance.getString('sieExchangeDialog.company.mismatchTitle'),
+        JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null,
+        options, options[-1]
+    )
+    if (choice == 0) {
+      return companyId
+    }
+    if (canCreateNew && choice == 1) {
+      return createCompanyFromSie(sieCompany)
+    }
+    CANCELLED
+  }
+
+  private long createCompanyFromSie(SieCompany sieCompany) {
+    Company newCompany = companyService.save(new Company(
+        null,
+        sieCompany.name.trim(),
+        sieCompany.orgIdentifier.trim(),
+        'SEK',
+        'sv-SE',
+        VatPeriodicity.MONTHLY,
+        true,
+        null,
+        null
+    ))
+    newCompany.id
+  }
+
+  private void doImport(Path selectedPath, long targetCompanyId) {
+    boolean importingToNewCompany = targetCompanyId != companyId
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
-        sieImportExportService.importFile(companyId, selectedPath)
+        sieImportExportService.importFile(targetCompanyId, selectedPath)
       }
 
       @Override
@@ -191,13 +291,17 @@ final class SieExchangeDialog extends JDialog {
         setWorkingState(false)
         try {
           SieImportResult result = get()
-          reloadFiscalYears()
-          reloadJobs()
-          renderImportResult(result)
-          try {
-            onImportSuccess?.run()
-          } catch (Exception callbackEx) {
-            showError(callbackEx.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+          if (importingToNewCompany) {
+            showInfo(I18n.instance.getString('sieExchangeDialog.company.newCompanyImported'))
+          } else {
+            reloadFiscalYears()
+            reloadJobs()
+            renderImportResult(result)
+            try {
+              onImportSuccess?.run()
+            } catch (Exception callbackEx) {
+              showError(callbackEx.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+            }
           }
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
@@ -209,6 +313,27 @@ final class SieExchangeDialog extends JDialog {
         }
       }
     }.execute()
+  }
+
+  private static boolean companiesMatch(Company company, SieCompany sieCompany) {
+    if (sieCompany == null) {
+      return true
+    }
+    String sieOrg = normalizeOrgNumber(sieCompany.orgIdentifier)
+    String dbOrg = normalizeOrgNumber(company?.organizationNumber)
+    if (sieOrg && dbOrg) {
+      return sieOrg.equalsIgnoreCase(dbOrg)
+    }
+    String sieName = sieCompany.name?.trim()?.toLowerCase(Locale.ROOT)
+    String dbName = company?.companyName?.trim()?.toLowerCase(Locale.ROOT)
+    if (sieName && dbName) {
+      return sieName == dbName
+    }
+    true
+  }
+
+  private static String normalizeOrgNumber(String value) {
+    value?.replaceAll(/[\s\-]/, '') ?: ''
   }
 
   private void exportRequested() {

@@ -2,8 +2,10 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
+import static org.junit.jupiter.api.Assumptions.assumeTrue
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
@@ -194,6 +196,66 @@ class SieImportExportServiceTest {
       assertEquals('CREDIT', row.get('normalBalanceSide'))
       assertEquals(false, row.get('manualReviewRequired'))
     }
+  }
+
+  @Test
+  void realSieFileCanBeImportedSuccessfully() {
+    URL resource = getClass().getResource('/sie/Test_HB-2025.SE')
+    assumeTrue(resource != null, 'Test SIE file not present, skipping')
+    Path sieFile = Path.of(resource.toURI())
+
+    switchHome(tempDir.resolve('real-import-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    CompanyService companyService = new CompanyService(databaseService)
+    companyService.save(new Company(
+        CompanyService.LEGACY_COMPANY_ID, 'Test HB', '998877-9876', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null
+    ))
+    SieImportExportService service = createSieService(databaseService)
+
+    alipsa.sieparser.SieCompany peeked = service.peekSieCompany(sieFile)
+    assertEquals('Test HB', peeked.name)
+    assertEquals('998877-9876', peeked.orgIdentifier)
+
+    SieImportResult result = service.importFile(CompanyService.LEGACY_COMPANY_ID, sieFile)
+
+    assertFalse(result.duplicate)
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertNotNull(result.fiscalYear)
+    assertEquals(145, result.voucherCount)
+    assertTrue(result.accountsCreated > 0)
+    assertTrue(result.job.errorLog == null || result.job.errorLog.isEmpty(),
+        "Unexpected warnings in import: ${result.job.errorLog}")
+  }
+
+  @Test
+  void peekSieCompanyReturnsCompanyNameAndOrgNumber() {
+    switchHome(tempDir.resolve('peek-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path sieFile = writeSimpleSie(tempDir.resolve('peek.sie'), '1000', 'Kassa')
+
+    alipsa.sieparser.SieCompany company = service.peekSieCompany(sieFile)
+
+    assertEquals('Testbolaget AB', company.name)
+    assertEquals('556677-8899', company.orgIdentifier)
+  }
+
+  @Test
+  void peekSieCompanyReturnsNullForFileWithNoCompanyInfo() {
+    switchHome(tempDir.resolve('peek-empty-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path sieFile = tempDir.resolve('nocompany.sie')
+    sieFile.toFile().text = '#FLAGGA 0\n#SIETYP 4\n#RAR 0 20260101 20261231\n'
+
+    alipsa.sieparser.SieCompany company = service.peekSieCompany(sieFile)
+
+    // SieDocument may initialise fnamn to an empty object or null depending on the parser
+    assertTrue(company == null || (company.name == null && company.orgIdentifier == null))
   }
 
   private ExportFixture createExportFixture(Path home, Path exportPath) {

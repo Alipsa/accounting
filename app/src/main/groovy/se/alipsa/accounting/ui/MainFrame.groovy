@@ -640,7 +640,7 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void showSieExchangeDialog() {
-    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, activeCompanyManager.companyId, {
+    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, companyService, activeCompanyManager.companyId, {
       reloadFiscalYearComboBox()
       activeCompanyManager.refreshFiscalYear()
     } as Runnable)
