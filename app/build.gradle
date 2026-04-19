@@ -157,7 +157,8 @@ tasks.named('jar', Jar) {
         'Implementation-Title': releaseConfig.displayName,
         'Implementation-Version': releaseConfig.version,
         'Implementation-Vendor': releaseConfig.vendor,
-        'Main-Class': releaseConfig.mainClassName.get()
+        'Main-Class': releaseConfig.mainClassName.get(),
+        'SplashScreen-Image': 'splash.png'
         )
   }
 }
