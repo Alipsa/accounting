@@ -170,6 +170,7 @@ final class MainFrame implements PropertyChangeListener {
   private JButton swedishButton
   private JLabel languageLabel
   private JLabel themeLabel
+  private JCheckBox automaticUpdateCheckBox
   private JRadioButton themeSystemButton
   private JRadioButton themeLightButton
   private JRadioButton themeDarkButton
@@ -195,7 +196,9 @@ final class MainFrame implements PropertyChangeListener {
         showNewCompanyDialog()
       }
     }
-    checkForUpdateInBackground()
+    if (userPreferencesService.isAutomaticUpdateCheckEnabled()) {
+      checkForUpdateInBackground()
+    }
   }
 
   void setStatus(String text) {
@@ -242,6 +245,7 @@ final class MainFrame implements PropertyChangeListener {
     fiscalYearLabel.text = I18n.instance.getString('mainFrame.label.fiscalYear')
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
     themeLabel.text = I18n.instance.getString('settings.label.theme')
+    automaticUpdateCheckBox.text = I18n.instance.getString('settings.label.automaticUpdateCheck')
     themeSystemButton.text = I18n.instance.getString('settings.theme.system')
     themeLightButton.text = I18n.instance.getString('settings.theme.light')
     themeDarkButton.text = I18n.instance.getString('settings.theme.dark')
@@ -339,6 +343,7 @@ final class MainFrame implements PropertyChangeListener {
     settingsRows.layout = new BoxLayout(settingsRows, BoxLayout.Y_AXIS)
     settingsRows.add(languageRow)
     settingsRows.add(buildThemeRow())
+    settingsRows.add(buildUpdateRow())
 
     JPanel companyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     editCompanySettingsButton = new JButton(I18n.instance.getString('mainFrame.button.editCompanySettings'))
@@ -384,10 +389,32 @@ final class MainFrame implements PropertyChangeListener {
     themeRow
   }
 
+  private JPanel buildUpdateRow() {
+    JPanel updateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    automaticUpdateCheckBox = new JCheckBox(I18n.instance.getString('settings.label.automaticUpdateCheck'))
+    automaticUpdateCheckBox.selected = userPreferencesService.isAutomaticUpdateCheckEnabled()
+    automaticUpdateCheckBox.addActionListener { toggleAutomaticUpdateCheck() }
+    updateRow.add(automaticUpdateCheckBox)
+    updateRow
+  }
+
   private void switchTheme(ThemeMode mode) {
     userPreferencesService.setTheme(mode)
     ThemeApplier.applyAndUpdateUI(mode)
     setStatus(I18n.instance.getString('settings.status.themeChanged'))
+  }
+
+  private void toggleAutomaticUpdateCheck() {
+    boolean enabled = automaticUpdateCheckBox.selected
+    userPreferencesService.setAutomaticUpdateCheckEnabled(enabled)
+    if (!enabled) {
+      pendingUpdate = null
+      updateNotificationButton.visible = false
+      setStatus(I18n.instance.getString('settings.status.automaticUpdateCheckDisabled'))
+      return
+    }
+    setStatus(I18n.instance.getString('settings.status.automaticUpdateCheckEnabled'))
+    checkForUpdateInBackground()
   }
 
   private void selectThemeButton(ThemeMode mode) {

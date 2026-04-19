@@ -128,6 +128,45 @@ Kör alla kommandon från rotmappen.
 
 ## Release
 
+### Nedladdningar
+
+Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre distributioner:
+
+| Fil | Plattform |
+|-----|-----------|
+| `alipsa-accounting-<version>-linux.zip` | Linux — app-image och `.desktop`-fil |
+| `AlipsaAccounting-<version>.exe` | Windows — installerare med meny- och skrivbordsgenväg |
+| `AlipsaAccounting-macos.zip` | macOS — `AlipsaAccounting.app` |
+
+Varje distributionsfil åtföljs av två verifieringsfiler:
+
+- **`.sha256`** — SHA-256-kontrollsumma. Verifiera att nedladdningen är intakt:
+  ```
+  sha256sum -c alipsa-accounting-<version>-linux.zip.sha256
+  ```
+- **`.asc`** — GPG-signatur. Verifiera att filen är publicerad av releaseansvarig:
+  ```
+  gpg --verify alipsa-accounting-<version>-linux.zip.asc alipsa-accounting-<version>-linux.zip
+  ```
+
+För vanliga användare räcker det att ladda ner distributionsfilen. Verifieringsfilerna riktar sig till den som vill kontrollera filens integritet och äkthet.
+
+### Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+- Committers and reviewers: repository contributors with write access to the project. Public contribution history: [Contributors](https://github.com/Alipsa/accounting/graphs/contributors)
+- Approvers: project maintainers responsible for release approval before signing and publication. Current project home page: [Alipsa/accounting](https://github.com/Alipsa/accounting)
+- Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md)
+
+The application stores accounting data locally on the user's system.
+
+The application does not upload accounting records, attachments, reports, backups, or exported files to project-operated servers.
+
+The application can perform a background update check against GitHub Releases on startup, and may download release artifacts from GitHub when the user explicitly chooses to install an update. Automatic update checks can be disabled in Settings. See the privacy policy for details.
+
+### Bygga en release
+
 Releasebyggen använder `jpackage` och kräver Java 21 med tillhörande paketeringsverktyg på respektive plattform.
 
 - Linux: `./gradlew :app:packageLinuxReleaseZip`
