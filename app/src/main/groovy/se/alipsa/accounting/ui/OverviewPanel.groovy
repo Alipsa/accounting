@@ -349,9 +349,9 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void styleHeaderLabels() {
-    Font titleFont = companyNameLabel.font.deriveFont(Font.BOLD, 14.0f)
-    Font subtitleFont = companyTitleLabel.font.deriveFont(9.0f)
-    Font detailFont = titleFont.deriveFont(11.0f)
+    Font titleFont = scaledFont(companyNameLabel.font, Font.BOLD, 1.2f)
+    Font subtitleFont = scaledFont(companyTitleLabel.font, 1.0f)
+    Font detailFont = scaledFont(orgNumberLabel.font, 1.0f)
     companyTitleLabel.foreground = GREY
     companyTitleLabel.font = subtitleFont
     companyNameLabel.font = titleFont
@@ -415,28 +415,36 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
 
   private JPanel buildStatGrid() {
     JPanel grid = new JPanel(new GridLayout(2, 2, 8, 8))
-    grid.add(buildStatCard(voucherCardTitle, voucherValueLabel, voucherSubLabel, 22.0f))
-    grid.add(buildStatCard(periodsCardTitle, periodsValueLabel, periodsSubLabel, 22.0f))
-    grid.add(buildStatCard(backupCardTitle, backupValueLabel, backupSubLabel, 13.0f))
-    grid.add(buildStatCard(integrityCardTitle, integrityValueLabel, integritySubLabel, 13.0f))
+    grid.add(buildStatCard(voucherCardTitle, voucherValueLabel, voucherSubLabel, 1.9f))
+    grid.add(buildStatCard(periodsCardTitle, periodsValueLabel, periodsSubLabel, 1.9f))
+    grid.add(buildStatCard(backupCardTitle, backupValueLabel, backupSubLabel, 1.35f))
+    grid.add(buildStatCard(integrityCardTitle, integrityValueLabel, integritySubLabel, 1.35f))
     grid
   }
 
-  private static JPanel buildStatCard(JLabel titleLabel, JLabel valueLabel, JLabel subLabel, float valueFontSize) {
+  private static JPanel buildStatCard(JLabel titleLabel, JLabel valueLabel, JLabel subLabel, float valueFontScale) {
     JPanel card = new JPanel(new GridLayout(3, 1, 0, 2))
     card.border = BorderFactory.createCompoundBorder(
         BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
         BorderFactory.createEmptyBorder(8, 12, 8, 12)
     )
     titleLabel.foreground = GREY
-    titleLabel.font = titleLabel.font.deriveFont(9.0f)
-    valueLabel.font = valueLabel.font.deriveFont(Font.BOLD, valueFontSize)
-    subLabel.font = subLabel.font.deriveFont(10.0f)
+    titleLabel.font = scaledFont(titleLabel.font, 1.0f)
+    valueLabel.font = scaledFont(valueLabel.font, Font.BOLD, valueFontScale)
+    subLabel.font = scaledFont(subLabel.font, 1.0f)
     subLabel.foreground = GREY
     card.add(titleLabel)
     card.add(valueLabel)
     card.add(subLabel)
     card
+  }
+
+  private static Font scaledFont(Font baseFont, float scale) {
+    baseFont.deriveFont(baseFont.size2D * scale)
+  }
+
+  private static Font scaledFont(Font baseFont, int style, float scale) {
+    baseFont.deriveFont(style, baseFont.size2D * scale)
   }
 
   private static final class OverviewSnapshot {
