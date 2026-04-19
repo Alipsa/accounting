@@ -584,9 +584,9 @@ class ReportServicesTest {
     assertEquals(1300.00G, assetTotal)
 
     // Equity + liabilities: 2440 leverantörsskulder (250) + 2611 utgående moms (250) = 500
-    // Amounts are sign-normalized by normalBalanceSide (credit-normal → positive).
+    // Balance-sheet totals follow the same sign convention as closing balances: liabilities/equity are negative.
     // Note: totals don't balance because the income–expense result (800) hasn't been posted to equity.
-    assertEquals(500.00G, equityAndLiabilitiesTotal)
+    assertEquals(-500.00G, equityAndLiabilitiesTotal)
   }
 
   private void bookFixtures() {

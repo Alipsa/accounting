@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
@@ -21,7 +22,13 @@ import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.ImportJobStatus
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.ReportResult
+import se.alipsa.accounting.domain.report.ReportSelection
+import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.nio.file.Path
 import java.time.LocalDate
@@ -32,15 +39,19 @@ class SieImportExportServiceTest {
   Path tempDir
 
   private String previousHome
+  private Locale previousLocale
 
   @BeforeEach
   void setUp() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    previousLocale = I18n.instance.locale
+    I18n.instance.setLocale(Locale.forLanguageTag('sv'))
   }
 
   @AfterEach
   void tearDown() {
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    I18n.instance.setLocale(previousLocale)
   }
 
   @Test
@@ -201,7 +212,11 @@ class SieImportExportServiceTest {
   @Test
   void realSieFileCanBeImportedSuccessfully() {
     URL resource = getClass().getResource('/sie/Test_HB-2025.SE')
+    URL balanceResource = getClass().getResource('/report/Test_HB_Balansrapport Bokslut 202512.xlsx')
+    URL incomeResource = getClass().getResource('/report/Test_HB_Resultatrapport Bokslut 202512.xlsx')
     assumeTrue(resource != null, 'Test SIE file not present, skipping')
+    assumeTrue(balanceResource != null, 'Balance sheet fixture not present, skipping')
+    assumeTrue(incomeResource != null, 'Income statement fixture not present, skipping')
     Path sieFile = Path.of(resource.toURI())
 
     switchHome(tempDir.resolve('real-import-db'))
@@ -227,6 +242,67 @@ class SieImportExportServiceTest {
     assertTrue(result.accountsCreated > 0)
     assertTrue(result.job.errorLog == null || result.job.errorLog.isEmpty(),
         "Unexpected warnings in import: ${result.job.errorLog}")
+
+    ReportDataService reportDataService = createReportDataService(databaseService)
+    ReportSelection fullYearSelection = new ReportSelection(
+        ReportType.BALANCE_SHEET,
+        result.fiscalYear.id,
+        null,
+        result.fiscalYear.startDate,
+        result.fiscalYear.endDate
+    )
+    ReportResult balanceReport = reportDataService.generate(fullYearSelection)
+    ReportResult incomeReport = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        result.fiscalYear.id,
+        null,
+        result.fiscalYear.startDate,
+        result.fiscalYear.endDate
+    ))
+
+    Map<String, BigDecimal> expectedBalance = expectedBalanceFixtureAmounts()
+    Map<String, BigDecimal> actualBalance = balanceAmounts(balanceReport)
+    Map<String, BigDecimal> expectedIncome = expectedIncomeFixtureAmounts()
+    Map<String, BigDecimal> actualIncome = incomeAmounts(incomeReport)
+
+    assertEquals(expectedBalance['1630'], actualBalance['1630'])
+    assertEquals(expectedBalance['1910'], actualBalance['1910'])
+    assertEquals(expectedBalance['1920'], actualBalance['1920'])
+    assertEquals(expectedBalance['1925'], actualBalance['1925'])
+    assertNull(actualBalance['1940'])
+    assertEquals(expectedBalance['Summa fordringar'], actualBalance['Övriga kortfristiga fordringar'])
+    assertEquals(expectedBalance['Summa kassa och bank'], actualBalance['Kassa och bank'])
+    assertEquals(expectedBalance['Summa omsättningstillgångar'], actualBalance['Omsättningstillgångar'])
+    assertEquals(expectedBalance['2010'], actualBalance['2010'])
+    assertEquals(expectedBalance['2011'], actualBalance['2011'])
+    assertEquals(expectedBalance['Summa eget kapital'], actualBalance['Eget kapital'])
+    assertEquals(expectedBalance['2650'], actualBalance['2650'])
+    assertEquals(expectedBalance['Summa kortfristiga skulder'], actualBalance['Kortfristiga skulder'])
+    assertEquals(expectedBalance['SUMMA TILLGÅNGAR'], balanceReport.templateModel.assetTotal)
+    assertEquals(expectedBalance['SUMMA EGET OCH FRÄMMANDE KAPITAL'], balanceReport.templateModel.equityAndLiabilitiesTotal)
+
+    assertEquals(expectedIncome['3043'], actualIncome['3043'])
+    assertEquals(expectedIncome['3305'], actualIncome['3305'])
+    assertEquals(expectedIncome['3740'], actualIncome['3740'])
+    assertEquals(expectedIncome['4515'], actualIncome['4515'])
+    assertEquals(expectedIncome['4531'], actualIncome['4531'])
+    assertEquals(expectedIncome['4535'], actualIncome['4535'])
+    assertEquals(expectedIncome['4545'], actualIncome['4545'])
+    assertEquals(expectedIncome['4599'], actualIncome['4599'])
+    assertEquals(expectedIncome['5420'], actualIncome['5420'])
+    assertEquals(expectedIncome['5915'], actualIncome['5915'])
+    assertEquals(expectedIncome['6540'], actualIncome['6540'])
+    assertEquals(expectedIncome['8311'], actualIncome['8311'])
+    assertEquals(expectedIncome['8314'], actualIncome['8314'])
+    assertEquals(expectedIncome['8423'], actualIncome['8423'])
+    assertEquals(expectedIncome['SUMMA RÖRELSEINTÄKTER'], actualIncome['SUMMA RÖRELSEINTÄKTER'])
+    assertEquals(expectedIncome['SUMMA RÖRELSEKOSTNADER'], actualIncome['SUMMA RÖRELSEKOSTNADER'])
+    assertEquals(expectedIncome['Rörelseresultat'], actualIncome['Rörelseresultat'])
+    assertEquals(expectedIncome['Summa finansiella poster'], actualIncome['Summa finansiella poster'])
+    assertEquals(expectedIncome['Resultat efter finansiella poster'], actualIncome['Resultat efter finansiella poster'])
+    assertEquals(expectedIncome['Resultat före skatt'], actualIncome['Resultat före skatt'])
+    assertEquals(expectedIncome['ÅRETS RESULTAT'], actualIncome['ÅRETS RESULTAT'])
+    assertEquals(expectedIncome['ÅRETS RESULTAT'], incomeReport.templateModel.result)
   }
 
   @Test
@@ -342,6 +418,75 @@ class SieImportExportServiceTest {
         reportIntegrityService,
         auditLogService
     )
+  }
+
+  private ReportDataService createReportDataService(DatabaseService databaseService) {
+    AuditLogService auditLogService = new AuditLogService(databaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
+    new ReportDataService(databaseService, fiscalYearService, accountingPeriodService)
+  }
+
+  private static Map<String, BigDecimal> balanceAmounts(ReportResult report) {
+    List<BalanceSheetRow> rows = report.templateModel.typedRows as List<BalanceSheetRow>
+    rows.findAll { BalanceSheetRow row -> row.amount != null }.collectEntries { BalanceSheetRow row ->
+      String label = row.accountNumber ?: row.subgroupDisplayName
+      [(label): row.amount]
+    } as Map<String, BigDecimal>
+  }
+
+  private static Map<String, BigDecimal> incomeAmounts(ReportResult report) {
+    List<IncomeStatementRow> rows = report.templateModel.typedRows as List<IncomeStatementRow>
+    rows.findAll { IncomeStatementRow row -> row.amount != null }.collectEntries { IncomeStatementRow row ->
+      String label = row.displayLabel ==~ /^\d+ .+/ ? row.displayLabel.split(' ', 2)[0] : row.displayLabel
+      [(label): row.amount]
+    } as Map<String, BigDecimal>
+  }
+
+  private static Map<String, BigDecimal> expectedBalanceFixtureAmounts() {
+    [
+        '1630'                           : 620.00G,
+        '1910'                           : 10.00G,
+        '1920'                           : 10973.10G,
+        '1925'                           : 1020.64G,
+        '1940'                           : 0.00G,
+        'Summa fordringar'               : 620.00G,
+        'Summa kassa och bank'           : 12003.74G,
+        'Summa omsättningstillgångar'    : 12623.74G,
+        '2010'                           : -226687.16G,
+        '2011'                           : 208740.42G,
+        'Summa eget kapital'             : -17946.74G,
+        '2650'                           : 5323.00G,
+        'Summa kortfristiga skulder'     : 5323.00G,
+        'SUMMA TILLGÅNGAR'               : 12623.74G,
+        'SUMMA EGET OCH FRÄMMANDE KAPITAL': -12623.74G
+    ]
+  }
+
+  private static Map<String, BigDecimal> expectedIncomeFixtureAmounts() {
+    [
+        '3043'                          : 4905.66G,
+        '3305'                          : 446662.45G,
+        '3740'                          : 1.49G,
+        '4515'                          : -9064.02G,
+        '4531'                          : -45145.91G,
+        '4535'                          : -577.53G,
+        '4545'                          : -4131.79G,
+        '4599'                          : 58919.25G,
+        '5420'                          : -15139.72G,
+        '5915'                          : -4068.00G,
+        '6540'                          : -48630.41G,
+        '8311'                          : 627.37G,
+        '8314'                          : 73.00G,
+        '8423'                          : -119.00G,
+        'SUMMA RÖRELSEINTÄKTER'         : 451569.60G,
+        'SUMMA RÖRELSEKOSTNADER'        : -90146.32G,
+        'Rörelseresultat'               : 361423.28G,
+        'Summa finansiella poster'      : 581.37G,
+        'Resultat efter finansiella poster': 362004.65G,
+        'Resultat före skatt'           : 362004.65G,
+        'ÅRETS RESULTAT'                : 362004.65G
+    ]
   }
 
   private Path writeSimpleSie(Path filePath, String accountNumber, String accountName) {

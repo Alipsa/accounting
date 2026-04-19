@@ -1,5 +1,11 @@
 package se.alipsa.accounting.service
 
+import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccountClass
+import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccountClassFromAccountNumber
+import static se.alipsa.accounting.service.ReportAccountSupport.inferNormalBalanceSide
+import static se.alipsa.accounting.service.ReportAccountSupport.resolveSignedMovementNormalSide
+import static se.alipsa.accounting.service.ReportAccountSupport.shouldExcludeFromIncomeStatement
+
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
@@ -378,6 +384,9 @@ final class ReportDataService {
         log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från resultatrapporten.")
         return
       }
+      if (shouldExcludeFromIncomeStatement(accountNumber, subgroup)) {
+        return
+      }
       String incomeAccountClass = resolveIncomeAccountClass(accountNumber, info, subgroup)
       if (!(incomeAccountClass in ['INCOME', 'EXPENSE'])) {
         return
@@ -482,34 +491,6 @@ final class ReportDataService {
     throw new IllegalStateException("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida för rapportering.")
   }
 
-  private static String inferIncomeAccountClass(AccountSubgroup subgroup) {
-    switch (subgroup) {
-      case AccountSubgroup.NET_REVENUE:
-      case AccountSubgroup.INVOICED_COSTS:
-      case AccountSubgroup.SECONDARY_INCOME:
-      case AccountSubgroup.REVENUE_ADJUSTMENTS:
-      case AccountSubgroup.CAPITALIZED_WORK:
-      case AccountSubgroup.OTHER_OPERATING_INCOME:
-      case AccountSubgroup.FINANCIAL_INCOME:
-        return 'INCOME'
-      case AccountSubgroup.RAW_MATERIALS:
-      case AccountSubgroup.OTHER_EXTERNAL_COSTS:
-      case AccountSubgroup.PERSONNEL_COSTS:
-      case AccountSubgroup.DEPRECIATION:
-      case AccountSubgroup.OTHER_OPERATING_COSTS:
-      case AccountSubgroup.FINANCIAL_COSTS:
-      case AccountSubgroup.APPROPRIATIONS:
-      case AccountSubgroup.TAX_AND_RESULT:
-        return 'EXPENSE'
-      default:
-        return null
-    }
-  }
-
-  private static String inferIncomeAccountClassFromAccountNumber(String accountNumber) {
-    inferIncomeAccountClass(AccountSubgroup.fromAccountNumber(accountNumber))
-  }
-
   private static String resolveTrialBalanceNormalSide(String accountNumber, AccountInfo info) {
     String stored = info.normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
     if (stored) {
@@ -533,22 +514,10 @@ final class ReportDataService {
     throw new IllegalStateException("Konto ${accountNumber} (${info.accountName}) saknar normal balanssida för rapportering.")
   }
 
-  private static String inferNormalBalanceSide(String accountClass) {
-    switch (accountClass) {
-      case 'INCOME':
-        return 'CREDIT'
-      case 'EXPENSE':
-        return 'DEBIT'
-      default:
-        return null
-    }
-  }
-
   private static String summaryLabel(String prefix, String displayName) {
-    if (!displayName) {
-      return prefix
-    }
-    "${prefix} ${displayName.substring(0, 1).toLowerCase(I18n.instance.locale)}${displayName.substring(1)}".toString()
+    displayName
+        ? "${prefix} ${displayName.substring(0, 1).toLowerCase(I18n.instance.locale)}${displayName.substring(1)}".toString()
+        : prefix
   }
 
   private static String sectionHeaderLabel(IncomeStatementSection section) {
@@ -567,9 +536,7 @@ final class ReportDataService {
   }
 
   private static String computedSectionLabel(IncomeStatementSection section) {
-    section == IncomeStatementSection.NET_RESULT
-        ? section.displayName.toUpperCase(I18n.instance.locale)
-        : section.displayName
+    section == IncomeStatementSection.NET_RESULT ? section.displayName.toUpperCase(I18n.instance.locale) : section.displayName
   }
 
   private static boolean shouldAddIncomeGroupHeader(IncomeStatementSection section, List<AccountDetail> accounts) {
@@ -617,7 +584,7 @@ final class ReportDataService {
     databaseService.withSql { Sql sql ->
       Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
       Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
-      Map<String, BigDecimal> movements = loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
+      Map<String, BigDecimal> movements = loadBalanceSheetMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
 
       Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
       List<String> skippedAccounts = []
@@ -950,7 +917,9 @@ final class ReportDataService {
     Map<String, BigDecimal> movements = [:]
     sql.rows('''
         select a.account_number as accountNumber,
+               a.account_class as accountClass,
                a.normal_balance_side as normalBalanceSide,
+               a.account_subgroup as accountSubgroup,
                sum(vl.debit_amount) as debitAmount,
                sum(vl.credit_amount) as creditAmount
           from voucher v
@@ -959,16 +928,18 @@ final class ReportDataService {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
-         group by a.account_number, a.normal_balance_side
+         group by a.account_number, a.account_class, a.normal_balance_side, a.account_subgroup
     ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
-      movements.put(
-          row.get('accountNumber') as String,
-          signedAmount(
-              new BigDecimal(row.get('debitAmount').toString()),
-              new BigDecimal(row.get('creditAmount').toString()),
-              row.get('normalBalanceSide') as String
+      movements.put(row.get('accountNumber') as String, signedAmount(
+          new BigDecimal(row.get('debitAmount').toString()),
+          new BigDecimal(row.get('creditAmount').toString()),
+          resolveSignedMovementNormalSide(
+              row.get('accountNumber') as String,
+              row.get('normalBalanceSide') as String,
+              row.get('accountClass') as String,
+              row.get('accountSubgroup') as String
           )
-      )
+      ))
     }
     movements
   }
@@ -993,6 +964,35 @@ final class ReportDataService {
       ))
     }
     totals
+  }
+
+  private static Map<String, BigDecimal> loadBalanceSheetMovements(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
+    if (endDate.isBefore(startDate)) {
+      return [:]
+    }
+    Map<String, BigDecimal> movements = [:]
+    sql.rows('''
+        select a.account_number as accountNumber,
+               sum(vl.debit_amount) as debitAmount,
+               sum(vl.credit_amount) as creditAmount
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+           and v.accounting_date between ? and ?
+           and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
+         group by a.account_number
+    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
+      movements.put(
+          row.get('accountNumber') as String,
+          scale(
+              new BigDecimal(row.get('debitAmount').toString()) -
+              new BigDecimal(row.get('creditAmount').toString())
+          )
+      )
+    }
+    movements
   }
 
   private static List<PostingLine> loadPostingLines(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
