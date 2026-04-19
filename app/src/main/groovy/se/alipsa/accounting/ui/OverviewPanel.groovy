@@ -20,23 +20,28 @@ import java.awt.Insets
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.ExecutionException
 
 import javax.swing.BorderFactory
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JSeparator
 import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
 import javax.swing.UIManager
 import javax.swing.border.EtchedBorder
 
 /** Status dashboard shown on the Overview tab: company, fiscal year, vouchers, periods, backup, integrity. */
 final class OverviewPanel extends JPanel implements PropertyChangeListener {
 
+  private static final String LOCALE_PROPERTY = 'locale'
   private static final Color GREY = new Color(108, 117, 125)
   private static final Color RED = new Color(220, 53, 69)
   private static final Color GREEN = new Color(25, 135, 84)
   private static final int BACKUP_WARN_DAYS = 60
+  private static final DateTimeFormatter BACKUP_DATE_FORMATTER = DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm')
 
   private final VoucherService voucherService
   private final AccountingPeriodService accountingPeriodService
@@ -45,7 +50,11 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager
 
   private boolean integrityChecked = false
+  private boolean integrityCheckStarted = false
   private boolean integrityOk = false
+  private boolean listenersRegistered = false
+  private int reloadRequestId = 0
+  private OverviewSnapshot currentSnapshot = OverviewSnapshot.empty()
 
   // Header strip labels
   private final JLabel companyTitleLabel = new JLabel()
@@ -83,25 +92,111 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     this.backupService = backupService
     this.startupVerificationService = startupVerificationService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListeners()
     buildUi()
-    reload()
+    applyLocale()
+    renderSnapshot()
+    SwingUtilities.invokeLater { reload() }
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
   }
 
   @Override
   void propertyChange(PropertyChangeEvent evt) {
-    if ('locale' == evt.propertyName) {
-      SwingUtilities.invokeLater { reload() }
-    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+    if (LOCALE_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater {
+        applyLocale()
+        renderSnapshot()
+      }
+    } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName
+        || ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater { reload() }
     }
   }
 
   void reload() {
+    if (!SwingUtilities.isEventDispatchThread()) {
+      SwingUtilities.invokeLater { reload() }
+      return
+    }
+
     applyLocale()
+    final int requestId = ++reloadRequestId
     Company company = activeCompanyManager.activeCompany
     FiscalYear fiscalYear = activeCompanyManager.fiscalYear
+
+    if (company == null) {
+      currentSnapshot = OverviewSnapshot.withoutCompany(currentIntegrityStatus())
+      renderSnapshot()
+      return
+    }
+
+    if (fiscalYear == null) {
+      currentSnapshot = OverviewSnapshot.withoutFiscalYear(company, currentIntegrityStatus())
+      renderSnapshot()
+      return
+    }
+
+    currentSnapshot = OverviewSnapshot.loading(company, fiscalYear, currentIntegrityStatus())
+    renderSnapshot()
+
+    final boolean runIntegrityCheck = !integrityChecked && !integrityCheckStarted
+    if (runIntegrityCheck) {
+      integrityCheckStarted = true
+    }
+
+    new SwingWorker<OverviewSnapshot, Void>() {
+      @Override
+      protected OverviewSnapshot doInBackground() {
+        int count = voucherService.countVouchers(company.id, fiscalYear.id)
+        List<AccountingPeriod> periods = accountingPeriodService.listPeriods(fiscalYear.id)
+        int locked = periods.count { AccountingPeriod period -> period.locked } as int
+        List<BackupSummary> backups = backupService.listBackups(1)
+        BackupSummary latestBackup = backups.isEmpty() ? null : backups.first()
+        boolean warn = latestBackup != null && hasStaleBackupWithNewVouchers(company.id, latestBackup.createdAt)
+        Boolean loadedIntegrity = runIntegrityCheck ? startupVerificationService.verify().ok : currentIntegrityStatus()
+        new OverviewSnapshot(company, fiscalYear, count, locked, periods.size(), latestBackup?.createdAt, warn, loadedIntegrity)
+      }
+
+      @Override
+      protected void done() {
+        try {
+          OverviewSnapshot snapshot = get()
+          if (requestId != reloadRequestId) {
+            return
+          }
+          currentSnapshot = snapshot
+          if (runIntegrityCheck && snapshot.integrityOk != null) {
+            integrityOk = snapshot.integrityOk
+            integrityChecked = true
+          }
+          renderSnapshot()
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+        } catch (ExecutionException ignored) {
+          // Keep the last rendered state and allow a future reload to retry.
+        } finally {
+          if (runIntegrityCheck) {
+            integrityCheckStarted = false
+          }
+        }
+      }
+    }.execute()
+  }
+
+  private void renderSnapshot() {
+    Company company = currentSnapshot.company
+    FiscalYear fiscalYear = currentSnapshot.fiscalYear
 
     if (company == null) {
       clearStatCards()
@@ -109,6 +204,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       orgNumberLabel.text = ''
       fiscalYearNameLabel.text = I18n.instance.getString('overviewPanel.card.noData')
       fiscalYearDetailLabel.text = ''
+      updateIntegrityCard(currentSnapshot.integrityOk)
       return
     }
 
@@ -119,6 +215,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       fiscalYearNameLabel.text = I18n.instance.getString('overviewPanel.card.noData')
       fiscalYearDetailLabel.text = ''
       clearStatCards()
+      updateIntegrityCard(currentSnapshot.integrityOk)
       return
     }
 
@@ -133,39 +230,31 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     }
     fiscalYearDetailLabel.text = "${fiscalYear.startDate} \u2013 ${fiscalYear.endDate}  \u00b7  ${statusText}"
 
-    // Vouchers
-    int count = voucherService.countVouchers(company.id, fiscalYear.id)
-    voucherValueLabel.text = String.valueOf(count)
+    if (currentSnapshot.voucherCount == null) {
+      clearStatCards()
+      updateIntegrityCard(currentSnapshot.integrityOk)
+      return
+    }
+
+    voucherValueLabel.text = String.valueOf(currentSnapshot.voucherCount)
     voucherSubLabel.text = I18n.instance.getString('overviewPanel.card.vouchers.subtitle')
 
-    // Accounting periods
-    List<AccountingPeriod> periods = accountingPeriodService.listPeriods(fiscalYear.id)
-    int locked = periods.count { AccountingPeriod p -> p.locked } as int
-    int total = periods.size()
-    periodsValueLabel.text = "${locked} / ${total}"
+    periodsValueLabel.text = "${currentSnapshot.lockedPeriods} / ${currentSnapshot.totalPeriods}"
     periodsSubLabel.text = I18n.instance.getString('overviewPanel.card.periods.subtitle')
 
-    // Backup
-    updateBackupCard(company.id)
-
-    // Integrity — run once per session
-    if (!integrityChecked) {
-      integrityOk = startupVerificationService.verify().ok
-      integrityChecked = true
-    }
-    updateIntegrityCard()
+    updateBackupCard(currentSnapshot.backupCreatedAt, currentSnapshot.backupWarn)
+    updateIntegrityCard(currentSnapshot.integrityOk)
   }
 
-  private void updateBackupCard(long companyId) {
-    List<BackupSummary> backups = backupService.listBackups(1)
-    if (backups.isEmpty()) {
+  private void updateBackupCard(LocalDateTime createdAt, boolean warn) {
+    if (createdAt == null) {
       backupValueLabel.text = I18n.instance.getString('overviewPanel.card.backup.never')
       backupValueLabel.foreground = GREY
       backupSubLabel.text = ''
+      backupSubLabel.foreground = GREY
       return
     }
-    BackupSummary latest = backups.first()
-    LocalDateTime createdAt = latest.createdAt
+
     LocalDateTime now = LocalDateTime.now()
     long daysAgo = ChronoUnit.DAYS.between(createdAt, now)
 
@@ -178,9 +267,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       ageText = I18n.instance.format('overviewPanel.card.backup.daysAgo', daysAgo)
     }
 
-    boolean warn = daysAgo > BACKUP_WARN_DAYS && voucherService.hasVouchersCreatedAfter(companyId, createdAt)
-
-    String dateText = createdAt.toString().replace('T', ' ').substring(0, 16)
+    String dateText = BACKUP_DATE_FORMATTER.format(createdAt)
     if (warn) {
       backupValueLabel.foreground = RED
       backupSubLabel.foreground = RED
@@ -192,9 +279,12 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     backupSubLabel.text = ageText
   }
 
-  private void updateIntegrityCard() {
+  private void updateIntegrityCard(Boolean value) {
     integritySubLabel.text = I18n.instance.getString('overviewPanel.card.integrity.subtitle')
-    if (integrityOk) {
+    if (value == null) {
+      integrityValueLabel.text = I18n.instance.getString('overviewPanel.card.noData')
+      integrityValueLabel.foreground = UIManager.getColor('Label.foreground') ?: Color.BLACK
+    } else if (value) {
       integrityValueLabel.text = I18n.instance.getString('overviewPanel.card.integrity.ok')
       integrityValueLabel.foreground = GREEN
     } else {
@@ -222,6 +312,33 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     periodsCardTitle.text = I18n.instance.getString('overviewPanel.card.periods').toUpperCase(locale)
     backupCardTitle.text = I18n.instance.getString('overviewPanel.card.backup').toUpperCase(locale)
     integrityCardTitle.text = I18n.instance.getString('overviewPanel.card.integrity').toUpperCase(locale)
+  }
+
+  private Boolean currentIntegrityStatus() {
+    integrityChecked ? integrityOk : null
+  }
+
+  private boolean hasStaleBackupWithNewVouchers(long companyId, LocalDateTime createdAt) {
+    long daysAgo = ChronoUnit.DAYS.between(createdAt, LocalDateTime.now())
+    daysAgo > BACKUP_WARN_DAYS && voucherService.hasVouchersCreatedAfter(companyId, createdAt)
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
+    listenersRegistered = false
   }
 
   private void buildUi() {
@@ -320,5 +437,53 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     card.add(valueLabel)
     card.add(subLabel)
     card
+  }
+
+  private static final class OverviewSnapshot {
+
+    final Company company
+    final FiscalYear fiscalYear
+    final Integer voucherCount
+    final int lockedPeriods
+    final int totalPeriods
+    final LocalDateTime backupCreatedAt
+    final boolean backupWarn
+    final Boolean integrityOk
+
+    OverviewSnapshot(
+        Company company,
+        FiscalYear fiscalYear,
+        Integer voucherCount,
+        int lockedPeriods,
+        int totalPeriods,
+        LocalDateTime backupCreatedAt,
+        boolean backupWarn,
+        Boolean integrityOk
+    ) {
+      this.company = company
+      this.fiscalYear = fiscalYear
+      this.voucherCount = voucherCount
+      this.lockedPeriods = lockedPeriods
+      this.totalPeriods = totalPeriods
+      this.backupCreatedAt = backupCreatedAt
+      this.backupWarn = backupWarn
+      this.integrityOk = integrityOk
+    }
+
+    static OverviewSnapshot empty() {
+      new OverviewSnapshot(null, null, null, 0, 0, null, false, null)
+    }
+
+    static OverviewSnapshot withoutCompany(Boolean integrityOk) {
+      new OverviewSnapshot(null, null, null, 0, 0, null, false, integrityOk)
+    }
+
+    static OverviewSnapshot withoutFiscalYear(Company company, Boolean integrityOk) {
+      new OverviewSnapshot(company, null, null, 0, 0, null, false, integrityOk)
+    }
+
+    static OverviewSnapshot loading(Company company, FiscalYear fiscalYear, Boolean integrityOk) {
+      new OverviewSnapshot(company, fiscalYear, null, 0, 0, null, false, integrityOk)
+    }
   }
 }

@@ -10,6 +10,7 @@ import se.alipsa.accounting.domain.VoucherStatus
 
 import java.math.RoundingMode
 import java.sql.Date
+import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -301,6 +302,7 @@ final class VoucherService {
   int countVouchers(long companyId, long fiscalYearId) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
+      requireFiscalYearBelongsToCompany(sql, companyId, fiscalYearId)
       GroovyRowResult row = sql.firstRow('''
           select count(*) as cnt
             from voucher
@@ -312,6 +314,9 @@ final class VoucherService {
     }
   }
 
+  /**
+   * Used by backup freshness checks, so the lookup intentionally spans all fiscal years for the company.
+   */
   boolean hasVouchersCreatedAfter(long companyId, LocalDateTime since) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
@@ -321,7 +326,7 @@ final class VoucherService {
            where company_id = ?
              and status in ('ACTIVE', 'CORRECTION')
              and created_at > ?
-      ''', [companyId, since])
+      ''', [companyId, Timestamp.valueOf(since)])
       ((Number) row.cnt).intValue() > 0
     }
   }
@@ -448,6 +453,13 @@ final class VoucherService {
     ) as GroovyRowResult
     if (((Number) row.get('total')).intValue() != 1) {
       throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+  }
+
+  private static void requireFiscalYearBelongsToCompany(Sql sql, long companyId, long fiscalYearId) {
+    long actualCompanyId = CompanyService.resolveFromFiscalYear(sql, fiscalYearId)
+    if (actualCompanyId != companyId) {
+      throw new IllegalArgumentException("Fiscal year ${fiscalYearId} does not belong to company ${companyId}.")
     }
   }
 

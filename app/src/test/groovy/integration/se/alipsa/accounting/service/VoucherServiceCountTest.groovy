@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
@@ -120,5 +121,14 @@ class VoucherServiceCountTest {
 
     LocalDateTime future = LocalDateTime.now().plusSeconds(5)
     assertFalse(voucherService.hasVouchersCreatedAfter(CompanyService.LEGACY_COMPANY_ID, future))
+  }
+
+  @Test
+  void countVouchersRejectsUnknownFiscalYear() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      voucherService.countVouchers(CompanyService.LEGACY_COMPANY_ID, Long.MAX_VALUE)
+    }
+
+    assertEquals("Okänt räkenskapsår: ${Long.MAX_VALUE}", exception.message)
   }
 }

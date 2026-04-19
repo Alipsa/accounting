@@ -311,7 +311,7 @@ final class MainFrame implements PropertyChangeListener {
       tabbedPane.addTab(tab.title as String, tab.component as JComponent)
     }
     tabbedPane.addChangeListener { javax.swing.event.ChangeEvent ignored ->
-      if (tabbedPane.selectedIndex == 0) {
+      if (tabbedPane.selectedComponent == overviewPanel) {
         overviewPanel.reload()
       }
     }
