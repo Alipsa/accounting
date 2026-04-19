@@ -148,7 +148,7 @@ final class MainFrame implements PropertyChangeListener {
 
   private JLabel statusLabel
   private JLabel companySummaryLabel
-  private JLabel overviewDescriptionLabel
+  private OverviewPanel overviewPanel
   private JLabel companyLabel
   private JComboBox<Company> companyComboBox
   private JComboBox<FiscalYear> fiscalYearComboBox
@@ -275,9 +275,6 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
     tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.system'))
     tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
-    String overviewTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
-    String overviewDesc = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
-    overviewDescriptionLabel.text = "<html><h2>${overviewTitle}</h2><p>${overviewDesc}</p></html>"
   }
 
   private JFrame buildFrame() {
@@ -312,6 +309,11 @@ final class MainFrame implements PropertyChangeListener {
     } as JFrame
     buildMainTabs().each { Map<String, Object> tab ->
       tabbedPane.addTab(tab.title as String, tab.component as JComponent)
+    }
+    tabbedPane.addChangeListener { javax.swing.event.ChangeEvent ignored ->
+      if (tabbedPane.selectedComponent == overviewPanel) {
+        overviewPanel.reload()
+      }
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
     f
@@ -528,16 +530,14 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private JPanel buildOverviewPanel() {
-    String safeTitle = escapeHtml(I18n.instance.getString('mainFrame.tab.overview'))
-    String safeDescription = escapeHtml(I18n.instance.getString('mainFrame.tab.overview.description'))
-    swing.panel(border: swing.emptyBorder(24, 24, 24, 24)) {
-      borderLayout()
-      overviewDescriptionLabel = label(
-          text: "<html><h2>${safeTitle}</h2><p>${safeDescription}</p></html>",
-          horizontalAlignment: SwingConstants.CENTER,
-          constraints: BorderLayout.CENTER
-      )
-    } as JPanel
+    overviewPanel = new OverviewPanel(
+        voucherService,
+        accountingPeriodService,
+        backupService,
+        startupVerificationService,
+        activeCompanyManager
+    )
+    overviewPanel
   }
 
   private List<Map<String, Object>> buildMainTabs() {
