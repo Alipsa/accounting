@@ -25,7 +25,7 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 
 ### Avgränsningar
 
-Följande funktioner ingår inte i v1.0.0:
+Följande funktioner ingår inte i v1.0.x:
 
 - Fakturering och lön
 - Bankintegration
@@ -96,7 +96,7 @@ Kör alla kommandon från rotmappen.
 |---------------|----------------------------------|
 | Språk         | Groovy (`@CompileStatic`)        |
 | UI            | Swing                            |
-| Databas       | H2 (inbäddad)                   |
+| Databas       | H2 (inbäddad)                    |
 | PDF-rapporter | Journo (FreeMarker + HTML → PDF) |
 | SIE-parsning  | sie-reader                       |
 | Bygg          | Gradle 9.4                       |
@@ -132,11 +132,11 @@ Kör alla kommandon från rotmappen.
 
 Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre distributioner:
 
-| Fil | Plattform |
-|-----|-----------|
-| `alipsa-accounting-<version>-linux.zip` | Linux — app-image och `.desktop`-fil |
-| `AlipsaAccounting-<version>.exe` | Windows — installerare med meny- och skrivbordsgenväg |
-| `AlipsaAccounting-macos.zip` | macOS — `AlipsaAccounting.app` |
+| Fil                                     | Plattform                                             |
+|-----------------------------------------|-------------------------------------------------------|
+| `alipsa-accounting-<version>-linux.zip` | Linux — app-image och `.desktop`-fil                  |
+| `AlipsaAccounting-<version>.exe`        | Windows — installerare med meny- och skrivbordsgenväg |
+| `AlipsaAccounting-macos.zip`            | macOS — `AlipsaAccounting.app`                        |
 
 Varje distributionsfil åtföljs av två verifieringsfiler:
 
