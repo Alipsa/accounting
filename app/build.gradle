@@ -81,6 +81,18 @@ def jpackageExecutable = project.providers.gradleProperty('jpackage.executable')
       launcher.metadata.installationPath.file('bin/jpackage').asFile.absolutePath
     })
 
+def isNonStable = { String v ->
+  def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { v?.toUpperCase()?.contains(it) }
+  def regex = /^[0-9,.v-]+(-r)?$/
+  !stableKeyword && !(v ==~ regex)
+}
+
+tasks.named('dependencyUpdates') {
+  rejectVersionIf { s ->
+    isNonStable(s.candidate.version) && !isNonStable(s.currentVersion)
+  }
+}
+
 def buildJpackageArgs = { String platform, String type, File destinationDir, List<String> extraArgs = [] ->
   List<String> args = [
     '--type',
