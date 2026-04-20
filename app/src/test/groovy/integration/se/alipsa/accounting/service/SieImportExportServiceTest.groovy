@@ -334,6 +334,47 @@ class SieImportExportServiceTest {
     assertTrue(company == null || (company.name == null && company.orgIdentifier == null))
   }
 
+  @Test
+  void priorYearOpeningBalancesAreNotImported() {
+    switchHome(tempDir.resolve('yearNr-filter-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    CompanyService companyService = new CompanyService(databaseService)
+    companyService.save(new Company(
+        CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null
+    ))
+    SieImportExportService service = createSieService(databaseService)
+
+    Path sieFile = tempDir.resolve('multi-year.sie')
+    sieFile.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#RAR -1 20250101 20251231
+#KONTO 1920 "Bankgiro"
+#IB 0 1920 500.00
+#IB -1 1920 200.00
+"""
+
+    SieImportResult result = service.importFile(CompanyService.LEGACY_COMPANY_ID, sieFile)
+
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select ob.amount from opening_balance ob
+            join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ? and a.account_number = '1920'
+      ''', [result.fiscalYear.id])
+      assertNotNull(row, 'Opening balance row should exist for 1920')
+      assertEquals(500.00G, (BigDecimal) row.get('amount'))
+    }
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()

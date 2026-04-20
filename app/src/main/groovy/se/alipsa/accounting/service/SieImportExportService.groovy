@@ -84,9 +84,9 @@ final class SieImportExportService {
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
     SieDocument document = reader.readDocument(safePath.toString())
+    List<String> errors = reader.validationExceptions*.message.findAll() as List<String>
     if (document == null) {
-      List<String> errors = reader.validationExceptions*.message.findAll() ?: ['SIE-filen kunde inte läsas.']
-      throw new IllegalArgumentException(errors.join('\n'))
+      throw new IllegalArgumentException((errors ?: ['SIE-filen kunde inte läsas.']).join('\n'))
     }
     document.getFNAMN()
   }

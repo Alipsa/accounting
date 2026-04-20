@@ -99,13 +99,6 @@ class ReportAccountSupportTest {
   }
 
   @Test
-  void resolveThrowsWhenNothingResolves() {
-    assertThrows(IllegalStateException) {
-      ReportAccountSupport.resolveSignedMovementNormalSide('XXXX', null, null, null)
-    }
-  }
-
-  @Test
   void resolveThrowsWithDistinctMessageWhenSubgroupIsNull() {
     IllegalStateException ex = assertThrows(IllegalStateException) {
       ReportAccountSupport.resolveSignedMovementNormalSide('XXXX', null, null, null)

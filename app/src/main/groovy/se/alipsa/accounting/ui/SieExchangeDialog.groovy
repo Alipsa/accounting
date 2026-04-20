@@ -23,6 +23,7 @@ import java.awt.Insets
 import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ExecutionException
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -46,6 +47,7 @@ import javax.swing.table.AbstractTableModel
  */
 final class SieExchangeDialog extends JDialog {
 
+  private static final Logger log = Logger.getLogger(SieExchangeDialog.name)
   private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm')
 
   private static final long CANCELLED = -1L
@@ -269,18 +271,23 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private long createCompanyFromSie(SieCompany sieCompany) {
-    Company newCompany = companyService.save(new Company(
-        null,
-        sieCompany.name.trim(),
-        sieCompany.orgIdentifier.trim(),
-        'SEK',
-        'sv-SE',
-        VatPeriodicity.MONTHLY,
-        true,
-        null,
-        null
-    ))
-    newCompany.id
+    try {
+      Company newCompany = companyService.save(new Company(
+          null,
+          sieCompany.name.trim(),
+          sieCompany.orgIdentifier.trim(),
+          'SEK',
+          'sv-SE',
+          VatPeriodicity.MONTHLY,
+          true,
+          null,
+          null
+      ))
+      newCompany.id
+    } catch (Exception ex) {
+      throw new IllegalStateException(
+          I18n.instance.format('sieExchangeDialog.company.createFailed', sieCompany.name?.trim()), ex)
+    }
   }
 
   private void doImport(Path selectedPath, long targetCompanyId) {
@@ -305,7 +312,7 @@ final class SieExchangeDialog extends JDialog {
             try {
               onImportSuccess?.run()
             } catch (Exception callbackEx) {
-              showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), null)
+              showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), callbackEx.message)
             }
           }
         } catch (InterruptedException exception) {
@@ -336,6 +343,7 @@ final class SieExchangeDialog extends JDialog {
     }
     // Neither org number nor name available for comparison — default to match
     // to avoid blocking import for sparsely-populated companies.
+    log.warning("Företagsjämförelse hoppades över: varken org.nr eller namn tillgängligt för båda parter.")
     true
   }
 
