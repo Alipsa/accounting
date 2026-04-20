@@ -11,6 +11,7 @@ final class UserPreferencesService {
 
   private static final String LANGUAGE_KEY = 'ui.language'
   private static final String THEME_KEY = 'ui.theme'
+  private static final String UPDATE_CHECK_ENABLED_KEY = 'update.autoCheckEnabled'
 
   private final Preferences preferences = Preferences.userNodeForPackage(UserPreferencesService)
 
@@ -33,6 +34,18 @@ final class UserPreferencesService {
       preferences.remove(THEME_KEY)
     } else {
       preferences.put(THEME_KEY, mode.name())
+    }
+  }
+
+  boolean isAutomaticUpdateCheckEnabled() {
+    preferences.getBoolean(UPDATE_CHECK_ENABLED_KEY, true)
+  }
+
+  void setAutomaticUpdateCheckEnabled(boolean enabled) {
+    if (enabled) {
+      preferences.remove(UPDATE_CHECK_ENABLED_KEY)
+    } else {
+      preferences.putBoolean(UPDATE_CHECK_ENABLED_KEY, false)
     }
   }
 }

@@ -78,6 +78,19 @@ final class SieImportExportService {
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
   }
+
+  SieCompany peekSieCompany(Path filePath) {
+    Path safePath = validateImportPath(filePath)
+    SieDocumentReader reader = new SieDocumentReader()
+    reader.throwErrors = false
+    SieDocument document = reader.readDocument(safePath.toString())
+    List<String> errors = reader.validationExceptions*.message.findAll() as List<String>
+    if (document == null) {
+      throw new IllegalArgumentException((errors ?: ['SIE-filen kunde inte läsas.']).join('\n'))
+    }
+    document.getFNAMN()
+  }
+
   SieImportResult importFile(long companyId, Path filePath) {
     CompanyService.requireValidCompanyId(companyId)
     Path safePath = validateImportPath(filePath)
@@ -450,7 +463,7 @@ final class SieImportExportService {
   private static int persistOpeningBalances(Sql sql, long fiscalYearId, List<SiePeriodValue> balances, List<String> warnings) {
     long companyId = resolveCompanyId(sql, fiscalYearId)
     Map<String, BigDecimal> normalizedBalances = [:]
-    (balances ?: []).each { SiePeriodValue value ->
+    (balances ?: []).findAll { SiePeriodValue value -> value.yearNr == 0 }.each { SiePeriodValue value ->
       String accountNumber = normalizeAccountNumber(value.account?.number)
       if (!accountExists(sql, companyId, accountNumber)) {
         warnings << ("Ingående balans för konto ${accountNumber} hoppades över eftersom kontot inte finns." as String)
@@ -568,7 +581,7 @@ final class SieImportExportService {
     Map<String, BigDecimal> expected = loadClosingBalances(sql, fiscalYearId)
     Map<String, BigDecimal> seen = [:]
     List<String> warnings = []
-    (closingBalances ?: []).each { SiePeriodValue value ->
+    (closingBalances ?: []).findAll { SiePeriodValue value -> value.yearNr == 0 }.each { SiePeriodValue value ->
       String accountNumber = normalizeAccountNumber(value.account?.number)
       BigDecimal actual = scale(value.amount)
       BigDecimal expectedAmount = expected[accountNumber] ?: BigDecimal.ZERO.setScale(AMOUNT_SCALE)
@@ -601,7 +614,6 @@ final class SieImportExportService {
     Map<String, BigDecimal> movements = [:]
     sql.rows('''
         select vl.account_number as accountNumber,
-               a.normal_balance_side as normalBalanceSide,
                sum(vl.debit_amount) as debitAmount,
                sum(vl.credit_amount) as creditAmount
           from voucher v
@@ -610,12 +622,11 @@ final class SieImportExportService {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
-         group by vl.account_number, a.normal_balance_side
+         group by vl.account_number
     ''', [fiscalYearId]).each { GroovyRowResult row ->
-      movements[row.get('accountNumber') as String] = signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          row.get('normalBalanceSide') as String
+      movements[row.get('accountNumber') as String] = scale(
+          new BigDecimal(row.get('debitAmount').toString()) -
+          new BigDecimal(row.get('creditAmount').toString())
       )
     }
 
@@ -892,7 +903,7 @@ final class SieImportExportService {
         row.get('fiscalYearId') == null ? null : Long.valueOf(row.get('fiscalYearId').toString()),
         ImportJobStatus.valueOf(row.get('status') as String),
         row.get('summary') as String,
-        row.get('errorLog') as String,
+        SqlValueMapper.toClob(row.get('errorLog')),
         SqlValueMapper.toLocalDateTime(row.get('startedAt')),
         SqlValueMapper.toLocalDateTime(row.get('completedAt'))
     )
@@ -938,16 +949,6 @@ final class SieImportExportService {
         [companyId, accountNumber]
     ) as GroovyRowResult
     row?.get('accountClass') as String
-  }
-
-  private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
-    String safeNormalBalanceSide = normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
-    if (!safeNormalBalanceSide) {
-      throw new IllegalStateException('Kontot saknar normal balanssida för SIE-avstämning.')
-    }
-    safeNormalBalanceSide == 'DEBIT'
-        ? scale(debitAmount - creditAmount)
-        : scale(creditAmount - debitAmount)
   }
 
   private static long resolveCompanyId(Sql sql, long fiscalYearId) {

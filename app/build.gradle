@@ -4,10 +4,11 @@ plugins {
   id 'signing'
   id 'codenarc'
   id 'com.diffplug.spotless' version '8.4.0'
+  id 'com.github.ben-manes.versions' version '0.53.0'
 }
 
 group = 'se.alipsa'
-version = '1.0.0'
+version = '1.0.1'
 
 repositories {
   mavenLocal()
@@ -79,6 +80,18 @@ def jpackageExecutable = project.providers.gradleProperty('jpackage.executable')
     }.map { launcher ->
       launcher.metadata.installationPath.file('bin/jpackage').asFile.absolutePath
     })
+
+def isNonStable = { String v ->
+  def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { v?.toUpperCase()?.contains(it) }
+  def regex = /^[0-9,.v-]+(-r)?$/
+  !stableKeyword && !(v ==~ regex)
+}
+
+tasks.named('dependencyUpdates') {
+  rejectVersionIf { s ->
+    isNonStable(s.candidate.version) && !isNonStable(s.currentVersion)
+  }
+}
 
 def buildJpackageArgs = { String platform, String type, File destinationDir, List<String> extraArgs = [] ->
   List<String> args = [
@@ -157,7 +170,8 @@ tasks.named('jar', Jar) {
         'Implementation-Title': releaseConfig.displayName,
         'Implementation-Version': releaseConfig.version,
         'Implementation-Vendor': releaseConfig.vendor,
-        'Main-Class': releaseConfig.mainClassName.get()
+        'Main-Class': releaseConfig.mainClassName.get(),
+        'SplashScreen-Image': 'splash.png'
         )
   }
 }
@@ -174,6 +188,57 @@ tasks.register('generateReleaseMetadata') {
       "vendor=${releaseConfig.vendor}",
       "version=${releaseConfig.version}"
     ].join('\n') + '\n'
+  }
+}
+
+tasks.register('generateSplashImage') {
+  group = 'build'
+  description = 'Generates splash.png from the application logo using Java2D'
+  File splashOutput = layout.projectDirectory.file('src/main/resources/splash.png').asFile
+  File logoInput = layout.projectDirectory.file('src/main/resources/icons/logo128.png').asFile
+  inputs.file(logoInput)
+  outputs.file(splashOutput)
+  doLast {
+    System.setProperty('java.awt.headless', 'true')
+
+    if (!logoInput.exists()) {
+      throw new GradleException("Logo not found: ${logoInput.absolutePath}")
+    }
+
+    java.awt.image.BufferedImage logo = javax.imageio.ImageIO.read(logoInput)
+
+    int width = 480
+    int height = 300
+    java.awt.image.BufferedImage canvas = new java.awt.image.BufferedImage(
+        width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    java.awt.Graphics2D g = canvas.createGraphics()
+    try {
+      g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+          java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+      g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+          java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+
+      g.color = java.awt.Color.WHITE
+      g.fillRect(0, 0, width, height)
+
+      int logoX = (width - logo.width).intdiv(2)
+      int logoY = 50
+      g.drawImage(logo, logoX, logoY, null)
+
+      g.color = new java.awt.Color(60, 60, 60)
+      g.font = new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 18)
+      String text = 'Startar Alipsa Accounting...'
+      java.awt.FontMetrics fm = g.getFontMetrics()
+      int textX = (width - fm.stringWidth(text)).intdiv(2)
+      int textY = logoY + logo.height + 50
+      g.drawString(text, textX, textY)
+    } finally {
+      g.dispose()
+    }
+
+    splashOutput.parentFile.mkdirs()
+    javax.imageio.ImageIO.write(canvas, 'PNG', splashOutput)
+    println "Generated: ${splashOutput.absolutePath} (${width}x${height})"
   }
 }
 

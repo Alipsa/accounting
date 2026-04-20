@@ -15,6 +15,7 @@ class UserPreferencesThemeTest {
   @AfterEach
   void cleanup() {
     service.setTheme(null)
+    service.setAutomaticUpdateCheckEnabled(true)
   }
 
   @Test
@@ -37,5 +38,20 @@ class UserPreferencesThemeTest {
     service.setTheme(ThemeMode.DARK)
     service.setTheme(ThemeMode.SYSTEM)
     assertEquals(ThemeMode.SYSTEM, service.getTheme())
+  }
+
+  @Test
+  void automaticUpdateCheckDefaultsToEnabled() {
+    service.setAutomaticUpdateCheckEnabled(true)
+    assertEquals(true, service.isAutomaticUpdateCheckEnabled())
+  }
+
+  @Test
+  void roundTripsAutomaticUpdateCheckPreference() {
+    service.setAutomaticUpdateCheckEnabled(false)
+    assertEquals(false, service.isAutomaticUpdateCheckEnabled())
+
+    service.setAutomaticUpdateCheckEnabled(true)
+    assertEquals(true, service.isAutomaticUpdateCheckEnabled())
   }
 }

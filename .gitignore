@@ -10,3 +10,5 @@ build
 /.lca/
 /.claude/
 /.superpowers/
+/dist/
+.DS_Store

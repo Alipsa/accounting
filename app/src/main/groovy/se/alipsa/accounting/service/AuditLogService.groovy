@@ -14,7 +14,6 @@ import se.alipsa.accounting.domain.VoucherLine
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.sql.Clob
 import java.sql.Timestamp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -502,7 +501,7 @@ final class AuditLogService {
         longOrNull(row.get('vatPeriodId')),
         row.get('actor') as String,
         row.get('summary') as String,
-        readText(row.get('details')),
+        SqlValueMapper.toClob(row.get('details')),
         row.get('previousHash') as String,
         row.get('entryHash') as String,
         SqlValueMapper.toLocalDateTime(row.get('createdAt'))
@@ -565,17 +564,6 @@ final class AuditLogService {
     safeDetails.collect { String key, Object value ->
       "${key}=${value}"
     }.join('\n')
-  }
-
-  private static String readText(Object value) {
-    if (value == null) {
-      return null
-    }
-    if (value instanceof Clob) {
-      Clob clob = (Clob) value
-      return clob.getSubString(1L, (int) clob.length())
-    }
-    value.toString()
   }
 
   private static final class AuditReferences {
