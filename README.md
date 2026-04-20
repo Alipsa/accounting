@@ -92,16 +92,16 @@ Kör alla kommandon från rotmappen.
 
 ### Teknikstack
 
-| Komponent     | Teknologi                        |
-|---------------|----------------------------------|
-| Språk         | Groovy (`@CompileStatic`)        |
-| UI            | Swing                            |
-| Databas       | H2 (inbäddad)                    |
-| PDF-rapporter | Journo (FreeMarker + HTML → PDF) |
-| SIE-parsning  | sie-reader                       |
-| Bygg          | Gradle 9.4                       |
-| Kodstil       | Spotless + CodeNarc              |
-| Tester        | JUnit 6 + groovier-junit         |
+| Komponent     | Teknologi                               |
+|---------------|-----------------------------------------|
+| Språk         | Groovy (`@CompileStatic`)               |
+| UI            | Swing med flatlaf look and feel         |
+| Databas       | H2 (inbäddad)                           |
+| PDF-rapporter | Alipsa Journo (FreeMarker + HTML → PDF) |
+| SIE-parsning  | Alipsa SieParser                        |
+| Bygg          | Gradle 9.4                              |
+| Kodstil       | Spotless + CodeNarc                     |
+| Tester        | JUnit 6 + groovier-junit                |
 
 ## Drift och säkerhet
 
