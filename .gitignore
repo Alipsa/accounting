@@ -11,3 +11,4 @@ build
 /.claude/
 /.superpowers/
 /dist/
+.DS_Store
