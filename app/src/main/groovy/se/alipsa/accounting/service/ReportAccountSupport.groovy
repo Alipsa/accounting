@@ -75,7 +75,7 @@ final class ReportAccountSupport {
         ? AccountSubgroup.fromDatabaseValue(accountSubgroup)
         : AccountSubgroup.fromAccountNumber(accountNumber)
     if (subgroup == null) {
-      throw new IllegalStateException("Konto ${accountNumber} saknar normal balanssida för rapportering.")
+      throw new IllegalStateException("Konto ${accountNumber} saknar undergrupp och normal balanssida för rapportering.")
     }
     // BAS groups 10-19: asset accounts with DEBIT as normal balance side.
     if (subgroup.basGroupStart >= 10 && subgroup.basGroupEnd <= 19) {
@@ -89,6 +89,6 @@ final class ReportAccountSupport {
     if (normalized != null) {
       return normalized
     }
-    throw new IllegalStateException("Konto ${accountNumber} saknar normal balanssida för rapportering.")
+    throw new IllegalStateException("Konto ${accountNumber} kunde inte avgöra normal balanssida från undergrupp ${subgroup?.name()} för rapportering.")
   }
 }

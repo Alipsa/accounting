@@ -78,12 +78,17 @@ final class SieImportExportService {
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
   }
+
   SieCompany peekSieCompany(Path filePath) {
     Path safePath = validateImportPath(filePath)
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
     SieDocument document = reader.readDocument(safePath.toString())
-    document?.getFNAMN()
+    if (document == null) {
+      List<String> errors = reader.validationExceptions*.message.findAll() ?: ['SIE-filen kunde inte läsas.']
+      throw new IllegalArgumentException(errors.join('\n'))
+    }
+    document.getFNAMN()
   }
 
   SieImportResult importFile(long companyId, Path filePath) {

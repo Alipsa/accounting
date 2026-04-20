@@ -51,10 +51,13 @@ final class SqlValueMapper {
     if (value == null) {
       return null
     }
+    if (value instanceof String) {
+      return (String) value
+    }
     if (value instanceof Clob) {
       Clob clob = (Clob) value
       return clob.getSubString(1L, (int) clob.length())
     }
-    value.toString()
+    throw new IllegalStateException("Unsupported CLOB value: ${value.class.name}")
   }
 }

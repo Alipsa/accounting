@@ -18,10 +18,11 @@ final class SplashScreenTest {
 
   @Test
   void splashImageHasCorrectDimensions() {
-    InputStream stream = getClass().getResourceAsStream('/splash.png')
-    assertNotNull(stream, 'splash.png must be readable from the classpath')
-    BufferedImage image = ImageIO.read(stream)
-    assertEquals(480, image.width, 'splash width must be 480 px')
-    assertEquals(300, image.height, 'splash height must be 300 px')
+    getClass().getResourceAsStream('/splash.png').withStream { InputStream stream ->
+      assertNotNull(stream, 'splash.png must be readable from the classpath')
+      BufferedImage image = ImageIO.read(stream)
+      assertEquals(480, image.width, 'splash width must be 480 px')
+      assertEquals(300, image.height, 'splash height must be 300 px')
+    }
   }
 }

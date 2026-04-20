@@ -212,13 +212,18 @@ final class SieExchangeDialog extends JDialog {
           showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
           return
         }
-        long targetCompanyId = resolveImportTarget(sieCompany)
-        if (targetCompanyId == CANCELLED) {
+        try {
+          long targetCompanyId = resolveImportTarget(sieCompany)
+          if (targetCompanyId == CANCELLED) {
+            setWorkingState(false)
+            showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+            return
+          }
+          doImport(selectedPath, targetCompanyId)
+        } catch (Exception ex) {
           setWorkingState(false)
-          showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
-          return
+          showError(ex.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
         }
-        doImport(selectedPath, targetCompanyId)
       }
     }.execute()
   }
@@ -300,7 +305,7 @@ final class SieExchangeDialog extends JDialog {
             try {
               onImportSuccess?.run()
             } catch (Exception callbackEx) {
-              showError(callbackEx.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+              showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), null)
             }
           }
         } catch (InterruptedException exception) {
@@ -315,7 +320,7 @@ final class SieExchangeDialog extends JDialog {
     }.execute()
   }
 
-  private static boolean companiesMatch(Company company, SieCompany sieCompany) {
+  static boolean companiesMatch(Company company, SieCompany sieCompany) {
     if (sieCompany == null) {
       return true
     }
@@ -329,10 +334,12 @@ final class SieExchangeDialog extends JDialog {
     if (sieName && dbName) {
       return sieName == dbName
     }
+    // Neither org number nor name available for comparison — default to match
+    // to avoid blocking import for sparsely-populated companies.
     true
   }
 
-  private static String normalizeOrgNumber(String value) {
+  static String normalizeOrgNumber(String value) {
     value?.replaceAll(/[\s\-]/, '') ?: ''
   }
 
