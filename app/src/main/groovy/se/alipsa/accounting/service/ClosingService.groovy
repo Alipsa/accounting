@@ -191,9 +191,6 @@ final class ClosingService {
     if (hasClosingEntries(sql, fiscalYear.id)) {
       blockers << ("Räkenskapsåret ${fiscalYear.name} har redan bokslutsposter registrerade." as String)
     }
-    if (hasUnlockedPeriods(sql, fiscalYear.id)) {
-      blockers << 'Alla perioder måste vara låsta innan årsbokslut kan genomföras.'
-    }
     if (!integrityProblems.isEmpty()) {
       String summary = integrityProblems.take(3).join('\n')
       blockers << ("Integritetskontrollerna måste vara gröna före årsstängning:\n${summary}" as String)
@@ -537,16 +534,6 @@ final class ClosingService {
         plan.fiscalYear.startDate,
         plan.fiscalYear.endDate
     )
-  }
-
-  private static boolean hasUnlockedPeriods(Sql sql, long fiscalYearId) {
-    GroovyRowResult row = sql.firstRow('''
-        select count(*) as total
-          from accounting_period
-         where fiscal_year_id = ?
-           and locked = false
-    ''', [fiscalYearId]) as GroovyRowResult
-    ((Number) row.get('total')).intValue() > 0
   }
 
   private static boolean hasClosingEntries(Sql sql, long fiscalYearId) {

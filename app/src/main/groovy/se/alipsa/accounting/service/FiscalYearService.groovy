@@ -99,6 +99,12 @@ final class FiscalYearService {
     }
   }
 
+  FiscalYear reopenFiscalYear(long fiscalYearId) {
+    databaseService.withTransaction { Sql sql ->
+      reopenFiscalYear(sql, fiscalYearId)
+    }
+  }
+
   void deleteFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       FiscalYear year = findById(sql, fiscalYearId)
@@ -171,15 +177,6 @@ final class FiscalYearService {
     if (year.closed) {
       return findById(sql, fiscalYearId)
     }
-    GroovyRowResult row = sql.firstRow('''
-        select count(*) as total
-          from accounting_period
-         where fiscal_year_id = ?
-           and locked = false
-    ''', [fiscalYearId]) as GroovyRowResult
-    if (((Number) row.get('total')).intValue() > 0) {
-      throw new IllegalStateException('Räkenskapsåret kan inte stängas förrän alla perioder är låsta.')
-    }
     sql.executeUpdate('''
                 update fiscal_year
                    set closed = true,
@@ -189,6 +186,26 @@ final class FiscalYearService {
     FiscalYear closedYear = findById(sql, fiscalYearId)
     auditLogService.recordFiscalYearClosed(sql, closedYear)
     closedYear
+  }
+
+  @PackageScope
+  FiscalYear reopenFiscalYear(Sql sql, long fiscalYearId) {
+    FiscalYear year = findById(sql, fiscalYearId)
+    if (year == null) {
+      throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+    }
+    if (!year.closed) {
+      return findById(sql, fiscalYearId)
+    }
+    sql.executeUpdate('''
+                update fiscal_year
+                   set closed = false,
+                       closed_at = null
+                 where id = ?
+            ''', [fiscalYearId])
+    FiscalYear reopenedYear = findById(sql, fiscalYearId)
+    auditLogService.recordFiscalYearReopened(sql, reopenedYear)
+    reopenedYear
   }
 
   private static void ensureNoOverlap(Sql sql, long companyId, LocalDate startDate, LocalDate endDate, String overlapMessage) {

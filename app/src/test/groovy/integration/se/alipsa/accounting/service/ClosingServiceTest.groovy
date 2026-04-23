@@ -103,10 +103,6 @@ class ClosingServiceTest {
             new VoucherLine(null, null, 0, null, '1930', null, 'Bank', 0.00G, 300.00G)
         ]
     )
-    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
-    }
-
     def result = closingService.closeFiscalYear(fiscalYear.id)
 
     assertEquals('YE-1', result.closingVoucher.voucherNumber)
@@ -137,13 +133,13 @@ class ClosingServiceTest {
   }
 
   @Test
-  void previewWarnsOnDeadlineAndBlocksOpenPeriods() {
+  void previewWarnsOnDeadlineWithoutRequiringLockedPeriods() {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
     seedClosingAccounts()
 
     def preview = closingService.previewClosing(fiscalYear.id)
 
-    assertTrue(preview.blockingIssues.any { String issue -> issue.contains('Alla perioder måste vara låsta') })
+    assertEquals([], preview.blockingIssues)
     assertTrue(preview.warnings.any { String warning -> warning.contains('Bokslutsfristen passerade') })
   }
 
@@ -151,10 +147,6 @@ class ClosingServiceTest {
   void reClosingAnAlreadyClosedYearIsBlocked() {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()
-    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
-    }
-
     closingService.closeFiscalYear(fiscalYear.id)
 
     def preview = closingService.previewClosing(fiscalYear.id)
@@ -182,10 +174,6 @@ class ClosingServiceTest {
             new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
         ]
     )
-    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
-    }
-
     def result = closingService.closeFiscalYear(fiscalYear.id)
 
     assertEquals(nextFiscalYear.id, result.nextFiscalYear.id)
@@ -201,10 +189,6 @@ class ClosingServiceTest {
     FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
     seedClosingAccounts()
     accountService().saveOpeningBalance(nextFiscalYear.id, '1510', 123.00G)
-    accountingPeriodService.listPeriods(fiscalYear.id).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Bokslutstest')
-    }
-
     def preview = closingService.previewClosing(fiscalYear.id)
 
     assertTrue(preview.blockingIssues.any { String issue -> issue.contains('manuellt justerade ingående balanser') })

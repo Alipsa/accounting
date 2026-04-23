@@ -27,7 +27,7 @@ import javax.swing.event.ListSelectionEvent
 import javax.swing.table.AbstractTableModel
 
 /**
- * Lists fiscal years and their periods, and provides create and lock actions.
+ * Lists fiscal years and their periods, and provides create, closing, and reopen actions.
  */
 final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
 
@@ -51,7 +51,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private JLabel endDateLabel
   private JButton createButton
   private JButton closeButton
-  private JButton lockButton
+  private JButton reopenButton
   private JButton openingBalancesButton
   private final Set<Long> driftPromptedFiscalYears = [] as Set<Long>
 
@@ -90,7 +90,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     endDatePicker.locale = I18n.instance.locale
     createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
-    lockButton.text = I18n.instance.getString('fiscalYearPanel.button.lockPeriod')
+    reopenButton.text = I18n.instance.getString('fiscalYearPanel.button.reopen')
     openingBalancesButton.text = I18n.instance.getString('fiscalYearPanel.button.openingBalances')
     fiscalYearTable.tableHeader.repaint()
     periodTable.tableHeader.repaint()
@@ -120,13 +120,13 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     createButton.addActionListener { createFiscalYearRequested() }
     closeButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.yearEndClosing'))
     closeButton.addActionListener { closeSelectedFiscalYear() }
-    lockButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.lockPeriod'))
-    lockButton.addActionListener { lockSelectedPeriod() }
+    reopenButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.reopen'))
+    reopenButton.addActionListener { reopenSelectedFiscalYear() }
     openingBalancesButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.openingBalances'))
     openingBalancesButton.addActionListener { openOpeningBalances() }
     actionPanel.add(createButton)
     actionPanel.add(closeButton)
-    actionPanel.add(lockButton)
+    actionPanel.add(reopenButton)
     actionPanel.add(openingBalancesButton)
     panel.add(actionPanel, BorderLayout.SOUTH)
 
@@ -246,18 +246,34 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     } as Runnable)
   }
 
-  private void lockSelectedPeriod() {
-    AccountingPeriod period = selectedPeriod()
-    if (period == null) {
+  private void reopenSelectedFiscalYear() {
+    FiscalYear year = selectedFiscalYear()
+    if (year == null) {
       showValidation([ValidationSupport.fieldError(
-          '', I18n.instance.getString('fiscalYearPanel.error.selectPeriod')
+          '', I18n.instance.getString('fiscalYearPanel.error.selectFiscalYear')
       )])
       return
     }
-    PeriodLockDialog.showDialog(ownerFrame(), accountingPeriodService, period, {
-      reloadPeriodsForSelection()
-      showInfo(I18n.instance.format('fiscalYearPanel.message.periodLocked', period.periodName))
-    } as Runnable)
+    if (!year.closed) {
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.format('fiscalYearPanel.error.fiscalYearNotClosed', year.name)
+      )])
+      return
+    }
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('fiscalYearPanel.confirm.reopenFiscalYear', year.name),
+        I18n.instance.getString('fiscalYearPanel.confirm.reopenTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      return
+    }
+    FiscalYear reopened = fiscalYearService.reopenFiscalYear(year.id)
+    activeCompanyManager.reloadFiscalYears()
+    reloadData()
+    selectFiscalYear(reopened.id)
+    showInfo(I18n.instance.format('fiscalYearPanel.message.reopened', reopened.name))
   }
 
   private void reloadData() {
@@ -299,11 +315,6 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private FiscalYear selectedFiscalYear() {
     int selectedRow = fiscalYearTable.selectedRow
     selectedRow < 0 ? null : fiscalYearTableModel.rowAt(selectedRow)
-  }
-
-  private AccountingPeriod selectedPeriod() {
-    int selectedRow = periodTable.selectedRow
-    selectedRow < 0 ? null : periodTableModel.rowAt(selectedRow)
   }
 
   private void clearInputs() {
@@ -461,7 +472,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
 
   private static final class AccountingPeriodTableModel extends AbstractTableModel {
 
-    final int columnCount = 5
+    final int columnCount = 3
     private List<AccountingPeriod> rows = []
 
     void setRows(List<AccountingPeriod> rows) {
@@ -484,8 +495,6 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
         case 0: return I18n.instance.getString('fiscalYearPanel.table.period.name')
         case 1: return I18n.instance.getString('fiscalYearPanel.table.period.start')
         case 2: return I18n.instance.getString('fiscalYearPanel.table.period.end')
-        case 3: return I18n.instance.getString('fiscalYearPanel.table.period.locked')
-        case 4: return I18n.instance.getString('fiscalYearPanel.table.period.lockReason')
         default: return ''
       }
     }
@@ -500,12 +509,6 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
           return period.startDate
         case 2:
           return period.endDate
-        case 3:
-          return period.locked
-              ? I18n.instance.getString('fiscalYearPanel.table.value.yes')
-              : I18n.instance.getString('fiscalYearPanel.table.value.no')
-        case 4:
-          return period.lockReason ?: ''
         default:
           return ''
       }

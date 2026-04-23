@@ -85,51 +85,31 @@ class FiscalYearServiceTest {
   }
 
   @Test
-  void periodLockAndYearCloseUpdateLockStatus() {
+  void yearCloseAndReopenUpdateLockStatus() {
     FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
     )
 
-    List<AccountingPeriod> periods = accountingPeriodService.listPeriods(year.id)
-    AccountingPeriod january = periods.first()
-
-    accountingPeriodService.lockPeriod(january.id, 'Månaden är avstämd.')
-    accountingPeriodService.listPeriods(year.id).findAll { AccountingPeriod period -> period.id != january.id }.each { AccountingPeriod period ->
-      accountingPeriodService.lockPeriod(period.id, 'Årsslut.')
-    }
-
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 2, 15)))
+    assertTrue(!accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
-    List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertTrue(closedYear.closed)
-    assertTrue(closedPeriods.every { AccountingPeriod period -> period.locked })
-    assertTrue(auditEntries.any { AuditLogEntry entry ->
-      entry.eventType == AuditLogService.LOCK_PERIOD && entry.accountingPeriodId == january.id
-    })
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
+
+    FiscalYear reopenedYear = fiscalYearService.reopenFiscalYear(year.id)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+
+    assertTrue(!reopenedYear.closed)
+    assertTrue(!accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
     assertTrue(auditEntries.any { AuditLogEntry entry ->
       entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == year.id
     })
-  }
-
-  @Test
-  void closingYearWithOpenPeriodsIsRejected() {
-    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
-        '2026',
-        LocalDate.of(2026, 1, 1),
-        LocalDate.of(2026, 12, 31)
-    )
-
-    Executable action = {
-      fiscalYearService.closeFiscalYear(year.id)
-    } as Executable
-
-    assertThrows(IllegalStateException, action)
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.REOPEN_FISCAL_YEAR && entry.fiscalYearId == year.id
+    })
   }
 
   @Test

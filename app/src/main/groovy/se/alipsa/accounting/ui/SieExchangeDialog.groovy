@@ -64,6 +64,7 @@ final class SieExchangeDialog extends JDialog {
   private final ImportJobTableModel importJobTableModel = new ImportJobTableModel()
   private final JTable importJobTable = new JTable(importJobTableModel)
   private final JButton importButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.import'))
+  private final JButton replaceImportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.replaceImport'))
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
@@ -160,8 +161,10 @@ final class SieExchangeDialog extends JDialog {
       }
     }
     importButton.addActionListener { importRequested() }
+    replaceImportButton.addActionListener { replaceImportRequested() }
     exportButton.addActionListener { exportRequested() }
     panel.add(importButton)
+    panel.add(replaceImportButton)
     panel.add(exportButton)
     panel.add(closeButton)
     panel
@@ -183,6 +186,24 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void importRequested() {
+    importRequested(false)
+  }
+
+  private void replaceImportRequested() {
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.getString('sieExchangeDialog.confirm.replaceImport.message'),
+        I18n.instance.getString('sieExchangeDialog.confirm.replaceImport.title'),
+        JOptionPane.OK_CANCEL_OPTION,
+        JOptionPane.WARNING_MESSAGE
+    )
+    if (choice != JOptionPane.OK_OPTION) {
+      return
+    }
+    importRequested(true)
+  }
+
+  private void importRequested(boolean replaceExistingFiscalYear) {
     JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('sieExchangeDialog.fileFilter.sie'), 'sie', 'si', 'se')
@@ -221,7 +242,7 @@ final class SieExchangeDialog extends JDialog {
             showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
             return
           }
-          doImport(selectedPath, targetCompanyId)
+          doImport(selectedPath, targetCompanyId, replaceExistingFiscalYear)
         } catch (Exception ex) {
           setWorkingState(false)
           showError(ex.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
@@ -290,12 +311,14 @@ final class SieExchangeDialog extends JDialog {
     }
   }
 
-  private void doImport(Path selectedPath, long targetCompanyId) {
+  private void doImport(Path selectedPath, long targetCompanyId, boolean replaceExistingFiscalYear) {
     boolean importingToNewCompany = targetCompanyId != companyId
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
-        sieImportExportService.importFile(targetCompanyId, selectedPath)
+        replaceExistingFiscalYear
+            ? sieImportExportService.replaceFiscalYear(targetCompanyId, selectedPath)
+            : sieImportExportService.importFile(targetCompanyId, selectedPath)
       }
 
       @Override
@@ -464,6 +487,7 @@ final class SieExchangeDialog extends JDialog {
   private void setWorkingState(boolean working) {
     workInProgress = working
     importButton.enabled = !working
+    replaceImportButton.enabled = !working
     exportButton.enabled = !working
     fiscalYearComboBox.enabled = !working
     importJobTable.enabled = !working

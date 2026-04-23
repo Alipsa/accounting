@@ -30,6 +30,7 @@ import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 
@@ -138,8 +139,8 @@ class SieImportExportServiceTest {
   }
 
   @Test
-  void importIntoFiscalYearWithLockedPeriodsIsRejectedAndRecordedAsFailedJob() {
-    Path exportPath = tempDir.resolve('locked-period.sie')
+  void importIntoClosedFiscalYearIsRejectedAndRecordedAsFailedJob() {
+    Path exportPath = tempDir.resolve('closed-year.sie')
     createExportFixture(tempDir.resolve('source-db'), exportPath)
 
     switchHome(tempDir.resolve('locked-target-db'))
@@ -149,15 +150,46 @@ class SieImportExportServiceTest {
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(targetDatabaseService, auditLogService)
     FiscalYearService fiscalYearService = new FiscalYearService(targetDatabaseService, accountingPeriodService, auditLogService)
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
-    accountingPeriodService.lockPeriod(accountingPeriodService.listPeriods(fiscalYear.id).first().id, 'låst för test')
+    fiscalYearService.closeFiscalYear(fiscalYear.id)
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
       targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
     }
 
-    assertTrue(exception.message.contains('låsta perioder'))
+    assertTrue(exception.message.contains('stängt'))
     assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
+  }
+
+  @Test
+  void replaceFiscalYearRemovesExistingYearContentBeforeImport() {
+    Path exportPath = tempDir.resolve('replace-year.sie')
+    ExportFixture fixture = createExportFixture(tempDir.resolve('source-db'), exportPath)
+
+    switchHome(tempDir.resolve('replace-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    SieImportExportService targetService = createSieService(targetDatabaseService)
+
+    SieImportResult result = targetService.replaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+
+    assertFalse(result.duplicate)
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertTrue(result.job.summary.contains('Ersättningsimport klar'))
+    assertEquals(fixture.openingBalanceCount, countRows(targetDatabaseService, 'opening_balance'))
+    assertEquals(fixture.voucherCount, countRows(targetDatabaseService, 'voucher'))
+    assertEquals(0, countRows(targetDatabaseService, 'attachment'))
+    assertEquals(0, countRows(targetDatabaseService, 'report_archive'))
+    assertEquals(12, countRows(targetDatabaseService, 'vat_period'))
+    assertFalse(Files.exists(AppPaths.reportsDirectory().resolve('report-archive/old-report.pdf')))
+    targetDatabaseService.withSql { Sql sql ->
+      GroovyRowResult replacedVoucher = sql.firstRow(
+          'select count(*) as total from voucher where description = ?',
+          ['Lokal testverifikation']
+      ) as GroovyRowResult
+      assertEquals(0, ((Number) replacedVoucher.get('total')).intValue())
+    }
   }
 
   @Test
@@ -441,6 +473,81 @@ class SieImportExportServiceTest {
         1,
         3
     )
+  }
+
+  private void seedReplaceTargetEnvironment(DatabaseService databaseService) {
+    AuditLogService auditLogService = new AuditLogService(databaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
+    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
+    AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
+    CompanyService companyService = new CompanyService(databaseService)
+    companyService.save(new Company(
+        CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null
+    ))
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2026',
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 12, 31)
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
+      insertAccount(sql, '1930', 'Bank', 'ASSET', 'DEBIT')
+      insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT')
+      insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
+      sql.executeInsert('''
+          insert into opening_balance (
+              fiscal_year_id,
+              account_id,
+              amount,
+              created_at,
+              updated_at
+          ) values (?, (select id from account where account_number = ?), ?, current_timestamp, current_timestamp)
+      ''', [fiscalYear.id, '1510', 999.00G])
+      sql.executeInsert('''
+          insert into report_archive (
+              report_type,
+              report_format,
+              fiscal_year_id,
+              accounting_period_id,
+              start_date,
+              end_date,
+              file_name,
+              storage_path,
+              checksum_sha256,
+              parameters,
+              created_at
+          ) values ('VOUCHER_LIST', 'PDF', ?, null, ?, ?, ?, ?, ?, ?, current_timestamp)
+      ''', [
+          fiscalYear.id,
+          java.sql.Date.valueOf(fiscalYear.startDate),
+          java.sql.Date.valueOf(fiscalYear.endDate),
+          'old-report.pdf',
+          'report-archive/old-report.pdf',
+          'abc123',
+          '{}'
+      ])
+    }
+    Path archivedReportPath = AppPaths.reportsDirectory().resolve('report-archive/old-report.pdf')
+    Files.createDirectories(archivedReportPath.parent)
+    Files.writeString(archivedReportPath, 'gammal rapport')
+
+    def voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 5),
+        'Lokal testverifikation',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 125.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 125.00G)
+        ]
+    )
+    Path attachmentFile = tempDir.resolve('replace-attachment.txt')
+    attachmentFile.toFile().text = 'lokal bilaga'
+    attachmentService.addAttachment(voucher.id, attachmentFile)
   }
 
   private SieImportExportService createSieService(DatabaseService databaseService) {

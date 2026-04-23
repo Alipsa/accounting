@@ -646,13 +646,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
       String description = descriptionField.text?.trim()
       List<VoucherLine> lines = lineTableModel.toVoucherLines()
-      Voucher saved
       if (currentVoucher != null) {
-        saved = voucherService.updateVoucher(currentVoucher.id, date, description, lines)
-      } else {
-        String series = seriesField.text?.trim() ?: 'A'
-        saved = voucherService.createVoucher(fy.id, series, date, description, lines)
+        showError(I18n.instance.getString('voucherPanel.error.existingVoucherReadOnly'))
+        return
       }
+      String series = seriesField.text?.trim() ?: 'A'
+      Voucher saved = voucherService.createVoucher(fy.id, series, date, description, lines)
       showInfo(I18n.instance.getString('voucherPanel.message.saved').replace('{0}', saved.voucherNumber ?: ''))
       reloadVoucherList()
     } catch (Exception ex) {
@@ -725,12 +724,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void applyReadOnlyState() {
-    if (currentVoucher != null && currentVoucher.accountingDate != null) {
+    if (currentVoucher != null) {
+      readOnly = true
+    } else if (activeCompanyManager.fiscalYear != null) {
       try {
         readOnly = accountingPeriodService.isDateLocked(
-            activeCompanyManager.companyId, currentVoucher.accountingDate)
+            activeCompanyManager.companyId, defaultDate())
       } catch (Exception ex) {
-        log.warning("Kunde inte avgöra om perioden är låst – skrivskyddar verifikatet: ${ex.message}")
+        log.warning("Kunde inte avgöra om räkenskapsåret är låst – skrivskyddar verifikatet: ${ex.message}")
         readOnly = true
       }
     } else {
@@ -741,8 +742,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     descriptionField.enabled = !readOnly
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
-    voidButton.enabled = !readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
-    correctionButton.enabled = readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
+    voidButton.enabled = false
+    correctionButton.enabled = currentVoucher != null
+        && currentVoucher.status == VoucherStatus.ACTIVE
+        && !accountingPeriodService.isDateLocked(activeCompanyManager.companyId, currentVoucher.accountingDate)
     addAttachmentButton.enabled = currentVoucher != null
   }
 

@@ -10,7 +10,7 @@ import java.sql.Date
 import java.time.LocalDate
 
 /**
- * Handles period creation, lock status and date based lock checks.
+ * Handles period creation and legacy period-lock metadata.
  */
 final class AccountingPeriodService {
 
@@ -123,11 +123,10 @@ final class AccountingPeriodService {
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
                 select count(*) as total
-                  from accounting_period ap
-                  join fiscal_year fy on fy.id = ap.fiscal_year_id
+                  from fiscal_year fy
                  where fy.company_id = ?
-                   and ap.locked = true
-                   and ? between ap.start_date and ap.end_date
+                   and fy.closed = true
+                   and ? between fy.start_date and fy.end_date
             ''', [companyId, Date.valueOf(accountingDate)]) as GroovyRowResult
       ((Number) row.get('total')).intValue() > 0
     }

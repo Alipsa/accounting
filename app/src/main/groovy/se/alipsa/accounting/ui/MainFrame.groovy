@@ -145,6 +145,7 @@ final class MainFrame implements PropertyChangeListener {
       DatabaseService.instance
   )
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
+  private final Set<Long> driftPromptedFiscalYears = [] as Set<Long>
 
   private JLabel statusLabel
   private JLabel companySummaryLabel
@@ -217,6 +218,7 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void onCompanyChanged() {
+    driftPromptedFiscalYears.clear()
     refreshTitle()
     refreshCompanySettingsSummary()
     reloadFiscalYearComboBox()
@@ -553,7 +555,35 @@ final class MainFrame implements PropertyChangeListener {
     FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
     if (selected != null) {
       activeCompanyManager.fiscalYear = selected
+      maybePromptForOpeningBalanceRefresh(selected)
     }
+  }
+
+  private void maybePromptForOpeningBalanceRefresh(FiscalYear fiscalYear) {
+    if (fiscalYear == null || !driftPromptedFiscalYears.add(fiscalYear.id)) {
+      return
+    }
+    List<OpeningBalanceService.OpeningBalanceDrift> drift = openingBalanceService.detectDrift(fiscalYear.id)
+    if (drift.isEmpty()) {
+      return
+    }
+    FiscalYear sourceFiscalYear = openingBalanceService.findAutoManagedSourceFiscalYear(fiscalYear.id)
+    String sourceName = sourceFiscalYear?.name ?: I18n.instance.getString('fiscalYearPanel.label.previousFiscalYearFallback')
+    String promptKey = openingBalanceService.hasVoucherActivity(fiscalYear.id)
+        ? 'fiscalYearPanel.confirm.refreshOpeningBalancesWithVouchers'
+        : 'fiscalYearPanel.confirm.refreshOpeningBalances'
+    int choice = JOptionPane.showConfirmDialog(
+        frame,
+        I18n.instance.format(promptKey, drift.size() as Object, sourceName, fiscalYear.name),
+        I18n.instance.getString('fiscalYearPanel.confirm.refreshTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      setStatus(I18n.instance.format('fiscalYearPanel.message.openingBalanceDriftDetected', drift.size() as Object, fiscalYear.name))
+      return
+    }
+    int refreshed = openingBalanceService.refreshTransferredBalances(fiscalYear.id)
+    setStatus(I18n.instance.format('fiscalYearPanel.message.openingBalancesRefreshed', refreshed as Object, fiscalYear.name))
   }
 
   private JPanel buildOverviewPanel() {
@@ -571,7 +601,7 @@ final class MainFrame implements PropertyChangeListener {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
         [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, accountingPeriodService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
             journoReportService,

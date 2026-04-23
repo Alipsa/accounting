@@ -160,12 +160,11 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       protected OverviewSnapshot doInBackground() {
         int count = voucherService.countVouchers(company.id, fiscalYear.id)
         List<AccountingPeriod> periods = accountingPeriodService.listPeriods(fiscalYear.id)
-        int locked = periods.count { AccountingPeriod period -> period.locked } as int
         List<BackupSummary> backups = backupService.listBackups(1)
         BackupSummary latestBackup = backups.isEmpty() ? null : backups.first()
         boolean warn = latestBackup != null && hasStaleBackupWithNewVouchers(company.id, latestBackup.createdAt)
         Boolean loadedIntegrity = runIntegrityCheck ? startupVerificationService.verify().ok : currentIntegrityStatus()
-        new OverviewSnapshot(company, fiscalYear, count, locked, periods.size(), latestBackup?.createdAt, warn, loadedIntegrity)
+        new OverviewSnapshot(company, fiscalYear, count, periods.size(), latestBackup?.createdAt, warn, loadedIntegrity)
       }
 
       @Override
@@ -239,7 +238,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     voucherValueLabel.text = String.valueOf(currentSnapshot.voucherCount)
     voucherSubLabel.text = I18n.instance.getString('overviewPanel.card.vouchers.subtitle')
 
-    periodsValueLabel.text = "${currentSnapshot.lockedPeriods} / ${currentSnapshot.totalPeriods}"
+    periodsValueLabel.text = String.valueOf(currentSnapshot.periodCount)
     periodsSubLabel.text = I18n.instance.getString('overviewPanel.card.periods.subtitle')
 
     updateBackupCard(currentSnapshot.backupCreatedAt, currentSnapshot.backupWarn)
@@ -452,8 +451,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     final Company company
     final FiscalYear fiscalYear
     final Integer voucherCount
-    final int lockedPeriods
-    final int totalPeriods
+    final int periodCount
     final LocalDateTime backupCreatedAt
     final boolean backupWarn
     final Boolean integrityOk
@@ -462,8 +460,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
         Company company,
         FiscalYear fiscalYear,
         Integer voucherCount,
-        int lockedPeriods,
-        int totalPeriods,
+        int periodCount,
         LocalDateTime backupCreatedAt,
         boolean backupWarn,
         Boolean integrityOk
@@ -471,27 +468,26 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       this.company = company
       this.fiscalYear = fiscalYear
       this.voucherCount = voucherCount
-      this.lockedPeriods = lockedPeriods
-      this.totalPeriods = totalPeriods
+      this.periodCount = periodCount
       this.backupCreatedAt = backupCreatedAt
       this.backupWarn = backupWarn
       this.integrityOk = integrityOk
     }
 
     static OverviewSnapshot empty() {
-      new OverviewSnapshot(null, null, null, 0, 0, null, false, null)
+      new OverviewSnapshot(null, null, null, 0, null, false, null)
     }
 
     static OverviewSnapshot withoutCompany(Boolean integrityOk) {
-      new OverviewSnapshot(null, null, null, 0, 0, null, false, integrityOk)
+      new OverviewSnapshot(null, null, null, 0, null, false, integrityOk)
     }
 
     static OverviewSnapshot withoutFiscalYear(Company company, Boolean integrityOk) {
-      new OverviewSnapshot(company, null, null, 0, 0, null, false, integrityOk)
+      new OverviewSnapshot(company, null, null, 0, null, false, integrityOk)
     }
 
     static OverviewSnapshot loading(Company company, FiscalYear fiscalYear, Boolean integrityOk) {
-      new OverviewSnapshot(company, fiscalYear, null, 0, 0, null, false, integrityOk)
+      new OverviewSnapshot(company, fiscalYear, null, 0, null, false, integrityOk)
     }
   }
 }

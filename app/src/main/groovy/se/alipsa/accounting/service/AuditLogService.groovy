@@ -30,6 +30,7 @@ final class AuditLogService {
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
   static final String LOCK_PERIOD = 'LOCK_PERIOD'
   static final String CLOSE_FISCAL_YEAR = 'CLOSE_FISCAL_YEAR'
+  static final String REOPEN_FISCAL_YEAR = 'REOPEN_FISCAL_YEAR'
   static final String VAT_PERIOD_REPORTED = 'VAT_PERIOD_REPORTED'
   static final String VAT_PERIOD_LOCKED = 'VAT_PERIOD_LOCKED'
   static final String IMPORT = 'IMPORT'
@@ -303,6 +304,18 @@ final class AuditLogService {
             startDate    : fiscalYear.startDate,
             endDate      : fiscalYear.endDate,
             closedAt     : fiscalYear.closedAt
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordFiscalYearReopened(Sql sql, FiscalYear fiscalYear) {
+    recordEvent(sql, REOPEN_FISCAL_YEAR, new AuditReferences(fiscalYearId: fiscalYear.id),
+        "Räkenskapsår upplåst: ${fiscalYear.name}", formatDetails([
+            fiscalYearId : fiscalYear.id,
+            name         : fiscalYear.name,
+            startDate    : fiscalYear.startDate,
+            endDate      : fiscalYear.endDate,
+            closed       : fiscalYear.closed
         ]))
   }
 

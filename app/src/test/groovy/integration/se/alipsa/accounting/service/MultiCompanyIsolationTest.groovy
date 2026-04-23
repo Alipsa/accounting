@@ -268,10 +268,6 @@ class MultiCompanyIsolationTest {
             new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 2000.00G)
         ])
 
-    accountingPeriodService.listPeriods(fyA.id).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Bokslut A')
-    }
-
     YearEndClosingResult resultA = closingService.closeFiscalYear(fyA.id)
 
     assertTrue(resultA.closedFiscalYear.closed)

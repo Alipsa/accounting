@@ -21,6 +21,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.ImportJobStatus
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.support.AppPaths
 
 import java.math.RoundingMode
 import java.nio.file.Files
@@ -92,23 +93,42 @@ final class SieImportExportService {
   }
 
   SieImportResult importFile(long companyId, Path filePath) {
+    importFile(companyId, filePath, false)
+  }
+
+  SieImportResult replaceFiscalYear(long companyId, Path filePath) {
+    importFile(companyId, filePath, true)
+  }
+
+  private SieImportResult importFile(long companyId, Path filePath, boolean replaceExistingFiscalYear) {
     CompanyService.requireValidCompanyId(companyId)
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
     long jobId = createImportJob(companyId, safePath.fileName.toString(), checksum)
-    ImportJob duplicate = markDuplicateIfNeeded(jobId, companyId, checksum)
-    if (duplicate != null) {
-      return new SieImportResult(duplicate, null, true, 0, 0, 0, 0, [])
+    if (!replaceExistingFiscalYear) {
+      ImportJob duplicate = markDuplicateIfNeeded(jobId, companyId, checksum)
+      if (duplicate != null) {
+        return new SieImportResult(duplicate, null, true, 0, 0, 0, 0, [])
+      }
     }
     Long resolvedFiscalYearId = null
+    FiscalYearReplacementPlan replacementPlan = null
     try {
       ParsedSie parsed = parseDocument(safePath)
       SieImportResult result = databaseService.withTransaction { Sql sql ->
-        FiscalYear fiscalYear = resolveTargetFiscalYear(sql, companyId, parsed.document)
+        FiscalYear fiscalYear = resolveTargetFiscalYear(sql, companyId, parsed.document, replaceExistingFiscalYear)
         resolvedFiscalYearId = fiscalYear.id
+        FiscalYearPurgeSummary purgeSummary = null
+        if (replaceExistingFiscalYear) {
+          replacementPlan = replaceFiscalYearContents(sql, companyId, fiscalYear)
+          purgeSummary = replacementPlan.summary
+        }
         ImportCounts counts = importDocument(sql, fiscalYear.id, parsed.document, parsed.warnings)
-        String summary = buildSuccessSummary(counts, fiscalYear, parsed.warnings)
+        VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+        String summary = replaceExistingFiscalYear
+            ? buildReplacementSuccessSummary(counts, fiscalYear, parsed.warnings, purgeSummary)
+            : buildSuccessSummary(counts, fiscalYear, parsed.warnings)
         ImportJob job = completeImportJob(
             sql,
             jobId,
@@ -120,15 +140,20 @@ final class SieImportExportService {
         new SieImportResult(job, fiscalYear, false, counts.accountsCreated, counts.openingBalanceCount, counts.voucherCount, counts.lineCount, parsed.warnings)
       }
       auditLogService.logImport(
-          "Importerade SIE ${result.job.fileName}",
+          replaceExistingFiscalYear ? "Ersatte räkenskapsår från SIE ${result.job.fileName}" : "Importerade SIE ${result.job.fileName}",
           [
               "jobId=${result.job.id}",
               "fiscalYearId=${result.job.fiscalYearId}",
               "checksum=${result.job.checksumSha256}",
+              "replaceExistingFiscalYear=${replaceExistingFiscalYear}",
               "summary=${result.job.summary}"
           ].join('\n'),
           companyId
       )
+      if (replacementPlan != null) {
+        deleteStoredFiles(AppPaths.attachmentsDirectory(), replacementPlan.attachmentStoragePaths)
+        deleteStoredFiles(AppPaths.reportsDirectory(), replacementPlan.reportArchiveStoragePaths)
+      }
       result
     } catch (Exception exception) {
       markFailed(jobId, resolvedFiscalYearId, exception)
@@ -285,7 +310,7 @@ final class SieImportExportService {
     new ParsedSie(document, warnings)
   }
 
-  private FiscalYear resolveTargetFiscalYear(Sql sql, long companyId, SieDocument document) {
+  private FiscalYear resolveTargetFiscalYear(Sql sql, long companyId, SieDocument document, boolean replaceExistingFiscalYear) {
     SieBookingYear bookingYear = selectPrimaryBookingYear(document)
     GroovyRowResult existing = sql.firstRow('''
         select id,
@@ -302,7 +327,7 @@ final class SieImportExportService {
     FiscalYear fiscalYear = existing == null
         ? createFiscalYear(sql, companyId, bookingYear.start, bookingYear.end)
         : mapFiscalYear(existing)
-    ensureFiscalYearImportable(sql, fiscalYear)
+    ensureFiscalYearImportable(sql, fiscalYear, replaceExistingFiscalYear)
     fiscalYear
   }
 
@@ -332,18 +357,12 @@ final class SieImportExportService {
     )
   }
 
-  private static void ensureFiscalYearImportable(Sql sql, FiscalYear fiscalYear) {
+  private static void ensureFiscalYearImportable(Sql sql, FiscalYear fiscalYear, boolean replaceExistingFiscalYear) {
     if (fiscalYear.closed) {
       throw new IllegalStateException("Räkenskapsåret ${fiscalYear.name} är stängt och kan inte användas för import.")
     }
-    GroovyRowResult periodRow = sql.firstRow('''
-        select count(*) as total
-          from accounting_period
-         where fiscal_year_id = ?
-           and locked = true
-    ''', [fiscalYear.id]) as GroovyRowResult
-    if (((Number) periodRow.get('total')).intValue() > 0) {
-      throw new IllegalStateException("Räkenskapsåret ${fiscalYear.name} har låsta perioder och kan inte användas för import.")
+    if (replaceExistingFiscalYear) {
+      return
     }
     GroovyRowResult voucherRow = sql.firstRow(
         'select count(*) as total from voucher where fiscal_year_id = ?',
@@ -370,6 +389,189 @@ final class SieImportExportService {
     String base = "Import klar för ${fiscalYear.name}: ${counts.accountsCreated} nya konton, " +
         "${counts.openingBalanceCount} ingående balanser, ${counts.voucherCount} verifikationer, ${counts.lineCount} rader."
     warnings.isEmpty() ? base : "${base} ${warnings.size()} varningar registrerades."
+  }
+
+  private static String buildReplacementSuccessSummary(
+      ImportCounts counts,
+      FiscalYear fiscalYear,
+      List<String> warnings,
+      FiscalYearPurgeSummary purgeSummary
+  ) {
+    String base = "Ersättningsimport klar för ${fiscalYear.name}: " +
+        "${counts.openingBalanceCount} ingående balanser, ${counts.voucherCount} verifikationer, ${counts.lineCount} rader."
+    if (purgeSummary == null || (
+        purgeSummary.attachmentCount == 0 &&
+            purgeSummary.reportArchiveCount == 0 &&
+            purgeSummary.openingBalanceCount == 0 &&
+            purgeSummary.voucherCount == 0 &&
+            purgeSummary.vatPeriodCount == 0 &&
+            purgeSummary.auditLogCount == 0
+    )) {
+      return warnings.isEmpty() ? base : "${base} ${warnings.size()} varningar registrerades."
+    }
+    String replaced = " Tidigare data togs bort: ${purgeSummary.voucherCount} verifikationer, " +
+        "${purgeSummary.openingBalanceCount} ingående balanser, ${purgeSummary.attachmentCount} bilagor, " +
+        "${purgeSummary.vatPeriodCount} momsperioder och ${purgeSummary.reportArchiveCount} rapportarkiv."
+    warnings.isEmpty() ? "${base}${replaced}" : "${base}${replaced} ${warnings.size()} varningar registrerades."
+  }
+
+  private FiscalYearReplacementPlan replaceFiscalYearContents(Sql sql, long companyId, FiscalYear fiscalYear) {
+    ensureReplaceAllowed(sql, fiscalYear)
+    FiscalYearPurgeSummary summary = collectPurgeSummary(sql, fiscalYear.id)
+    List<String> attachmentStoragePaths = loadAttachmentStoragePaths(sql, fiscalYear.id)
+    List<String> reportArchiveStoragePaths = loadReportArchiveStoragePaths(sql, fiscalYear.id)
+    deleteFiscalYearAuditLogRows(sql, companyId, fiscalYear.id)
+    sql.executeUpdate('delete from report_archive where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('''
+        delete from attachment
+         where voucher_id in (
+             select id
+               from voucher
+              where fiscal_year_id = ?
+         )
+    ''', [fiscalYear.id])
+    sql.executeUpdate('delete from opening_balance where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('delete from voucher where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('delete from voucher_series where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('''
+        update accounting_period
+           set locked = false,
+               lock_reason = null,
+               locked_at = null
+         where fiscal_year_id = ?
+    ''', [fiscalYear.id])
+    new FiscalYearReplacementPlan(summary, attachmentStoragePaths, reportArchiveStoragePaths)
+  }
+
+  private static void ensureReplaceAllowed(Sql sql, FiscalYear fiscalYear) {
+    if (fiscalYear.closed) {
+      throw new IllegalStateException("Räkenskapsåret ${fiscalYear.name} är stängt. Lås upp året innan du ersätter innehållet från SIE.")
+    }
+    GroovyRowResult closingRow = sql.firstRow(
+        'select count(*) as total from closing_entry where fiscal_year_id = ?',
+        [fiscalYear.id]
+    ) as GroovyRowResult
+    if (((Number) closingRow.get('total')).intValue() > 0) {
+      throw new IllegalStateException(
+          "Räkenskapsåret ${fiscalYear.name} har bokslutsposter och kan inte ersättas från SIE."
+      )
+    }
+  }
+
+  private static FiscalYearPurgeSummary collectPurgeSummary(Sql sql, long fiscalYearId) {
+    new FiscalYearPurgeSummary(
+        countRows(sql, '''
+            select count(*) as total
+              from attachment
+             where voucher_id in (
+                 select id
+                   from voucher
+                  where fiscal_year_id = ?
+             )
+        ''', [fiscalYearId]),
+        countRows(sql, 'select count(*) as total from report_archive where fiscal_year_id = ?', [fiscalYearId]),
+        countRows(sql, 'select count(*) as total from opening_balance where fiscal_year_id = ?', [fiscalYearId]),
+        countRows(sql, 'select count(*) as total from voucher where fiscal_year_id = ?', [fiscalYearId]),
+        countRows(sql, 'select count(*) as total from vat_period where fiscal_year_id = ?', [fiscalYearId]),
+        countRows(sql, '''
+            select count(*) as total
+              from audit_log
+             where company_id = ?
+               and (
+                   fiscal_year_id = ?
+                   or accounting_period_id in (
+                       select id from accounting_period where fiscal_year_id = ?
+                   )
+                   or vat_period_id in (
+                       select id from vat_period where fiscal_year_id = ?
+                   )
+                   or voucher_id in (
+                       select id from voucher where fiscal_year_id = ?
+                   )
+                   or attachment_id in (
+                       select a.id
+                         from attachment a
+                         join voucher v on v.id = a.voucher_id
+                        where v.fiscal_year_id = ?
+                   )
+               )
+        ''', [resolveCompanyId(sql, fiscalYearId), fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
+    )
+  }
+
+  private static List<String> loadAttachmentStoragePaths(Sql sql, long fiscalYearId) {
+    sql.rows('''
+        select a.storage_path as storagePath
+          from attachment a
+          join voucher v on v.id = a.voucher_id
+         where v.fiscal_year_id = ?
+    ''', [fiscalYearId]).collect { GroovyRowResult row ->
+      row.get('storagePath') as String
+    }
+  }
+
+  private static List<String> loadReportArchiveStoragePaths(Sql sql, long fiscalYearId) {
+    sql.rows('''
+        select storage_path as storagePath
+          from report_archive
+         where fiscal_year_id = ?
+    ''', [fiscalYearId]).collect { GroovyRowResult row ->
+      row.get('storagePath') as String
+    }
+  }
+
+  private static void deleteFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
+    sql.executeUpdate('''
+        delete from audit_log
+         where company_id = ?
+           and (
+               fiscal_year_id = ?
+               or accounting_period_id in (
+                   select id from accounting_period where fiscal_year_id = ?
+               )
+               or vat_period_id in (
+                   select id from vat_period where fiscal_year_id = ?
+               )
+               or voucher_id in (
+                   select id from voucher where fiscal_year_id = ?
+               )
+               or attachment_id in (
+                   select a.id
+                     from attachment a
+                     join voucher v on v.id = a.voucher_id
+                    where v.fiscal_year_id = ?
+               )
+           )
+    ''', [companyId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
+    GroovyRowResult chainRow = sql.firstRow('''
+        select entry_hash as entryHash
+          from audit_log
+         where company_id = ?
+         order by id desc
+         limit 1
+    ''', [companyId]) as GroovyRowResult
+    sql.executeUpdate('''
+        update audit_log_chain_head
+           set last_entry_hash = ?,
+               updated_at = current_timestamp
+         where company_id = ?
+    ''', [chainRow?.get('entryHash') as String, companyId])
+  }
+
+  private static void deleteStoredFiles(Path rootDirectory, List<String> storagePaths) {
+    Path root = rootDirectory.toAbsolutePath().normalize()
+    storagePaths.findAll { String path -> path != null && !path.isBlank() }.each { String storagePath ->
+      Path resolved = root.resolve(storagePath).normalize()
+      if (resolved.startsWith(root)) {
+        Files.deleteIfExists(resolved)
+      }
+    }
+  }
+
+  private static int countRows(Sql sql, String query, List<Object> params) {
+    GroovyRowResult row = sql.firstRow(query, params) as GroovyRowResult
+    ((Number) row.get('total')).intValue()
   }
 
   private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts) {
