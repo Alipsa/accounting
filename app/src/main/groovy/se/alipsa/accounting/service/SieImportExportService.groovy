@@ -106,6 +106,7 @@ final class SieImportExportService {
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
     long jobId = createImportJob(companyId, safePath.fileName.toString(), checksum)
+    // Duplicate-check is intentionally skipped for replacements: each replacement is a distinct destructive operation.
     if (!replaceExistingFiscalYear) {
       ImportJob duplicate = markDuplicateIfNeeded(jobId, companyId, checksum)
       if (duplicate != null) {
@@ -417,7 +418,7 @@ final class SieImportExportService {
 
   private FiscalYearReplacementPlan replaceFiscalYearContents(Sql sql, long companyId, FiscalYear fiscalYear) {
     ensureReplaceAllowed(sql, fiscalYear)
-    FiscalYearPurgeSummary summary = collectPurgeSummary(sql, fiscalYear.id)
+    FiscalYearPurgeSummary summary = collectPurgeSummary(sql, companyId, fiscalYear.id)
     List<String> attachmentStoragePaths = loadAttachmentStoragePaths(sql, fiscalYear.id)
     List<String> reportArchiveStoragePaths = loadReportArchiveStoragePaths(sql, fiscalYear.id)
     deleteFiscalYearAuditLogRows(sql, companyId, fiscalYear.id)
@@ -459,7 +460,7 @@ final class SieImportExportService {
     }
   }
 
-  private static FiscalYearPurgeSummary collectPurgeSummary(Sql sql, long fiscalYearId) {
+  private static FiscalYearPurgeSummary collectPurgeSummary(Sql sql, long companyId, long fiscalYearId) {
     new FiscalYearPurgeSummary(
         countRows(sql, '''
             select count(*) as total
@@ -496,7 +497,7 @@ final class SieImportExportService {
                         where v.fiscal_year_id = ?
                    )
                )
-        ''', [resolveCompanyId(sql, fiscalYearId), fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
+        ''', [companyId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
     )
   }
 
@@ -544,6 +545,8 @@ final class SieImportExportService {
                )
            )
     ''', [companyId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
+    // Reset chain head to the latest remaining entry, or null if all company entries were deleted.
+    // A null last_entry_hash is valid and signals a fresh chain start.
     GroovyRowResult chainRow = sql.firstRow('''
         select entry_hash as entryHash
           from audit_log
@@ -551,12 +554,13 @@ final class SieImportExportService {
          order by id desc
          limit 1
     ''', [companyId]) as GroovyRowResult
+    String newHeadHash = chainRow == null ? null : chainRow.get('entryHash') as String
     sql.executeUpdate('''
         update audit_log_chain_head
            set last_entry_hash = ?,
                updated_at = current_timestamp
          where company_id = ?
-    ''', [chainRow?.get('entryHash') as String, companyId])
+    ''', [newHeadHash, companyId])
   }
 
   private static void deleteStoredFiles(Path rootDirectory, List<String> storagePaths) {

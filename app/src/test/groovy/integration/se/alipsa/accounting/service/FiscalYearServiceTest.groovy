@@ -2,6 +2,8 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.*
 
+import groovy.sql.Sql
+
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -128,6 +130,37 @@ class FiscalYearServiceTest {
     } as Executable
 
     assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void reopenFiscalYearWithClosingEntriesIsRejected() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2026',
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 12, 31)
+    )
+    databaseService.withTransaction { Sql sql ->
+      List<List<Object>> accountKeys = sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '3010', 'Försäljning', 'INCOME', 'CREDIT',
+              true, false, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      long accountId = ((Number) accountKeys.first().first()).longValue()
+      sql.executeInsert('''
+          insert into closing_entry (fiscal_year_id, entry_type, account_id, amount, created_at)
+          values (?, 'RESULT_CLOSING', ?, 1000.00, current_timestamp)
+      ''', [year.id, accountId])
+    }
+    fiscalYearService.closeFiscalYear(year.id)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      fiscalYearService.reopenFiscalYear(year.id)
+    }
+    assertTrue(exception.message.contains('bokslutsposter'))
   }
 
   @Test

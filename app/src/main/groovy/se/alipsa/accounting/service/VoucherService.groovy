@@ -100,7 +100,7 @@ final class VoucherService {
   }
 
   @SuppressWarnings('UnusedMethodParameter')
-  Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
+  Voucher updateVoucher(long voucherId) {
     throw new IllegalStateException('Registrerade verifikationer kan inte ändras direkt. Skapa en ändringsverifikation.')
   }
 

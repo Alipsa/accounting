@@ -160,12 +160,7 @@ class VoucherServiceTest {
     )
 
     IllegalStateException updateException = assertThrows(IllegalStateException) {
-      voucherService.updateVoucher(
-          active.id,
-          LocalDate.of(2026, 1, 16),
-          'Ändrad text',
-          balancedLines(120.00G)
-      )
+      voucherService.updateVoucher(active.id)
     }
     assertTrue(updateException.message.contains('ändringsverifikation'))
 

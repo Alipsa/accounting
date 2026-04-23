@@ -189,7 +189,50 @@ class SieImportExportServiceTest {
           ['Lokal testverifikation']
       ) as GroovyRowResult
       assertEquals(0, ((Number) replacedVoucher.get('total')).intValue())
+
+      GroovyRowResult latestEntry = sql.firstRow('''
+          select entry_hash as entryHash
+            from audit_log
+           where company_id = ?
+           order by id desc
+           limit 1
+      ''', [CompanyService.LEGACY_COMPANY_ID]) as GroovyRowResult
+      GroovyRowResult chainHead = sql.firstRow('''
+          select last_entry_hash as lastEntryHash
+            from audit_log_chain_head
+           where company_id = ?
+      ''', [CompanyService.LEGACY_COMPANY_ID]) as GroovyRowResult
+      assertNotNull(chainHead, 'Chain head row must exist')
+      assertEquals(
+          latestEntry?.get('entryHash') as String,
+          chainHead?.get('lastEntryHash') as String,
+          'Chain head must reference the latest audit log entry after replacement'
+      )
     }
+  }
+
+  @Test
+  void importIntoFiscalYearWithExistingVatPeriodsSucceeds() {
+    switchHome(tempDir.resolve('idempotent-vat-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    AuditLogService auditLogService = new AuditLogService(databaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
+    // createFiscalYear already calls VatService.ensurePeriodsForFiscalYear internally
+    fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)
+    )
+    int vatPeriodsAfterCreate = countRows(databaseService, 'vat_period')
+    assertTrue(vatPeriodsAfterCreate > 0, 'VAT periods should have been created with the fiscal year')
+
+    SieImportExportService service = createSieService(databaseService)
+    // Import into the same fiscal year (no vouchers or opening balances yet, so import is allowed)
+    service.importFile(CompanyService.LEGACY_COMPANY_ID,
+        writeSimpleSie(tempDir.resolve('idempotent-vat.sie'), '1510', 'Kundfordringar'))
+
+    assertEquals(vatPeriodsAfterCreate, countRows(databaseService, 'vat_period'),
+        'ensurePeriodsForFiscalYear must be idempotent: period count must not change on re-import')
   }
 
   @Test

@@ -197,6 +197,16 @@ final class FiscalYearService {
     if (!year.closed) {
       return findById(sql, fiscalYearId)
     }
+    GroovyRowResult closingRow = sql.firstRow(
+        'select count(*) as total from closing_entry where fiscal_year_id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    if (((Number) closingRow.get('total')).intValue() > 0) {
+      throw new IllegalStateException(
+          "Räkenskapsåret ${year.name} har bokslutsposter och kan inte låsas upp. " +
+          'Ta bort bokslutposterna innan du öppnar upp räkenskapsåret igen.'
+      )
+    }
     sql.executeUpdate('''
                 update fiscal_year
                    set closed = false,
@@ -206,6 +216,23 @@ final class FiscalYearService {
     FiscalYear reopenedYear = findById(sql, fiscalYearId)
     auditLogService.recordFiscalYearReopened(sql, reopenedYear)
     reopenedYear
+  }
+
+  boolean isClosed(long companyId, LocalDate date) {
+    CompanyService.requireValidCompanyId(companyId)
+    if (date == null) {
+      throw new IllegalArgumentException('Accounting date is required.')
+    }
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+                select count(*) as total
+                  from fiscal_year
+                 where company_id = ?
+                   and closed = true
+                   and ? between start_date and end_date
+            ''', [companyId, Date.valueOf(date)]) as GroovyRowResult
+      ((Number) row.get('total')).intValue() > 0
+    }
   }
 
   private static void ensureNoOverlap(Sql sql, long companyId, LocalDate startDate, LocalDate endDate, String overlapMessage) {
