@@ -99,35 +99,6 @@ final class VoucherService {
     insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, true)
   }
 
-  @SuppressWarnings('UnusedMethodParameter')
-  Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
-    throw new IllegalStateException('Registrerade verifikationer kan inte ändras direkt. Skapa en ändringsverifikation.')
-  }
-
-  @SuppressWarnings('UnusedMethodParameter')
-  Voucher cancelVoucher(long voucherId) {
-    throw new IllegalStateException('Registrerade verifikationer kan inte makuleras direkt. Skapa en ändringsverifikation.')
-  }
-
-  boolean isLastInSeries(long voucherId) {
-    databaseService.withSql { Sql sql ->
-      Voucher voucher = requireVoucher(sql, voucherId)
-      GroovyRowResult row = sql.firstRow('''
-          select max(running_number) as maxRunning
-            from voucher
-           where voucher_series_id = ?
-             and fiscal_year_id = ?
-      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
-      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
-      voucher.runningNumber != null && voucher.runningNumber == maxRunning
-    }
-  }
-
-  @SuppressWarnings('UnusedMethodParameter')
-  void deleteVoucher(long voucherId) {
-    throw new IllegalStateException('Registrerade verifikationer kan inte tas bort direkt. Skapa en ändringsverifikation.')
-  }
-
   Voucher createCorrectionVoucher(long originalVoucherId, String description = null) {
     databaseService.withTransaction { Sql sql ->
       Voucher original = requireVoucher(sql, originalVoucherId)

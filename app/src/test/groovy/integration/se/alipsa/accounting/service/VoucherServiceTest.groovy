@@ -150,7 +150,7 @@ class VoucherServiceTest {
   }
 
   @Test
-  void recordedVoucherCannotBeUpdatedButCanBeCorrected() {
+  void recordedVoucherCanBeCorrected() {
     Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
@@ -158,16 +158,6 @@ class VoucherServiceTest {
         'Försäljning',
         balancedLines(100.00G)
     )
-
-    IllegalStateException updateException = assertThrows(IllegalStateException) {
-      voucherService.updateVoucher(
-          active.id,
-          LocalDate.of(2026, 1, 16),
-          'Ändrad text',
-          balancedLines(120.00G)
-      )
-    }
-    assertTrue(updateException.message.contains('ändringsverifikation'))
 
     Voucher correction = voucherService.createCorrectionVoucher(active.id)
     Voucher originalAfterCorrection = voucherService.findVoucher(active.id)
@@ -199,22 +189,6 @@ class VoucherServiceTest {
     IllegalStateException exception = assertThrows(IllegalStateException, action)
     assertTrue(exception.message.contains('låst'))
     assertTrue(voucherService.listSeries(fiscalYear.id).isEmpty())
-  }
-
-  @Test
-  void recordedVoucherCannotBeCancelled() {
-    Voucher voucher = voucherService.createVoucher(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 2, 15),
-        'Verifikation att makulera',
-        balancedLines(100.00G)
-    )
-
-    IllegalStateException exception = assertThrows(IllegalStateException) {
-      voucherService.cancelVoucher(voucher.id)
-    }
-    assertTrue(exception.message.contains('ändringsverifikation'))
   }
 
   @Test

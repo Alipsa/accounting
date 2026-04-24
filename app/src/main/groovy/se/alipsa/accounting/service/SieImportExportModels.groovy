@@ -60,6 +60,11 @@ final class FiscalYearPurgeSummary {
   int voucherCount
   int vatPeriodCount
   int auditLogCount
+
+  boolean isEmpty() {
+    attachmentCount == 0 && reportArchiveCount == 0 && openingBalanceCount == 0 &&
+        voucherCount == 0 && vatPeriodCount == 0 && auditLogCount == 0
+  }
 }
 
 @Canonical

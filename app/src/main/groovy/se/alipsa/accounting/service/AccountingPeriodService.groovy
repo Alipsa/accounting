@@ -115,6 +115,11 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Returns true if the given date falls in a closed fiscal year.
+   * Note: despite living in AccountingPeriodService, this now checks the fiscal_year closed flag
+   * rather than individual period locks — the lock granularity was moved to fiscal-year level.
+   */
   boolean isDateLocked(long companyId, LocalDate accountingDate) {
     CompanyService.requireValidCompanyId(companyId)
     if (accountingDate == null) {
