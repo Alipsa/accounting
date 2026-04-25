@@ -2,9 +2,12 @@ package se.alipsa.accounting.mcp
 
 import groovy.json.JsonOutput
 
+import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
+import se.alipsa.accounting.domain.Voucher
+import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
@@ -19,6 +22,7 @@ import se.alipsa.accounting.service.VoucherService
 
 import java.security.MessageDigest
 import java.time.LocalDate
+import java.time.format.DateTimeParseException
 
 /**
  * Registry and implementation entrypoint for MCP tools.
@@ -66,6 +70,10 @@ class AccountingMcpTools {
   }
 
   List<Map<String, Object>> listTools() {
+    readOnlyToolDefs() + voucherToolDefs()
+  }
+
+  private static List<Map<String, Object>> readOnlyToolDefs() {
     [
         toolDef('get_company_info',
             'Returns the company record for the given company ID.',
@@ -135,6 +143,44 @@ class AccountingMcpTools {
     ]
   }
 
+  private static List<Map<String, Object>> voucherToolDefs() {
+    [
+        toolDef('preview_voucher',
+            'Validates a voucher proposal without posting it. Returns resolved accounts, balance check, and any errors or warnings.',
+            ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID'),
+                series_code: strParam('Voucher series code, e.g. "A"'),
+                accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
+                description: strParam('Voucher description'),
+                lines: voucherLinesParam()
+            ]
+        ),
+        toolDef('post_voucher',
+            'Posts a voucher. Use preview_voucher first to validate. The lines must be balanced (debit total = credit total).',
+            ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines', 'preview_token'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID'),
+                series_code: strParam('Voucher series code, e.g. "A"'),
+                accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
+                description: strParam('Voucher description'),
+                lines: voucherLinesParam(),
+                preview_token: strParam('Token returned by preview_voucher for the exact same payload.')
+            ]
+        ),
+        toolDef('create_correction_voucher',
+            'Creates a reversing correction voucher for an existing posted voucher. Direct edits to posted vouchers are not permitted.',
+            ['original_voucher_id'],
+            [
+                original_voucher_id: intParam('ID of the voucher to correct'),
+                description: optStrParam('Optional description for the correction. Defaults to "Korrigering av <original>".')
+            ]
+        ),
+    ]
+  }
+
   Map<String, Object> callTool(String name, Map<String, Object> arguments) {
     switch (name) {
       case 'get_company_info':
@@ -153,6 +199,12 @@ class AccountingMcpTools {
         return listVatPeriods(arguments)
       case 'get_vat_report':
         return getVatReport(arguments)
+      case 'preview_voucher':
+        return previewVoucher(arguments)
+      case 'post_voucher':
+        return postVoucher(arguments)
+      case 'create_correction_voucher':
+        return createCorrectionVoucher(arguments)
       default:
         throw new IllegalArgumentException("Unknown MCP tool: ${name}")
     }
@@ -199,11 +251,11 @@ class AccountingMcpTools {
   private Map<String, Object> listAccounts(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     String query = args.get('query') as String
-    List<se.alipsa.accounting.domain.Account> accounts =
+    List<Account> accounts =
         accountService.searchAccounts(companyId, query, null, true, false)
     [
         ok: true,
-        accounts: accounts.collect { se.alipsa.accounting.domain.Account a ->
+        accounts: accounts.collect { Account a ->
           [
               id: a.id,
               account_number: a.accountNumber,
@@ -224,11 +276,11 @@ class AccountingMcpTools {
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
     }
-    List<se.alipsa.accounting.domain.Voucher> vouchers =
+    List<Voucher> vouchers =
         voucherService.listVouchers(companyId, fiscalYearId, null, null)
     [
         ok: true,
-        vouchers: vouchers.take(200).collect { se.alipsa.accounting.domain.Voucher v ->
+        vouchers: vouchers.take(200).collect { Voucher v ->
           [
               id: v.id,
               voucher_number: v.voucherNumber,
@@ -374,6 +426,118 @@ class AccountingMcpTools {
     }
   }
 
+  private Map<String, Object> previewVoucher(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    String seriesCode = requiredString(args, 'series_code')
+    String dateText = requiredString(args, 'accounting_date')
+    String description = requiredString(args, 'description')
+    List<Map<String, Object>> rawLines = linesArg(args)
+
+    List<String> errors = []
+    List<String> warnings = []
+    FiscalYear year = fiscalYearService.findById(fiscalYearId)
+    if (year == null) {
+      return [ok: false, errors: ["Räkenskapsår ${fiscalYearId} hittades inte."], warnings: warnings]
+    }
+    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+    if (expectedCompanyId != companyId) {
+      return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}."], warnings: warnings]
+    }
+    if (year.closed) {
+      errors.add("Räkenskapsåret '${year.name}' är stängt. Rättelse kräver upplåsning.".toString())
+    }
+
+    LocalDate accountingDate = parseAccountingDate(dateText, errors)
+    if (accountingDate != null && (accountingDate.isBefore(year.startDate) || accountingDate.isAfter(year.endDate))) {
+      errors.add("Datum ${accountingDate} är utanför räkenskapsåret (${year.startDate} - ${year.endDate}).".toString())
+    }
+
+    VoucherPreview preview = resolveVoucherLines(companyId, rawLines, errors)
+    if (rawLines.size() < 2) {
+      errors << 'En verifikation kräver minst två rader.'
+    }
+    if (preview.totalDebit != preview.totalCredit) {
+      errors.add("Verifikationen är obalanserad: debet ${preview.totalDebit} != kredit ${preview.totalCredit}.".toString())
+    }
+
+    boolean valid = errors.isEmpty()
+    [
+        ok: valid,
+        errors: errors,
+        warnings: warnings,
+        preview_token: valid ? voucherPreviewToken(fiscalYearId, seriesCode, accountingDate?.toString() ?: dateText, description, rawLines) : null,
+        fiscal_year: [id: year.id, name: year.name, closed: year.closed],
+        accounting_date: accountingDate?.toString() ?: dateText,
+        series_code: seriesCode,
+        description: description,
+        lines: preview.lines,
+        total_debit: preview.totalDebit,
+        total_credit: preview.totalCredit
+    ]
+  }
+
+  private Map<String, Object> postVoucher(Map<String, Object> args) {
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    String seriesCode = requiredString(args, 'series_code')
+    String dateText = requiredString(args, 'accounting_date')
+    String description = requiredString(args, 'description')
+    List<Map<String, Object>> rawLines = linesArg(args)
+    String providedToken = args.get('preview_token') as String
+    if (!providedToken) {
+      return [ok: false, errors: ['preview_token krävs — kör preview_voucher med exakt samma argument först.']]
+    }
+
+    String expectedToken = voucherPreviewToken(fiscalYearId, seriesCode, dateText, description, rawLines)
+    if (providedToken != expectedToken) {
+      return [ok: false, errors: ['preview_token stämmer inte med aktuell nyttolast — kör preview_voucher igen med exakt samma argument.']]
+    }
+
+    Map<String, Object> preview = previewVoucher(args)
+    if (!(boolean) preview.ok) {
+      return [ok: false, errors: preview.errors]
+    }
+
+    LocalDate accountingDate = LocalDate.parse(dateText)
+    List<VoucherLine> lines = toVoucherLines((List<Map<String, Object>>) preview.lines)
+    try {
+      Voucher voucher = voucherService.createVoucher(fiscalYearId, seriesCode, accountingDate, description, lines)
+      [
+          ok: true,
+          voucher_id: voucher.id,
+          voucher_number: voucher.voucherNumber,
+          fiscal_year_id: voucher.fiscalYearId,
+          accounting_date: voucher.accountingDate?.toString(),
+          description: voucher.description,
+          status: voucher.status?.name(),
+          line_count: voucher.lines?.size() ?: 0
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
+    long originalVoucherId = requiredLong(args, 'original_voucher_id')
+    String description = args.get('description') as String
+    try {
+      Voucher correction = voucherService.createCorrectionVoucher(originalVoucherId, description)
+      [
+          ok: true,
+          voucher_id: correction.id,
+          voucher_number: correction.voucherNumber,
+          original_voucher_id: correction.originalVoucherId,
+          fiscal_year_id: correction.fiscalYearId,
+          accounting_date: correction.accountingDate?.toString(),
+          description: correction.description,
+          status: correction.status?.name(),
+          line_count: correction.lines?.size() ?: 0
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
   // ---- helpers ----
 
   private static long requiredLong(Map<String, Object> args, String key) {
@@ -384,12 +548,119 @@ class AccountingMcpTools {
     ((Number) value).longValue()
   }
 
+  private static String requiredString(Map<String, Object> args, String key) {
+    String value = args.get(key) as String
+    if (!value?.trim()) {
+      throw new IllegalArgumentException("Missing required argument: ${key}")
+    }
+    value.trim()
+  }
+
+  private static List<Map<String, Object>> linesArg(Map<String, Object> args) {
+    Object value = args.get('lines')
+    if (!(value instanceof List)) {
+      throw new IllegalArgumentException('Missing required argument: lines')
+    }
+    ((List<Object>) value).collect { Object line ->
+      if (!(line instanceof Map)) {
+        throw new IllegalArgumentException('Voucher lines must be objects.')
+      }
+      (Map<String, Object>) line
+    }
+  }
+
   protected static String computePreviewToken(Map<String, Object> canonicalPayload) {
     String canonical = JsonOutput.toJson(new TreeMap<>(canonicalPayload))
     MessageDigest.getInstance('SHA-256')
         .digest(canonical.bytes)
         .encodeHex()
         .toString()
+  }
+
+  private static String voucherPreviewToken(
+      long fiscalYearId,
+      String seriesCode,
+      String accountingDate,
+      String description,
+      List<Map<String, Object>> lines
+  ) {
+    computePreviewToken([
+        fiscal_year_id: fiscalYearId,
+        series_code: seriesCode,
+        accounting_date: accountingDate,
+        description: description,
+        lines: lines
+    ])
+  }
+
+  private VoucherPreview resolveVoucherLines(long companyId, List<Map<String, Object>> rawLines, List<String> errors) {
+    List<Map<String, Object>> resolved = []
+    BigDecimal totalDebit = BigDecimal.ZERO
+    BigDecimal totalCredit = BigDecimal.ZERO
+    rawLines.each { Map<String, Object> line ->
+      String accountNumber = line.get('account_number') as String
+      BigDecimal debit = amount(line.get('debit'))
+      BigDecimal credit = amount(line.get('credit'))
+      totalDebit += debit
+      totalCredit += credit
+      Account account = accountNumber == null ? null : accountService.findAccount(companyId, accountNumber)
+      if (account == null) {
+        errors.add("Konto ${accountNumber ?: '(saknas)'} hittades inte.".toString())
+        Map<String, Object> unresolvedLine = [
+            account_number: accountNumber,
+            error: 'Konto saknas',
+            debit: debit,
+            credit: credit
+        ]
+        resolved << unresolvedLine
+      } else if (!account.active) {
+        errors.add("Konto ${accountNumber} är inaktivt.".toString())
+        resolved << lineMap(account, debit, credit, false)
+      } else {
+        resolved << lineMap(account, debit, credit, true)
+      }
+    }
+    new VoucherPreview(resolved, totalDebit, totalCredit)
+  }
+
+  private static Map<String, Object> lineMap(Account account, BigDecimal debit, BigDecimal credit, boolean active) {
+    [
+        account_number: account.accountNumber,
+        account_id: account.id,
+        account_name: account.accountName,
+        active: active,
+        debit: debit,
+        credit: credit
+    ]
+  }
+
+  private static List<VoucherLine> toVoucherLines(List<Map<String, Object>> lines) {
+    lines.withIndex().collect { Map<String, Object> line, int index ->
+      new VoucherLine(
+          null,
+          null,
+          index,
+          ((Number) line.account_id).longValue(),
+          line.account_number as String,
+          line.account_name as String,
+          null,
+          amount(line.debit),
+          amount(line.credit)
+      )
+    }
+  }
+
+  private static LocalDate parseAccountingDate(String dateText, List<String> errors) {
+    try {
+      LocalDate.parse(dateText)
+    } catch (DateTimeParseException ignored) {
+      errors.add("Ogiltigt datumformat: '${dateText}'. Använd YYYY-MM-DD.".toString())
+      null
+    }
+  }
+
+  private static BigDecimal amount(Object value) {
+    value == null ? BigDecimal.ZERO : new BigDecimal(value.toString())
   }
 
   private static Map<String, Object> intParam(String description) {
@@ -402,6 +673,30 @@ class AccountingMcpTools {
 
   private static Map<String, Object> optStrParam(String description) {
     [type: 'string', description: description]
+  }
+
+  private static Map<String, Object> strParam(String description) {
+    [type: 'string', description: description]
+  }
+
+  private static Map<String, Object> voucherLinesParam() {
+    [
+        type: 'array',
+        description: 'Voucher lines. Each line: { account_number, debit, credit }',
+        items: [
+            type: 'object',
+            properties: [
+                account_number: [type: 'string'],
+                debit: numberParam(),
+                credit: numberParam()
+            ],
+            required: ['account_number', 'debit', 'credit']
+        ]
+    ]
+  }
+
+  private static Map<String, Object> numberParam() {
+    [type: 'number']
   }
 
   private static Map<String, Object> toolDef(
@@ -419,5 +714,18 @@ class AccountingMcpTools {
             required: required
         ]
     ]
+  }
+
+  private static final class VoucherPreview {
+
+    final List<Map<String, Object>> lines
+    final BigDecimal totalDebit
+    final BigDecimal totalCredit
+
+    private VoucherPreview(List<Map<String, Object>> lines, BigDecimal totalDebit, BigDecimal totalCredit) {
+      this.lines = lines
+      this.totalDebit = totalDebit
+      this.totalCredit = totalCredit
+    }
   }
 }
