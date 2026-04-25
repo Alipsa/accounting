@@ -330,4 +330,182 @@ class AccountingMcpToolsTest {
 
     assertNotEquals(hashBefore, hashAfter, 'VAT report hash skall ändras när bokföring påverkar momsperioden')
   }
+
+  @Test
+  void previewVoucherValidatesBalance() {
+    Map<String, Object> result = tools.callTool('preview_voucher', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Test',
+        lines: (Object) [
+            [account_number: '1930', debit: 1000.00G, credit: 0.00G],
+            [account_number: '2440', debit: 0.00G, credit: 500.00G]
+        ]
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('obalanserad') })
+    assertNull(result.get('preview_token'), 'Ogiltigt förslag skall inte ha en preview_token')
+  }
+
+  @Test
+  void previewVoucherResolvesAccountsAndReturnsTokenWhenValid() {
+    Map<String, Object> result = tools.callTool('preview_voucher', balancedVoucherArgs('Balanserad verifikation', 1000.00G))
+
+    assertTrue((boolean) result.get('ok'))
+    assertTrue(((List) result.get('errors')).isEmpty())
+    assertEquals(2, ((List) result.get('lines')).size())
+    assertEquals('1930', ((Map) ((List) result.get('lines')).first()).get('account_number'))
+    assertNotNull(result.get('preview_token'), 'Giltigt förslag skall ha en preview_token')
+  }
+
+  @Test
+  void previewVoucherRejectsDateOutsideFiscalYear() {
+    Map<String, Object> result = tools.callTool('preview_voucher', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2025-12-31',
+        description: (Object) 'Fel datum',
+        lines: (Object) [
+            [account_number: '1930', debit: 100.00G, credit: 0.00G],
+            [account_number: '2440', debit: 0.00G, credit: 100.00G]
+        ]
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('utanför') })
+  }
+
+  @Test
+  void postVoucherCreatesVoucherAndReturnsId() {
+    Map<String, Object> result = previewAndPost(balancedVoucherArgs('Kontantinsättning', 500.00G))
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got errors: ${result.get('errors')}")
+    assertNotNull(result.get('voucher_id'))
+    assertEquals('2026-03-01', result.get('accounting_date'))
+  }
+
+  @Test
+  void postVoucherWithoutPreviewTokenIsRejected() {
+    Map<String, Object> result = tools.callTool('post_voucher', balancedVoucherArgs('Ingen token', 500.00G))
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('preview_token') })
+  }
+
+  @Test
+  void postVoucherWithTamperedPayloadIsRejected() {
+    Map<String, Object> validArgs = balancedVoucherArgs('Ska postas', 500.00G)
+    Map<String, Object> preview = tools.callTool('preview_voucher', validArgs)
+    String token = (String) preview.get('preview_token')
+    Map<String, Object> tampered = new LinkedHashMap<>(validArgs)
+    tampered.put('description', (Object) 'Ändrad beskrivning')
+    tampered.put('preview_token', (Object) token)
+
+    Map<String, Object> result = tools.callTool('post_voucher', tampered)
+
+    assertFalse((boolean) result.get('ok'))
+  }
+
+  @Test
+  void postVoucherAcceptsEquivalentNumericRepresentations() {
+    Map<String, Object> previewArgs = [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Olika numerisk form',
+        lines: (Object) [
+            [account_number: '1930', debit: 500, credit: 0],
+            [account_number: '2440', debit: 0, credit: 500]
+        ]
+    ]
+    Map<String, Object> preview = tools.callTool('preview_voucher', previewArgs)
+    assertTrue((boolean) preview.get('ok'))
+    Map<String, Object> postArgs = balancedVoucherArgs('Olika numerisk form', 500.00G)
+    postArgs.put('preview_token', (Object) preview.get('preview_token'))
+
+    Map<String, Object> result = tools.callTool('post_voucher', postArgs)
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got errors: ${result.get('errors')}")
+    assertNotNull(result.get('voucher_id'))
+  }
+
+  @Test
+  void postVoucherRevalidatesClosedFiscalYearAfterPreview() {
+    Map<String, Object> validArgs = balancedVoucherArgs('Stängt år efter preview', 500.00G)
+    Map<String, Object> preview = tools.callTool('preview_voucher', validArgs)
+    assertTrue((boolean) preview.get('ok'))
+    fiscalYearService.closeFiscalYear(fiscalYearId)
+    Map<String, Object> argsWithToken = new LinkedHashMap<>(validArgs)
+    argsWithToken.put('preview_token', (Object) preview.get('preview_token'))
+
+    Map<String, Object> result = tools.callTool('post_voucher', argsWithToken)
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('stängt') })
+  }
+
+  @Test
+  void postVoucherWithoutTokenIsRejectedRegardlessOfBalance() {
+    Map<String, Object> result = tools.callTool('post_voucher', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Obalanserad',
+        lines: (Object) [
+            [account_number: '1930', debit: 500.00G, credit: 0.00G],
+            [account_number: '2440', debit: 0.00G, credit: 200.00G]
+        ]
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+  }
+
+  @Test
+  void createCorrectionVoucherCreatesReversingVoucher() {
+    Map<String, Object> posted = previewAndPost(balancedVoucherArgs('Original att korrigera', 300.00G))
+    assertTrue((boolean) posted.get('ok'))
+    long originalId = ((Number) posted.get('voucher_id')).longValue()
+
+    Map<String, Object> correction = tools.callTool('create_correction_voucher', [
+        original_voucher_id: (Object) originalId,
+        description: (Object) 'Korrigering av felaktig post'
+    ])
+
+    assertTrue((boolean) correction.get('ok'), "Expected ok but got: ${correction.get('errors')}")
+    assertNotNull(correction.get('voucher_id'))
+    assertNotEquals(originalId, ((Number) correction.get('voucher_id')).longValue())
+  }
+
+  private Map<String, Object> previewAndPost(Map<String, Object> postArgs) {
+    Map<String, Object> previewResult = tools.callTool('preview_voucher', postArgs)
+    assertTrue((boolean) previewResult.get('ok'), "Preview failed: ${previewResult.get('errors')}")
+    String token = (String) previewResult.get('preview_token')
+    Map<String, Object> argsWithToken = new LinkedHashMap<>(postArgs)
+    argsWithToken.put('preview_token', (Object) token)
+    tools.callTool('post_voucher', argsWithToken)
+  }
+
+  private Map<String, Object> balancedVoucherArgs(String description, BigDecimal amount) {
+    [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) description,
+        lines: (Object) [
+            [account_number: '1930', debit: amount, credit: 0.00G],
+            [account_number: '2440', debit: 0.00G, credit: amount]
+        ]
+    ]
+  }
 }
