@@ -43,6 +43,16 @@ application {
   mainClass = 'se.alipsa.accounting.AlipsaAccounting'
 }
 
+distributions {
+  main {
+    contents {
+      from(rootProject.file('skill')) {
+        into('skill')
+      }
+    }
+  }
+}
+
 def releaseConfig = [
   appName       : 'AlipsaAccounting',
   displayName   : 'Alipsa Accounting',
@@ -352,6 +362,9 @@ tasks.register('packageLinuxReleaseZip', Zip) {
   from(linuxUninstallScript) {
     filePermissions { unix(0755) }
   }
+  from(rootProject.file('skill')) {
+    into('skill')
+  }
 }
 
 tasks.register('packageWindowsAppImage', Exec) {
@@ -365,6 +378,16 @@ tasks.register('packageWindowsAppImage', Exec) {
         *buildJpackageArgs('windows', 'app-image', outputDir)
         )
   }
+}
+
+tasks.register('copySkillToWindowsAppImage', Copy) {
+  onlyIf { isWindows }
+  from(rootProject.file('skill'))
+  into(releaseConfig.releaseRoot.map { it.dir('windows/skill') })
+}
+
+tasks.named('packageWindowsAppImage') {
+  finalizedBy 'copySkillToWindowsAppImage'
 }
 
 tasks.register('packageWindowsInstaller', Exec) {
@@ -396,6 +419,16 @@ tasks.register('packageMacosAppImage', Exec) {
         *buildJpackageArgs('macos', 'app-image', outputDir)
         )
   }
+}
+
+tasks.register('copySkillToMacosAppImage', Copy) {
+  onlyIf { isMacos }
+  from(rootProject.file('skill'))
+  into(releaseConfig.releaseRoot.map { it.dir('macos/skill') })
+}
+
+tasks.named('packageMacosAppImage') {
+  finalizedBy 'copySkillToMacosAppImage'
 }
 
 tasks.register('verifyLinuxAppImage', Exec) {
