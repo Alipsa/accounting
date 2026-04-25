@@ -118,13 +118,19 @@ class AccountingMcpTools {
         ),
         toolDef('list_vat_periods',
             'Lists VAT periods for the given fiscal year with status (OPEN, REPORTED, LOCKED).',
-            ['fiscal_year_id'],
-            [fiscal_year_id: intParam('Fiscal year ID')]
+            ['company_id', 'fiscal_year_id'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID')
+            ]
         ),
         toolDef('get_vat_report',
             'Calculates the VAT report for the given VAT period. Returns output VAT, input VAT, net payable, and per-code breakdown.',
-            ['vat_period_id'],
-            [vat_period_id: intParam('VAT period ID')]
+            ['company_id', 'vat_period_id'],
+            [
+                company_id: intParam('Company ID'),
+                vat_period_id: intParam('VAT period ID')
+            ]
         ),
     ]
   }
@@ -233,12 +239,17 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getTrialBalance(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
     Long periodId = args.get('accounting_period_id') != null
         ? ((Number) args.get('accounting_period_id')).longValue()
         : null
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
+    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+    if (expectedCompanyId != companyId) {
+      return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+    }
     se.alipsa.accounting.domain.report.ReportResult result = reportDataService.generate(
         new ReportSelection(ReportType.TRIAL_BALANCE, fiscalYearId, periodId, startDate, endDate)
     )
@@ -260,13 +271,20 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getGeneralLedger(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
     Long periodId = args.get('accounting_period_id') != null
         ? ((Number) args.get('accounting_period_id')).longValue()
         : null
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
-    int limit = args.get('limit') != null ? Math.min(((Number) args.get('limit')).intValue(), 5000) : 1000
+    int limit = args.get('limit') != null
+        ? Math.max(1, Math.min(((Number) args.get('limit')).intValue(), 5000))
+        : 1000
+    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+    if (expectedCompanyId != companyId) {
+      return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+    }
     se.alipsa.accounting.domain.report.ReportResult result = reportDataService.generate(
         new ReportSelection(ReportType.GENERAL_LEDGER, fiscalYearId, periodId, startDate, endDate)
     )
@@ -294,7 +312,12 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listVatPeriods(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+    if (expectedCompanyId != companyId) {
+      return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+    }
     List<VatPeriod> periods = vatService.listPeriods(fiscalYearId)
     [
         ok: true,
@@ -313,11 +336,16 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getVatReport(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
     long vatPeriodId = requiredLong(args, 'vat_period_id')
     try {
+      VatPeriod period = vatService.findPeriod(vatPeriodId)
+      long expectedCompanyId = companyService.resolveFromFiscalYear(period.fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, error: "VAT period ${vatPeriodId} does not belong to company ${companyId}."]
+      }
       VatService.VatReport report = vatService.calculateReport(vatPeriodId)
-      String reportHash = report.period?.reportHash
-          ?: computePreviewToken([vat_period_id: vatPeriodId])
+      String reportHash = VatService.calculateReportHash(report)
       [
           ok: true,
           vat_period_id: report.period?.id,

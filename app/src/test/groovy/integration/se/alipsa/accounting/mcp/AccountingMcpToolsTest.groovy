@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AuditLogService
@@ -29,6 +30,7 @@ class AccountingMcpToolsTest {
   private String previousHome
   private DatabaseService databaseService
   private FiscalYearService fiscalYearService
+  private VoucherService voucherService
   private AccountingMcpTools tools
   private long fiscalYearId
 
@@ -42,7 +44,7 @@ class AccountingMcpToolsTest {
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService periodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, periodService, auditLogService)
-    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
+    voucherService = new VoucherService(databaseService, auditLogService)
 
     tools = new AccountingMcpTools(
         new CompanyService(databaseService),
@@ -154,6 +156,16 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void getTrialBalanceRejectsCrossCompanyFiscalYear() {
+    Map<String, Object> result = tools.callTool('get_trial_balance', [
+        'company_id': (Object) 9999L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((String) result.get('error')).contains('does not belong to company'))
+  }
+
+  @Test
   void getGeneralLedgerReturnsStructuredRows() {
     Map<String, Object> result = tools.callTool('get_general_ledger', [
         'company_id': (Object) 1L,
@@ -164,24 +176,148 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void getGeneralLedgerRejectsCrossCompanyFiscalYear() {
+    Map<String, Object> result = tools.callTool('get_general_ledger', [
+        'company_id': (Object) 9999L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((String) result.get('error')).contains('does not belong to company'))
+  }
+
+  @Test
+  void getGeneralLedgerClampsNegativeLimit() {
+    Map<String, Object> result = tools.callTool('get_general_ledger', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId,
+        'limit': (Object) -5
+    ])
+    assertTrue((boolean) result.get('ok'))
+    List rows = (List) result.get('rows')
+    assertTrue(rows.size() <= 1)
+  }
+
+  @Test
   void listVatPeriodsReturnsPeriodsForFiscalYear() {
-    Map<String, Object> result = tools.callTool('list_vat_periods', ['fiscal_year_id': (Object) fiscalYearId])
+    Map<String, Object> result = tools.callTool('list_vat_periods', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
     assertTrue((boolean) result.get('ok'))
     List periods = (List) result.get('vat_periods')
     assertFalse(periods.isEmpty())
   }
 
   @Test
+  void listVatPeriodsRejectsCrossCompanyFiscalYear() {
+    Map<String, Object> result = tools.callTool('list_vat_periods', [
+        'company_id': (Object) 9999L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((String) result.get('error')).contains('does not belong to company'))
+  }
+
+  @Test
   void getVatReportReturnsReportStructureWithHash() {
-    Map<String, Object> listResult = tools.callTool('list_vat_periods', ['fiscal_year_id': (Object) fiscalYearId])
+    Map<String, Object> listResult = tools.callTool('list_vat_periods', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
     List periods = (List) listResult.get('vat_periods')
     Map firstPeriod = (Map) periods.first()
     long vatPeriodId = ((Number) firstPeriod.get('id')).longValue()
 
-    Map<String, Object> result = tools.callTool('get_vat_report', ['vat_period_id': (Object) vatPeriodId])
+    Map<String, Object> result = tools.callTool('get_vat_report', [
+        'company_id': (Object) 1L,
+        'vat_period_id': (Object) vatPeriodId
+    ])
     assertTrue((boolean) result.get('ok'))
     assertNotNull(result.get('output_vat_total'))
     assertNotNull(result.get('net_vat_to_pay'))
     assertNotNull(result.get('report_hash'), 'get_vat_report skall returnera report_hash')
+  }
+
+  @Test
+  void getVatReportRejectsCrossCompanyVatPeriod() {
+    Map<String, Object> listResult = tools.callTool('list_vat_periods', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    List periods = (List) listResult.get('vat_periods')
+    Map firstPeriod = (Map) periods.first()
+    long vatPeriodId = ((Number) firstPeriod.get('id')).longValue()
+
+    Map<String, Object> result = tools.callTool('get_vat_report', [
+        'company_id': (Object) 9999L,
+        'vat_period_id': (Object) vatPeriodId
+    ])
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((String) result.get('error')).contains('does not belong to company'))
+  }
+
+  @Test
+  void getVatReportHashChangesWhenContentChanges() {
+    Map<String, Object> listResult = tools.callTool('list_vat_periods', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    List periods = (List) listResult.get('vat_periods')
+    Map firstPeriod = (Map) periods.first()
+    long vatPeriodId = ((Number) firstPeriod.get('id')).longValue()
+    LocalDate periodStart = LocalDate.parse((String) firstPeriod.get('start_date'))
+
+    Map<String, Object> before = tools.callTool('get_vat_report', [
+        'company_id': (Object) 1L,
+        'vat_period_id': (Object) vatPeriodId
+    ])
+    assertTrue((boolean) before.get('ok'))
+    String hashBefore = (String) before.get('report_hash')
+
+    // Insert VAT-coded accounts and post a voucher that affects VAT
+    long salesAccountId
+    long vatAccountId
+    databaseService.withTransaction { groovy.sql.Sql sql ->
+      List<List<Object>> keys = sql.executeInsert("""
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, vat_code, created_at, updated_at
+          ) values (?, '3000', 'Försäljning varor', 'INCOME', 'CREDIT',
+              true, false, 'OUTPUT_25', current_timestamp, current_timestamp)
+      """, [CompanyService.LEGACY_COMPANY_ID])
+      salesAccountId = ((Number) keys.first().first()).longValue()
+
+      List<List<Object>> keys2 = sql.executeInsert("""
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, vat_code, created_at, updated_at
+          ) values (?, '2610', 'Utgående moms', 'LIABILITY', 'CREDIT',
+              true, false, 'OUTPUT_25', current_timestamp, current_timestamp)
+      """, [CompanyService.LEGACY_COMPANY_ID])
+      vatAccountId = ((Number) keys2.first().first()).longValue()
+    }
+
+    voucherService.createVoucher(
+        fiscalYearId,
+        'A',
+        periodStart.plusDays(5),
+        'Försäljning med moms',
+        [
+            new VoucherLine(null, null, 0, salesAccountId, '3000', 'Försäljning varor', null, 0.00G, 1000.00G),
+            new VoucherLine(null, null, 1, vatAccountId, '2610', 'Utgående moms', null, 0.00G, 250.00G),
+            new VoucherLine(null, null, 2, null, '1930', 'Företagskonto', null, 1250.00G, 0.00G)
+        ]
+    )
+
+    Map<String, Object> after = tools.callTool('get_vat_report', [
+        'company_id': (Object) 1L,
+        'vat_period_id': (Object) vatPeriodId
+    ])
+    assertTrue((boolean) after.get('ok'))
+    String hashAfter = (String) after.get('report_hash')
+
+    assertNotEquals(hashBefore, hashAfter, 'VAT report hash skall ändras när bokföring påverkar momsperioden')
   }
 }
