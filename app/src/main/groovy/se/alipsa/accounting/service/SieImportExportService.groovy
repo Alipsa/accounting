@@ -29,11 +29,14 @@ import java.nio.file.Path
 import java.sql.Date
 import java.text.Normalizer
 import java.time.LocalDate
+import java.util.logging.Logger
 
 /**
  * Imports and exports SIE4 files and records import job outcomes.
  */
+@SuppressWarnings('ClassSize')
 final class SieImportExportService {
+  private static final Logger log = Logger.getLogger(SieImportExportService.name)
   private static final int AMOUNT_SCALE = 2
   private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L
   private static final String PROGRAM_NAME = 'Alipsa Accounting'
@@ -142,13 +145,7 @@ final class SieImportExportService {
       }
       auditLogService.logImport(
           replaceExistingFiscalYear ? "Ersatte räkenskapsår från SIE ${result.job.fileName}" : "Importerade SIE ${result.job.fileName}",
-          [
-              "jobId=${result.job.id}",
-              "fiscalYearId=${result.job.fiscalYearId}",
-              "checksum=${result.job.checksumSha256}",
-              "replaceExistingFiscalYear=${replaceExistingFiscalYear}",
-              "summary=${result.job.summary}"
-          ].join('\n'),
+          buildImportAuditDetail(result, replaceExistingFiscalYear, replacementPlan),
           companyId
       )
       if (replacementPlan != null) {
@@ -400,14 +397,7 @@ final class SieImportExportService {
   ) {
     String base = "Ersättningsimport klar för ${fiscalYear.name}: " +
         "${counts.openingBalanceCount} ingående balanser, ${counts.voucherCount} verifikationer, ${counts.lineCount} rader."
-    if (purgeSummary == null || (
-        purgeSummary.attachmentCount == 0 &&
-            purgeSummary.reportArchiveCount == 0 &&
-            purgeSummary.openingBalanceCount == 0 &&
-            purgeSummary.voucherCount == 0 &&
-            purgeSummary.vatPeriodCount == 0 &&
-            purgeSummary.auditLogCount == 0
-    )) {
+    if (purgeSummary == null || purgeSummary.isEmpty()) {
       return warnings.isEmpty() ? base : "${base} ${warnings.size()} varningar registrerades."
     }
     String replaced = " Tidigare data togs bort: ${purgeSummary.voucherCount} verifikationer, " +
@@ -416,12 +406,36 @@ final class SieImportExportService {
     warnings.isEmpty() ? "${base}${replaced}" : "${base}${replaced} ${warnings.size()} varningar registrerades."
   }
 
+  private static String buildImportAuditDetail(
+      SieImportResult result,
+      boolean replaceExistingFiscalYear,
+      FiscalYearReplacementPlan replacementPlan
+  ) {
+    List<String> details = [
+        "jobId=${result.job.id}".toString(),
+        "fiscalYearId=${result.job.fiscalYearId}".toString(),
+        "checksum=${result.job.checksumSha256}".toString(),
+        "replaceExistingFiscalYear=${replaceExistingFiscalYear}".toString(),
+        "summary=${result.job.summary}".toString()
+    ]
+    if (replacementPlan?.summary != null) {
+      FiscalYearPurgeSummary ps = replacementPlan.summary
+      details.add("archivedAuditLogRows=${ps.auditLogCount}".toString())
+      details.add("deletedVouchers=${ps.voucherCount}".toString())
+      details.add("deletedAttachments=${ps.attachmentCount}".toString())
+      details.add("deletedOpeningBalances=${ps.openingBalanceCount}".toString())
+      details.add("deletedVatPeriods=${ps.vatPeriodCount}".toString())
+      details.add("deletedReportArchives=${ps.reportArchiveCount}".toString())
+    }
+    details.join('\n')
+  }
+
   private FiscalYearReplacementPlan replaceFiscalYearContents(Sql sql, long companyId, FiscalYear fiscalYear) {
     ensureReplaceAllowed(sql, fiscalYear)
     FiscalYearPurgeSummary summary = collectPurgeSummary(sql, companyId, fiscalYear.id)
     List<String> attachmentStoragePaths = loadAttachmentStoragePaths(sql, fiscalYear.id)
     List<String> reportArchiveStoragePaths = loadReportArchiveStoragePaths(sql, fiscalYear.id)
-    deleteFiscalYearAuditLogRows(sql, companyId, fiscalYear.id)
+    archiveFiscalYearAuditLogRows(sql, companyId, fiscalYear.id)
     sql.executeUpdate('delete from report_archive where fiscal_year_id = ?', [fiscalYear.id])
     sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYear.id])
     sql.executeUpdate('''
@@ -479,6 +493,7 @@ final class SieImportExportService {
             select count(*) as total
               from audit_log
              where company_id = ?
+               and archived = false
                and (
                    fiscal_year_id = ?
                    or accounting_period_id in (
@@ -522,10 +537,17 @@ final class SieImportExportService {
     }
   }
 
-  private static void deleteFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
+  private static void archiveFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
     sql.executeUpdate('''
-        delete from audit_log
+        update audit_log
+           set archived = true,
+               fiscal_year_id = null,
+               accounting_period_id = null,
+               vat_period_id = null,
+               voucher_id = null,
+               attachment_id = null
          where company_id = ?
+           and archived = false
            and (
                fiscal_year_id = ?
                or accounting_period_id in (
@@ -565,7 +587,11 @@ final class SieImportExportService {
 
   private static void deleteStoredFiles(Path rootDirectory, List<String> storagePaths) {
     Path root = rootDirectory.toAbsolutePath().normalize()
-    storagePaths.findAll { String path -> path != null && !path.isBlank() }.each { String storagePath ->
+    List<String> validPaths = storagePaths.findAll { String path -> path != null && !path.isBlank() }
+    if (!validPaths.isEmpty()) {
+      log.info("Scheduled deletion of ${validPaths.size()} files under ${root}: ${validPaths}")
+    }
+    validPaths.each { String storagePath ->
       Path resolved = root.resolve(storagePath).normalize()
       if (resolved.startsWith(root)) {
         Files.deleteIfExists(resolved)

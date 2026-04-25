@@ -12,7 +12,6 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
-import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
 import se.alipsa.datepicker.DatePicker
@@ -67,7 +66,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final AccountingPeriodService accountingPeriodService
   private final AttachmentService attachmentService
   private final AuditLogService auditLogService
-  private final FiscalYearService fiscalYearService
   private final ActiveCompanyManager activeCompanyManager
 
   private final JLabel voucherNumberLabel = new JLabel('')
@@ -107,7 +105,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       AccountingPeriodService accountingPeriodService,
       AttachmentService attachmentService,
       AuditLogService auditLogService,
-      FiscalYearService fiscalYearService,
       ActiveCompanyManager activeCompanyManager
   ) {
     this.voucherService = voucherService
@@ -115,7 +112,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     this.accountingPeriodService = accountingPeriodService
     this.attachmentService = attachmentService
     this.auditLogService = auditLogService
-    this.fiscalYearService = fiscalYearService
     this.activeCompanyManager = activeCompanyManager
     lineTableModel = new LineTableModel()
     lineTable = new JTable(lineTableModel)
@@ -681,35 +677,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       return
     }
     try {
-      if (voucherService.isLastInSeries(currentVoucher.id)) {
-        int choice = javax.swing.JOptionPane.showConfirmDialog(
-            this,
-            I18n.instance.getString('voucherPanel.confirm.delete')
-                .replace('{0}', currentVoucher.voucherNumber ?: ''),
-            I18n.instance.getString('voucherPanel.button.void'),
-            javax.swing.JOptionPane.OK_CANCEL_OPTION
-        )
-        if (choice != javax.swing.JOptionPane.OK_OPTION) {
-          return
-        }
-        voucherService.deleteVoucher(currentVoucher.id)
-        showInfo(I18n.instance.getString('voucherPanel.message.deleted')
-            .replace('{0}', currentVoucher.voucherNumber ?: ''))
+      int choice = javax.swing.JOptionPane.showConfirmDialog(
+          this,
+          I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+              .replace('{0}', currentVoucher.voucherNumber ?: ''),
+          I18n.instance.getString('voucherPanel.button.void'),
+          javax.swing.JOptionPane.YES_NO_OPTION
+      )
+      if (choice == javax.swing.JOptionPane.YES_OPTION) {
+        Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+        showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+            correction.voucherNumber ?: ''))
         reloadVoucherList()
-      } else {
-        int choice = javax.swing.JOptionPane.showConfirmDialog(
-            this,
-            I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-                .replace('{0}', currentVoucher.voucherNumber ?: ''),
-            I18n.instance.getString('voucherPanel.button.void'),
-            javax.swing.JOptionPane.YES_NO_OPTION
-        )
-        if (choice == javax.swing.JOptionPane.YES_OPTION) {
-          Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-          showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-              correction.voucherNumber ?: ''))
-          reloadVoucherList()
-        }
       }
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
@@ -728,8 +707,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void applyReadOnlyState() {
+    boolean fiscalYearClosed = false
     if (currentVoucher != null) {
       readOnly = true
+      try {
+        fiscalYearClosed = accountingPeriodService.isDateLocked(
+            activeCompanyManager.companyId, currentVoucher.accountingDate)
+      } catch (Exception ex) {
+        log.warning("Kunde inte avgöra om räkenskapsåret är låst för korrigeringsknappen: ${ex.message}")
+        fiscalYearClosed = true
+      }
     } else if (activeCompanyManager.fiscalYear != null) {
       try {
         readOnly = accountingPeriodService.isDateLocked(
@@ -747,14 +734,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
     voidButton.enabled = false
-    try {
-      correctionButton.enabled = currentVoucher != null
-          && currentVoucher.status == VoucherStatus.ACTIVE
-          && !fiscalYearService.isClosed(activeCompanyManager.companyId, currentVoucher.accountingDate)
-    } catch (Exception ex) {
-      log.warning("Kunde inte avgöra om räkenskapsåret är låst – inaktiverar rättningsknapp: ${ex.message}")
-      correctionButton.enabled = false
-    }
+    correctionButton.enabled = currentVoucher != null
+        && currentVoucher.status == VoucherStatus.ACTIVE
+        && !fiscalYearClosed
     addAttachmentButton.enabled = currentVoucher != null
   }
 

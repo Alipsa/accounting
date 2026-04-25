@@ -600,7 +600,7 @@ final class MainFrame implements PropertyChangeListener {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, fiscalYearService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,

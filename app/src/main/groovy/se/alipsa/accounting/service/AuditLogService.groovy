@@ -69,6 +69,7 @@ final class AuditLogService {
                  created_at as createdAt
             from audit_log
            where voucher_id = ?
+             and archived = false
            order by created_at desc, id desc
       ''', [voucherId]).collect { GroovyRowResult row ->
         mapEntry(row)
@@ -96,6 +97,7 @@ final class AuditLogService {
                  created_at as createdAt
             from audit_log
            where company_id = ?
+             and archived = false
            order by created_at desc, id desc
            limit ?
       ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
@@ -122,6 +124,7 @@ final class AuditLogService {
                  entry_hash as entryHash,
                  created_at as createdAt
             from audit_log
+           where archived = false
            order by created_at desc, id desc
            limit ?
       ''', [safeLimit]).collect { GroovyRowResult row ->

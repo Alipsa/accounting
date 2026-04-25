@@ -127,7 +127,6 @@ final class VoucherService {
   void deleteVoucher(long voucherId) {
     throw new IllegalStateException('Registrerade verifikationer kan inte tas bort direkt. Skapa en ändringsverifikation.')
   }
-
   Voucher createCorrectionVoucher(long originalVoucherId, String description = null) {
     databaseService.withTransaction { Sql sql ->
       Voucher original = requireVoucher(sql, originalVoucherId)
