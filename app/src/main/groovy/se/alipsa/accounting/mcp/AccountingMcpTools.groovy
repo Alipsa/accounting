@@ -146,7 +146,7 @@ class AccountingMcpTools {
   private static List<Map<String, Object>> voucherToolDefs() {
     [
         toolDef('preview_voucher',
-            'Validates a voucher proposal without posting it. Returns resolved accounts, balance check, and any errors or warnings.',
+            'Validates a voucher proposal without posting it. Returns resolved accounts, balance check, and any errors or warnings. VAT reporting uses VAT codes configured on accounts; per-line vat_code is not accepted in Phase 3.',
             ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines'],
             [
                 company_id: intParam('Company ID'),
@@ -158,7 +158,7 @@ class AccountingMcpTools {
             ]
         ),
         toolDef('post_voucher',
-            'Posts a voucher. Use preview_voucher first to validate. The lines must be balanced (debit total = credit total).',
+            'Posts a voucher. Use preview_voucher first to validate. The lines must be balanced (debit total = credit total). VAT reporting uses VAT codes configured on accounts; per-line vat_code is not accepted in Phase 3.',
             ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines', 'preview_token'],
             [
                 company_id: intParam('Company ID'),
@@ -589,8 +589,21 @@ class AccountingMcpTools {
         series_code: seriesCode,
         accounting_date: accountingDate,
         description: description,
-        lines: lines
+        lines: canonicalVoucherLines(lines)
     ])
+  }
+
+  private static List<Map<String, Object>> canonicalVoucherLines(List<Map<String, Object>> lines) {
+    List<Map<String, Object>> canonicalLines = []
+    lines.each { Map<String, Object> line ->
+      Map<String, Object> canonicalLine = [
+          account_number: line.get('account_number') as String,
+          debit: canonicalAmount(line.get('debit')),
+          credit: canonicalAmount(line.get('credit'))
+      ]
+      canonicalLines << canonicalLine
+    }
+    canonicalLines
   }
 
   private VoucherPreview resolveVoucherLines(long companyId, List<Map<String, Object>> rawLines, List<String> errors) {
@@ -663,6 +676,11 @@ class AccountingMcpTools {
     value == null ? BigDecimal.ZERO : new BigDecimal(value.toString())
   }
 
+  private static String canonicalAmount(Object value) {
+    BigDecimal normalized = amount(value).stripTrailingZeros()
+    normalized.signum() == 0 ? '0' : normalized.toPlainString()
+  }
+
   private static Map<String, Object> intParam(String description) {
     [type: 'integer', description: description]
   }
@@ -682,21 +700,21 @@ class AccountingMcpTools {
   private static Map<String, Object> voucherLinesParam() {
     [
         type: 'array',
-        description: 'Voucher lines. Each line: { account_number, debit, credit }',
+        description: 'Voucher lines. Each line: { account_number, debit, credit }. VAT is derived from the account vat_code; per-line vat_code is not accepted in Phase 3.',
         items: [
             type: 'object',
             properties: [
-                account_number: [type: 'string'],
-                debit: numberParam(),
-                credit: numberParam()
+                account_number: [type: 'string', description: 'Account number to post against.'],
+                debit: numberParam('Debit amount. Use 0 when this is a credit line.'),
+                credit: numberParam('Credit amount. Use 0 when this is a debit line.')
             ],
             required: ['account_number', 'debit', 'credit']
         ]
     ]
   }
 
-  private static Map<String, Object> numberParam() {
-    [type: 'number']
+  private static Map<String, Object> numberParam(String description = 'Monetary amount') {
+    [type: 'number', description: description]
   }
 
   private static Map<String, Object> toolDef(

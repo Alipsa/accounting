@@ -414,6 +414,30 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void postVoucherAcceptsEquivalentNumericRepresentations() {
+    Map<String, Object> previewArgs = [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Olika numerisk form',
+        lines: (Object) [
+            [account_number: '1930', debit: 500, credit: 0],
+            [account_number: '2440', debit: 0, credit: 500]
+        ]
+    ]
+    Map<String, Object> preview = tools.callTool('preview_voucher', previewArgs)
+    assertTrue((boolean) preview.get('ok'))
+    Map<String, Object> postArgs = balancedVoucherArgs('Olika numerisk form', 500.00G)
+    postArgs.put('preview_token', (Object) preview.get('preview_token'))
+
+    Map<String, Object> result = tools.callTool('post_voucher', postArgs)
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got errors: ${result.get('errors')}")
+    assertNotNull(result.get('voucher_id'))
+  }
+
+  @Test
   void postVoucherRevalidatesClosedFiscalYearAfterPreview() {
     Map<String, Object> validArgs = balancedVoucherArgs('Stängt år efter preview', 500.00G)
     Map<String, Object> preview = tools.callTool('preview_voucher', validArgs)
@@ -430,7 +454,7 @@ class AccountingMcpToolsTest {
   }
 
   @Test
-  void postVoucherRejectsUnbalancedLinesWithoutToken() {
+  void postVoucherWithoutTokenIsRejectedRegardlessOfBalance() {
     Map<String, Object> result = tools.callTool('post_voucher', [
         company_id: (Object) 1L,
         fiscal_year_id: (Object) fiscalYearId,
