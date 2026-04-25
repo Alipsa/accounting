@@ -51,7 +51,8 @@ final class AlipsaAccounting {
         I18n.instance.setLocale(savedLanguage)
       }
       if (options.mode == RunMode.MCP) {
-        new StartupVerificationService().verify()
+        StartupVerificationReport startupReport = new StartupVerificationService().verify()
+        failOnStartupErrors(startupReport)
         try {
           new McpServer().run()
         } finally {

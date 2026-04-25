@@ -3,10 +3,15 @@ package se.alipsa.accounting.mcp
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
+import java.util.logging.Level
+import java.util.logging.Logger
+
 /**
  * NDJSON stdin/stdout loop for MCP over stdio.
  */
 final class McpServer {
+
+  private static final Logger log = Logger.getLogger(McpServer.name)
 
   private final BufferedReader input
   private final PrintWriter output
@@ -41,6 +46,7 @@ final class McpServer {
       }
       dispatcher.dispatch((Map<String, Object>) parsed)
     } catch (Exception exception) {
+      log.log(Level.FINE, 'Could not parse MCP JSON-RPC request.', exception)
       McpDispatcher.parseError(null, 'Parse error.')
     }
   }
@@ -50,6 +56,5 @@ final class McpServer {
       return
     }
     output.println(JsonOutput.toJson(response))
-    output.flush()
   }
 }
