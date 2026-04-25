@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
@@ -170,6 +171,12 @@ class SieImportExportServiceTest {
     DatabaseService targetDatabaseService = DatabaseService.newForTesting()
     targetDatabaseService.initialize()
     seedReplaceTargetEnvironment(targetDatabaseService)
+    AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
+    AuditLogEntry unrelatedEntry = auditLogService.logImport(
+        'Orelaterad audithändelse',
+        'ska vara kedjeankare efter arkivering',
+        CompanyService.LEGACY_COMPANY_ID
+    )
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
     SieImportResult result = targetService.replaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
@@ -190,10 +197,20 @@ class SieImportExportServiceTest {
       ) as GroovyRowResult
       assertEquals(0, ((Number) replacedVoucher.get('total')).intValue())
 
-      GroovyRowResult latestEntry = sql.firstRow('''
+      GroovyRowResult firstReplacementAuditRow = sql.firstRow('''
+          select previous_hash as previousHash
+            from audit_log
+           where company_id = ?
+             and archived = false
+             and id > ?
+           order by id asc
+           limit 1
+      ''', [CompanyService.LEGACY_COMPANY_ID, unrelatedEntry.id]) as GroovyRowResult
+      GroovyRowResult latestLiveEntry = sql.firstRow('''
           select entry_hash as entryHash
             from audit_log
            where company_id = ?
+             and archived = false
            order by id desc
            limit 1
       ''', [CompanyService.LEGACY_COMPANY_ID]) as GroovyRowResult
@@ -202,13 +219,60 @@ class SieImportExportServiceTest {
             from audit_log_chain_head
            where company_id = ?
       ''', [CompanyService.LEGACY_COMPANY_ID]) as GroovyRowResult
+      assertNotNull(firstReplacementAuditRow, 'Replacement import should create live audit entries')
       assertNotNull(chainHead, 'Chain head row must exist')
       assertEquals(
-          latestEntry?.get('entryHash') as String,
+          unrelatedEntry.entryHash,
+          firstReplacementAuditRow?.get('previousHash') as String,
+          'The first live audit row after replacement must chain from the latest surviving live audit entry'
+      )
+      assertEquals(
+          latestLiveEntry?.get('entryHash') as String,
           chainHead?.get('lastEntryHash') as String,
-          'Chain head must reference the latest audit log entry after replacement'
+          'Chain head must reference the latest live audit log entry after replacement'
       )
     }
+  }
+
+  @Test
+  void replaceFiscalYearWithClosingEntriesIsRejectedAndRecordedAsFailedJob() {
+    Path exportPath = tempDir.resolve('replace-with-closing.sie')
+    createExportFixture(tempDir.resolve('replace-with-closing-source-db'), exportPath)
+
+    switchHome(tempDir.resolve('replace-with-closing-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    long fiscalYearId = findFiscalYearId(targetDatabaseService, '2026')
+    insertClosingEntry(targetDatabaseService, fiscalYearId)
+    SieImportExportService targetService = createSieService(targetDatabaseService)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      targetService.replaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+    }
+
+    assertTrue(exception.message.contains('bokslutsposter'))
+    assertEquals(ImportJobStatus.FAILED, targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
+    assertTrue(countRows(targetDatabaseService, 'voucher') > 0, 'Existing fiscal-year content must remain untouched on failure')
+  }
+
+  @Test
+  void replaceFiscalYearRemainsSuccessfulWhenStoredFileCleanupFails() {
+    Path exportPath = tempDir.resolve('replace-cleanup-failure.sie')
+    createExportFixture(tempDir.resolve('replace-cleanup-failure-source-db'), exportPath)
+
+    switchHome(tempDir.resolve('replace-cleanup-failure-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    Path stubbornDirectory = configureUndeletableReportArchivePath(targetDatabaseService)
+    SieImportExportService targetService = createSieService(targetDatabaseService)
+
+    SieImportResult result = targetService.replaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertEquals(ImportJobStatus.SUCCESS, targetService.listImportJobs(CompanyService.LEGACY_COMPANY_ID, 1).first().status)
+    assertTrue(Files.isDirectory(stubbornDirectory), 'Failed cleanup should be logged without changing job status')
   }
 
   @Test
@@ -591,6 +655,44 @@ class SieImportExportServiceTest {
     Path attachmentFile = tempDir.resolve('replace-attachment.txt')
     attachmentFile.toFile().text = 'lokal bilaga'
     attachmentService.addAttachment(voucher.id, attachmentFile)
+  }
+
+  private static long findFiscalYearId(DatabaseService databaseService, String fiscalYearName) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select id from fiscal_year where name = ?',
+          [fiscalYearName]
+      ) as GroovyRowResult
+      ((Number) row.get('id')).longValue()
+    }
+  }
+
+  private static void insertClosingEntry(DatabaseService databaseService, long fiscalYearId) {
+    databaseService.withTransaction { Sql sql ->
+      GroovyRowResult accountRow = sql.firstRow(
+          'select id from account where account_number = ?',
+          ['3010']
+      ) as GroovyRowResult
+      long accountId = ((Number) accountRow.get('id')).longValue()
+      sql.executeInsert('''
+          insert into closing_entry (fiscal_year_id, entry_type, account_id, amount, created_at)
+          values (?, 'RESULT_CLOSING', ?, 1000.00, current_timestamp)
+      ''', [fiscalYearId, accountId])
+    }
+  }
+
+  private Path configureUndeletableReportArchivePath(DatabaseService databaseService) {
+    Path stubbornDirectory = AppPaths.reportsDirectory().resolve('report-archive/stubborn-dir')
+    Files.createDirectories(stubbornDirectory)
+    Files.writeString(stubbornDirectory.resolve('child.txt'), 'keep me')
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('''
+          update report_archive
+             set storage_path = ?
+           where file_name = ?
+      ''', ['report-archive/stubborn-dir', 'old-report.pdf'])
+    }
+    stubbornDirectory
   }
 
   private SieImportExportService createSieService(DatabaseService databaseService) {

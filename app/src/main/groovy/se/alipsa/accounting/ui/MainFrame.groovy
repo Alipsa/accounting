@@ -145,7 +145,6 @@ final class MainFrame implements PropertyChangeListener {
       DatabaseService.instance
   )
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
-  private final Set<Long> driftPromptedFiscalYears = [] as Set<Long>
 
   private JLabel statusLabel
   private JLabel companySummaryLabel
@@ -218,7 +217,6 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void onCompanyChanged() {
-    driftPromptedFiscalYears.clear()
     refreshTitle()
     refreshCompanySettingsSummary()
     reloadFiscalYearComboBox()
@@ -560,11 +558,15 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void maybePromptForOpeningBalanceRefresh(FiscalYear fiscalYear) {
-    if (fiscalYear == null || !driftPromptedFiscalYears.add(fiscalYear.id)) {
+    if (fiscalYear == null) {
       return
     }
     List<OpeningBalanceService.OpeningBalanceDrift> drift = openingBalanceService.detectDrift(fiscalYear.id)
     if (drift.isEmpty()) {
+      activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id)
+      return
+    }
+    if (!activeCompanyManager.markOpeningBalanceRefreshPrompted(fiscalYear.id)) {
       return
     }
     FiscalYear sourceFiscalYear = openingBalanceService.findAutoManagedSourceFiscalYear(fiscalYear.id)

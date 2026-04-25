@@ -151,12 +151,14 @@ Varje distributionsfil åtföljs av två verifieringsfiler:
 
 För vanliga användare räcker det att ladda ner distributionsfilen. Verifieringsfilerna riktar sig till den som vill kontrollera filens integritet och äkthet.
 
-### Code signing policy
+### Artifact verification and signing
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+Released artifacts are accompanied by SHA-256 checksum files and GPG signatures so the download can be verified after publication.
+
+The project does not currently ship platform-trusted code signatures for Windows or notarized/signature-stamped macOS app bundles. Users on those platforms may therefore see the standard unsigned-application warnings from the operating system.
 
 - Committers and reviewers: repository contributors with write access to the project. Public contribution history: [Contributors](https://github.com/Alipsa/accounting/graphs/contributors)
-- Approvers: project maintainers responsible for release approval before signing and publication. Current project home page: [Alipsa/accounting](https://github.com/Alipsa/accounting)
+- Release approvers: project maintainers responsible for publication. Current project home page: [Alipsa/accounting](https://github.com/Alipsa/accounting)
 - Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md)
 
 The application stores accounting data locally on the user's system.

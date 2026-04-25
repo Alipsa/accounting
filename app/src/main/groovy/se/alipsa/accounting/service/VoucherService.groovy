@@ -100,11 +100,6 @@ final class VoucherService {
   }
 
   @SuppressWarnings('UnusedMethodParameter')
-  Voucher updateVoucher(long voucherId) {
-    throw new IllegalStateException('Registrerade verifikationer kan inte ändras direkt. Skapa en ändringsverifikation.')
-  }
-
-  @SuppressWarnings('UnusedMethodParameter')
   Voucher cancelVoucher(long voucherId) {
     throw new IllegalStateException('Registrerade verifikationer kan inte makuleras direkt. Skapa en ändringsverifikation.')
   }

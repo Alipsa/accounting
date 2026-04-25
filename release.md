@@ -48,3 +48,5 @@ All artifacts are signed with GPG. Verify with:
 ```
 gpg --verify <file>.asc <file>
 ```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.

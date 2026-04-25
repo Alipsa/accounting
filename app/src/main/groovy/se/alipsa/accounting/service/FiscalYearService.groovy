@@ -218,23 +218,6 @@ final class FiscalYearService {
     reopenedYear
   }
 
-  boolean isClosed(long companyId, LocalDate date) {
-    CompanyService.requireValidCompanyId(companyId)
-    if (date == null) {
-      throw new IllegalArgumentException('Accounting date is required.')
-    }
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow('''
-                select count(*) as total
-                  from fiscal_year
-                 where company_id = ?
-                   and closed = true
-                   and ? between start_date and end_date
-            ''', [companyId, Date.valueOf(date)]) as GroovyRowResult
-      ((Number) row.get('total')).intValue() > 0
-    }
-  }
-
   private static void ensureNoOverlap(Sql sql, long companyId, LocalDate startDate, LocalDate endDate, String overlapMessage) {
     GroovyRowResult row = sql.firstRow('''
             select count(*) as total

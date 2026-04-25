@@ -710,11 +710,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     boolean fiscalYearClosed = false
     if (currentVoucher != null) {
       readOnly = true
-      try {
-        fiscalYearClosed = accountingPeriodService.isDateLocked(
-            activeCompanyManager.companyId, currentVoucher.accountingDate)
-      } catch (Exception ex) {
-        log.warning("Kunde inte avgöra om räkenskapsåret är låst för korrigeringsknappen: ${ex.message}")
+      if (currentVoucher.accountingDate != null) {
+        try {
+          fiscalYearClosed = accountingPeriodService.isDateLocked(
+              activeCompanyManager.companyId, currentVoucher.accountingDate)
+        } catch (Exception ex) {
+          log.warning("Kunde inte avgöra om räkenskapsåret är låst för korrigeringsknappen: ${ex.message}")
+          fiscalYearClosed = true
+        }
+      } else {
         fiscalYearClosed = true
       }
     } else if (activeCompanyManager.fiscalYear != null) {
@@ -735,6 +739,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     saveButton.enabled = !readOnly
     voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
+        && currentVoucher.accountingDate != null
         && currentVoucher.status == VoucherStatus.ACTIVE
         && !fiscalYearClosed
     addAttachmentButton.enabled = currentVoucher != null

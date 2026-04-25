@@ -21,6 +21,7 @@ final class ActiveCompanyManager {
   private final CompanyService companyService
   private final FiscalYearService fiscalYearService
   private final PropertyChangeSupport support = new PropertyChangeSupport(this)
+  private final Set<Long> openingBalanceRefreshPromptedFiscalYears = [] as Set<Long>
   private long companyId
   private FiscalYear fiscalYear
 
@@ -49,6 +50,7 @@ final class ActiveCompanyManager {
       return
     }
     this.companyId = newCompanyId
+    clearOpeningBalanceRefreshPrompts()
     support.firePropertyChange(COMPANY_ID_PROPERTY, old, newCompanyId)
     reloadFiscalYears()
   }
@@ -83,6 +85,18 @@ final class ActiveCompanyManager {
     List<FiscalYear> years = listFiscalYears()
     FiscalYear newYear = years.isEmpty() ? null : years.first()
     setFiscalYear(newYear)
+  }
+
+  boolean markOpeningBalanceRefreshPrompted(long fiscalYearId) {
+    openingBalanceRefreshPromptedFiscalYears.add(fiscalYearId)
+  }
+
+  void clearOpeningBalanceRefreshPrompt(long fiscalYearId) {
+    openingBalanceRefreshPromptedFiscalYears.remove(fiscalYearId)
+  }
+
+  void clearOpeningBalanceRefreshPrompts() {
+    openingBalanceRefreshPromptedFiscalYears.clear()
   }
 
   void addPropertyChangeListener(PropertyChangeListener listener) {

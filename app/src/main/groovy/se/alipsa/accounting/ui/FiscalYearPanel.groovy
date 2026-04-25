@@ -53,7 +53,6 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private JButton closeButton
   private JButton reopenButton
   private JButton openingBalancesButton
-  private final Set<Long> driftPromptedFiscalYears = [] as Set<Long>
 
   FiscalYearPanel(
       FiscalYearService fiscalYearService,
@@ -359,11 +358,12 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void maybePromptForOpeningBalanceRefresh(FiscalYear fiscalYear) {
-    if (!driftPromptedFiscalYears.add(fiscalYear.id)) {
-      return
-    }
     List<OpeningBalanceDrift> drift = openingBalanceService.detectDrift(fiscalYear.id)
     if (drift.isEmpty()) {
+      activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id)
+      return
+    }
+    if (!activeCompanyManager.markOpeningBalanceRefreshPrompted(fiscalYear.id)) {
       return
     }
     FiscalYear sourceFiscalYear = openingBalanceService.findAutoManagedSourceFiscalYear(fiscalYear.id)
@@ -402,7 +402,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
         openingBalanceService,
         activeCompanyManager.companyId,
         fiscalYear,
-        { driftPromptedFiscalYears.remove(fiscalYear.id) } as Runnable
+        { activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id) } as Runnable
     )
   }
 

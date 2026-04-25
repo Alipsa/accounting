@@ -10,7 +10,10 @@ import java.sql.Date
 import java.time.LocalDate
 
 /**
- * Handles period creation and legacy period-lock metadata.
+ * Handles period creation and advisory period-lock metadata.
+ *
+ * Individual accounting-period locks are retained for review/history and UI workflows,
+ * but voucher write access is enforced at fiscal-year level via {@link #isDateLocked(long, LocalDate)}.
  */
 final class AccountingPeriodService {
 
@@ -57,6 +60,10 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Records an advisory lock on one accounting period.
+   * Write blocking is handled by the closed flag on fiscal_year rather than this metadata.
+   */
   AccountingPeriod lockPeriod(long periodId, String reason) {
     String safeReason = reason?.trim()
     databaseService.withTransaction { Sql sql ->
@@ -83,6 +90,10 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Records advisory lock metadata up to the supplied date.
+   * This remains useful for operational history even though fiscal-year close is the actual write gate.
+   */
   List<AccountingPeriod> lockPeriodsUpTo(long fiscalYearId, LocalDate endDate, String reason) {
     if (endDate == null) {
       throw new IllegalArgumentException('End date is required.')
