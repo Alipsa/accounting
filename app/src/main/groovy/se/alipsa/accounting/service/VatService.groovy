@@ -474,7 +474,7 @@ final class VatService {
     [message]
   }
 
-  private static String calculateReportHash(VatReport report) {
+  static String calculateReportHash(VatReport report) {
     StringBuilder payload = new StringBuilder()
     payload.append(report.period.id).append('|')
     payload.append(REPORTED).append('|')
