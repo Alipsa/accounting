@@ -220,6 +220,10 @@ class AccountingMcpTools {
   private Map<String, Object> listVouchers(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+    if (expectedCompanyId != companyId) {
+      return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+    }
     List<se.alipsa.accounting.domain.Voucher> vouchers =
         voucherService.listVouchers(companyId, fiscalYearId, null, null)
     [

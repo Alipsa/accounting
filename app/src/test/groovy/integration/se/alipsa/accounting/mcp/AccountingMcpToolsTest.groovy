@@ -146,6 +146,16 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void listVouchersRejectsCrossCompanyFiscalYear() {
+    Map<String, Object> result = tools.callTool('list_vouchers', [
+        'company_id': (Object) 9999L,
+        'fiscal_year_id': (Object) fiscalYearId
+    ])
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((String) result.get('error')).contains('does not belong to company'))
+  }
+
+  @Test
   void getTrialBalanceReturnsStructuredRows() {
     Map<String, Object> result = tools.callTool('get_trial_balance', [
         'company_id': (Object) 1L,
