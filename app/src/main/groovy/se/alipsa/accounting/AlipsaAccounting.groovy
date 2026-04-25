@@ -1,5 +1,6 @@
 package se.alipsa.accounting
 
+import se.alipsa.accounting.mcp.McpServer
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
@@ -26,6 +27,7 @@ final class AlipsaAccounting {
   private static final String VERIFY_LAUNCH_ARGUMENT = '--verify-launch'
   private static final String VERSION_ARGUMENT = '--version'
   private static final String HOME_ARGUMENT_PREFIX = '--home='
+  private static final String MODE_ARGUMENT_PREFIX = '--mode='
 
   private AlipsaAccounting() {
   }
@@ -47,6 +49,17 @@ final class AlipsaAccounting {
       Locale savedLanguage = userPreferencesService.getLanguage()
       if (savedLanguage != null) {
         I18n.instance.setLocale(savedLanguage)
+      }
+      if (options.mode == RunMode.MCP) {
+        StartupVerificationReport startupReport = new StartupVerificationService().verify()
+        failOnStartupErrors(startupReport)
+        try {
+          new McpServer().run()
+        } finally {
+          DatabaseService.instance.shutdown()
+          LoggingConfigurer.shutdown()
+        }
+        return
       }
       ThemeApplier.apply(userPreferencesService.getTheme())
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
@@ -132,26 +145,39 @@ final class AlipsaAccounting {
     }
   }
 
+  private enum RunMode {
+    GUI,
+    MCP
+  }
+
   private static final class StartupOptions {
 
     final boolean verifyLaunchRequested
     final boolean versionRequested
     final String applicationHomeOverride
+    final RunMode mode
 
-    private StartupOptions(boolean verifyLaunchRequested, boolean versionRequested, String applicationHomeOverride) {
+    private StartupOptions(
+        boolean verifyLaunchRequested,
+        boolean versionRequested,
+        String applicationHomeOverride,
+        RunMode mode
+    ) {
       this.verifyLaunchRequested = verifyLaunchRequested
       this.versionRequested = versionRequested
       this.applicationHomeOverride = applicationHomeOverride
+      this.mode = mode
     }
 
     boolean getInteractive() {
-      !verifyLaunchRequested && !versionRequested
+      mode == RunMode.GUI && !verifyLaunchRequested && !versionRequested
     }
 
     static StartupOptions parse(String[] arguments) {
       boolean verifyLaunchRequested = false
       boolean versionRequested = false
       String applicationHomeOverride = null
+      RunMode mode = RunMode.GUI
       arguments.each { String argument ->
         if (argument == VERIFY_LAUNCH_ARGUMENT) {
           verifyLaunchRequested = true
@@ -169,9 +195,23 @@ final class AlipsaAccounting {
           applicationHomeOverride = value
           return
         }
+        if (argument.startsWith(MODE_ARGUMENT_PREFIX)) {
+          mode = parseMode(argument.substring(MODE_ARGUMENT_PREFIX.length()).trim())
+          return
+        }
         throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))
       }
-      new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride)
+      new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride, mode)
+    }
+
+    private static RunMode parseMode(String value) {
+      if (value == 'mcp') {
+        return RunMode.MCP
+      }
+      if (value == 'gui') {
+        return RunMode.GUI
+      }
+      throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', "${MODE_ARGUMENT_PREFIX}${value}"))
     }
   }
 }
