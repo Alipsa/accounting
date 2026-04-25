@@ -395,6 +395,18 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void previewYearEndOmitsTokenWhenBlockingIssuesExist() {
+    Map<String, Object> result = tools.callTool('preview_year_end', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+    assertFalse((boolean) result.get('ready_to_close'))
+    assertNull(result.get('preview_token'), 'Blockerad årsstängning skall inte ha en preview_token')
+  }
+
+  @Test
   void closeFiscalYearWithoutPreviewTokenIsRejected() {
     insertClosingAccount()
 
@@ -421,6 +433,19 @@ class AccountingMcpToolsTest {
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
     assertTrue(errors.any { String error -> error.contains('preview_token') })
+  }
+
+  @Test
+  void closeFiscalYearChecksOwnershipBeforePreviewToken() {
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 9999L,
+        fiscal_year_id: (Object) fiscalYearId,
+        preview_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('does not belong to company') })
   }
 
   @Test
@@ -627,6 +652,7 @@ class AccountingMcpToolsTest {
     LocalDate periodStart = LocalDate.parse((String) firstPeriod.get('start_date'))
     long salesAccountId = insertAccount('3000', 'Försäljning varor', 'INCOME', 'CREDIT', 'OUTPUT_25')
     long vatAccountId = insertAccount('2610', 'Utgående moms', 'LIABILITY', 'CREDIT', 'OUTPUT_25')
+    long bankAccountId = accountId('1930')
     insertAccount('2650', 'Momsredovisningskonto', 'LIABILITY', 'CREDIT', null)
 
     voucherService.createVoucher(
@@ -637,7 +663,7 @@ class AccountingMcpToolsTest {
         [
             new VoucherLine(null, null, 0, salesAccountId, '3000', 'Försäljning varor', null, 0.00G, 1000.00G),
             new VoucherLine(null, null, 1, vatAccountId, '2610', 'Utgående moms', null, 0.00G, 250.00G),
-            new VoucherLine(null, null, 2, null, '1930', 'Företagskonto', null, 1250.00G, 0.00G)
+            new VoucherLine(null, null, 2, bankAccountId, '1930', 'Företagskonto', null, 1250.00G, 0.00G)
         ]
     )
   }
@@ -662,6 +688,16 @@ class AccountingMcpToolsTest {
           ) values (?, ?, ?, ?, ?, true, false, ?, current_timestamp, current_timestamp)
       """, [CompanyService.LEGACY_COMPANY_ID, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
       ((Number) keys.first().first()).longValue()
+    }
+  }
+
+  private long accountId(String accountNumber) {
+    databaseService.withSql { groovy.sql.Sql sql ->
+      Map row = sql.firstRow(
+          'select id from account where company_id = ? and account_number = ?',
+          [CompanyService.LEGACY_COMPANY_ID, accountNumber]
+      ) as Map
+      ((Number) row.id).longValue()
     }
   }
 
