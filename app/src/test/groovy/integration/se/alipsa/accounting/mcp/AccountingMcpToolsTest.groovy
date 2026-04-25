@@ -268,12 +268,7 @@ class AccountingMcpToolsTest {
 
   @Test
   void getVatReportHashChangesWhenContentChanges() {
-    Map<String, Object> listResult = tools.callTool('list_vat_periods', [
-        'company_id': (Object) 1L,
-        'fiscal_year_id': (Object) fiscalYearId
-    ])
-    List periods = (List) listResult.get('vat_periods')
-    Map firstPeriod = (Map) periods.first()
+    Map firstPeriod = firstVatPeriod()
     long vatPeriodId = ((Number) firstPeriod.get('id')).longValue()
     LocalDate periodStart = LocalDate.parse((String) firstPeriod.get('start_date'))
 
@@ -329,6 +324,163 @@ class AccountingMcpToolsTest {
     String hashAfter = (String) after.get('report_hash')
 
     assertNotEquals(hashBefore, hashAfter, 'VAT report hash skall ändras när bokföring påverkar momsperioden')
+  }
+
+  @Test
+  void bookVatTransferWithoutReportHashIsRejected() {
+    long vatPeriodId = firstVatPeriodId()
+
+    Map<String, Object> result = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('report_hash') })
+  }
+
+  @Test
+  void bookVatTransferWithTamperedReportHashIsRejected() {
+    postVatSaleInFirstPeriod()
+    long vatPeriodId = firstVatPeriodId()
+
+    Map<String, Object> result = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) 'wrong-hash'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('report_hash') })
+  }
+
+  @Test
+  void bookVatTransferWithReportHashBooksVoucherAndLocksPeriod() {
+    postVatSaleInFirstPeriod()
+    long vatPeriodId = firstVatPeriodId()
+    Map<String, Object> report = tools.callTool('get_vat_report', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId
+    ])
+    assertTrue((boolean) report.get('ok'))
+
+    Map<String, Object> result = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) report.get('report_hash')
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    assertNotNull(result.get('voucher_id'))
+    assertTrue(result.get('voucher_number').toString().startsWith('M'))
+    assertEquals('LOCKED', ((Map) firstVatPeriod()).get('status'))
+  }
+
+  @Test
+  void previewYearEndReturnsFiscalYearInfoAndToken() {
+    insertClosingAccount()
+
+    Map<String, Object> result = tools.callTool('preview_year_end', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+    assertNotNull(result.get('net_result'))
+    assertNotNull(result.get('blocking_issues'))
+    assertNotNull(result.get('warnings'))
+    assertNotNull(result.get('preview_token'), 'preview_year_end skall returnera preview_token')
+  }
+
+  @Test
+  void previewYearEndOmitsTokenWhenBlockingIssuesExist() {
+    Map<String, Object> result = tools.callTool('preview_year_end', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+    assertFalse((boolean) result.get('ready_to_close'))
+    assertNull(result.get('preview_token'), 'Blockerad årsstängning skall inte ha en preview_token')
+  }
+
+  @Test
+  void closeFiscalYearWithoutPreviewTokenIsRejected() {
+    insertClosingAccount()
+
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('preview_token') })
+  }
+
+  @Test
+  void closeFiscalYearWithTamperedPreviewTokenIsRejected() {
+    insertClosingAccount()
+
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        preview_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('preview_token') })
+  }
+
+  @Test
+  void closeFiscalYearChecksOwnershipBeforePreviewToken() {
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 9999L,
+        fiscal_year_id: (Object) fiscalYearId,
+        preview_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertTrue(errors.any { String error -> error.contains('does not belong to company') })
+  }
+
+  @Test
+  void closeFiscalYearUnknownFiscalYearReturnsGracefulError() {
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) 999999L,
+        preview_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertFalse(errors.isEmpty())
+  }
+
+  @Test
+  void closeFiscalYearWithPreviewTokenClosesYear() {
+    insertClosingAccount()
+    Map<String, Object> preview = tools.callTool('preview_year_end', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+    assertTrue((boolean) preview.get('ok'), "Expected ok but got: ${preview.get('errors')}")
+    assertTrue((boolean) preview.get('ready_to_close'), "Expected ready but got blockers: ${preview.get('blocking_issues')}")
+
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        preview_token: (Object) preview.get('preview_token')
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    assertEquals(fiscalYearId, ((Number) result.get('closed_fiscal_year_id')).longValue())
+    assertNotNull(result.get('next_fiscal_year_id'))
+    assertTrue(fiscalYearService.findById(fiscalYearId).closed)
   }
 
   @Test
@@ -493,6 +645,73 @@ class AccountingMcpToolsTest {
     Map<String, Object> argsWithToken = new LinkedHashMap<>(postArgs)
     argsWithToken.put('preview_token', (Object) token)
     tools.callTool('post_voucher', argsWithToken)
+  }
+
+  private Map firstVatPeriod() {
+    Map<String, Object> listResult = tools.callTool('list_vat_periods', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+    List periods = (List) listResult.get('vat_periods')
+    (Map) periods.first()
+  }
+
+  private long firstVatPeriodId() {
+    ((Number) firstVatPeriod().get('id')).longValue()
+  }
+
+  private void postVatSaleInFirstPeriod() {
+    Map firstPeriod = firstVatPeriod()
+    LocalDate periodStart = LocalDate.parse((String) firstPeriod.get('start_date'))
+    long salesAccountId = insertAccount('3000', 'Försäljning varor', 'INCOME', 'CREDIT', 'OUTPUT_25')
+    long vatAccountId = insertAccount('2610', 'Utgående moms', 'LIABILITY', 'CREDIT', 'OUTPUT_25')
+    long bankAccountId = accountId('1930')
+    insertAccount('2650', 'Momsredovisningskonto', 'LIABILITY', 'CREDIT', null)
+
+    voucherService.createVoucher(
+        fiscalYearId,
+        'A',
+        periodStart.plusDays(5),
+        'Försäljning med moms',
+        [
+            new VoucherLine(null, null, 0, salesAccountId, '3000', 'Försäljning varor', null, 0.00G, 1000.00G),
+            new VoucherLine(null, null, 1, vatAccountId, '2610', 'Utgående moms', null, 0.00G, 250.00G),
+            new VoucherLine(null, null, 2, bankAccountId, '1930', 'Företagskonto', null, 1250.00G, 0.00G)
+        ]
+    )
+  }
+
+  private void insertClosingAccount() {
+    insertAccount('2099', 'Årets resultat', 'EQUITY', 'CREDIT', null)
+  }
+
+  private long insertAccount(
+      String accountNumber,
+      String accountName,
+      String accountClass,
+      String normalBalanceSide,
+      String vatCode
+  ) {
+    databaseService.withTransaction { groovy.sql.Sql sql ->
+      List<List<Object>> keys = sql.executeInsert("""
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, vat_code, created_at, updated_at
+          ) values (?, ?, ?, ?, ?, true, false, ?, current_timestamp, current_timestamp)
+      """, [CompanyService.LEGACY_COMPANY_ID, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
+      ((Number) keys.first().first()).longValue()
+    }
+  }
+
+  private long accountId(String accountNumber) {
+    databaseService.withSql { groovy.sql.Sql sql ->
+      Map row = sql.firstRow(
+          'select id from account where company_id = ? and account_number = ?',
+          [CompanyService.LEGACY_COMPANY_ID, accountNumber]
+      ) as Map
+      ((Number) row.id).longValue()
+    }
   }
 
   private Map<String, Object> balancedVoucherArgs(String description, BigDecimal amount) {
