@@ -10,7 +10,10 @@ import java.sql.Date
 import java.time.LocalDate
 
 /**
- * Handles period creation, lock status and date based lock checks.
+ * Handles period creation and advisory period-lock metadata.
+ *
+ * Individual accounting-period locks are retained for review/history and UI workflows,
+ * but voucher write access is enforced at fiscal-year level via {@link #isDateLocked(long, LocalDate)}.
  */
 final class AccountingPeriodService {
 
@@ -57,6 +60,10 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Records an advisory lock on one accounting period.
+   * Write blocking is handled by the closed flag on fiscal_year rather than this metadata.
+   */
   AccountingPeriod lockPeriod(long periodId, String reason) {
     String safeReason = reason?.trim()
     databaseService.withTransaction { Sql sql ->
@@ -83,6 +90,10 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Records advisory lock metadata up to the supplied date.
+   * This remains useful for operational history even though fiscal-year close is the actual write gate.
+   */
   List<AccountingPeriod> lockPeriodsUpTo(long fiscalYearId, LocalDate endDate, String reason) {
     if (endDate == null) {
       throw new IllegalArgumentException('End date is required.')
@@ -115,6 +126,11 @@ final class AccountingPeriodService {
     }
   }
 
+  /**
+   * Returns true if the given date falls in a closed fiscal year.
+   * Note: despite living in AccountingPeriodService, this now checks the fiscal_year closed flag
+   * rather than individual period locks — the lock granularity was moved to fiscal-year level.
+   */
   boolean isDateLocked(long companyId, LocalDate accountingDate) {
     CompanyService.requireValidCompanyId(companyId)
     if (accountingDate == null) {
@@ -123,11 +139,10 @@ final class AccountingPeriodService {
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('''
                 select count(*) as total
-                  from accounting_period ap
-                  join fiscal_year fy on fy.id = ap.fiscal_year_id
+                  from fiscal_year fy
                  where fy.company_id = ?
-                   and ap.locked = true
-                   and ? between ap.start_date and ap.end_date
+                   and fy.closed = true
+                   and ? between fy.start_date and fy.end_date
             ''', [companyId, Date.valueOf(accountingDate)]) as GroovyRowResult
       ((Number) row.get('total')).intValue() > 0
     }

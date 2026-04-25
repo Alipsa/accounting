@@ -15,7 +15,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
- * Handles safe voucher creation, correction and number allocation.
+ * Handles immutable voucher creation, correction and number allocation.
  */
 final class VoucherService {
 
@@ -85,7 +85,7 @@ final class VoucherService {
   }
 
   /**
-   * Creates a voucher without checking the accounting period lock.
+   * Creates a voucher without checking whether the fiscal year has been closed.
    * Used exclusively by ClosingService for year-end closing vouchers.
    */
   Voucher createVoucherBypassLock(
@@ -99,98 +99,6 @@ final class VoucherService {
     insertVoucher(sql, fiscalYearId, seriesCode, accountingDate, description, lines, null, true)
   }
 
-  Voucher updateVoucher(long voucherId, LocalDate accountingDate, String description, List<VoucherLine> lines) {
-    databaseService.withTransaction { Sql sql ->
-      Voucher current = requireVoucher(sql, voucherId)
-      if (current.status != VoucherStatus.ACTIVE) {
-        throw new IllegalStateException('Verifikationen kan inte ändras — den är inte aktiv.')
-      }
-
-      String safeDescription = validateVoucherEnvelope(sql, current.fiscalYearId, accountingDate, description)
-      ensurePeriodUnlocked(sql, current.fiscalYearId, accountingDate)
-      long companyId = resolveCompanyId(sql, current.fiscalYearId)
-      List<VoucherLine> safeLines = normalizeLines(sql, companyId, lines, true)
-      replaceLines(sql, voucherId, companyId, safeLines)
-      sql.executeUpdate('''
-          update voucher
-             set accounting_date = ?,
-                 description = ?,
-                 updated_at = current_timestamp
-           where id = ?
-             and status = 'ACTIVE'
-      ''', [Date.valueOf(accountingDate), safeDescription, voucherId])
-      Voucher updatedVoucher = requireVoucher(sql, voucherId)
-      auditLogService.recordVoucherUpdated(sql, updatedVoucher)
-      updatedVoucher
-    }
-  }
-
-  Voucher cancelVoucher(long voucherId) {
-    databaseService.withTransaction { Sql sql ->
-      Voucher current = requireVoucher(sql, voucherId)
-      if (current.status != VoucherStatus.ACTIVE) {
-        throw new IllegalStateException('Endast aktiva verifikationer kan makuleras.')
-      }
-      ensurePeriodUnlocked(sql, current.fiscalYearId, current.accountingDate)
-      int updated = sql.executeUpdate('''
-          update voucher
-             set status = 'CANCELLED',
-                 updated_at = current_timestamp
-           where id = ?
-             and status = 'ACTIVE'
-      ''', [voucherId])
-      if (updated != 1) {
-        throw new IllegalStateException("Verifikationen kunde inte makuleras: ${voucherId}")
-      }
-      Voucher cancelledVoucher = requireVoucher(sql, voucherId)
-      auditLogService.recordVoucherCancelled(sql, cancelledVoucher)
-      cancelledVoucher
-    }
-  }
-
-  boolean isLastInSeries(long voucherId) {
-    databaseService.withSql { Sql sql ->
-      Voucher voucher = requireVoucher(sql, voucherId)
-      GroovyRowResult row = sql.firstRow('''
-          select max(running_number) as maxRunning
-            from voucher
-           where voucher_series_id = ?
-             and fiscal_year_id = ?
-      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
-      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
-      voucher.runningNumber != null && voucher.runningNumber == maxRunning
-    }
-  }
-
-  void deleteVoucher(long voucherId) {
-    databaseService.withTransaction { Sql sql ->
-      Voucher voucher = requireVoucher(sql, voucherId)
-      if (voucher.status != VoucherStatus.ACTIVE) {
-        throw new IllegalStateException('Endast aktiva verifikationer kan tas bort.')
-      }
-      ensurePeriodUnlocked(sql, voucher.fiscalYearId, voucher.accountingDate)
-      GroovyRowResult row = sql.firstRow('''
-          select max(running_number) as maxRunning
-            from voucher
-           where voucher_series_id = ?
-             and fiscal_year_id = ?
-      ''', [voucher.voucherSeriesId, voucher.fiscalYearId]) as GroovyRowResult
-      int maxRunning = row?.get('maxRunning') == null ? 0 : ((Number) row.get('maxRunning')).intValue()
-      if (voucher.runningNumber == null || voucher.runningNumber != maxRunning) {
-        throw new IllegalStateException('Endast den sista verifikationen i serien kan tas bort.')
-      }
-      sql.executeUpdate('delete from voucher_line where voucher_id = ?', [voucherId])
-      sql.executeUpdate('delete from attachment where voucher_id = ?', [voucherId])
-      sql.executeUpdate('delete from voucher where id = ?', [voucherId])
-      sql.executeUpdate('''
-          update voucher_series
-             set next_running_number = ?,
-                 updated_at = current_timestamp
-           where id = ?
-      ''', [voucher.runningNumber, voucher.voucherSeriesId])
-    }
-  }
-
   Voucher createCorrectionVoucher(long originalVoucherId, String description = null) {
     databaseService.withTransaction { Sql sql ->
       Voucher original = requireVoucher(sql, originalVoucherId)
@@ -202,9 +110,7 @@ final class VoucherService {
       if (!safeDescription) {
         safeDescription = "Korrigering av ${original.voucherNumber ?: original.id}"
       }
-      // A correction keeps the original accounting date and is allowed even when
-      // that period has been locked — correction is the intended mechanism for
-      // amending vouchers whose period is no longer editable.
+      ensureFiscalYearOpen(sql, original.fiscalYearId)
       List<VoucherLine> reversingLines = original.lines.collect { VoucherLine line ->
         new VoucherLine(
             null,
@@ -226,7 +132,7 @@ final class VoucherService {
           safeDescription,
           reversingLines,
           original.id,
-          true
+          false
       )
       sql.executeUpdate('''
           update voucher
@@ -343,7 +249,7 @@ final class VoucherService {
   ) {
     String safeDescription = validateVoucherEnvelope(sql, fiscalYearId, accountingDate, description)
     if (!skipLockCheck) {
-      ensurePeriodUnlocked(sql, fiscalYearId, accountingDate)
+      ensureFiscalYearOpen(sql, fiscalYearId)
     }
     boolean requireActiveAccounts = originalVoucherId == null
     long companyId = resolveCompanyId(sql, fiscalYearId)
@@ -478,15 +384,20 @@ final class VoucherService {
     }
   }
 
-  private static void ensurePeriodUnlocked(Sql sql, long fiscalYearId, LocalDate accountingDate) {
+  private static void ensureFiscalYearOpen(Sql sql, long fiscalYearId) {
     GroovyRowResult row = sql.firstRow('''
-        select locked
-          from accounting_period
-         where fiscal_year_id = ?
-           and ? between start_date and end_date
-    ''', [fiscalYearId, Date.valueOf(accountingDate)]) as GroovyRowResult
-    if (row != null && Boolean.TRUE == row.get('locked')) {
-      throw new LockedAccountingPeriodException('Perioden är låst och verifikationen kan inte ändras.')
+        select name,
+               closed
+          from fiscal_year
+         where id = ?
+    ''', [fiscalYearId]) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    if (Boolean.TRUE == row.get('closed')) {
+      throw new ClosedFiscalYearException(
+          "Räkenskapsåret ${row.get('name')} är låst. Lås upp året innan du registrerar rättelser."
+      )
     }
   }
 

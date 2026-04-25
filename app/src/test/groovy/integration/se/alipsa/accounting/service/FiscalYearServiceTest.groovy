@@ -2,6 +2,8 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.*
 
+import groovy.sql.Sql
+
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -85,51 +87,31 @@ class FiscalYearServiceTest {
   }
 
   @Test
-  void periodLockAndYearCloseUpdateLockStatus() {
+  void yearCloseAndReopenUpdateLockStatus() {
     FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',
         LocalDate.of(2026, 1, 1),
         LocalDate.of(2026, 12, 31)
     )
 
-    List<AccountingPeriod> periods = accountingPeriodService.listPeriods(year.id)
-    AccountingPeriod january = periods.first()
-
-    accountingPeriodService.lockPeriod(january.id, 'Månaden är avstämd.')
-    accountingPeriodService.listPeriods(year.id).findAll { AccountingPeriod period -> period.id != january.id }.each { AccountingPeriod period ->
-      accountingPeriodService.lockPeriod(period.id, 'Årsslut.')
-    }
-
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
-    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 2, 15)))
+    assertTrue(!accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
 
     FiscalYear closedYear = fiscalYearService.closeFiscalYear(year.id)
-    List<AccountingPeriod> closedPeriods = accountingPeriodService.listPeriods(year.id)
-    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
 
     assertTrue(closedYear.closed)
-    assertTrue(closedPeriods.every { AccountingPeriod period -> period.locked })
-    assertTrue(auditEntries.any { AuditLogEntry entry ->
-      entry.eventType == AuditLogService.LOCK_PERIOD && entry.accountingPeriodId == january.id
-    })
+    assertTrue(accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
+
+    FiscalYear reopenedYear = fiscalYearService.reopenFiscalYear(year.id)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+
+    assertTrue(!reopenedYear.closed)
+    assertTrue(!accountingPeriodService.isDateLocked(CompanyService.LEGACY_COMPANY_ID, LocalDate.of(2026, 1, 15)))
     assertTrue(auditEntries.any { AuditLogEntry entry ->
       entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == year.id
     })
-  }
-
-  @Test
-  void closingYearWithOpenPeriodsIsRejected() {
-    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
-        '2026',
-        LocalDate.of(2026, 1, 1),
-        LocalDate.of(2026, 12, 31)
-    )
-
-    Executable action = {
-      fiscalYearService.closeFiscalYear(year.id)
-    } as Executable
-
-    assertThrows(IllegalStateException, action)
+    assertTrue(auditEntries.any { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.REOPEN_FISCAL_YEAR && entry.fiscalYearId == year.id
+    })
   }
 
   @Test
@@ -148,6 +130,37 @@ class FiscalYearServiceTest {
     } as Executable
 
     assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void reopenFiscalYearWithClosingEntriesIsRejected() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2026',
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 12, 31)
+    )
+    databaseService.withTransaction { Sql sql ->
+      List<List<Object>> accountKeys = sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '3010', 'Försäljning', 'INCOME', 'CREDIT',
+              true, false, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      long accountId = ((Number) accountKeys.first().first()).longValue()
+      sql.executeInsert('''
+          insert into closing_entry (fiscal_year_id, entry_type, account_id, amount, created_at)
+          values (?, 'RESULT_CLOSING', ?, 1000.00, current_timestamp)
+      ''', [year.id, accountId])
+    }
+    fiscalYearService.closeFiscalYear(year.id)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      fiscalYearService.reopenFiscalYear(year.id)
+    }
+    assertTrue(exception.message.contains('bokslutsposter'))
   }
 
   @Test

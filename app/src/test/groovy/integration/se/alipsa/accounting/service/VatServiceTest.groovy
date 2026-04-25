@@ -210,18 +210,18 @@ class VatServiceTest {
   }
 
   @Test
-  void transferInLockedAccountingPeriodShowsPedagogicError() {
+  void transferInClosedFiscalYearShowsPedagogicError() {
     bookVatFixtures()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
     vatService.reportPeriod(january.id)
-    accountingPeriodService.lockPeriod(accountingPeriodService.listPeriods(fiscalYear.id).first().id, 'Avstämd.')
+    fiscalYearService.closeFiscalYear(fiscalYear.id)
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
       vatService.bookTransfer(january.id)
     }
 
-    assertTrue(exception.message.contains('redovisningsperioden är låst'))
-    assertTrue(exception.cause instanceof LockedAccountingPeriodException)
+    assertTrue(exception.message.contains('räkenskapsåret är låst'))
+    assertTrue(exception.cause instanceof ClosedFiscalYearException)
   }
 
   @Test

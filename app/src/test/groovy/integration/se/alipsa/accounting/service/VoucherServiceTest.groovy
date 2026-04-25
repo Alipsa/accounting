@@ -150,7 +150,7 @@ class VoucherServiceTest {
   }
 
   @Test
-  void activeVoucherCanBeUpdatedAndCorrected() {
+  void recordedVoucherCanBeCorrected() {
     Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
@@ -158,17 +158,6 @@ class VoucherServiceTest {
         'Försäljning',
         balancedLines(100.00G)
     )
-
-    Voucher updated = voucherService.updateVoucher(
-        active.id,
-        LocalDate.of(2026, 1, 16),
-        'Ändrad text',
-        balancedLines(120.00G)
-    )
-
-    assertEquals(LocalDate.of(2026, 1, 16), updated.accountingDate)
-    assertEquals('Ändrad text', updated.description)
-    assertEquals(120.00G, updated.debitTotal())
 
     Voucher correction = voucherService.createCorrectionVoucher(active.id)
     Voucher originalAfterCorrection = voucherService.findVoucher(active.id)
@@ -178,15 +167,14 @@ class VoucherServiceTest {
     assertEquals(active.id, correction.originalVoucherId)
     assertEquals(2, correction.runningNumber)
     assertEquals(0.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.debitAmount)
-    assertEquals(120.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.creditAmount)
-    assertEquals(120.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.debitAmount)
+    assertEquals(100.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '1510' }.creditAmount)
+    assertEquals(100.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.debitAmount)
     assertEquals(0.00G, correction.lines.find { VoucherLine line -> line.accountNumber == '3010' }.creditAmount)
   }
 
   @Test
-  void lockedPeriodRejectsVoucherCreation() {
-    AccountingPeriod january = accountingPeriodService.listPeriods(fiscalYear.id).first()
-    accountingPeriodService.lockPeriod(january.id, 'Avstämd period.')
+  void closedFiscalYearRejectsVoucherCreation() {
+    fiscalYearService.closeFiscalYear(fiscalYear.id)
 
     Executable action = {
       voucherService.createVoucher(
@@ -198,23 +186,9 @@ class VoucherServiceTest {
       )
     } as Executable
 
-    assertThrows(IllegalStateException, action)
+    IllegalStateException exception = assertThrows(IllegalStateException, action)
+    assertTrue(exception.message.contains('låst'))
     assertTrue(voucherService.listSeries(fiscalYear.id).isEmpty())
-  }
-
-  @Test
-  void voucherCanBeCancelled() {
-    Voucher voucher = voucherService.createVoucher(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 2, 15),
-        'Verifikation att makulera',
-        balancedLines(100.00G)
-    )
-
-    Voucher cancelled = voucherService.cancelVoucher(voucher.id)
-
-    assertEquals(VoucherStatus.CANCELLED, cancelled.status)
   }
 
   @Test
@@ -287,7 +261,7 @@ class VoucherServiceTest {
   }
 
   @Test
-  void correctionIsAllowedEvenWhenOriginalPeriodIsLocked() {
+  void correctionRequiresOpenFiscalYear() {
     Voucher active = voucherService.createVoucher(
         fiscalYear.id,
         'A',
@@ -295,14 +269,17 @@ class VoucherServiceTest {
         'Försäljning i januari',
         balancedLines(100.00G)
     )
-    AccountingPeriod january = accountingPeriodService.listPeriods(fiscalYear.id).first()
-    accountingPeriodService.lockPeriod(january.id, 'Januari är låst.')
+    fiscalYearService.closeFiscalYear(fiscalYear.id)
 
+    ClosedFiscalYearException exception = assertThrows(ClosedFiscalYearException) {
+      voucherService.createCorrectionVoucher(active.id)
+    }
+
+    assertTrue(exception.message.contains('Lås upp året'))
+
+    fiscalYearService.reopenFiscalYear(fiscalYear.id)
     Voucher correction = voucherService.createCorrectionVoucher(active.id)
-
     assertEquals(VoucherStatus.CORRECTION, correction.status)
-    assertEquals(active.id, correction.originalVoucherId)
-    assertEquals(LocalDate.of(2026, 1, 10), correction.accountingDate)
   }
 
   @Test
@@ -314,13 +291,6 @@ class VoucherServiceTest {
         'Audit verifikation',
         balancedLines(100.00G)
     )
-    voucherService.updateVoucher(
-        voucher.id,
-        LocalDate.of(2026, 5, 1),
-        'Audit verifikation justerad',
-        balancedLines(150.00G)
-    )
-    voucherService.cancelVoucher(voucher.id)
 
     Voucher correctable = voucherService.createVoucher(
         fiscalYear.id,
@@ -336,14 +306,6 @@ class VoucherServiceTest {
     List<AuditLogEntry> correctionEntries = auditLogService.listEntriesForVoucher(correction.id)
 
     assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
-    assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.UPDATE_VOUCHER })
-    assertTrue(voucherEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CANCEL_VOUCHER })
-    AuditLogEntry updateEntry = voucherEntries.find { AuditLogEntry entry -> entry.eventType == AuditLogService.UPDATE_VOUCHER }
-    assertNotNull(updateEntry.details, 'Ändringshändelsen ska ha detaljer.')
-    assertTrue(updateEntry.details.contains('Audit verifikation justerad'),
-        'Ändringshändelsen ska innehålla ny verifikationstext.')
-    assertTrue(updateEntry.details.contains('debit=150.00'),
-        'Ändringshändelsen ska innehålla uppdaterade radbelopp.')
     assertTrue(correctableEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CREATE_VOUCHER })
     assertTrue(correctionEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.CORRECTION_VOUCHER })
     assertEquals([], auditLogService.validateIntegrity())

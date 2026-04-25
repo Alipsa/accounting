@@ -1,6 +1,6 @@
-# Projektplan: Bokföringsprogram i Groovy (v1.1.0)
+# Roadmap
 
-Detta dokument samlar upp förbättringar som medvetet skjuts efter `v1.0.0`.
+Detta dokument samlar upp förbättringar som medvetet skjuts efter `v1.1.0`.
 
 ## Planerade uppföljningar
 
@@ -28,8 +28,3 @@ Följande punkter är medvetet uppskjutna från `v1.0.0` för att hålla första
 - Om funktionen bedöms motiverad: inför en enkel registervy med anskaffningsdatum, anskaffningsvärde, konto, beskrivning och avyttring/utrangering.
 - Håll lösningen frikopplad från huvudboksflödet i första steget så att v1.1.0 kan införa stöd utan att skriva om verifikationsmotorn.
 
-## Motiv för uppskjutning
-
-- Problemet är verkligt men kräver ett större omtag av fil/DB-commit-flödet än vad som var rimligt inom `v1.0.0`.
-- Nuvarande fas 5-fixar täcker integritet och traversal-skydd, men inte recovery för avbrutna skrivningar mellan filsystem och databas.
-- Anläggningsregister bedöms inte som en nödvändig del av kärnleveransen för ett första huvudboksfokuserat system, men kan vara ett relevant komplement för vissa företag i en senare version.

@@ -1,11 +1,7 @@
 package se.alipsa.accounting.ui
 
-import groovy.transform.PackageScope
-
-import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
-import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.support.I18n
@@ -17,13 +13,11 @@ import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.math.RoundingMode
 import java.text.DecimalFormat
-import java.util.function.BiFunction
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
-import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
@@ -43,7 +37,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private final VatService vatService
   private final FiscalYearService fiscalYearService
-  private final AccountingPeriodService accountingPeriodService
   private final ActiveCompanyManager activeCompanyManager
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea feedbackArea = new JTextArea(3, 40)
@@ -61,15 +54,10 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
-  private BiFunction<String, String, Integer> lockPeriodsConfirmer = { String message, String title ->
-    Integer.valueOf(JOptionPane.showConfirmDialog(this, message, title, JOptionPane.YES_NO_OPTION))
-  } as BiFunction<String, String, Integer>
 
-  VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService,
-                 AccountingPeriodService accountingPeriodService, ActiveCompanyManager activeCompanyManager) {
+  VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService, ActiveCompanyManager activeCompanyManager) {
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
-    this.accountingPeriodService = accountingPeriodService
     this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
@@ -257,37 +245,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       reloadPeriods()
       selectPeriod(period.id)
       showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName))
-      promptLockPeriodsUpTo(period)
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
     } catch (IllegalStateException exception) {
       showError(exception.message)
     }
-  }
-
-  private void promptLockPeriodsUpTo(VatPeriod vatPeriod) {
-    List<AccountingPeriod> unlocked = accountingPeriodService.listPeriods(vatPeriod.fiscalYearId).findAll {
-      AccountingPeriod p -> !p.locked && !p.endDate.isAfter(vatPeriod.endDate)
-    }
-    if (unlocked.isEmpty()) {
-      return
-    }
-    String message = I18n.instance.format('vatPeriodPanel.confirm.lockPeriods',
-        unlocked.size().toString(), vatPeriod.endDate.toString())
-    String title = I18n.instance.getString('vatPeriodPanel.confirm.lockPeriods.title')
-    int choice = lockPeriodsConfirmer.apply(message, title).intValue()
-    if (choice != JOptionPane.YES_OPTION) {
-      return
-    }
-    String reason = I18n.instance.format('vatPeriodPanel.lockReason.vatReported', vatPeriod.periodName)
-    List<AccountingPeriod> locked = accountingPeriodService.lockPeriodsUpTo(
-        vatPeriod.fiscalYearId, vatPeriod.endDate, reason)
-    showInfo(I18n.instance.format('vatPeriodPanel.message.periodsLocked', locked.size().toString()))
-  }
-
-  @PackageScope
-  void setLockPeriodsConfirmer(BiFunction<String, String, Integer> confirmer) {
-    this.lockPeriodsConfirmer = confirmer
   }
 
   private FiscalYear selectedFiscalYear() {

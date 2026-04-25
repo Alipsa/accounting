@@ -514,8 +514,8 @@ final class VatService {
   ) {
     try {
       return voucherService.createVoucher(sql, period.fiscalYearId, seriesCode, period.endDate, description, lines)
-    } catch (LockedAccountingPeriodException exception) {
-      throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom redovisningsperioden är låst.', exception)
+    } catch (ClosedFiscalYearException exception) {
+      throw new IllegalStateException('Momsöverföringen kan inte bokföras eftersom räkenskapsåret är låst.', exception)
     }
   }
 

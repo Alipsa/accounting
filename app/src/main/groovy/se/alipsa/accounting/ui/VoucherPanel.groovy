@@ -646,13 +646,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
       String description = descriptionField.text?.trim()
       List<VoucherLine> lines = lineTableModel.toVoucherLines()
-      Voucher saved
       if (currentVoucher != null) {
-        saved = voucherService.updateVoucher(currentVoucher.id, date, description, lines)
-      } else {
-        String series = seriesField.text?.trim() ?: 'A'
-        saved = voucherService.createVoucher(fy.id, series, date, description, lines)
+        showError(I18n.instance.getString('voucherPanel.error.existingVoucherReadOnly'))
+        return
       }
+      String series = seriesField.text?.trim() ?: 'A'
+      Voucher saved = voucherService.createVoucher(fy.id, series, date, description, lines)
       showInfo(I18n.instance.getString('voucherPanel.message.saved').replace('{0}', saved.voucherNumber ?: ''))
       reloadVoucherList()
     } catch (Exception ex) {
@@ -678,35 +677,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       return
     }
     try {
-      if (voucherService.isLastInSeries(currentVoucher.id)) {
-        int choice = javax.swing.JOptionPane.showConfirmDialog(
-            this,
-            I18n.instance.getString('voucherPanel.confirm.delete')
-                .replace('{0}', currentVoucher.voucherNumber ?: ''),
-            I18n.instance.getString('voucherPanel.button.void'),
-            javax.swing.JOptionPane.OK_CANCEL_OPTION
-        )
-        if (choice != javax.swing.JOptionPane.OK_OPTION) {
-          return
-        }
-        voucherService.deleteVoucher(currentVoucher.id)
-        showInfo(I18n.instance.getString('voucherPanel.message.deleted')
-            .replace('{0}', currentVoucher.voucherNumber ?: ''))
+      int choice = javax.swing.JOptionPane.showConfirmDialog(
+          this,
+          I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+              .replace('{0}', currentVoucher.voucherNumber ?: ''),
+          I18n.instance.getString('voucherPanel.button.void'),
+          javax.swing.JOptionPane.YES_NO_OPTION
+      )
+      if (choice == javax.swing.JOptionPane.YES_OPTION) {
+        Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+        showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+            correction.voucherNumber ?: ''))
         reloadVoucherList()
-      } else {
-        int choice = javax.swing.JOptionPane.showConfirmDialog(
-            this,
-            I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-                .replace('{0}', currentVoucher.voucherNumber ?: ''),
-            I18n.instance.getString('voucherPanel.button.void'),
-            javax.swing.JOptionPane.YES_NO_OPTION
-        )
-        if (choice == javax.swing.JOptionPane.YES_OPTION) {
-          Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-          showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-              correction.voucherNumber ?: ''))
-          reloadVoucherList()
-        }
       }
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
@@ -725,12 +707,26 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void applyReadOnlyState() {
-    if (currentVoucher != null && currentVoucher.accountingDate != null) {
+    boolean fiscalYearClosed = false
+    if (currentVoucher != null) {
+      readOnly = true
+      if (currentVoucher.accountingDate != null) {
+        try {
+          fiscalYearClosed = accountingPeriodService.isDateLocked(
+              activeCompanyManager.companyId, currentVoucher.accountingDate)
+        } catch (Exception ex) {
+          log.warning("Kunde inte avgöra om räkenskapsåret är låst för korrigeringsknappen: ${ex.message}")
+          fiscalYearClosed = true
+        }
+      } else {
+        fiscalYearClosed = true
+      }
+    } else if (activeCompanyManager.fiscalYear != null) {
       try {
         readOnly = accountingPeriodService.isDateLocked(
-            activeCompanyManager.companyId, currentVoucher.accountingDate)
+            activeCompanyManager.companyId, defaultDate())
       } catch (Exception ex) {
-        log.warning("Kunde inte avgöra om perioden är låst – skrivskyddar verifikatet: ${ex.message}")
+        log.warning("Kunde inte avgöra om räkenskapsåret är låst – skrivskyddar verifikatet: ${ex.message}")
         readOnly = true
       }
     } else {
@@ -741,8 +737,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     descriptionField.enabled = !readOnly
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
-    voidButton.enabled = !readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
-    correctionButton.enabled = readOnly && currentVoucher != null && currentVoucher.status == VoucherStatus.ACTIVE
+    voidButton.enabled = false
+    correctionButton.enabled = currentVoucher != null
+        && currentVoucher.accountingDate != null
+        && currentVoucher.status == VoucherStatus.ACTIVE
+        && !fiscalYearClosed
     addAttachmentButton.enabled = currentVoucher != null
   }
 

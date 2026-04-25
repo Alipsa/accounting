@@ -135,7 +135,6 @@ class AcceptanceCriteriaTest {
     assertTrue(Files.isRegularFile(siePath))
     assertNotNull(sieResult.checksumSha256)
 
-    lockAllAccountingPeriods(services.accountingPeriodService, fiscalYear.id)
     YearEndClosingResult closingResult = services.closingService.closeFiscalYear(fiscalYear.id)
 
     Path backupPath = AppPaths.backupsDirectory().resolve('acceptance-backup.zip')
@@ -229,7 +228,6 @@ class AcceptanceCriteriaTest {
     assertTrue(sieContent.contains('Bravo AB'))
     assertTrue(!sieContent.contains('Alfa AB'))
 
-    lockAllAccountingPeriods(services.accountingPeriodService, fyA.id)
     YearEndClosingResult closingA = services.closingService.closeFiscalYear(fyA.id)
     assertTrue(closingA.closedFiscalYear.closed)
     assertEquals('2027', closingA.nextFiscalYear.name)
@@ -294,12 +292,6 @@ class AcceptanceCriteriaTest {
             updated_at
         ) values (?, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
     ''', [companyId, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
-  }
-
-  private static void lockAllAccountingPeriods(AccountingPeriodService accountingPeriodService, long fiscalYearId) {
-    accountingPeriodService.listPeriods(fiscalYearId).each { period ->
-      accountingPeriodService.lockPeriod(period.id, 'Årsstängning')
-    }
   }
 
   private static void configureVatAccounts(DatabaseService databaseService) {

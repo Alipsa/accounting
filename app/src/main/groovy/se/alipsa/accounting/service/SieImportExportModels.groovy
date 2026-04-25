@@ -52,6 +52,30 @@ final class ImportCounts {
 }
 
 @Canonical
+final class FiscalYearPurgeSummary {
+
+  int attachmentCount
+  int reportArchiveCount
+  int openingBalanceCount
+  int voucherCount
+  int vatPeriodCount
+  int auditLogCount
+
+  boolean isEmpty() {
+    attachmentCount == 0 && reportArchiveCount == 0 && openingBalanceCount == 0 &&
+        voucherCount == 0 && vatPeriodCount == 0 && auditLogCount == 0
+  }
+}
+
+@Canonical
+final class FiscalYearReplacementPlan {
+
+  FiscalYearPurgeSummary summary
+  List<String> attachmentStoragePaths = []
+  List<String> reportArchiveStoragePaths = []
+}
+
+@Canonical
 final class VoucherImportSummary {
 
   int voucherCount
