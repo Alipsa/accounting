@@ -19,6 +19,8 @@ import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.service.YearEndClosingPreview
+import se.alipsa.accounting.service.YearEndClosingResult
 
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -70,7 +72,7 @@ class AccountingMcpTools {
   }
 
   List<Map<String, Object>> listTools() {
-    readOnlyToolDefs() + voucherToolDefs()
+    readOnlyToolDefs() + voucherToolDefs() + vatWriteToolDefs() + yearEndToolDefs()
   }
 
   private static List<Map<String, Object>> readOnlyToolDefs() {
@@ -181,6 +183,46 @@ class AccountingMcpTools {
     ]
   }
 
+  private static List<Map<String, Object>> vatWriteToolDefs() {
+    [
+        toolDef('book_vat_transfer',
+            'Books the VAT transfer voucher for a VAT period. Run get_vat_report first and pass back its report_hash.',
+            ['company_id', 'vat_period_id', 'report_hash'],
+            [
+                company_id: intParam('Company ID'),
+                vat_period_id: intParam('VAT period ID'),
+                report_hash: strParam('Hash returned by get_vat_report for the current VAT report.'),
+                series_code: optStrParam('Optional voucher series code. Defaults to "M".'),
+                settlement_account: optStrParam('Optional settlement account number. Defaults to "2650".')
+            ]
+        ),
+    ]
+  }
+
+  private static List<Map<String, Object>> yearEndToolDefs() {
+    [
+        toolDef('preview_year_end',
+            'Runs year-end closing pre-checks. Returns blocking issues, warnings, totals, net result, and a preview_token.',
+            ['company_id', 'fiscal_year_id'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID to preview'),
+                closing_account: optStrParam('Optional closing account number. Defaults to "2099".')
+            ]
+        ),
+        toolDef('close_fiscal_year',
+            'Closes the fiscal year. Requires the preview_token returned by preview_year_end for the same fiscal year and closing account.',
+            ['company_id', 'fiscal_year_id', 'preview_token'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID to close'),
+                closing_account: optStrParam('Optional closing account number. Defaults to "2099".'),
+                preview_token: strParam('Token returned by preview_year_end.')
+            ]
+        ),
+    ]
+  }
+
   Map<String, Object> callTool(String name, Map<String, Object> arguments) {
     switch (name) {
       case 'get_company_info':
@@ -199,12 +241,18 @@ class AccountingMcpTools {
         return listVatPeriods(arguments)
       case 'get_vat_report':
         return getVatReport(arguments)
+      case 'book_vat_transfer':
+        return bookVatTransfer(arguments)
       case 'preview_voucher':
         return previewVoucher(arguments)
       case 'post_voucher':
         return postVoucher(arguments)
       case 'create_correction_voucher':
         return createCorrectionVoucher(arguments)
+      case 'preview_year_end':
+        return previewYearEnd(arguments)
+      case 'close_fiscal_year':
+        return closeFiscalYear(arguments)
       default:
         throw new IllegalArgumentException("Unknown MCP tool: ${name}")
     }
@@ -426,6 +474,48 @@ class AccountingMcpTools {
     }
   }
 
+  private Map<String, Object> bookVatTransfer(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    long vatPeriodId = requiredLong(args, 'vat_period_id')
+    String providedHash = args.get('report_hash') as String
+    if (!providedHash) {
+      return [ok: false, errors: ['report_hash krävs — kör get_vat_report först och skicka med det returnerade report_hash.']]
+    }
+    String seriesCode = optionalString(args, 'series_code', VatService.DEFAULT_TRANSFER_SERIES)
+    String settlementAccount = optionalString(args, 'settlement_account', VatService.DEFAULT_SETTLEMENT_ACCOUNT)
+    try {
+      VatPeriod period = vatService.findPeriod(vatPeriodId)
+      if (period == null) {
+        return [ok: false, errors: ["Okänd momsperiod: ${vatPeriodId}".toString()]]
+      }
+      long expectedCompanyId = companyService.resolveFromFiscalYear(period.fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, error: "VAT period ${vatPeriodId} does not belong to company ${companyId}."]
+      }
+      VatService.VatReport report = vatService.calculateReport(vatPeriodId)
+      String expectedHash = VatService.calculateReportHash(report)
+      if (providedHash != expectedHash) {
+        return [ok: false, errors: ['report_hash stämmer inte med aktuell momsrapport — kör get_vat_report igen.']]
+      }
+      if (period.status == VatService.OPEN) {
+        vatService.reportPeriod(vatPeriodId)
+      }
+      Voucher voucher = vatService.bookTransfer(vatPeriodId, seriesCode, settlementAccount)
+      [
+          ok: true,
+          voucher_id: voucher.id,
+          voucher_number: voucher.voucherNumber,
+          fiscal_year_id: voucher.fiscalYearId,
+          accounting_date: voucher.accountingDate?.toString(),
+          description: voucher.description,
+          status: voucher.status?.name(),
+          line_count: voucher.lines?.size() ?: 0
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
   private Map<String, Object> previewVoucher(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
@@ -538,6 +628,75 @@ class AccountingMcpTools {
     }
   }
 
+  private Map<String, Object> previewYearEnd(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    String closingAccount = optionalString(args, 'closing_account', ClosingService.DEFAULT_CLOSING_ACCOUNT)
+    try {
+      long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+      }
+      YearEndClosingPreview preview = closingService.previewClosing(fiscalYearId, closingAccount)
+      [
+          ok: true,
+          fiscal_year_id: preview.fiscalYear?.id,
+          fiscal_year_name: preview.fiscalYear?.name,
+          next_fiscal_year_id: preview.nextFiscalYear?.id,
+          next_fiscal_year_name: preview.nextFiscalYear?.name,
+          next_fiscal_year_will_be_created: preview.nextFiscalYearWillBeCreated,
+          closing_account: preview.closingAccountNumber,
+          result_account_count: preview.resultAccountCount,
+          income_total: preview.incomeTotal,
+          expense_total: preview.expenseTotal,
+          net_result: preview.netResult,
+          blocking_issues: preview.blockingIssues,
+          warnings: preview.warnings,
+          ready_to_close: preview.blockingIssues.isEmpty(),
+          preview_token: yearEndPreviewToken(fiscalYearId, preview.closingAccountNumber)
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> closeFiscalYear(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    String closingAccount = optionalString(args, 'closing_account', ClosingService.DEFAULT_CLOSING_ACCOUNT)
+    String providedToken = args.get('preview_token') as String
+    if (!providedToken) {
+      return [ok: false, errors: ['preview_token krävs — kör preview_year_end först.']]
+    }
+    String expectedToken = yearEndPreviewToken(fiscalYearId, closingAccount)
+    if (providedToken != expectedToken) {
+      return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
+    }
+    try {
+      long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
+      }
+      YearEndClosingResult result = closingService.closeFiscalYear(fiscalYearId, closingAccount)
+      [
+          ok: true,
+          closed_fiscal_year_id: result.closedFiscalYear?.id,
+          closed_fiscal_year_name: result.closedFiscalYear?.name,
+          next_fiscal_year_id: result.nextFiscalYear?.id,
+          next_fiscal_year_name: result.nextFiscalYear?.name,
+          closing_voucher_id: result.closingVoucher?.id,
+          closing_voucher_number: result.closingVoucher?.voucherNumber,
+          result_account_count: result.resultAccountCount,
+          opening_balance_count: result.openingBalanceCount,
+          closing_entry_count: result.closingEntryCount,
+          net_result: result.netResult,
+          warnings: result.warnings
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
   // ---- helpers ----
 
   private static long requiredLong(Map<String, Object> args, String key) {
@@ -554,6 +713,11 @@ class AccountingMcpTools {
       throw new IllegalArgumentException("Missing required argument: ${key}")
     }
     value.trim()
+  }
+
+  private static String optionalString(Map<String, Object> args, String key, String defaultValue) {
+    String value = args.get(key) as String
+    value?.trim() ?: defaultValue
   }
 
   private static List<Map<String, Object>> linesArg(Map<String, Object> args) {
@@ -590,6 +754,13 @@ class AccountingMcpTools {
         accounting_date: accountingDate,
         description: description,
         lines: canonicalVoucherLines(lines)
+    ])
+  }
+
+  private static String yearEndPreviewToken(long fiscalYearId, String closingAccount) {
+    computePreviewToken([
+        fiscal_year_id: fiscalYearId,
+        closing_account: closingAccount
     ])
   }
 
