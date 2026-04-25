@@ -665,19 +665,19 @@ class AccountingMcpTools {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
     String closingAccount = optionalString(args, 'closing_account', ClosingService.DEFAULT_CLOSING_ACCOUNT)
-    long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
-    if (expectedCompanyId != companyId) {
-      return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}.".toString()]]
-    }
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
       return [ok: false, errors: ['preview_token krävs — kör preview_year_end först.']]
     }
-    String expectedToken = yearEndPreviewToken(fiscalYearId, closingAccount)
-    if (providedToken != expectedToken) {
-      return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
-    }
     try {
+      long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}.".toString()]]
+      }
+      String expectedToken = yearEndPreviewToken(fiscalYearId, closingAccount)
+      if (providedToken != expectedToken) {
+        return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
+      }
       YearEndClosingResult result = closingService.closeFiscalYear(fiscalYearId, closingAccount)
       [
           ok: true,

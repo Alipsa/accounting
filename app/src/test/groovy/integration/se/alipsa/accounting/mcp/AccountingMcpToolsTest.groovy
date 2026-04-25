@@ -449,6 +449,19 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void closeFiscalYearUnknownFiscalYearReturnsGracefulError() {
+    Map<String, Object> result = tools.callTool('close_fiscal_year', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) 999999L,
+        preview_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    List<String> errors = (List<String>) result.get('errors')
+    assertFalse(errors.isEmpty())
+  }
+
+  @Test
   void closeFiscalYearWithPreviewTokenClosesYear() {
     insertClosingAccount()
     Map<String, Object> preview = tools.callTool('preview_year_end', [
