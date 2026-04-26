@@ -31,7 +31,7 @@ Följande funktioner ingår inte i v1.1.x:
 - Bankintegration
 - Årsredovisningsflöden
 - Anläggningsregister (planerat till v1.3.0)
-- Förbättrad kraschsäker bilagehantering (planerat till v1.3.0)
+- Förbättrad kraschsäker bilagehantering (planerat till v1.2.0)
 
 ## Förutsättningar
 

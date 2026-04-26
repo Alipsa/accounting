@@ -65,9 +65,12 @@ Programmet kan hantera flera företag i samma installation. Varje företag har s
 - Om en backup inte kan återställas: kontrollera att ZIP-filen är komplett och inte har ändrats manuellt.
 - Om bokföring blockeras: kontrollera om bokföringsperiod eller momsperiod är rapporterad eller låst.
 
-## Uppskjutet till v1.1.0
+## Uppskjuten funktionlitet
 
-Följande förbättringar är planerade till v1.1.0:
-
+Följande förbättringar är planerade till v1.2.0:
 - Kraschsäker bilagehantering (recovery vid avbruten skrivning mellan filsystem och databas).
+- Arkivering av företag och borttagning av data. Data får inte tas bort förrän efter 7 år (BFL) men eFter 7 år bör data tas bort (GDPR).
+  Lägg till möjlighet att arkivera ett företag så det inte längre syns i det normala bokföringsflödet.
+
+Följande förbättringar är planerade till v1.3.0:
 - Anläggningsregister för materiella och immateriella anläggningstillgångar.
