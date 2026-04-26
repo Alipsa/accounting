@@ -15,10 +15,13 @@ import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.ReportDataService
+import se.alipsa.accounting.service.ReportIntegrityService
+import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AppPaths
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 
@@ -45,6 +48,10 @@ class AccountingMcpToolsTest {
     AccountingPeriodService periodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, periodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
+    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
+        new se.alipsa.accounting.service.AttachmentService(databaseService, auditLogService),
+        auditLogService
+    )
 
     tools = new AccountingMcpTools(
         new CompanyService(databaseService),
@@ -57,9 +64,17 @@ class AccountingMcpToolsTest {
             periodService,
             fiscalYearService,
             voucherService,
-            new se.alipsa.accounting.service.ReportIntegrityService()
+            reportIntegrityService
         ),
-        new ReportDataService(databaseService)
+        new ReportDataService(databaseService),
+        new SieImportExportService(
+            databaseService,
+            periodService,
+            voucherService,
+            new CompanyService(databaseService),
+            reportIntegrityService,
+            auditLogService
+        )
     )
 
     databaseService.withTransaction { groovy.sql.Sql sql ->
@@ -638,6 +653,183 @@ class AccountingMcpToolsTest {
     assertNotEquals(originalId, ((Number) correction.get('voucher_id')).longValue())
   }
 
+  @Test
+  void previewSieImportReturnsTokenForImportableFile() {
+    Path sieFile = writeSimpleSie(tempDir.resolve('mcp-preview.sie'), 2027, '1510', 'Kundfordringar')
+
+    Map<String, Object> result = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors') ?: result.get('blocking_issues')}")
+    assertEquals(false, result.get('fiscal_year_exists'))
+    assertEquals('Testbolaget AB', result.get('company_name_in_file'))
+    assertEquals(1, result.get('account_count'))
+    assertNotNull(result.get('import_token'))
+  }
+
+  @Test
+  void previewSieImportReportsBlockingIssuesForExistingBookedYear() {
+    previewAndPost(balancedVoucherArgs('Bokning före import', 100.00G))
+    Path sieFile = writeSimpleSie(tempDir.resolve('blocked-existing.sie'), 2026, '1510', 'Kundfordringar')
+
+    Map<String, Object> result = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertNull(result.get('import_token'))
+    assertTrue(((List<String>) result.get('blocking_issues')).any { String issue -> issue.contains('innehåller redan') })
+  }
+
+  @Test
+  void previewSieImportReplacementReturnsPurgeSummary() {
+    previewAndPost(balancedVoucherArgs('Bokning att ersätta', 100.00G))
+    Path sieFile = writeSimpleSie(tempDir.resolve('replace-preview.sie'), 2026, '1510', 'Kundfordringar')
+
+    Map<String, Object> result = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        replace_existing: (Object) true
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('blocking_issues')}")
+    Map purgeSummary = (Map) result.get('purge_summary')
+    assertNotNull(purgeSummary)
+    assertTrue(((Number) purgeSummary.get('voucher_count')).intValue() > 0)
+    assertNotNull(result.get('import_token'))
+  }
+
+  @Test
+  void importSieRejectsMissingAndTamperedTokens() {
+    Path sieFile = writeSimpleSie(tempDir.resolve('missing-token.sie'), 2027, '1510', 'Kundfordringar')
+
+    Map<String, Object> missing = tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+    Map<String, Object> tampered = tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        import_token: (Object) 'wrong-token'
+    ])
+
+    assertFalse((boolean) missing.get('ok'))
+    assertTrue(((List<String>) missing.get('errors')).any { String error -> error.contains('import_token') })
+    assertFalse((boolean) tampered.get('ok'))
+    assertTrue(((List<String>) tampered.get('errors')).any { String error -> error.contains('Ogiltig import_token') })
+  }
+
+  @Test
+  void importSieWithTokenImportsAndDuplicateSecondImportReturnsDuplicate() {
+    Path sieFile = writeSimpleSie(tempDir.resolve('mcp-import.sie'), 2027, '1510', 'Kundfordringar')
+    Map<String, Object> preview = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+    assertTrue((boolean) preview.get('ok'), "Preview failed: ${preview}")
+
+    Map<String, Object> first = tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        import_token: (Object) preview.get('import_token')
+    ])
+    Map<String, Object> duplicatePreview = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+    Map<String, Object> second = tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        import_token: (Object) duplicatePreview.get('import_token')
+    ])
+
+    assertTrue((boolean) first.get('ok'), "Expected ok but got: ${first.get('errors')}")
+    assertNotNull(first.get('fiscal_year_id'))
+    assertTrue((boolean) duplicatePreview.get('is_duplicate'))
+    assertTrue((boolean) second.get('ok'), "Expected duplicate ok but got: ${second.get('errors')}")
+    assertTrue((boolean) second.get('duplicate'))
+  }
+
+  @Test
+  void importSieReplacementRejectsWhenPurgeSummaryChangesAfterPreview() {
+    Path sieFile = writeSimpleSie(tempDir.resolve('replace-changed.sie'), 2026, '1510', 'Kundfordringar')
+    Map<String, Object> preview = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        replace_existing: (Object) true
+    ])
+    assertTrue((boolean) preview.get('ok'), "Preview failed: ${preview}")
+    previewAndPost(balancedVoucherArgs('Ny bokning efter preview', 25.00G))
+
+    Map<String, Object> result = tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        replace_existing: (Object) true,
+        import_token: (Object) preview.get('import_token')
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((List<String>) result.get('errors')).any { String error -> error.contains('förändrats') })
+  }
+
+  @Test
+  void exportSieCreatesDefaultTimestampedFileAndProtectsExistingOutput() {
+    previewAndPost(balancedVoucherArgs('Exportunderlag', 100.00G))
+    Path explicitPath = tempDir.resolve('export.sie')
+
+    Map<String, Object> defaultExport = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+    Map<String, Object> explicitExport = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId,
+        output_path: (Object) explicitPath.toString()
+    ])
+    Map<String, Object> blocked = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId,
+        output_path: (Object) explicitPath.toString()
+    ])
+    Map<String, Object> overwrite = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId,
+        output_path: (Object) explicitPath.toString(),
+        overwrite: (Object) true
+    ])
+
+    assertTrue((boolean) defaultExport.get('ok'), "Default export failed: ${defaultExport.get('errors')}")
+    Path defaultPath = Path.of((String) defaultExport.get('file_path'))
+    assertTrue(Files.exists(defaultPath))
+    assertTrue(defaultPath.fileName.toString() ==~ /AlipsaAccounting-.+-\d{12}\.sie/)
+    assertTrue((boolean) explicitExport.get('ok'), "Explicit export failed: ${explicitExport.get('errors')}")
+    assertFalse((boolean) blocked.get('ok'))
+    assertTrue((boolean) blocked.get('file_exists'))
+    assertTrue((boolean) overwrite.get('ok'), "Overwrite failed: ${overwrite.get('errors')}")
+  }
+
+  @Test
+  void listImportJobsClampsLimitToFifty() {
+    Path sieFile = writeSimpleSie(tempDir.resolve('job-list.sie'), 2027, '1510', 'Kundfordringar')
+    Map<String, Object> preview = tools.callTool('preview_sie_import', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString()
+    ])
+    tools.callTool('import_sie', [
+        company_id: (Object) 1L,
+        file_path: (Object) sieFile.toString(),
+        import_token: (Object) preview.get('import_token')
+    ])
+
+    Map<String, Object> result = tools.callTool('list_import_jobs', [
+        company_id: (Object) 1L,
+        limit: (Object) 100
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+    assertTrue(((List) result.get('import_jobs')).size() <= 50)
+    assertFalse(((List) result.get('import_jobs')).isEmpty())
+  }
+
   private Map<String, Object> previewAndPost(Map<String, Object> postArgs) {
     Map<String, Object> previewResult = tools.callTool('preview_voucher', postArgs)
     assertTrue((boolean) previewResult.get('ok'), "Preview failed: ${previewResult.get('errors')}")
@@ -726,5 +918,20 @@ class AccountingMcpToolsTest {
             [account_number: '2440', debit: 0.00G, credit: amount]
         ]
     ]
+  }
+
+  private Path writeSimpleSie(Path filePath, int year, String accountNumber, String accountName) {
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN ${year}0101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 ${year}0101 ${year}1231
+#KONTO ${accountNumber} "${accountName}"
+#IB 0 ${accountNumber} 100.00
+"""
+    filePath
   }
 }

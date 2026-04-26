@@ -54,6 +54,10 @@ final class AppPaths {
     reportsDirectory(applicationHome())
   }
 
+  static Path sieExportsDirectory() {
+    sieExportsDirectory(applicationHome())
+  }
+
   static Path backupsDirectory() {
     backupsDirectory(applicationHome())
   }
@@ -82,6 +86,10 @@ final class AppPaths {
     applicationHome.resolve('reports')
   }
 
+  static Path sieExportsDirectory(Path applicationHome) {
+    applicationHome.resolve('sie-exports')
+  }
+
   static Path backupsDirectory(Path applicationHome) {
     applicationHome.resolve('backups')
   }
@@ -105,6 +113,7 @@ final class AppPaths {
         logDirectory(applicationHome),
         attachmentsDirectory(applicationHome),
         reportsDirectory(applicationHome),
+        sieExportsDirectory(applicationHome),
         backupsDirectory(applicationHome),
         docsDirectory(applicationHome)
     ].each { Path path ->

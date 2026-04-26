@@ -48,6 +48,15 @@ final class FiscalYearReplacementService {
     new FiscalYearReplacementPlan(summary, attachmentStoragePaths, reportArchiveStoragePaths)
   }
 
+  static FiscalYearReplacementPlan previewFiscalYearReplacement(Sql sql, long companyId, FiscalYear fiscalYear) {
+    ensureReplaceAllowed(sql, fiscalYear)
+    new FiscalYearReplacementPlan(
+        collectPurgeSummary(sql, companyId, fiscalYear.id),
+        loadAttachmentStoragePaths(sql, fiscalYear.id),
+        loadReportArchiveStoragePaths(sql, fiscalYear.id)
+    )
+  }
+
   static void deleteStoredFilesQuietly(Path rootDirectory, List<String> storagePaths) {
     Path root = rootDirectory.toAbsolutePath().normalize()
     List<String> validPaths = storagePaths.findAll { String path -> path != null && !path.isBlank() }

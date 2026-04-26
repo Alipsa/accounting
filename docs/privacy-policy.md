@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Effective date: 2026-04-19
+Effective date: 2026-04-26
 
 This privacy policy describes how Alipsa Accounting handles information when you use the desktop application and related project resources.
 
@@ -46,6 +46,16 @@ Users can disable automatic update checks in the application's Settings tab and 
 If the user chooses to download and install an update, the application downloads the release archive and checksum files from GitHub-hosted release assets.
 
 Only the files required for the selected update are downloaded.
+
+### MCP server mode
+
+The application can be started with `--mode=mcp` to function as a local Model Context Protocol (MCP) server. In this mode the application reads from and writes to its standard input and output streams; no network socket is opened by the application itself.
+
+When running as an MCP server, accounting data — including company information, fiscal years, accounts, vouchers, balances, VAT reports, and SIE file contents — is passed over the local stdio channel to the calling process (typically an LLM assistant tool such as Claude Code). That tool runs locally and may, as part of its normal operation, send the data to an external LLM provider API over the network.
+
+Alipsa Accounting does not control what the LLM client does with the data it receives. Users who enable MCP server mode should review the privacy policy of the LLM assistant tool they use.
+
+The automatic update check, update download, and browser actions described above are not triggered in MCP mode.
 
 ### User-initiated browser actions
 
