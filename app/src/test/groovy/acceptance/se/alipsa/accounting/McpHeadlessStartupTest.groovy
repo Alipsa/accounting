@@ -45,7 +45,9 @@ class McpHeadlessStartupTest {
       process.destroyForcibly()
     }
     assertTrue(exited, 'MCP process should exit after stdin is closed.')
-    assertEquals(0, process.exitValue(), Files.readString(stderrFile, StandardCharsets.UTF_8))
+    int exitValue = process.exitValue()
+    String stderr = exitValue == 0 ? '' : new String(Files.readAllBytes(stderrFile), StandardCharsets.UTF_8)
+    assertEquals(0, exitValue, stderr)
 
     List<String> stdoutLines = process.inputStream.getText(StandardCharsets.UTF_8.name()).readLines()
     assertEquals(1, stdoutLines.size(), "stdout should contain only one JSON-RPC response: ${stdoutLines}")

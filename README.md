@@ -210,4 +210,6 @@ Applikationen använder plattformsspecifika standardvägar för data och loggar:
 - Windows: `%APPDATA%\\Alipsa\\Accounting`
 - macOS: `~/Library/Application Support/AlipsaAccounting`
 
+Datakatalogen är skild från applikationsinstallationen. Det innebär att befintlig data är tillgänglig direkt när en ny version installeras — ingen manuell flytt behövs. På Windows tar avinstallationen av den gamla versionen inte bort `%APPDATA%\Alipsa\Accounting`.
+
 Signering av Windows-installatör och notarisering/signering av macOS-app är avsiktligt lämnade som framtida release-steg. Nuvarande buildflöde producerar signerbara artefakter men utför inte signering automatiskt.
