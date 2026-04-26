@@ -31,14 +31,27 @@ import javax.swing.SwingUtilities
  */
 final class CompanyDialog extends JDialog implements PropertyChangeListener {
 
+  private static final List<String> SUPPORTED_LOCALE_TAGS = [
+      'sv-SE', 'en-US', 'en-GB', 'de-DE', 'fr-FR',
+      'nb-NO', 'da-DK', 'fi-FI', 'nl-NL', 'pl-PL',
+      'es-ES', 'it-IT', 'pt-PT', 'pt-BR', 'cs-CZ',
+      'hu-HU', 'ro-RO', 'sk-SK'
+  ]
+
+  private static final List<String> PRIORITY_CURRENCIES = [
+      'SEK', 'EUR', 'USD', 'GBP', 'NOK', 'DKK', 'CHF', 'JPY', 'CNY'
+  ]
+
   private final CompanyService companyService
   private final Consumer<Company> onSave
   private Company company
 
   private final JTextField companyNameField = new JTextField(28)
   private final JTextField organizationNumberField = new JTextField(18)
-  private final JTextField defaultCurrencyField = new JTextField(6)
-  private final JTextField localeTagField = new JTextField(12)
+  private final JComboBox<String> defaultCurrencyComboBox =
+      new JComboBox<>(buildCurrencyList().toArray(new String[0]))
+  private final JComboBox<LocaleItem> localeComboBox =
+      new JComboBox<>(buildLocaleList().toArray(new LocaleItem[0]))
   private final JComboBox<VatPeriodicity> vatPeriodicityComboBox = new JComboBox<>(VatPeriodicity.values())
   private final JTextArea validationArea = new JTextArea(4, 30)
 
@@ -133,13 +146,13 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     fieldConstraints.gridy = 2
     currencyLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.currency'))
     panel.add(currencyLabel, labelConstraints)
-    panel.add(defaultCurrencyField, fieldConstraints)
+    panel.add(defaultCurrencyComboBox, fieldConstraints)
 
     labelConstraints.gridy = 3
     fieldConstraints.gridy = 3
     localeLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.locale'))
     panel.add(localeLabel, labelConstraints)
-    panel.add(localeTagField, fieldConstraints)
+    panel.add(localeComboBox, fieldConstraints)
 
     labelConstraints.gridy = 4
     fieldConstraints.gridy = 4
@@ -174,16 +187,39 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
 
   private void populate() {
     if (company == null) {
-      defaultCurrencyField.text = 'SEK'
-      localeTagField.text = Locale.getDefault().toLanguageTag()
+      selectCurrency('SEK')
+      selectLocale(Locale.getDefault().toLanguageTag())
       vatPeriodicityComboBox.selectedItem = VatPeriodicity.MONTHLY
       return
     }
     companyNameField.text = company.companyName
     organizationNumberField.text = company.organizationNumber
-    defaultCurrencyField.text = company.defaultCurrency
-    localeTagField.text = company.localeTag
+    selectCurrency(company.defaultCurrency ?: 'SEK')
+    selectLocale(company.localeTag ?: Locale.getDefault().toLanguageTag())
     vatPeriodicityComboBox.selectedItem = company.vatPeriodicity ?: VatPeriodicity.MONTHLY
+  }
+
+  private void selectCurrency(String code) {
+    for (int i = 0; i < defaultCurrencyComboBox.itemCount; i++) {
+      if (defaultCurrencyComboBox.getItemAt(i) == code) {
+        defaultCurrencyComboBox.selectedIndex = i
+        return
+      }
+    }
+    defaultCurrencyComboBox.addItem(code)
+    defaultCurrencyComboBox.selectedItem = code
+  }
+
+  private void selectLocale(String tag) {
+    for (int i = 0; i < localeComboBox.itemCount; i++) {
+      if (localeComboBox.getItemAt(i).tag == tag) {
+        localeComboBox.selectedIndex = i
+        return
+      }
+    }
+    LocaleItem item = new LocaleItem(tag)
+    localeComboBox.addItem(item)
+    localeComboBox.selectedItem = item
   }
 
   private void saveRequested() {
@@ -194,12 +230,14 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     }
 
     try {
+      String currency = defaultCurrencyComboBox.selectedItem as String
+      String localeTag = (localeComboBox.selectedItem as LocaleItem).tag
       Company toSave = new Company(
           company?.id,
           companyNameField.text.trim(),
           organizationNumberField.text.trim(),
-          defaultCurrencyField.text.trim().toUpperCase(Locale.ROOT),
-          localeTagField.text.trim(),
+          currency,
+          localeTag,
           vatPeriodicityComboBox.selectedItem as VatPeriodicity,
           true,
           null,
@@ -225,28 +263,6 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
           I18n.instance.getString('companySettingsDialog.label.orgNumber'),
           I18n.instance.getString('companySettingsDialog.error.orgNumberRequired'))
     }
-    String currency = defaultCurrencyField.text?.trim()
-    if (!currency) {
-      messages << ValidationSupport.fieldError(
-          I18n.instance.getString('companySettingsDialog.label.currency'),
-          I18n.instance.getString('companySettingsDialog.error.currencyRequired'))
-    } else if (currency.length() != 3) {
-      messages << ValidationSupport.fieldError(
-          I18n.instance.getString('companySettingsDialog.label.currency'),
-          I18n.instance.getString('companySettingsDialog.error.currencyFormat'),
-          I18n.instance.getString('companySettingsDialog.error.currencyHint'))
-    }
-    String localeTag = localeTagField.text?.trim()
-    if (!localeTag) {
-      messages << ValidationSupport.fieldError(
-          I18n.instance.getString('companySettingsDialog.label.locale'),
-          I18n.instance.getString('companySettingsDialog.error.localeRequired'))
-    } else if (Locale.forLanguageTag(localeTag).toLanguageTag() == 'und') {
-      messages << ValidationSupport.fieldError(
-          I18n.instance.getString('companySettingsDialog.label.locale'),
-          I18n.instance.getString('companySettingsDialog.error.localeInvalid'),
-          I18n.instance.getString('companySettingsDialog.error.localeHint'))
-    }
     messages
   }
 
@@ -254,5 +270,35 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     validationArea.text = ValidationSupport.summaryText(messages)
     validationArea.visible = true
     pack()
+  }
+
+  private static List<String> buildCurrencyList() {
+    List<String> all = Currency.getAvailableCurrencies()
+        .collect { Currency c -> c.currencyCode }
+        .sort()
+    List<String> priority = PRIORITY_CURRENCIES.findAll { String code -> all.contains(code) }
+    List<String> rest = all.findAll { String code -> !priority.contains(code) }
+    priority + rest
+  }
+
+  private static List<LocaleItem> buildLocaleList() {
+    SUPPORTED_LOCALE_TAGS.collect { String tag -> new LocaleItem(tag) }
+  }
+
+  private static final class LocaleItem {
+
+    final String tag
+    private final String displayText
+
+    LocaleItem(String tag) {
+      this.tag = tag
+      Locale locale = Locale.forLanguageTag(tag)
+      this.displayText = "${tag} — ${locale.getDisplayName(locale)}"
+    }
+
+    @Override
+    String toString() {
+      displayText
+    }
   }
 }
