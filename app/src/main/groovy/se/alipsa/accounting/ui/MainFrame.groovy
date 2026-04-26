@@ -147,7 +147,6 @@ final class MainFrame implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
 
   private JLabel statusLabel
-  private JLabel companySummaryLabel
   private OverviewPanel overviewPanel
   private JLabel companyLabel
   private JComboBox<Company> companyComboBox
@@ -164,7 +163,6 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem updateMenuItem
   private JMenuItem reportIssueMenuItem
   private JMenuItem aboutMenuItem
-  private JButton editCompanySettingsButton
   private JButton updateNotificationButton
   private JButton englishButton
   private JButton swedishButton
@@ -184,7 +182,6 @@ final class MainFrame implements PropertyChangeListener {
     activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
     applyIcons()
-    refreshCompanySettingsSummary()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
   }
@@ -218,7 +215,6 @@ final class MainFrame implements PropertyChangeListener {
 
   private void onCompanyChanged() {
     refreshTitle()
-    refreshCompanySettingsSummary()
     reloadFiscalYearComboBox()
     Company active = activeCompanyManager.activeCompany
     if (active != null) {
@@ -240,7 +236,6 @@ final class MainFrame implements PropertyChangeListener {
     statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
     applyMenuLocale()
     applyTabLocale()
-    editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     companyLabel.text = I18n.instance.getString('mainFrame.label.activeCompany')
     fiscalYearLabel.text = I18n.instance.getString('mainFrame.label.fiscalYear')
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
@@ -253,7 +248,6 @@ final class MainFrame implements PropertyChangeListener {
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
     }
-    refreshCompanySettingsSummary()
   }
 
   private void applyMenuLocale() {
@@ -345,19 +339,9 @@ final class MainFrame implements PropertyChangeListener {
     settingsRows.add(buildThemeRow())
     settingsRows.add(buildUpdateRow())
 
-    JPanel companyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    editCompanySettingsButton = new JButton(I18n.instance.getString('mainFrame.button.editCompanySettings'))
-    editCompanySettingsButton.addActionListener { showCompanySettingsDialog() }
-    companyRow.add(editCompanySettingsButton)
-
     topPanel.add(settingsRows, BorderLayout.NORTH)
-    topPanel.add(companyRow, BorderLayout.SOUTH)
 
     panel.add(topPanel, BorderLayout.NORTH)
-
-    companySummaryLabel = new JLabel('')
-    companySummaryLabel.verticalAlignment = SwingConstants.TOP
-    panel.add(companySummaryLabel, BorderLayout.CENTER)
 
     panel
   }
@@ -594,7 +578,8 @@ final class MainFrame implements PropertyChangeListener {
         accountingPeriodService,
         backupService,
         startupVerificationService,
-        activeCompanyManager
+        activeCompanyManager,
+        { showCompanySettingsDialog() } as Runnable
     )
     overviewPanel
   }
@@ -645,7 +630,6 @@ final class MainFrame implements PropertyChangeListener {
 
   private void showCompanySettingsDialog() {
     CompanySettingsDialog.showDialog(frame, companySettingsService, {
-      refreshCompanySettingsSummary()
       reloadCompanyComboBox()
       setStatus(I18n.instance.getString('mainFrame.status.companySaved'))
     } as Runnable)
@@ -667,7 +651,6 @@ final class MainFrame implements PropertyChangeListener {
     CompanyDialog.showDialog(frame, companyService, active, { Company saved ->
       reloadCompanyComboBox()
       refreshTitle()
-      refreshCompanySettingsSummary()
     } as java.util.function.Consumer<Company>)
   }
 
@@ -721,25 +704,6 @@ final class MainFrame implements PropertyChangeListener {
     updateThread.daemon = true
     updateThread.priority = Thread.MIN_PRIORITY
     updateThread.start()
-  }
-
-  private void refreshCompanySettingsSummary() {
-    if (companySummaryLabel == null) {
-      return
-    }
-    Company active = activeCompanyManager.activeCompany
-    if (active == null) {
-      companySummaryLabel.text = I18n.instance.getString('mainFrame.companySettings.noProfile')
-      return
-    }
-    companySummaryLabel.text = I18n.instance.format(
-        'mainFrame.companySettings.summary',
-        escapeHtml(active.companyName),
-        I18n.instance.getString('mainFrame.companySettings.orgNumber'), escapeHtml(active.organizationNumber),
-        I18n.instance.getString('mainFrame.companySettings.currency'), escapeHtml(active.defaultCurrency),
-        escapeHtml(active.localeTag),
-        I18n.instance.getString('mainFrame.companySettings.vatPeriod'), escapeHtml(active.vatPeriodicity?.displayName ?: I18n.instance.getString('vatPeriodicity.MONTHLY'))
-    )
   }
 
   private void applyIcons() {
@@ -797,10 +761,4 @@ final class MainFrame implements PropertyChangeListener {
     ]
   }
 
-  private static String escapeHtml(String text) {
-    text
-        .replace('&', '&amp;')
-        .replace('<', '&lt;')
-        .replace('>', '&gt;')
-  }
 }
