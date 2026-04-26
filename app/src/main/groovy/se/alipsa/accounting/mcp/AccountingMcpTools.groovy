@@ -818,7 +818,7 @@ class AccountingMcpTools {
             errors: [
                 replaceExisting
                     ? 'Räkenskapsårets innehåll har förändrats sedan förhandsgranskningen — kör preview_sie_import igen.'
-                    : 'import_token krävs — kör preview_sie_import med exakt samma fil och replace_existing-värde först.'
+                    : 'Ogiltig import_token — kör preview_sie_import med exakt samma fil och replace_existing-värde.'
             ]
         ]
       }
@@ -850,7 +850,7 @@ class AccountingMcpTools {
     try {
       Path outputPath = args.get('output_path') == null
           ? defaultSieExportPath(fiscalYearId)
-          : Path.of(requiredString(args, 'output_path')).toAbsolutePath().normalize()
+          : Path.of(args.get('output_path') as String).toAbsolutePath().normalize()
       if (Files.exists(outputPath) && !overwrite) {
         return [
             ok: false,
@@ -998,33 +998,33 @@ class AccountingMcpTools {
 
   private Map<String, Object> previewMap(SieImportPreview preview) {
     [
-        companyNameInFile: preview.companyNameInFile,
-        fiscalYearStart: preview.fiscalYearStart?.toString(),
-        fiscalYearEnd: preview.fiscalYearEnd?.toString(),
-        accountCount: preview.accountCount,
-        voucherCount: preview.voucherCount,
-        lineCount: preview.lineCount,
+        company_name_in_file: preview.companyNameInFile,
+        fiscal_year_start: preview.fiscalYearStart?.toString(),
+        fiscal_year_end: preview.fiscalYearEnd?.toString(),
+        account_count: preview.accountCount,
+        voucher_count: preview.voucherCount,
+        line_count: preview.lineCount,
         warnings: preview.warnings,
-        checksumSha256: preview.checksumSha256,
-        replaceExisting: preview.replaceExisting,
-        fiscalYearExists: preview.fiscalYearExists,
-        targetFiscalYearId: preview.targetFiscalYearId,
-        targetFiscalYearName: preview.targetFiscalYearName,
-        purgeSummary: preview.purgeSummary == null ? null : purgeSummaryMap(preview.purgeSummary),
-        blockingIssues: preview.blockingIssues,
-        isDuplicate: preview.duplicate,
-        duplicateJobId: preview.duplicateJobId
+        checksum_sha256: preview.checksumSha256,
+        replace_existing: preview.replaceExisting,
+        fiscal_year_exists: preview.fiscalYearExists,
+        target_fiscal_year_id: preview.targetFiscalYearId,
+        target_fiscal_year_name: preview.targetFiscalYearName,
+        purge_summary: preview.purgeSummary == null ? null : purgeSummaryMap(preview.purgeSummary),
+        blocking_issues: preview.blockingIssues,
+        is_duplicate: preview.duplicate,
+        duplicate_job_id: preview.duplicateJobId
     ]
   }
 
   private static Map<String, Object> purgeSummaryMap(FiscalYearPurgeSummary summary) {
     [
-        attachmentCount: summary.attachmentCount,
-        reportArchiveCount: summary.reportArchiveCount,
-        openingBalanceCount: summary.openingBalanceCount,
-        voucherCount: summary.voucherCount,
-        vatPeriodCount: summary.vatPeriodCount,
-        auditLogCount: summary.auditLogCount
+        attachment_count: summary.attachmentCount,
+        report_archive_count: summary.reportArchiveCount,
+        opening_balance_count: summary.openingBalanceCount,
+        voucher_count: summary.voucherCount,
+        vat_period_count: summary.vatPeriodCount,
+        audit_log_count: summary.auditLogCount
     ]
   }
 

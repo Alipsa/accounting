@@ -662,10 +662,10 @@ class AccountingMcpToolsTest {
         file_path: (Object) sieFile.toString()
     ])
 
-    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors') ?: result.get('blockingIssues')}")
-    assertEquals(false, result.get('fiscalYearExists'))
-    assertEquals('Testbolaget AB', result.get('companyNameInFile'))
-    assertEquals(1, result.get('accountCount'))
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors') ?: result.get('blocking_issues')}")
+    assertEquals(false, result.get('fiscal_year_exists'))
+    assertEquals('Testbolaget AB', result.get('company_name_in_file'))
+    assertEquals(1, result.get('account_count'))
     assertNotNull(result.get('import_token'))
   }
 
@@ -681,7 +681,7 @@ class AccountingMcpToolsTest {
 
     assertFalse((boolean) result.get('ok'))
     assertNull(result.get('import_token'))
-    assertTrue(((List<String>) result.get('blockingIssues')).any { String issue -> issue.contains('innehåller redan') })
+    assertTrue(((List<String>) result.get('blocking_issues')).any { String issue -> issue.contains('innehåller redan') })
   }
 
   @Test
@@ -695,10 +695,10 @@ class AccountingMcpToolsTest {
         replace_existing: (Object) true
     ])
 
-    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('blockingIssues')}")
-    Map purgeSummary = (Map) result.get('purgeSummary')
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('blocking_issues')}")
+    Map purgeSummary = (Map) result.get('purge_summary')
     assertNotNull(purgeSummary)
-    assertTrue(((Number) purgeSummary.get('voucherCount')).intValue() > 0)
+    assertTrue(((Number) purgeSummary.get('voucher_count')).intValue() > 0)
     assertNotNull(result.get('import_token'))
   }
 
@@ -719,6 +719,7 @@ class AccountingMcpToolsTest {
     assertFalse((boolean) missing.get('ok'))
     assertTrue(((List<String>) missing.get('errors')).any { String error -> error.contains('import_token') })
     assertFalse((boolean) tampered.get('ok'))
+    assertTrue(((List<String>) tampered.get('errors')).any { String error -> error.contains('Ogiltig import_token') })
   }
 
   @Test
@@ -747,7 +748,7 @@ class AccountingMcpToolsTest {
 
     assertTrue((boolean) first.get('ok'), "Expected ok but got: ${first.get('errors')}")
     assertNotNull(first.get('fiscal_year_id'))
-    assertTrue((boolean) duplicatePreview.get('isDuplicate'))
+    assertTrue((boolean) duplicatePreview.get('is_duplicate'))
     assertTrue((boolean) second.get('ok'), "Expected duplicate ok but got: ${second.get('errors')}")
     assertTrue((boolean) second.get('duplicate'))
   }
@@ -799,7 +800,7 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) defaultExport.get('ok'), "Default export failed: ${defaultExport.get('errors')}")
     Path defaultPath = Path.of((String) defaultExport.get('file_path'))
     assertTrue(Files.exists(defaultPath))
-    assertTrue(defaultPath.fileName.toString() ==~ /AlipsaAccounting-2026-\d{12}\.sie/)
+    assertTrue(defaultPath.fileName.toString() ==~ /AlipsaAccounting-.+-\d{12}\.sie/)
     assertTrue((boolean) explicitExport.get('ok'), "Explicit export failed: ${explicitExport.get('errors')}")
     assertFalse((boolean) blocked.get('ok'))
     assertTrue((boolean) blocked.get('file_exists'))

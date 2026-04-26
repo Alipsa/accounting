@@ -91,16 +91,16 @@ Only call write tools after the user explicitly confirms the proposed action.
 ## Workflow: SIE Import
 
 1. Preview the file.
-   Call `preview_sie_import`. If `ok` is false, explain `blockingIssues` and do not call `import_sie`.
+   Call `preview_sie_import`. If `ok` is false, explain `blocking_issues` and do not call `import_sie`.
 
 2. Handle duplicates and warnings.
-   If `isDuplicate` is true, show `duplicateJobId` and stop ordinary import. Forward all `warnings` to the user before import.
+   If `is_duplicate` is true, show `duplicate_job_id` and stop ordinary import. Forward all `warnings` to the user before import.
 
 3. Summarize the import.
-   Show `companyNameInFile`, fiscal-year period, account count, voucher count, line count, and whether the fiscal year already exists.
+   Show `company_name_in_file`, fiscal-year period, `account_count`, `voucher_count`, `line_count`, and whether the fiscal year already exists.
 
 4. Confirm replacements explicitly.
-   If `replace_existing` is true and `fiscalYearExists` is true, show `purgeSummary` in plain language: vouchers, attachments, report archives, opening balances, VAT periods, and audit-log rows affected. Only proceed after explicit confirmation.
+   If `replace_existing` is true and `fiscal_year_exists` is true, show `purge_summary` in plain language: vouchers, attachments, report archives, opening balances, VAT periods, and audit-log rows affected. Only proceed after explicit confirmation.
 
 5. Import after confirmation.
    Call `import_sie` with unchanged `file_path`, `replace_existing`, and `import_token`. Show the resulting job id, fiscal year, counts, duplicate status, and warnings.
@@ -150,5 +150,5 @@ VAT periods are derived from accounting periods and the company's VAT periodicit
 - Never suggest direct modification or deletion of posted vouchers.
 - Never make legal statements about tax liability. Describe bookkeeping consequences only.
 - Always use the company's `default_currency` when quoting amounts.
-- Never call `import_sie` with `replace_existing: true` before showing `purgeSummary` and receiving explicit confirmation.
+- Never call `import_sie` with `replace_existing: true` before showing `purge_summary` and receiving explicit confirmation.
 - Never call `export_sie` with `overwrite: true` before asking the user to confirm overwriting the existing file.
