@@ -163,12 +163,14 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     fieldConstraints.gridx = 3
     classLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.class'))
     filterPanel.add(classLabel, labelConstraints)
+    classFilter.addActionListener { reloadAccounts() }
     filterPanel.add(classFilter, fieldConstraints)
 
     labelConstraints.gridx = 4
     fieldConstraints.gridx = 5
     filterLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.filter'))
     filterPanel.add(filterLabel, labelConstraints)
+    activeOnlyCheckBox.addItemListener { reloadAccounts() }
     filterPanel.add(activeOnlyCheckBox, fieldConstraints)
 
     filterPanel
