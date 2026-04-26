@@ -130,13 +130,14 @@ Kör alla kommandon från rotmappen.
 
 ### Nedladdningar
 
-Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre distributioner:
+Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre användardistributioner och ett generiskt uppdateringsarkiv:
 
-| Fil                                     | Plattform                                             |
-|-----------------------------------------|-------------------------------------------------------|
-| `alipsa-accounting-<version>-linux.zip` | Linux — app-image och `.desktop`-fil                  |
-| `AlipsaAccounting-<version>.exe`        | Windows — installerare med meny- och skrivbordsgenväg |
-| `AlipsaAccounting-macos.zip`            | macOS — `AlipsaAccounting.app`                        |
+| Fil                                       | Plattform                                                             |
+|-------------------------------------------|-----------------------------------------------------------------------|
+| `alipsa-accounting-<version>-linux.zip`   | Linux — app-image, `.desktop`-fil och `skill/accounting-mcp.md`       |
+| `alipsa-accounting-<version>-windows.zip` | Windows — exe-installerare och `skill/accounting-mcp.md`              |
+| `alipsa-accounting-<version>-macos.zip`   | macOS — `AlipsaAccounting.app` och `skill/accounting-mcp.md`          |
+| `app-<version>.zip`                       | Generiskt arkiv som används av den inbyggda automatiska uppdateraren  |
 
 Varje distributionsfil åtföljs av två verifieringsfiler:
 
@@ -172,8 +173,8 @@ The application can perform a background update check against GitHub Releases on
 Releasebyggen använder `jpackage` och kräver Java 21 med tillhörande paketeringsverktyg på respektive plattform.
 
 - Linux: `./gradlew :app:packageLinuxReleaseZip`
-- Windows: `./gradlew :app:packageWindowsInstaller`
-- macOS: `./gradlew :app:packageMacosAppImage`
+- Windows: `./gradlew :app:packageWindowsRelease`
+- macOS: `./gradlew :app:packageMacosRelease`
 - Aktuell plattform: `./gradlew :app:packageCurrentPlatformRelease`
 - Smoke test av aktuell plattform: `./gradlew :app:verifyCurrentPlatformRelease`
 
@@ -185,7 +186,23 @@ Om Gradle hittar fel JDK för jpackage (t.ex. en inbäddad JDK utan jpackage) ka
 
 Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
 
-Linux-releasen producerar en `app-image` plus ett zip-arkiv som även innehåller `.desktop`-filen. Windows-releasen producerar en `exe`-installerare med meny- och skrivbordsgenväg. macOS-releasen producerar `AlipsaAccounting.app`.
+Alla tre plattformsreleaserna producerar ett zip-arkiv som innehåller `skill/accounting-mcp.md`. Linux-arkivet innehåller app-imagen och installationsskripten. Windows-arkivet innehåller exe-installeraren med meny- och skrivbordsgenväg. macOS-arkivet innehåller `AlipsaAccounting.app`.
+
+Claude Code och Codex läser inte automatiskt `skill/`-katalogen; extrahera arkivet och länka eller kopiera den till klientens skill-katalog:
+
+```
+# Claude Code
+ln -s /path/to/release/skill ~/.claude/skills/accounting
+
+# Codex
+ln -s /path/to/release/skill ~/.agents/skills/accounting
+
+# Windows PowerShell, Claude Code
+New-Item -ItemType Junction -Path "$HOME\.claude\skills\accounting" -Target "C:\path\to\release\skill"
+
+# Windows PowerShell, Codex
+New-Item -ItemType Junction -Path "$HOME\.agents\skills\accounting" -Target "C:\path\to\release\skill"
+```
 
 Applikationen använder plattformsspecifika standardvägar för data och loggar:
 

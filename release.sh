@@ -75,8 +75,7 @@ if [ "$BUILD" = true ]; then
   # behind in extras/ so the root stays clean.
   shopt -s nullglob
   for f in "$DIST_DIR"/extras/*/alipsa-accounting-*.zip \
-           "$DIST_DIR"/extras/*/AlipsaAccounting-*.exe \
-           "$DIST_DIR"/extras/*/AlipsaAccounting-*.zip; do
+           "$DIST_DIR"/extras/*/app-*.zip; do
     mv "$f" "$DIST_DIR/"
   done
   shopt -u nullglob
@@ -141,9 +140,10 @@ ${notes}
     case "$file" in *.asc|*.sha256) continue ;; esac
     name=$(basename "$file")
     case "$name" in
-      *.exe)      platform="Windows" ;;
+      *windows*)  platform="Windows" ;;
       *linux*)    platform="Linux" ;;
       *macos*)    platform="macOS" ;;
+      app-*.zip)  platform="Auto-updater" ;;
       *)          platform="$name" ;;
     esac
     release_body="${release_body}
