@@ -1,5 +1,37 @@
 # Alipsa Accounting, Release History
 
+## v1.1.0, 2026-04-26
+### Minor Release
+
+This release adds headless MCP support for AI-assisted bookkeeping workflows, tightens voucher and fiscal-year safety rules, and improves release packaging for automatic updates.
+
+### Highlights
+
+- **AI/MCP bookkeeping tools** — Added an MCP server mode with tools for company lookup, fiscal years, accounts, vouchers, trial balance, general ledger, VAT periods, VAT reports, VAT transfer booking, year-end preview/closing, SIE import/export, and SIE import job history.
+- **Accounting skill distribution** — Releases now include `skill/accounting-mcp.md` so Claude Code and Codex can use guided accounting workflows after the skill is linked or copied into the client's skill directory.
+- **Immutable posted vouchers** — Posted vouchers are now append-only. Corrections are handled with reversing correction vouchers instead of direct edits, cancellation, or deletion.
+- **Fiscal-year closing safety** — Year closing now locks the fiscal year, with explicit support for unlocking through an audit-logged action. MCP year-end closing uses preview tokens so the close operation matches the previewed state.
+- **Safer SIE workflows** — MCP SIE import now supports preview, blocking issue reporting, duplicate detection, replacement purge summaries, import tokens, and drift protection before replacing an existing fiscal year. SIE export uses timestamped default filenames and refuses to overwrite files unless explicitly confirmed.
+- **Improved release artifacts and updater support** — Windows and macOS releases are now packaged as platform zip files alongside Linux, and the generic `app-<version>.zip` plus checksum is published for the built-in updater.
+- **Distribution fixes** — Windows release artifacts now include the installer and skill file in a zip that the release workflow can publish consistently. macOS packaging now follows the same release-zip lifecycle.
+- **Privacy and documentation updates** — The privacy policy and README now describe MCP mode, local skill installation, current artifact naming, and verification/signing expectations.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.1.0-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.1.0-windows.zip` |
+| macOS                     | `alipsa-accounting-1.1.0-macos.zip`   |
+| Universal updater archive | `app-1.1.0.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.0.1, 2026-04-20
 ### Patch Release
 
