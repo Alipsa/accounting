@@ -425,14 +425,39 @@ tasks.register('copySkillToMacosAppImage', Copy) {
   into(releaseConfig.releaseRoot.map { it.dir('macos/skill') })
 }
 
-tasks.register('packageWindowsRelease') {
+tasks.register('packageWindowsReleaseZip', Zip) {
   onlyIf { isWindows }
   dependsOn 'packageWindowsInstaller'
+  archiveBaseName = releaseConfig.packageName
+  archiveVersion = releaseConfig.version
+  archiveClassifier = 'windows'
+  destinationDirectory = releaseConfig.releaseRoot.map { it.dir('windows-release') }
+  from(releaseConfig.releaseRoot.map { it.dir('windows-installer') }) {
+    include '*.exe'
+  }
+  from(rootProject.file('skill')) {
+    into('skill')
+  }
+}
+
+tasks.register('packageWindowsRelease') {
+  onlyIf { isWindows }
+  dependsOn 'packageWindowsReleaseZip'
+}
+
+tasks.register('packageMacosReleaseZip', Zip) {
+  onlyIf { isMacos }
+  dependsOn 'copySkillToMacosAppImage'
+  archiveBaseName = releaseConfig.packageName
+  archiveVersion = releaseConfig.version
+  archiveClassifier = 'macos'
+  destinationDirectory = releaseConfig.releaseRoot.map { it.dir('macos-release') }
+  from(releaseConfig.releaseRoot.map { it.dir('macos') })
 }
 
 tasks.register('packageMacosRelease') {
   onlyIf { isMacos }
-  dependsOn 'copySkillToMacosAppImage'
+  dependsOn 'packageMacosReleaseZip'
 }
 
 tasks.register('verifyLinuxAppImage', Exec) {

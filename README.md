@@ -185,9 +185,9 @@ Om Gradle hittar fel JDK för jpackage (t.ex. en inbäddad JDK utan jpackage) ka
 
 Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
 
-Linux-releasen producerar en `app-image` plus ett zip-arkiv som även innehåller `.desktop`-filen. Windows-releasen producerar en `exe`-installerare med meny- och skrivbordsgenväg. macOS-releasen producerar `AlipsaAccounting.app`.
+Alla tre plattformsreleaserna producerar ett zip-arkiv som innehåller `skill/accounting-mcp.md`. Linux-arkivet innehåller app-imagen och installationsskripten. Windows-arkivet innehåller exe-installeraren med meny- och skrivbordsgenväg. macOS-arkivet innehåller `AlipsaAccounting.app`.
 
-Releasebygget placerar MCP-skillen som `skill/accounting-mcp.md` under respektive plattforms artefaktkatalog. Claude Code och Codex läser inte automatiskt den katalogen; länka eller kopiera den därför till klientens skill-katalog efter installation:
+Claude Code och Codex läser inte automatiskt `skill/`-katalogen; extrahera arkivet och länka eller kopiera den till klientens skill-katalog:
 
 ```
 # Claude Code
