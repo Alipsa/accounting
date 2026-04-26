@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -16,6 +17,7 @@ class McpHeadlessStartupTest {
 
   @TempDir
   Path tempDir
+  private Path stderrFile
 
   @Test
   void mcpModeStartsAsProcessAndKeepsStdoutJsonRpcClean() {
@@ -43,7 +45,7 @@ class McpHeadlessStartupTest {
       process.destroyForcibly()
     }
     assertTrue(exited, 'MCP process should exit after stdin is closed.')
-    assertEquals(0, process.exitValue(), process.errorStream.getText(StandardCharsets.UTF_8.name()))
+    assertEquals(0, process.exitValue(), Files.readString(stderrFile, StandardCharsets.UTF_8))
 
     List<String> stdoutLines = process.inputStream.getText(StandardCharsets.UTF_8.name()).readLines()
     assertEquals(1, stdoutLines.size(), "stdout should contain only one JSON-RPC response: ${stdoutLines}")
@@ -66,6 +68,9 @@ class McpHeadlessStartupTest {
         '--mode=mcp',
         "--home=${tempDir.resolve('home').toAbsolutePath()}".toString()
     ]
-    new ProcessBuilder(command).start()
+    stderrFile = tempDir.resolve('mcp-stderr.log')
+    new ProcessBuilder(command)
+        .redirectError(stderrFile.toFile())
+        .start()
   }
 }
