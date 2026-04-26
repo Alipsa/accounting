@@ -14,12 +14,12 @@ jobs:
             artifact: app/build/release/linux/alipsa-accounting-*.zip
           - os: windows-latest
             platform: windows
-            tasks: packageWindowsInstaller
-            artifact: app/build/release/windows-installer/*
+            tasks: packageWindowsReleaseZip
+            artifact: app/build/release/windows-release/alipsa-accounting-*-windows.zip
           - os: macos-latest
             platform: macos
-            tasks: packageMacosAppImage
-            artifact: app/build/release/macos/AlipsaAccounting-macos.zip
+            tasks: packageMacosReleaseZip
+            artifact: app/build/release/macos-release/alipsa-accounting-*-macos.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -38,11 +38,6 @@ jobs:
 
       - name: Build distribution
         run: ./gradlew ${{ matrix.tasks }}
-
-      - name: Collect macOS app into zip
-        if: matrix.platform == 'macos'
-        working-directory: app/build/release/macos
-        run: zip -r AlipsaAccounting-macos.zip AlipsaAccounting.app
 
       - uses: actions/upload-artifact@v7
         with:

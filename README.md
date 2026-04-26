@@ -130,13 +130,14 @@ Kör alla kommandon från rotmappen.
 
 ### Nedladdningar
 
-Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre distributioner:
+Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/accounting/releases) med tre användardistributioner och ett generiskt uppdateringsarkiv:
 
-| Fil                                     | Plattform                                             |
-|-----------------------------------------|-------------------------------------------------------|
-| `alipsa-accounting-<version>-linux.zip` | Linux — app-image och `.desktop`-fil                  |
-| `AlipsaAccounting-<version>.exe`        | Windows — installerare med meny- och skrivbordsgenväg |
-| `AlipsaAccounting-macos.zip`            | macOS — `AlipsaAccounting.app`                        |
+| Fil                                       | Plattform                                                             |
+|-------------------------------------------|-----------------------------------------------------------------------|
+| `alipsa-accounting-<version>-linux.zip`   | Linux — app-image, `.desktop`-fil och `skill/accounting-mcp.md`       |
+| `alipsa-accounting-<version>-windows.zip` | Windows — exe-installerare och `skill/accounting-mcp.md`              |
+| `alipsa-accounting-<version>-macos.zip`   | macOS — `AlipsaAccounting.app` och `skill/accounting-mcp.md`          |
+| `app-<version>.zip`                       | Generiskt arkiv som används av den inbyggda automatiska uppdateraren  |
 
 Varje distributionsfil åtföljs av två verifieringsfiler:
 
