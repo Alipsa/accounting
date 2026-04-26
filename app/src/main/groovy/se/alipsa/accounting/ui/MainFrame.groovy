@@ -579,7 +579,7 @@ final class MainFrame implements PropertyChangeListener {
         backupService,
         startupVerificationService,
         activeCompanyManager,
-        { showCompanySettingsDialog() } as Runnable
+        { showEditCompanyDialog() } as Runnable
     )
     overviewPanel
   }
@@ -651,6 +651,7 @@ final class MainFrame implements PropertyChangeListener {
     CompanyDialog.showDialog(frame, companyService, active, { Company saved ->
       reloadCompanyComboBox()
       refreshTitle()
+      overviewPanel.reload()
     } as java.util.function.Consumer<Company>)
   }
 
