@@ -12,6 +12,7 @@ import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
@@ -25,6 +26,7 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.ExecutionException
 
 import javax.swing.BorderFactory
+import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JSeparator
@@ -48,6 +50,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   private final BackupService backupService
   private final StartupVerificationService startupVerificationService
   private final ActiveCompanyManager activeCompanyManager
+  private final Runnable editCompanySettingsAction
 
   private boolean integrityChecked = false
   private boolean integrityCheckStarted = false
@@ -56,7 +59,8 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   private int reloadRequestId = 0
   private OverviewSnapshot currentSnapshot = OverviewSnapshot.empty()
 
-  // Header strip labels
+  // Header strip labels and actions
+  private final JButton editCompanySettingsButton = new JButton()
   private final JLabel companyTitleLabel = new JLabel()
   private final JLabel companyNameLabel = new JLabel()
   private final JLabel orgNumberLabel = new JLabel()
@@ -85,13 +89,15 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
       AccountingPeriodService accountingPeriodService,
       BackupService backupService,
       StartupVerificationService startupVerificationService,
-      ActiveCompanyManager activeCompanyManager
+      ActiveCompanyManager activeCompanyManager,
+      Runnable editCompanySettingsAction
   ) {
     this.voucherService = voucherService
     this.accountingPeriodService = accountingPeriodService
     this.backupService = backupService
     this.startupVerificationService = startupVerificationService
     this.activeCompanyManager = activeCompanyManager
+    this.editCompanySettingsAction = editCompanySettingsAction
     registerListeners()
     buildUi()
     applyLocale()
@@ -305,6 +311,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
 
   private void applyLocale() {
     Locale locale = I18n.instance.locale
+    editCompanySettingsButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     companyTitleLabel.text = I18n.instance.getString('overviewPanel.header.company').toUpperCase(locale)
     fiscalYearTitleLabel.text = I18n.instance.getString('overviewPanel.header.fiscalYear').toUpperCase(locale)
     voucherCardTitle.text = I18n.instance.getString('overviewPanel.card.vouchers').toUpperCase(locale)
@@ -343,8 +350,18 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   private void buildUi() {
     setLayout(new BorderLayout(0, 12))
     setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16))
-    add(buildHeaderStrip(), BorderLayout.NORTH)
+    JPanel northPanel = new JPanel(new BorderLayout(0, 8))
+    northPanel.add(buildHeaderStrip(), BorderLayout.CENTER)
+    northPanel.add(buildActionBar(), BorderLayout.SOUTH)
+    add(northPanel, BorderLayout.NORTH)
     add(buildStatGrid(), BorderLayout.CENTER)
+  }
+
+  private JPanel buildActionBar() {
+    JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0))
+    editCompanySettingsButton.addActionListener { editCompanySettingsAction.run() }
+    bar.add(editCompanySettingsButton)
+    bar
   }
 
   private void styleHeaderLabels() {
