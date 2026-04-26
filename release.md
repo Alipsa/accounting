@@ -1,6 +1,33 @@
 # Alipsa Accounting, Release History
 
-## v1.1.1, In progress
+## v1.1.1, 2026-04-26
+### Patch Release
+
+This patch release improves multi-company setup and import workflows, fixes chart-of-accounts filtering, and documents the MCP/LLM client model added in v1.1.0.
+
+### Highlights
+
+- **Chart-of-accounts filtering** — Changing the account class filter or active-only checkbox now immediately reloads the account list.
+- **Company settings placement** — The company edit action moved from the global Settings tab to the Overview tab, next to the active company summary. The Settings tab now focuses on global preferences such as language, theme, and update checks.
+- **Safer company creation/editing** — New and edited companies now choose locale and currency from dropdowns instead of free-text fields, reducing invalid locale tags and misspelled currency codes while preserving existing out-of-list values.
+- **SIE import to new company** — When SIE import creates a new company, the main company dropdown refreshes immediately and selects the imported company without requiring an application restart.
+- **Documentation updates** — README and the user manual now describe the MCP mode, LLM skill setup, current release artifacts, and deferred roadmap items more clearly.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.1.1-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.1.1-windows.zip` |
+| macOS                     | `alipsa-accounting-1.1.1-macos.zip`   |
+| Universal updater archive | `app-1.1.1.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
 
 ## v1.1.0, 2026-04-26
 ### Minor Release
