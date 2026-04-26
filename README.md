@@ -126,6 +126,38 @@ Kör alla kommandon från rotmappen.
 - Fliken `System` visar diagnostik, backup/restore och inbyggd systemdokumentation.
 - Hjälpmenyn öppnar användarmanualen från `app/src/main/resources/docs/user-manual.md`.
 
+## AI/MCP och LLM-klienter
+
+Alipsa Accounting kan köras i två lägen:
+
+- **Desktopläge** — standardläget med Swing-gränssnittet.
+- **MCP-läge** — ett headless stdio-läge för LLM-klienter som kan prata Model Context Protocol.
+
+MCP-läget startas med `--mode=mcp` och använder samma lokala H2-databas, samma valideringar och samma affärsregler som desktopappen. Servern exponerar verktyg för bland annat företag, räkenskapsår, konton, verifikationer, rapporter, moms, bokslut samt SIE-import och SIE-export. Den skriver JSON-RPC-svar på stdout; loggar och fel skrivs inte till stdout.
+
+Exempel vid utveckling:
+
+```bash
+./gradlew run --args='--mode=mcp'
+```
+
+Exempel från en installerad eller uppackad distribution:
+
+```bash
+# Linux/macOS
+/path/to/AlipsaAccounting --mode=mcp
+
+# Windows
+C:\path\to\AlipsaAccounting.exe --mode=mcp
+```
+
+En LLM CLI, till exempel Claude Code eller Codex, behöver normalt två saker:
+
+1. **MCP-serverkonfiguration** som pekar på Alipsa Accounting-kommandot med argumentet `--mode=mcp`.
+2. **Skill-instruktioner** från `skill/accounting-mcp.md`, som beskriver bokföringsarbetsflöden, bekräftelsekrav och säkerhetsregler för LLM:en.
+
+MCP-servern ger klienten verktygen. Skill-filen styr hur LLM:en bör använda verktygen. Skill-filen installeras inte automatiskt av Claude Code eller Codex; se releaseavsnittet nedan för hur den länkas eller kopieras till respektive klients skill-katalog.
+
 ## Release
 
 ### Nedladdningar
