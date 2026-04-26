@@ -172,8 +172,8 @@ The application can perform a background update check against GitHub Releases on
 Releasebyggen använder `jpackage` och kräver Java 21 med tillhörande paketeringsverktyg på respektive plattform.
 
 - Linux: `./gradlew :app:packageLinuxReleaseZip`
-- Windows: `./gradlew :app:packageWindowsInstaller`
-- macOS: `./gradlew :app:packageMacosAppImage`
+- Windows: `./gradlew :app:packageWindowsRelease`
+- macOS: `./gradlew :app:packageMacosRelease`
 - Aktuell plattform: `./gradlew :app:packageCurrentPlatformRelease`
 - Smoke test av aktuell plattform: `./gradlew :app:verifyCurrentPlatformRelease`
 
@@ -186,6 +186,22 @@ Om Gradle hittar fel JDK för jpackage (t.ex. en inbäddad JDK utan jpackage) ka
 Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
 
 Linux-releasen producerar en `app-image` plus ett zip-arkiv som även innehåller `.desktop`-filen. Windows-releasen producerar en `exe`-installerare med meny- och skrivbordsgenväg. macOS-releasen producerar `AlipsaAccounting.app`.
+
+Releasebygget placerar MCP-skillen som `skill/accounting-mcp.md` under respektive plattforms artefaktkatalog. Claude Code och Codex läser inte automatiskt den katalogen; länka eller kopiera den därför till klientens skill-katalog efter installation:
+
+```
+# Claude Code
+ln -s /path/to/release/skill ~/.claude/skills/accounting
+
+# Codex
+ln -s /path/to/release/skill ~/.agents/skills/accounting
+
+# Windows PowerShell, Claude Code
+New-Item -ItemType Junction -Path "$HOME\.claude\skills\accounting" -Target "C:\path\to\release\skill"
+
+# Windows PowerShell, Codex
+New-Item -ItemType Junction -Path "$HOME\.agents\skills\accounting" -Target "C:\path\to\release\skill"
+```
 
 Applikationen använder plattformsspecifika standardvägar för data och loggar:
 

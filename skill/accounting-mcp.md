@@ -1,6 +1,6 @@
 ---
 name: accounting-mcp
-description: Guides an LLM assistant through bookkeeping workflows using the Alipsa Accounting MCP server. Covers context gathering, voucher entry, VAT reporting and year-end closing.
+description: Bookkeeping workflows for the Alipsa Accounting MCP server.
 ---
 
 # Accounting MCP Skill
@@ -55,6 +55,17 @@ Only call write tools after the user explicitly confirms the proposed action.
 
 5. Correct posted vouchers through corrections.
    Direct edits and deletes are not exposed. If a posted voucher is wrong, explain that the permitted path is `create_correction_voucher`.
+
+## Workflow: Correction Voucher
+
+1. Gather and verify the original voucher.
+   Call `list_vouchers` and, if needed, `get_general_ledger` to identify the posted voucher that must be reversed. Confirm its date, description, voucher number, and lines with the user.
+
+2. Explain the correction.
+   State that posted vouchers are append-only and that `create_correction_voucher` creates a reversing voucher. Ask the user to confirm the original voucher ID and optional correction description.
+
+3. Create after confirmation.
+   Only call `create_correction_voucher` after explicit confirmation, passing `original_voucher_id` and the optional `description`. Show the created correction voucher number and lines.
 
 ## Workflow: VAT Reporting
 
