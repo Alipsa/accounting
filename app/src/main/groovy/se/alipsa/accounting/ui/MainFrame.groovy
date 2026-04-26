@@ -656,10 +656,16 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void showSieExchangeDialog() {
-    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, companyService, activeCompanyManager.companyId, {
-      reloadFiscalYearComboBox()
-      activeCompanyManager.refreshFiscalYear()
-    } as Runnable)
+    long openedForCompanyId = activeCompanyManager.companyId
+    SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, companyService, openedForCompanyId, { Long targetCompanyId ->
+      if (targetCompanyId != openedForCompanyId) {
+        reloadCompanyComboBox()
+        selectCompanyInComboBox(targetCompanyId)
+      } else {
+        reloadFiscalYearComboBox()
+        activeCompanyManager.refreshFiscalYear()
+      }
+    } as java.util.function.Consumer<Long>)
     setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
   }
 

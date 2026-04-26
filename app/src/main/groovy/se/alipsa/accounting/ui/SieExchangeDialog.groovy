@@ -23,6 +23,7 @@ import java.awt.Insets
 import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ExecutionException
+import java.util.function.Consumer
 import java.util.logging.Logger
 
 import javax.swing.BorderFactory
@@ -56,7 +57,7 @@ final class SieExchangeDialog extends JDialog {
   private final FiscalYearService fiscalYearService
   private final CompanyService companyService
   private final long companyId
-  private final Runnable onImportSuccess
+  private final Consumer<Long> onImportSuccess
 
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea summaryArea = new JTextArea(5, 50)
@@ -68,7 +69,7 @@ final class SieExchangeDialog extends JDialog {
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
-  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Runnable onImportSuccess = null) {
+  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
@@ -81,7 +82,7 @@ final class SieExchangeDialog extends JDialog {
     showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
-  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Runnable onImportSuccess = null) {
+  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null) {
     SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyService, companyId, onImportSuccess)
     dialog.visible = true
   }
@@ -332,11 +333,11 @@ final class SieExchangeDialog extends JDialog {
             reloadFiscalYears()
             reloadJobs()
             renderImportResult(result)
-            try {
-              onImportSuccess?.run()
-            } catch (Exception callbackEx) {
-              showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), callbackEx.message)
-            }
+          }
+          try {
+            onImportSuccess?.accept(targetCompanyId)
+          } catch (Exception callbackEx) {
+            showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), callbackEx.message)
           }
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
