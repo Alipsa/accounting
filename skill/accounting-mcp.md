@@ -27,6 +27,8 @@ Always read before you write. Gather context first, propose actions, then post o
 | `get_vat_report` | Calculated VAT report for a period; returns `report_hash` |
 | `preview_voucher` | Validate a proposed voucher without posting it; returns `preview_token` only when valid |
 | `preview_year_end` | Year-end pre-checks: blocking issues, warnings, net result; returns `preview_token` only when ready |
+| `preview_sie_import` | Preview a SIE4 import; returns `import_token` only when importable |
+| `list_import_jobs` | Recent SIE import history |
 
 ### Write tools
 
@@ -38,6 +40,8 @@ Only call write tools after the user explicitly confirms the proposed action.
 | `create_correction_voucher` | Reverse a posted voucher; direct edit/delete is not exposed |
 | `book_vat_transfer` | Book the VAT settlement voucher using `report_hash` from `get_vat_report` |
 | `close_fiscal_year` | Close the fiscal year using a token from `preview_year_end` |
+| `import_sie` | Import a SIE4 file using a token from `preview_sie_import` |
+| `export_sie` | Export a fiscal year as SIE4; no token, but overwrite needs confirmation |
 
 ## Workflow: Voucher Entry
 
@@ -84,6 +88,37 @@ Only call write tools after the user explicitly confirms the proposed action.
 5. If `ready_to_close` is true, ask the user to confirm closing the year.
 6. Only call `close_fiscal_year` after confirmation, passing the returned `preview_token`.
 
+## Workflow: SIE Import
+
+1. Preview the file.
+   Call `preview_sie_import`. If `ok` is false, explain `blockingIssues` and do not call `import_sie`.
+
+2. Handle duplicates and warnings.
+   If `isDuplicate` is true, show `duplicateJobId` and stop ordinary import. Forward all `warnings` to the user before import.
+
+3. Summarize the import.
+   Show `companyNameInFile`, fiscal-year period, account count, voucher count, line count, and whether the fiscal year already exists.
+
+4. Confirm replacements explicitly.
+   If `replace_existing` is true and `fiscalYearExists` is true, show `purgeSummary` in plain language: vouchers, attachments, report archives, opening balances, VAT periods, and audit-log rows affected. Only proceed after explicit confirmation.
+
+5. Import after confirmation.
+   Call `import_sie` with unchanged `file_path`, `replace_existing`, and `import_token`. Show the resulting job id, fiscal year, counts, duplicate status, and warnings.
+
+## Workflow: SIE Export
+
+1. Identify the fiscal year.
+   Call `list_fiscal_years` if the `fiscal_year_id` is unknown.
+
+2. Export.
+   Call `export_sie` without `output_path` for the default timestamped export path, or with a user-specified path.
+
+3. Handle existing files.
+   If `export_sie` returns `ok: false` and `file_exists: true`, show `existing_file_path` and ask whether to overwrite. Only call `export_sie` again with `overwrite: true` after explicit confirmation.
+
+4. Show the result.
+   Show output path, file size, checksum, and exported counts.
+
 ## Domain Reference
 
 ### Fiscal years
@@ -115,3 +150,5 @@ VAT periods are derived from accounting periods and the company's VAT periodicit
 - Never suggest direct modification or deletion of posted vouchers.
 - Never make legal statements about tax liability. Describe bookkeeping consequences only.
 - Always use the company's `default_currency` when quoting amounts.
+- Never call `import_sie` with `replace_existing: true` before showing `purgeSummary` and receiving explicit confirmation.
+- Never call `export_sie` with `overwrite: true` before asking the user to confirm overwriting the existing file.

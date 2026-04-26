@@ -24,6 +24,27 @@ final class SieImportResult {
 }
 
 @Canonical
+final class SieImportPreview {
+
+  String companyNameInFile
+  LocalDate fiscalYearStart
+  LocalDate fiscalYearEnd
+  int accountCount
+  int voucherCount
+  int lineCount
+  List<String> warnings = []
+  String checksumSha256
+  boolean replaceExisting
+  boolean fiscalYearExists
+  Long targetFiscalYearId
+  String targetFiscalYearName
+  FiscalYearPurgeSummary purgeSummary
+  List<String> blockingIssues = []
+  boolean duplicate
+  Long duplicateJobId
+}
+
+@Canonical
 final class SieExportResult {
 
   Path filePath

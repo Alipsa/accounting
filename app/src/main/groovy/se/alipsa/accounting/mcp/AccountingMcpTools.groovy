@@ -5,6 +5,7 @@ import groovy.json.JsonOutput
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -15,15 +16,24 @@ import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
+import se.alipsa.accounting.service.FiscalYearPurgeSummary
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.ReportDataService
+import se.alipsa.accounting.service.SieExportResult
+import se.alipsa.accounting.service.SieImportExportService
+import se.alipsa.accounting.service.SieImportPreview
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.service.YearEndClosingResult
+import se.alipsa.accounting.support.AppPaths
 
+import java.nio.file.Files
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 /**
@@ -40,6 +50,7 @@ class AccountingMcpTools {
   private final VatService vatService
   private final ClosingService closingService
   private final ReportDataService reportDataService
+  private final SieImportExportService sieImportExportService
 
   AccountingMcpTools() {
     this(
@@ -49,7 +60,8 @@ class AccountingMcpTools {
         new VoucherService(),
         new VatService(),
         new ClosingService(),
-        new ReportDataService()
+        new ReportDataService(),
+        new SieImportExportService()
     )
   }
 
@@ -62,6 +74,28 @@ class AccountingMcpTools {
       ClosingService closingService,
       ReportDataService reportDataService
   ) {
+    this(
+        companyService,
+        fiscalYearService,
+        accountService,
+        voucherService,
+        vatService,
+        closingService,
+        reportDataService,
+        new SieImportExportService()
+    )
+  }
+
+  AccountingMcpTools(
+      CompanyService companyService,
+      FiscalYearService fiscalYearService,
+      AccountService accountService,
+      VoucherService voucherService,
+      VatService vatService,
+      ClosingService closingService,
+      ReportDataService reportDataService,
+      SieImportExportService sieImportExportService
+  ) {
     this.companyService = companyService
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
@@ -69,10 +103,11 @@ class AccountingMcpTools {
     this.vatService = vatService
     this.closingService = closingService
     this.reportDataService = reportDataService
+    this.sieImportExportService = sieImportExportService
   }
 
   List<Map<String, Object>> listTools() {
-    readOnlyToolDefs() + voucherToolDefs() + vatWriteToolDefs() + yearEndToolDefs()
+    readOnlyToolDefs() + voucherToolDefs() + vatWriteToolDefs() + yearEndToolDefs() + sieToolDefs()
   }
 
   private static List<Map<String, Object>> readOnlyToolDefs() {
@@ -223,6 +258,47 @@ class AccountingMcpTools {
     ]
   }
 
+  private static List<Map<String, Object>> sieToolDefs() {
+    [
+        toolDef('preview_sie_import',
+            'Previews a SIE4 import without writing data. Returns file summary, duplicate status, replacement purge summary, blocking issues, and import_token when importable.',
+            ['company_id', 'file_path'],
+            [
+                company_id: intParam('Company ID'),
+                file_path: strParam('Absolute path to the SIE file.'),
+                replace_existing: optBoolParam('Whether to replace the existing matching fiscal year. Defaults to false.')
+            ]
+        ),
+        toolDef('import_sie',
+            'Imports a SIE4 file. Run preview_sie_import first and pass back its import_token for the same file and replace_existing value.',
+            ['company_id', 'file_path', 'import_token'],
+            [
+                company_id: intParam('Company ID'),
+                file_path: strParam('Absolute path to the SIE file.'),
+                import_token: strParam('Token returned by preview_sie_import.'),
+                replace_existing: optBoolParam('Whether to replace the existing matching fiscal year. Defaults to false.')
+            ]
+        ),
+        toolDef('export_sie',
+            'Exports a fiscal year as SIE4. Refuses to overwrite existing files unless overwrite is true.',
+            ['fiscal_year_id'],
+            [
+                fiscal_year_id: intParam('Fiscal year ID to export.'),
+                output_path: optStrParam('Optional absolute output path. Defaults to the application SIE export directory.'),
+                overwrite: optBoolParam('Allow overwriting an existing output file. Defaults to false.')
+            ]
+        ),
+        toolDef('list_import_jobs',
+            'Lists recent SIE import jobs for the given company. Limit defaults to 20 and is clamped to 1..50.',
+            ['company_id'],
+            [
+                company_id: intParam('Company ID'),
+                limit: optIntParam('Max rows returned. Default 20, max 50.')
+            ]
+        )
+    ]
+  }
+
   Map<String, Object> callTool(String name, Map<String, Object> arguments) {
     switch (name) {
       case 'get_company_info':
@@ -253,6 +329,14 @@ class AccountingMcpTools {
         return previewYearEnd(arguments)
       case 'close_fiscal_year':
         return closeFiscalYear(arguments)
+      case 'preview_sie_import':
+        return previewSieImport(arguments)
+      case 'import_sie':
+        return importSie(arguments)
+      case 'export_sie':
+        return exportSie(arguments)
+      case 'list_import_jobs':
+        return listImportJobs(arguments)
       default:
         throw new IllegalArgumentException("Unknown MCP tool: ${name}")
     }
@@ -698,6 +782,123 @@ class AccountingMcpTools {
     }
   }
 
+  private Map<String, Object> previewSieImport(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    Path filePath = Path.of(requiredString(args, 'file_path'))
+    boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
+    try {
+      SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
+      Map<String, Object> result = previewMap(preview)
+      result.import_token = preview.blockingIssues.isEmpty() ? sieImportToken(companyId, preview) : null
+      result.ok = preview.blockingIssues.isEmpty()
+      result
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> importSie(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    Path filePath = Path.of(requiredString(args, 'file_path'))
+    boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
+    String providedToken = args.get('import_token') as String
+    if (!providedToken) {
+      return [ok: false, errors: ['import_token krävs — kör preview_sie_import med exakt samma fil och replace_existing-värde först.']]
+    }
+
+    try {
+      SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
+      if (!preview.blockingIssues.isEmpty()) {
+        return [ok: false, errors: preview.blockingIssues]
+      }
+      String expectedToken = sieImportToken(companyId, preview)
+      if (providedToken != expectedToken) {
+        return [
+            ok: false,
+            errors: [
+                replaceExisting
+                    ? 'Räkenskapsårets innehåll har förändrats sedan förhandsgranskningen — kör preview_sie_import igen.'
+                    : 'import_token krävs — kör preview_sie_import med exakt samma fil och replace_existing-värde först.'
+            ]
+        ]
+      }
+      def result = replaceExisting
+          ? sieImportExportService.replaceFiscalYear(companyId, filePath)
+          : sieImportExportService.importFile(companyId, filePath)
+      [
+          ok: true,
+          duplicate: result.duplicate,
+          fiscal_year_id: result.fiscalYear?.id ?: result.job?.fiscalYearId,
+          fiscal_year_name: result.fiscalYear?.name,
+          accounts_created: result.accountsCreated,
+          opening_balance_count: result.openingBalanceCount,
+          voucher_count: result.voucherCount,
+          line_count: result.lineCount,
+          warnings: result.warnings,
+          job_id: result.job?.id,
+          job_status: result.job?.status?.name(),
+          summary: result.job?.summary
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> exportSie(Map<String, Object> args) {
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    boolean overwrite = optionalBoolean(args, 'overwrite', false)
+    try {
+      Path outputPath = args.get('output_path') == null
+          ? defaultSieExportPath(fiscalYearId)
+          : Path.of(requiredString(args, 'output_path')).toAbsolutePath().normalize()
+      if (Files.exists(outputPath) && !overwrite) {
+        return [
+            ok: false,
+            file_exists: true,
+            existing_file_path: outputPath.toString(),
+            errors: ['Målfilen finns redan. Bekräfta överskrivning och anropa export_sie med overwrite: true.']
+        ]
+      }
+      SieExportResult result = sieImportExportService.exportFiscalYear(fiscalYearId, outputPath)
+      [
+          ok: true,
+          file_path: result.filePath?.toString(),
+          checksum_sha256: result.checksumSha256,
+          file_size_bytes: result.fileSizeBytes,
+          account_count: result.accountCount,
+          opening_balance_count: result.openingBalanceCount,
+          voucher_count: result.voucherCount
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> listImportJobs(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    int limit = args.get('limit') != null
+        ? Math.min(Math.max(((Number) args.get('limit')).intValue(), 1), 50)
+        : 20
+    try {
+      [
+          ok: true,
+          import_jobs: sieImportExportService.listImportJobs(companyId, limit).collect { ImportJob job ->
+            [
+                id: job.id,
+                file_name: job.fileName,
+                status: job.status?.name(),
+                summary: job.summary,
+                fiscal_year_id: job.fiscalYearId,
+                started_at: job.startedAt?.toString(),
+                completed_at: job.completedAt?.toString()
+            ]
+          }
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
   // ---- helpers ----
 
   private static long requiredLong(Map<String, Object> args, String key) {
@@ -719,6 +920,11 @@ class AccountingMcpTools {
   private static String optionalString(Map<String, Object> args, String key, String defaultValue) {
     String value = args.get(key) as String
     value?.trim() ?: defaultValue
+  }
+
+  private static boolean optionalBoolean(Map<String, Object> args, String key, boolean defaultValue) {
+    Object value = args.get(key)
+    value == null ? defaultValue : Boolean.valueOf(value.toString())
   }
 
   private static List<Map<String, Object>> linesArg(Map<String, Object> args) {
@@ -763,6 +969,78 @@ class AccountingMcpTools {
         fiscal_year_id: fiscalYearId,
         closing_account: closingAccount
     ])
+  }
+
+  private static String sieImportToken(long companyId, SieImportPreview preview) {
+    computePreviewToken(sieImportTokenPayload(companyId, preview))
+  }
+
+  private static Map<String, Object> sieImportTokenPayload(long companyId, SieImportPreview preview) {
+    Map<String, Object> payload = [
+        company_id: companyId,
+        file_checksum: preview.checksumSha256,
+        replace_existing: preview.replaceExisting
+    ]
+    if (preview.replaceExisting) {
+      FiscalYearPurgeSummary summary = preview.purgeSummary
+      payload.putAll([
+          target_fiscal_year_id: preview.targetFiscalYearId,
+          purge_voucher_count: summary?.voucherCount ?: 0,
+          purge_attachment_count: summary?.attachmentCount ?: 0,
+          purge_opening_balance_count: summary?.openingBalanceCount ?: 0,
+          purge_vat_period_count: summary?.vatPeriodCount ?: 0,
+          purge_report_archive_count: summary?.reportArchiveCount ?: 0,
+          purge_audit_log_count: summary?.auditLogCount ?: 0
+      ])
+    }
+    payload
+  }
+
+  private Map<String, Object> previewMap(SieImportPreview preview) {
+    [
+        companyNameInFile: preview.companyNameInFile,
+        fiscalYearStart: preview.fiscalYearStart?.toString(),
+        fiscalYearEnd: preview.fiscalYearEnd?.toString(),
+        accountCount: preview.accountCount,
+        voucherCount: preview.voucherCount,
+        lineCount: preview.lineCount,
+        warnings: preview.warnings,
+        checksumSha256: preview.checksumSha256,
+        replaceExisting: preview.replaceExisting,
+        fiscalYearExists: preview.fiscalYearExists,
+        targetFiscalYearId: preview.targetFiscalYearId,
+        targetFiscalYearName: preview.targetFiscalYearName,
+        purgeSummary: preview.purgeSummary == null ? null : purgeSummaryMap(preview.purgeSummary),
+        blockingIssues: preview.blockingIssues,
+        isDuplicate: preview.duplicate,
+        duplicateJobId: preview.duplicateJobId
+    ]
+  }
+
+  private static Map<String, Object> purgeSummaryMap(FiscalYearPurgeSummary summary) {
+    [
+        attachmentCount: summary.attachmentCount,
+        reportArchiveCount: summary.reportArchiveCount,
+        openingBalanceCount: summary.openingBalanceCount,
+        voucherCount: summary.voucherCount,
+        vatPeriodCount: summary.vatPeriodCount,
+        auditLogCount: summary.auditLogCount
+    ]
+  }
+
+  private Path defaultSieExportPath(long fiscalYearId) {
+    FiscalYear fiscalYear = fiscalYearService.findById(fiscalYearId)
+    if (fiscalYear == null) {
+      throw new IllegalArgumentException("Okänt räkenskapsår: ${fiscalYearId}")
+    }
+    String safeName = fiscalYear.name
+        .replaceAll(/[^A-Za-z0-9._-]+/, '-')
+        .replaceAll(/^-+|-+$/, '')
+    if (!safeName) {
+      safeName = fiscalYearId.toString()
+    }
+    String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern('yyyyMMddHHmm'))
+    AppPaths.sieExportsDirectory().resolve("AlipsaAccounting-${safeName}-${timestamp}.sie").toAbsolutePath().normalize()
   }
 
   private static List<Map<String, Object>> canonicalVoucherLines(List<Map<String, Object>> lines) {
@@ -863,6 +1141,10 @@ class AccountingMcpTools {
 
   private static Map<String, Object> optStrParam(String description) {
     [type: 'string', description: description]
+  }
+
+  private static Map<String, Object> optBoolParam(String description) {
+    [type: 'boolean', description: description]
   }
 
   private static Map<String, Object> strParam(String description) {

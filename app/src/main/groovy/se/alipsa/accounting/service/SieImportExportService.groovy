@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
+import groovy.transform.PackageScope
 
 import alipsa.sieparser.SIE
 import alipsa.sieparser.SieAccount
@@ -90,6 +91,52 @@ final class SieImportExportService {
       throw new IllegalArgumentException((errors ?: ['SIE-filen kunde inte läsas.']).join('\n'))
     }
     document.getFNAMN()
+  }
+
+  SieImportPreview previewSieImport(long companyId, Path filePath, boolean replaceExisting) {
+    CompanyService.requireValidCompanyId(companyId)
+    Path safePath = validateImportPath(filePath)
+    byte[] content = Files.readAllBytes(safePath)
+    String checksum = sha256(content)
+    ParsedSie parsed = parseDocument(safePath)
+    SieDocument document = parsed.document
+    SieBookingYear bookingYear = selectPrimaryBookingYear(document)
+    int voucherCount = document.getVER()?.size() ?: 0
+    int lineCount = 0
+    (document.getVER() ?: []).each { SieVoucher voucher ->
+      lineCount += voucher.rows?.count { SieVoucherRow row -> scale(row.amount) != BigDecimal.ZERO } ?: 0
+    }
+
+    databaseService.withSql { Sql sql ->
+      FiscalYear existingYear = findFiscalYearByPeriod(sql, companyId, bookingYear.start, bookingYear.end)
+      ImportJob duplicate = findSuccessfulImportJobByChecksum(sql, companyId, checksum)
+      FiscalYearPurgeSummary purgeSummary = null
+      List<String> blockingIssues = []
+      if (existingYear != null && !(duplicate != null && !replaceExisting)) {
+        blockingIssues.addAll(importBlockingIssues(sql, existingYear, replaceExisting))
+        if (replaceExisting && blockingIssues.isEmpty()) {
+          purgeSummary = FiscalYearReplacementService.previewFiscalYearReplacement(sql, companyId, existingYear).summary
+        }
+      }
+      new SieImportPreview(
+          document.getFNAMN()?.name,
+          bookingYear.start,
+          bookingYear.end,
+          document.getKONTO()?.size() ?: 0,
+          voucherCount,
+          lineCount,
+          parsed.warnings,
+          checksum,
+          replaceExisting,
+          existingYear != null,
+          existingYear?.id,
+          existingYear?.name,
+          purgeSummary,
+          blockingIssues,
+          duplicate != null,
+          duplicate?.id
+      )
+    }
   }
 
   SieImportResult importFile(long companyId, Path filePath) {
@@ -281,6 +328,28 @@ final class SieImportExportService {
       completeImportJob(sql, jobId, null, ImportJobStatus.DUPLICATE, summary, [])
     }
   }
+
+  private static ImportJob findSuccessfulImportJobByChecksum(Sql sql, long companyId, String checksum) {
+    GroovyRowResult row = sql.firstRow('''
+        select id,
+               file_name as fileName,
+               checksum_sha256 as checksumSha256,
+               fiscal_year_id as fiscalYearId,
+               status,
+               summary,
+               error_log as errorLog,
+               started_at as startedAt,
+               completed_at as completedAt
+          from import_job
+         where checksum_sha256 = ?
+           and company_id = ?
+           and status = 'SUCCESS'
+         order by completed_at desc, id desc
+         limit 1
+    ''', [checksum, companyId]) as GroovyRowResult
+    row == null ? null : mapImportJob(row)
+  }
+
   private static ParsedSie parseDocument(Path filePath) {
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
@@ -313,6 +382,13 @@ final class SieImportExportService {
 
   private FiscalYear resolveTargetFiscalYear(Sql sql, long companyId, SieDocument document, boolean replaceExistingFiscalYear) {
     SieBookingYear bookingYear = selectPrimaryBookingYear(document)
+    FiscalYear fiscalYear = findFiscalYearByPeriod(sql, companyId, bookingYear.start, bookingYear.end)
+        ?: createFiscalYear(sql, companyId, bookingYear.start, bookingYear.end)
+    ensureFiscalYearImportable(sql, fiscalYear, replaceExistingFiscalYear)
+    fiscalYear
+  }
+
+  private static FiscalYear findFiscalYearByPeriod(Sql sql, long companyId, LocalDate startDate, LocalDate endDate) {
     GroovyRowResult existing = sql.firstRow('''
         select id,
                name,
@@ -324,12 +400,8 @@ final class SieImportExportService {
          where company_id = ?
            and start_date = ?
            and end_date = ?
-    ''', [companyId, Date.valueOf(bookingYear.start), Date.valueOf(bookingYear.end)]) as GroovyRowResult
-    FiscalYear fiscalYear = existing == null
-        ? createFiscalYear(sql, companyId, bookingYear.start, bookingYear.end)
-        : mapFiscalYear(existing)
-    ensureFiscalYearImportable(sql, fiscalYear, replaceExistingFiscalYear)
-    fiscalYear
+    ''', [companyId, Date.valueOf(startDate), Date.valueOf(endDate)]) as GroovyRowResult
+    existing == null ? null : mapFiscalYear(existing)
   }
 
   private static SieBookingYear selectPrimaryBookingYear(SieDocument document) {
@@ -359,11 +431,26 @@ final class SieImportExportService {
   }
 
   private static void ensureFiscalYearImportable(Sql sql, FiscalYear fiscalYear, boolean replaceExistingFiscalYear) {
+    List<String> issues = importBlockingIssues(sql, fiscalYear, replaceExistingFiscalYear)
+    if (!issues.isEmpty()) {
+      throw new IllegalStateException(issues.first())
+    }
+  }
+
+  private static List<String> importBlockingIssues(Sql sql, FiscalYear fiscalYear, boolean replaceExistingFiscalYear) {
+    List<String> issues = []
     if (fiscalYear.closed) {
-      throw new IllegalStateException("Räkenskapsåret ${fiscalYear.name} är stängt och kan inte användas för import.")
+      issues << "Räkenskapsåret ${fiscalYear.name} är stängt och kan inte användas för import.".toString()
     }
     if (replaceExistingFiscalYear) {
-      return
+      GroovyRowResult closingRow = sql.firstRow(
+          'select count(*) as total from closing_entry where fiscal_year_id = ?',
+          [fiscalYear.id]
+      ) as GroovyRowResult
+      if (((Number) closingRow.get('total')).intValue() > 0) {
+        issues << "Räkenskapsåret ${fiscalYear.name} har bokslutsposter och kan inte ersättas från SIE.".toString()
+      }
+      return issues
     }
     GroovyRowResult voucherRow = sql.firstRow(
         'select count(*) as total from voucher where fiscal_year_id = ?',
@@ -374,8 +461,9 @@ final class SieImportExportService {
         [fiscalYear.id]
     ) as GroovyRowResult
     if (((Number) voucherRow.get('total')).intValue() > 0 || ((Number) openingRow.get('total')).intValue() > 0) {
-      throw new IllegalStateException("Räkenskapsåret ${fiscalYear.name} innehåller redan bokningar eller ingående balanser.")
+      issues << "Räkenskapsåret ${fiscalYear.name} innehåller redan bokningar eller ingående balanser.".toString()
     }
+    issues
   }
 
   private ImportCounts importDocument(Sql sql, long fiscalYearId, SieDocument document, List<String> warnings) {
@@ -960,7 +1048,8 @@ final class SieImportExportService {
     row == null ? null : mapImportJob(row)
   }
 
-  private static ImportJob mapImportJob(GroovyRowResult row) {
+  @PackageScope
+  static ImportJob mapImportJob(GroovyRowResult row) {
     new ImportJob(
         Long.valueOf(row.get('id').toString()),
         row.get('fileName') as String,
