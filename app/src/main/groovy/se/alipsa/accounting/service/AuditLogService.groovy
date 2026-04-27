@@ -37,6 +37,10 @@ final class AuditLogService {
   static final String EXPORT = 'EXPORT'
   static final String BACKUP = 'BACKUP'
   static final String RESTORE = 'RESTORE'
+  static final String DELETE_FISCAL_YEAR = 'DELETE_FISCAL_YEAR'
+  static final String ARCHIVE_COMPANY = 'ARCHIVE_COMPANY'
+  static final String UNARCHIVE_COMPANY = 'UNARCHIVE_COMPANY'
+  static final String DELETE_COMPANY = 'DELETE_COMPANY'
 
   private static final String DEFAULT_ACTOR = 'desktop-app'
   private static final DateTimeFormatter HASH_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSSSSSSSS")
@@ -348,6 +352,30 @@ final class AuditLogService {
             transferVoucherId : vatPeriod.transferVoucherId,
             lockedAt          : vatPeriod.lockedAt
         ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordFiscalYearDeleted(Sql sql, long companyId, String fiscalYearName) {
+    recordEvent(sql, DELETE_FISCAL_YEAR, AuditReferences.EMPTY,
+        "Räkenskapsår raderat: ${fiscalYearName}", null, companyId)
+  }
+
+  @PackageScope
+  AuditLogEntry recordCompanyArchived(Sql sql, long companyId, String companyName) {
+    recordEvent(sql, ARCHIVE_COMPANY, AuditReferences.EMPTY,
+        "Företag arkiverat: ${companyName}", null, companyId)
+  }
+
+  @PackageScope
+  AuditLogEntry recordCompanyUnarchived(Sql sql, long companyId, String companyName) {
+    recordEvent(sql, UNARCHIVE_COMPANY, AuditReferences.EMPTY,
+        "Företag återställt: ${companyName}", null, companyId)
+  }
+
+  @PackageScope
+  AuditLogEntry recordCompanyDeleted(Sql sql, long companyId, String companyName) {
+    recordEvent(sql, DELETE_COMPANY, AuditReferences.EMPTY,
+        "Företag raderat: ${companyName}", null, companyId)
   }
 
   @PackageScope

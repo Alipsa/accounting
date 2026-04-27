@@ -17,14 +17,12 @@ final class FiscalYearService {
   private final DatabaseService databaseService
   private final AccountingPeriodService accountingPeriodService
   private final AuditLogService auditLogService
-  private final RetentionPolicyService retentionPolicyService
 
   FiscalYearService() {
     this(
         DatabaseService.instance,
         new AccountingPeriodService(DatabaseService.instance),
-        new AuditLogService(DatabaseService.instance),
-        new RetentionPolicyService()
+        new AuditLogService(DatabaseService.instance)
     )
   }
 
@@ -32,13 +30,12 @@ final class FiscalYearService {
     this(
         databaseService,
         new AccountingPeriodService(databaseService),
-        new AuditLogService(databaseService),
-        new RetentionPolicyService()
+        new AuditLogService(databaseService)
     )
   }
 
   FiscalYearService(DatabaseService databaseService, AccountingPeriodService accountingPeriodService) {
-    this(databaseService, accountingPeriodService, new AuditLogService(databaseService), new RetentionPolicyService())
+    this(databaseService, accountingPeriodService, new AuditLogService(databaseService))
   }
 
   FiscalYearService(
@@ -46,19 +43,9 @@ final class FiscalYearService {
       AccountingPeriodService accountingPeriodService,
       AuditLogService auditLogService
   ) {
-    this(databaseService, accountingPeriodService, auditLogService, new RetentionPolicyService())
-  }
-
-  FiscalYearService(
-      DatabaseService databaseService,
-      AccountingPeriodService accountingPeriodService,
-      AuditLogService auditLogService,
-      RetentionPolicyService retentionPolicyService
-  ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
     this.auditLogService = auditLogService
-    this.retentionPolicyService = retentionPolicyService
   }
 
   FiscalYear createFiscalYear(long companyId, String name, LocalDate startDate, LocalDate endDate) {
@@ -102,26 +89,6 @@ final class FiscalYearService {
   FiscalYear reopenFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       reopenFiscalYear(sql, fiscalYearId)
-    }
-  }
-
-  void deleteFiscalYear(long fiscalYearId) {
-    databaseService.withTransaction { Sql sql ->
-      FiscalYear year = findById(sql, fiscalYearId)
-      if (year == null) {
-        throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
-      }
-      retentionPolicyService.ensureDeletionAllowed(year.endDate, "Räkenskapsår ${year.name}")
-      List<String> dependencyIssues = findDeletionDependencies(sql, fiscalYearId)
-      if (!dependencyIssues.isEmpty()) {
-        throw new IllegalStateException(
-            "Räkenskapsåret ${year.name} kan inte raderas eftersom beroenden finns: ${dependencyIssues.join(', ')}."
-        )
-      }
-      int deleted = sql.executeUpdate('delete from fiscal_year where id = ?', [fiscalYearId])
-      if (deleted != 1) {
-        throw new IllegalStateException("Räkenskapsåret kunde inte raderas: ${fiscalYearId}")
-      }
     }
   }
 
@@ -256,27 +223,4 @@ final class FiscalYearService {
     )
   }
 
-  private static List<String> findDeletionDependencies(Sql sql, long fiscalYearId) {
-    List<String> issues = []
-    appendDependencyIssue(sql, issues, fiscalYearId, 'report_archive', 'fiscal_year_id', 'rapportarkiv')
-    appendDependencyIssue(sql, issues, fiscalYearId, 'audit_log', 'fiscal_year_id', 'audit-logg')
-    appendDependencyIssue(sql, issues, fiscalYearId, 'closing_entry', 'next_fiscal_year_id', 'bokslutsposter som pekar på året som nästa år')
-    issues
-  }
-
-  private static void appendDependencyIssue(
-      Sql sql,
-      List<String> issues,
-      long fiscalYearId,
-      String tableName,
-      String columnName,
-      String label
-  ) {
-    String query = "select count(*) as total from ${tableName} where ${columnName} = ?"
-    GroovyRowResult row = sql.firstRow(query, [fiscalYearId]) as GroovyRowResult
-    int total = ((Number) row.get('total')).intValue()
-    if (total > 0) {
-      issues << "${label} (${total})".toString()
-    }
-  }
 }

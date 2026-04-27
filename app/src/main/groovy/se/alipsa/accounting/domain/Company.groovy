@@ -19,6 +19,7 @@ final class Company {
   boolean active = true
   LocalDateTime createdAt
   LocalDateTime updatedAt
+  boolean archived = false
 
   @Override
   String toString() {

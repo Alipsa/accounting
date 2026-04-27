@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.FiscalYear
 
@@ -91,7 +92,8 @@ final class FiscalYearReplacementService {
     }
   }
 
-  private static FiscalYearPurgeSummary collectPurgeSummary(Sql sql, long companyId, long fiscalYearId) {
+  @PackageScope
+  static FiscalYearPurgeSummary collectPurgeSummary(Sql sql, long companyId, long fiscalYearId) {
     new FiscalYearPurgeSummary(
         countRows(sql, '''
             select count(*) as total
@@ -133,7 +135,8 @@ final class FiscalYearReplacementService {
     )
   }
 
-  private static List<String> loadAttachmentStoragePaths(Sql sql, long fiscalYearId) {
+  @PackageScope
+  static List<String> loadAttachmentStoragePaths(Sql sql, long fiscalYearId) {
     sql.rows('''
         select a.storage_path as storagePath
           from attachment a
@@ -144,7 +147,8 @@ final class FiscalYearReplacementService {
     }
   }
 
-  private static List<String> loadReportArchiveStoragePaths(Sql sql, long fiscalYearId) {
+  @PackageScope
+  static List<String> loadReportArchiveStoragePaths(Sql sql, long fiscalYearId) {
     sql.rows('''
         select storage_path as storagePath
           from report_archive
@@ -154,7 +158,8 @@ final class FiscalYearReplacementService {
     }
   }
 
-  private static void archiveFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
+  @PackageScope
+  static void archiveFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
     sql.executeUpdate('''
         update audit_log
            set archived = true,
