@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.ClosingService
+import se.alipsa.accounting.service.FiscalYearDeletionService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.OpeningBalanceService
 import se.alipsa.accounting.service.OpeningBalanceService.OpeningBalanceDrift
@@ -35,6 +36,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final AccountingPeriodService accountingPeriodService
   private final ClosingService closingService
   private final OpeningBalanceService openingBalanceService
+  private final FiscalYearDeletionService fiscalYearDeletionService
   private final ActiveCompanyManager activeCompanyManager
 
   private final JTextField nameField = new JTextField(20)
@@ -53,18 +55,21 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private JButton closeButton
   private JButton reopenButton
   private JButton openingBalancesButton
+  private JButton deleteButton
 
   FiscalYearPanel(
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService,
       ClosingService closingService,
       OpeningBalanceService openingBalanceService,
+      FiscalYearDeletionService fiscalYearDeletionService,
       ActiveCompanyManager activeCompanyManager
   ) {
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
     this.closingService = closingService
     this.openingBalanceService = openingBalanceService
+    this.fiscalYearDeletionService = fiscalYearDeletionService
     this.activeCompanyManager = activeCompanyManager
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
@@ -91,6 +96,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
     reopenButton.text = I18n.instance.getString('fiscalYearPanel.button.reopen')
     openingBalancesButton.text = I18n.instance.getString('fiscalYearPanel.button.openingBalances')
+    deleteButton.text = I18n.instance.getString('fiscalYearPanel.button.delete')
     fiscalYearTable.tableHeader.repaint()
     periodTable.tableHeader.repaint()
   }
@@ -123,10 +129,13 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     reopenButton.addActionListener { reopenSelectedFiscalYear() }
     openingBalancesButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.openingBalances'))
     openingBalancesButton.addActionListener { openOpeningBalances() }
+    deleteButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.delete'))
+    deleteButton.addActionListener { deleteSelectedFiscalYear() }
     actionPanel.add(createButton)
     actionPanel.add(closeButton)
     actionPanel.add(reopenButton)
     actionPanel.add(openingBalancesButton)
+    actionPanel.add(deleteButton)
     panel.add(actionPanel, BorderLayout.SOUTH)
 
     panel
@@ -273,6 +282,21 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     reloadData()
     selectFiscalYear(reopened.id)
     showInfo(I18n.instance.format('fiscalYearPanel.message.reopened', reopened.name))
+  }
+
+  private void deleteSelectedFiscalYear() {
+    FiscalYear year = selectedFiscalYear()
+    if (year == null) {
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.getString('fiscalYearPanel.error.selectFiscalYear')
+      )])
+      return
+    }
+    FiscalYearDeletionDialog.showDialog(ownerFrame(), fiscalYearDeletionService, year, {
+      reloadData()
+      activeCompanyManager.reloadFiscalYears()
+      showInfo(I18n.instance.format('fiscalYearDeletionDialog.result.success', year.name))
+    } as Runnable)
   }
 
   private void reloadData() {

@@ -7,17 +7,27 @@ import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 
+import java.util.logging.Logger
+
 /**
  * Manages top-level company records for multi-company installations.
  */
 final class CompanyService {
 
+  private static final Logger LOG = Logger.getLogger(CompanyService.name)
+
   static final long LEGACY_COMPANY_ID = 1L
 
   private final DatabaseService databaseService
+  private final AuditLogService auditLogService
 
   CompanyService(DatabaseService databaseService = DatabaseService.instance) {
+    this(databaseService, new AuditLogService(databaseService))
+  }
+
+  CompanyService(DatabaseService databaseService, AuditLogService auditLogService) {
     this.databaseService = databaseService
+    this.auditLogService = auditLogService
   }
 
   List<Company> listCompanies(boolean activeOnly = false) {
@@ -31,12 +41,13 @@ final class CompanyService {
                  vat_periodicity as vatPeriodicity,
                  active,
                  created_at as createdAt,
-                 updated_at as updatedAt
+                 updated_at as updatedAt,
+                 archived
             from company
       ''')
       List<Object> params = []
       if (activeOnly) {
-        query.append(' where active = true')
+        query.append(' where active = true and archived = false')
       }
       query.append(' order by company_name, id')
       sql.rows(query.toString(), params).collect { GroovyRowResult row ->
@@ -55,6 +66,95 @@ final class CompanyService {
     validate(company)
     databaseService.withTransaction { Sql sql ->
       save(sql, company)
+    }
+  }
+
+  List<Company> listArchivedCompanies() {
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 company_name as companyName,
+                 organization_number as organizationNumber,
+                 default_currency as defaultCurrency,
+                 locale_tag as localeTag,
+                 vat_periodicity as vatPeriodicity,
+                 active,
+                 created_at as createdAt,
+                 updated_at as updatedAt,
+                 archived
+            from company
+           where archived = true
+           order by company_name, id
+      ''').collect { GroovyRowResult row ->
+        mapCompany(row)
+      }
+    }
+  }
+
+  Company archiveCompany(long companyId) {
+    requireValidCompanyId(companyId)
+    databaseService.withTransaction { Sql sql ->
+      Company company = findById(sql, companyId)
+      if (company == null) {
+        throw new IllegalArgumentException("Okänt företags-id: ${companyId}")
+      }
+      sql.executeUpdate('''
+          update company
+             set archived = true,
+                 active = false,
+                 updated_at = current_timestamp
+           where id = ?
+      ''', [companyId])
+      auditLogService.recordCompanyArchived(sql, companyId, company.companyName)
+      findById(sql, companyId)
+    }
+  }
+
+  Company unarchiveCompany(long companyId) {
+    requireValidCompanyId(companyId)
+    databaseService.withTransaction { Sql sql ->
+      Company company = findById(sql, companyId)
+      if (company == null) {
+        throw new IllegalArgumentException("Okänt företags-id: ${companyId}")
+      }
+      sql.executeUpdate('''
+          update company
+             set archived = false,
+                 active = true,
+                 updated_at = current_timestamp
+           where id = ?
+      ''', [companyId])
+      auditLogService.recordCompanyUnarchived(sql, companyId, company.companyName)
+      findById(sql, companyId)
+    }
+  }
+
+  void deleteCompany(long companyId) {
+    requireValidCompanyId(companyId)
+    databaseService.withTransaction { Sql sql ->
+      Company company = findById(sql, companyId)
+      if (company == null) {
+        throw new IllegalArgumentException("Okänt företags-id: ${companyId}")
+      }
+      GroovyRowResult fyCount = sql.firstRow(
+          'select count(*) as total from fiscal_year where company_id = ?',
+          [companyId]
+      ) as GroovyRowResult
+      int total = ((Number) fyCount.get('total')).intValue()
+      if (total > 0) {
+        throw new IllegalStateException(
+            "Företaget kan inte raderas eftersom det fortfarande har ${total} räkenskapsår."
+        )
+      }
+      sql.executeUpdate('delete from audit_log where company_id = ?', [companyId])
+      sql.executeUpdate('delete from audit_log_chain_head where company_id = ?', [companyId])
+      sql.executeUpdate('delete from import_job where company_id = ?', [companyId])
+      sql.executeUpdate('delete from account where company_id = ?', [companyId])
+      int deleted = sql.executeUpdate('delete from company where id = ?', [companyId])
+      if (deleted != 1) {
+        throw new IllegalStateException("Företaget kunde inte raderas: ${companyId}")
+      }
+      LOG.info("Deleted company id=${companyId}, name='${company.companyName}'")
     }
   }
 
@@ -99,16 +199,18 @@ final class CompanyService {
             locale_tag,
             vat_periodicity,
             active,
+            archived,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+        ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
     ''', [
         company.companyName.trim(),
         company.organizationNumber.trim(),
         company.defaultCurrency.trim().toUpperCase(Locale.ROOT),
         company.localeTag.trim(),
         (company.vatPeriodicity ?: VatPeriodicity.MONTHLY).name(),
-        company.active
+        company.active,
+        company.archived
     ])
     long companyId = ((Number) keys.first().first()).longValue()
     sql.executeInsert('''
@@ -127,6 +229,7 @@ final class CompanyService {
                locale_tag = ?,
                vat_periodicity = ?,
                active = ?,
+               archived = ?,
                updated_at = current_timestamp
          where id = ?
     ''', [
@@ -136,6 +239,7 @@ final class CompanyService {
         company.localeTag.trim(),
         (company.vatPeriodicity ?: VatPeriodicity.MONTHLY).name(),
         company.active,
+        company.archived,
         company.id
     ])
     if (updated != 1) {
@@ -177,7 +281,8 @@ final class CompanyService {
                vat_periodicity as vatPeriodicity,
                active,
                created_at as createdAt,
-               updated_at as updatedAt
+               updated_at as updatedAt,
+               archived
           from company
          where id = ?
     ''', [companyId]) as GroovyRowResult
@@ -194,7 +299,8 @@ final class CompanyService {
         VatPeriodicity.fromDatabaseValue(row.get('vatPeriodicity') as String),
         Boolean.TRUE == row.get('active'),
         SqlValueMapper.toLocalDateTime(row.get('createdAt')),
-        SqlValueMapper.toLocalDateTime(row.get('updatedAt'))
+        SqlValueMapper.toLocalDateTime(row.get('updatedAt')),
+        Boolean.TRUE == row.get('archived')
     )
   }
 

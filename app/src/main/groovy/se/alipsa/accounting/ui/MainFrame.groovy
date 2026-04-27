@@ -19,6 +19,7 @@ import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
+import se.alipsa.accounting.service.FiscalYearDeletionService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
 import se.alipsa.accounting.service.MigrationService
@@ -144,6 +145,7 @@ final class MainFrame implements PropertyChangeListener {
       auditLogService,
       DatabaseService.instance
   )
+  private final FiscalYearDeletionService fiscalYearDeletionService = new FiscalYearDeletionService(DatabaseService.instance)
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
 
   private JLabel statusLabel
@@ -157,6 +159,9 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem newCompanyMenuItem
   private JMenuItem editCompanyMenuItem
   private JMenuItem sieExchangeMenuItem
+  private JMenuItem archiveCompanyMenuItem
+  private JMenuItem unarchiveCompanyMenuItem
+  private JMenuItem deleteCompanyMenuItem
   private JMenuItem exitMenuItem
   private JMenu helpMenu
   private JMenuItem manualMenuItem
@@ -256,6 +261,9 @@ final class MainFrame implements PropertyChangeListener {
     newCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.newCompany')
     editCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.editCompany')
     sieExchangeMenuItem.text = I18n.instance.getString('mainFrame.menu.file.sieExchange')
+    archiveCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.archiveCompany')
+    unarchiveCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.unarchiveCompany')
+    deleteCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.deleteCompany')
     exitMenuItem.text = I18n.instance.getString('mainFrame.menu.file.exit')
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
     manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
@@ -285,22 +293,8 @@ final class MainFrame implements PropertyChangeListener {
         show: false
     ) {
       menuBar {
-        fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
-          newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: { showNewCompanyDialog() })
-          editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: { showEditCompanyDialog() })
-          separator()
-          companySettingsMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.companySettings'), actionPerformed: { showCompanySettingsDialog() })
-          sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: { showSieExchangeDialog() })
-          separator()
-          exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: { exitRequested() })
-        }
-        helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
-          manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
-          updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: { showUpdateDialog() })
-          reportIssueMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.reportIssue'), actionPerformed: { openIssueTracker() })
-          separator()
-          aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
-        }
+        buildFileMenu(delegate)
+        buildHelpMenu(delegate)
       }
       borderLayout()
       tabbedPane = tabbedPane(constraints: BorderLayout.CENTER)
@@ -315,6 +309,36 @@ final class MainFrame implements PropertyChangeListener {
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
     f
+  }
+
+  private void buildFileMenu(Object builder) {
+    builder.with {
+      fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
+        newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: { showNewCompanyDialog() })
+        editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: { showEditCompanyDialog() })
+        separator()
+        companySettingsMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.companySettings'), actionPerformed: { showCompanySettingsDialog() })
+        sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: { showSieExchangeDialog() })
+        separator()
+        archiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.archiveCompany'), actionPerformed: { archiveCompanyRequested() })
+        unarchiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.unarchiveCompany'), actionPerformed: { showUnarchiveCompanyDialog() })
+        deleteCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.deleteCompany'), actionPerformed: { deleteCompanyRequested() })
+        separator()
+        exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: { exitRequested() })
+      }
+    }
+  }
+
+  private void buildHelpMenu(Object builder) {
+    builder.with {
+      helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
+        manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
+        updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: { showUpdateDialog() })
+        reportIssueMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.reportIssue'), actionPerformed: { openIssueTracker() })
+        separator()
+        aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
+      }
+    }
   }
 
   private JPanel buildSettingsPanel() {
@@ -600,7 +624,7 @@ final class MainFrame implements PropertyChangeListener {
             activeCompanyManager
         )],
         [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.system'), component: new SystemDocumentationPanel(
             systemDocumentationService,
             diagnosticsService,
@@ -667,6 +691,98 @@ final class MainFrame implements PropertyChangeListener {
       }
     } as java.util.function.Consumer<Long>)
     setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
+  }
+
+  private void archiveCompanyRequested() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      setStatus(I18n.instance.getString('mainFrame.error.noActiveCompany'))
+      return
+    }
+    Company active = activeCompanyManager.activeCompany
+    int choice = JOptionPane.showConfirmDialog(
+        frame,
+        I18n.instance.format('mainFrame.confirm.archiveCompany', active.companyName),
+        I18n.instance.getString('mainFrame.confirm.archiveTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      return
+    }
+    try {
+      companyService.archiveCompany(active.id)
+      reloadCompanyComboBox()
+      setStatus(I18n.instance.format('mainFrame.status.companyArchived', active.companyName))
+    } catch (Exception exception) {
+      setStatus(exception.message)
+    }
+  }
+
+  private void showUnarchiveCompanyDialog() {
+    List<Company> archived = companyService.listArchivedCompanies()
+    if (archived.isEmpty()) {
+      JOptionPane.showMessageDialog(
+          frame,
+          I18n.instance.getString('unarchiveDialog.noArchivedCompanies'),
+          I18n.instance.getString('unarchiveDialog.title'),
+          JOptionPane.INFORMATION_MESSAGE
+      )
+      return
+    }
+    Company selected = JOptionPane.showInputDialog(
+        frame,
+        I18n.instance.getString('unarchiveDialog.label.selectCompany'),
+        I18n.instance.getString('unarchiveDialog.title'),
+        JOptionPane.PLAIN_MESSAGE,
+        null,
+        archived.toArray(),
+        archived.first()
+    ) as Company
+    if (selected == null) {
+      return
+    }
+    try {
+      companyService.unarchiveCompany(selected.id)
+      reloadCompanyComboBox()
+      selectCompanyInComboBox(selected.id)
+      setStatus(I18n.instance.format('mainFrame.status.companyUnarchived', selected.companyName))
+    } catch (Exception exception) {
+      setStatus(exception.message)
+    }
+  }
+
+  private void deleteCompanyRequested() {
+    if (!activeCompanyManager.hasActiveCompany()) {
+      setStatus(I18n.instance.getString('mainFrame.error.noActiveCompany'))
+      return
+    }
+    Company active = activeCompanyManager.activeCompany
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(active.id)
+    if (!fiscalYears.isEmpty()) {
+      JOptionPane.showMessageDialog(
+          frame,
+          I18n.instance.format('mainFrame.error.companyHasFiscalYears', active.companyName, fiscalYears.size() as Object),
+          I18n.instance.getString('mainFrame.confirm.deleteTitle'),
+          JOptionPane.WARNING_MESSAGE
+      )
+      return
+    }
+    int choice = JOptionPane.showConfirmDialog(
+        frame,
+        I18n.instance.format('mainFrame.confirm.deleteCompany', active.companyName),
+        I18n.instance.getString('mainFrame.confirm.deleteTitle'),
+        JOptionPane.YES_NO_OPTION,
+        JOptionPane.WARNING_MESSAGE
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      return
+    }
+    try {
+      companyService.deleteCompany(active.id)
+      reloadCompanyComboBox()
+      setStatus(I18n.instance.format('mainFrame.status.companyDeleted', active.companyName))
+    } catch (Exception exception) {
+      setStatus(exception.message)
+    }
   }
 
   private void showUserManualDialog() {
