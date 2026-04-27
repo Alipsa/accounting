@@ -40,7 +40,6 @@ final class AuditLogService {
   static final String DELETE_FISCAL_YEAR = 'DELETE_FISCAL_YEAR'
   static final String ARCHIVE_COMPANY = 'ARCHIVE_COMPANY'
   static final String UNARCHIVE_COMPANY = 'UNARCHIVE_COMPANY'
-  static final String DELETE_COMPANY = 'DELETE_COMPANY'
 
   private static final String DEFAULT_ACTOR = 'desktop-app'
   private static final DateTimeFormatter HASH_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSSSSSSSS")
@@ -370,12 +369,6 @@ final class AuditLogService {
   AuditLogEntry recordCompanyUnarchived(Sql sql, long companyId, String companyName) {
     recordEvent(sql, UNARCHIVE_COMPANY, AuditReferences.EMPTY,
         "Företag återställt: ${companyName}", null, companyId)
-  }
-
-  @PackageScope
-  AuditLogEntry recordCompanyDeleted(Sql sql, long companyId, String companyName) {
-    recordEvent(sql, DELETE_COMPANY, AuditReferences.EMPTY,
-        "Företag raderat: ${companyName}", null, companyId)
   }
 
   @PackageScope

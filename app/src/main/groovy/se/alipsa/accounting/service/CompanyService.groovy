@@ -7,10 +7,14 @@ import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 
+import java.util.logging.Logger
+
 /**
  * Manages top-level company records for multi-company installations.
  */
 final class CompanyService {
+
+  private static final Logger LOG = Logger.getLogger(CompanyService.name)
 
   static final long LEGACY_COMPANY_ID = 1L
 
@@ -142,7 +146,6 @@ final class CompanyService {
             "Företaget kan inte raderas eftersom det fortfarande har ${total} räkenskapsår."
         )
       }
-      auditLogService.recordCompanyDeleted(sql, companyId, company.companyName)
       sql.executeUpdate('delete from audit_log where company_id = ?', [companyId])
       sql.executeUpdate('delete from audit_log_chain_head where company_id = ?', [companyId])
       sql.executeUpdate('delete from import_job where company_id = ?', [companyId])
@@ -151,6 +154,7 @@ final class CompanyService {
       if (deleted != 1) {
         throw new IllegalStateException("Företaget kunde inte raderas: ${companyId}")
       }
+      LOG.info("Deleted company id=${companyId}, name='${company.companyName}'")
     }
   }
 

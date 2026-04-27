@@ -41,6 +41,7 @@ final class FiscalYearDeletionDialog extends JDialog {
   private final JButton previewButton = new JButton(I18n.instance.getString('fiscalYearDeletionDialog.button.preview'))
   private final JButton executeButton = new JButton(I18n.instance.getString('fiscalYearDeletionDialog.button.execute'))
   private boolean workInProgress
+  private FiscalYearPurgeSummary lastPreviewSummary
 
   FiscalYearDeletionDialog(
       Frame owner,
@@ -166,6 +167,7 @@ final class FiscalYearDeletionDialog extends JDialog {
   }
 
   private void renderPreview(FiscalYearReplacementPlan plan) {
+    lastPreviewSummary = plan.summary
     FiscalYearPurgeSummary summary = plan.summary
     List<String> rows = [
         I18n.instance.format('fiscalYearDeletionDialog.summary.vouchers', summary.voucherCount as Object),
@@ -182,14 +184,8 @@ final class FiscalYearDeletionDialog extends JDialog {
   }
 
   private void executeRequested() {
-    FiscalYearPurgeSummary summary = null
-    try {
-      summary = deletionService.previewDeletion(fiscalYear.id).summary
-    } catch (Exception ignored) {
-      // fall through with null summary
-    }
-    int voucherCount = summary?.voucherCount ?: 0
-    int attachmentCount = summary?.attachmentCount ?: 0
+    int voucherCount = lastPreviewSummary?.voucherCount ?: 0
+    int attachmentCount = lastPreviewSummary?.attachmentCount ?: 0
 
     int choice = JOptionPane.showConfirmDialog(
         this,
