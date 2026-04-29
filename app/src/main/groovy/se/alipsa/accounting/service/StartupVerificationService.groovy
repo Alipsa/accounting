@@ -54,6 +54,7 @@ final class StartupVerificationService {
     recoveryReport.orphanFiles.each { Path orphan ->
       warnings << ("Orphan-bilaga på disk utan DB-rad: ${orphan}" as String)
     }
+    warnings.addAll(recoveryReport.warnings)
 
     errors.addAll(reportIntegrityService.listCriticalProblems())
     reportArchiveService.findAllIntegrityFailures().each { ReportArchive archive ->

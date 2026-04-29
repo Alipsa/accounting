@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
+import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
 import org.junit.jupiter.api.AfterEach
@@ -156,6 +157,42 @@ class AttachmentServiceTest {
 
     assertEquals('ACTIVE', attachment.status)
     assertTrue(attachmentService.verifyAttachment(attachment.id))
+  }
+
+  @Test
+  void copyFailureMarksAttachmentFailedAndPropagatesException() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 5),
+        'Copy failure test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('copy_failure.txt')
+    Files.writeString(source, 'copy failure content', StandardCharsets.UTF_8)
+    AttachmentService failingAttachmentService = new AttachmentService(
+        databaseService,
+        auditLogService,
+        retentionPolicyService,
+        new FailingCopyFileOperations()
+    )
+
+    IOException exception = assertThrows(IOException) {
+      failingAttachmentService.addAttachment(voucher.id, source)
+    }
+
+    assertEquals('simulated copy failure', exception.message)
+    GroovyRowResult failed = databaseService.withSql { Sql sql ->
+      sql.firstRow('''
+          select id,
+                 status
+            from attachment
+           where voucher_id = ?
+      ''', [voucher.id]) as GroovyRowResult
+    }
+    assertEquals('FAILED', failed.get('status'))
+    long failedId = ((Number) failed.get('id')).longValue()
+    assertEquals([failedId], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
   }
 
   @Test
@@ -326,6 +363,37 @@ class AttachmentServiceTest {
   }
 
   @Test
+  void recoverPendingDeleteKeepsStatusAndReportsWarningWhenFileCannotBeDeleted() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 12),
+        'Recover delete failure test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('pending_delete_failure.txt')
+    Files.writeString(source, 'delete failure', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING_DELETE' where id = ?", [attachment.id])
+    }
+    AttachmentService failingDeleteService = new AttachmentService(
+        databaseService,
+        auditLogService,
+        retentionPolicyService,
+        new FailingDeleteFileOperations()
+    )
+
+    AttachmentRecoveryReport report = failingDeleteService.recoverOnStartup()
+
+    assertEquals(0, report.deletionsDone)
+    assertEquals('PENDING_DELETE', attachmentService.findAttachment(attachment.id).status)
+    assertTrue(Files.exists(attachmentService.resolveStoredPath(attachment)))
+    assertTrue(report.warnings.any { String warning -> warning.contains('leaving PENDING_DELETE') })
+  }
+
+  @Test
   void orphanFileWithoutDbRow() {
     // Create a file directly in the attachments directory without a DB row
     Path attachmentsDir = AppPaths.attachmentsDirectory()
@@ -337,6 +405,47 @@ class AttachmentServiceTest {
     AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
 
     assertEquals(1, report.orphanFiles.size())
+  }
+
+  @Test
+  void orphanScanNormalizesWindowsSeparatorsFromDatabasePaths() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 12),
+        'Windows path test',
+        balancedLines(10.00G)
+    )
+    Path storedFile = AppPaths.attachmentsDirectory().resolve('voucher-windows').resolve('known.txt')
+    Files.createDirectories(storedFile.parent)
+    Files.writeString(storedFile, 'known', StandardCharsets.UTF_8)
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeInsert('''
+          insert into attachment (
+              voucher_id,
+              original_file_name,
+              content_type,
+              storage_path,
+              checksum_sha256,
+              file_size,
+              created_at,
+              status
+          ) values (?, ?, ?, ?, ?, ?, current_timestamp, ?)
+      ''', [
+          voucher.id,
+          'known.txt',
+          'text/plain',
+          'voucher-windows\\known.txt',
+          sha256(storedFile),
+          Files.size(storedFile),
+          'ACTIVE'
+      ])
+    }
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertFalse(report.orphanFiles.contains(storedFile))
   }
 
   @Test
@@ -425,5 +534,45 @@ class AttachmentServiceTest {
       return
     }
     System.setProperty(name, value)
+  }
+
+  private static String sha256(Path file) {
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance('SHA-256')
+    Files.newInputStream(file).withCloseable { InputStream input ->
+      byte[] buffer = new byte[8192]
+      int bytesRead = 0
+      while ((bytesRead = input.read(buffer)) >= 0) {
+        if (bytesRead > 0) {
+          digest.update(buffer, 0, bytesRead)
+        }
+      }
+    }
+    HexFormat.of().formatHex(digest.digest())
+  }
+
+  private static final class FailingCopyFileOperations implements AttachmentFileOperations {
+
+    @Override
+    void copy(Path source, Path target) throws IOException {
+      throw new IOException('simulated copy failure')
+    }
+
+    @Override
+    boolean deleteIfExists(Path path) throws IOException {
+      Files.deleteIfExists(path)
+    }
+  }
+
+  private static final class FailingDeleteFileOperations implements AttachmentFileOperations {
+
+    @Override
+    void copy(Path source, Path target) throws IOException {
+      Files.copy(source, target)
+    }
+
+    @Override
+    boolean deleteIfExists(Path path) throws IOException {
+      throw new IOException('simulated delete failure')
+    }
   }
 }

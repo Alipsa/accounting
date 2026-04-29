@@ -8,7 +8,6 @@ import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.sql.Timestamp
 import java.time.LocalDateTime
@@ -25,6 +24,7 @@ final class AttachmentService {
   private final DatabaseService databaseService
   private final AuditLogService auditLogService
   private final RetentionPolicyService retentionPolicyService
+  private final AttachmentFileOperations fileOperations
 
   AttachmentService() {
     this(DatabaseService.instance)
@@ -43,9 +43,19 @@ final class AttachmentService {
       AuditLogService auditLogService,
       RetentionPolicyService retentionPolicyService
   ) {
+    this(databaseService, auditLogService, retentionPolicyService, new DefaultAttachmentFileOperations())
+  }
+
+  AttachmentService(
+      DatabaseService databaseService,
+      AuditLogService auditLogService,
+      RetentionPolicyService retentionPolicyService,
+      AttachmentFileOperations fileOperations
+  ) {
     this.databaseService = databaseService
     this.auditLogService = auditLogService
     this.retentionPolicyService = retentionPolicyService
+    this.fileOperations = fileOperations
   }
 
   AttachmentMetadata addAttachment(long voucherId, Path sourceFile) {
@@ -84,7 +94,7 @@ final class AttachmentService {
     }
 
     try {
-      Files.copy(safeSource, targetPath, StandardCopyOption.REPLACE_EXISTING)
+      fileOperations.copy(safeSource, targetPath)
       String storedChecksum = calculateChecksum(targetPath)
       if (checksum != storedChecksum) {
         tryDeleteQuietly(targetPath)
@@ -204,7 +214,7 @@ final class AttachmentService {
         throw new IllegalStateException("Bilagan kunde inte markeras för borttagning: ${attachmentId}")
       }
     }
-    Files.deleteIfExists(targetPath)
+    fileOperations.deleteIfExists(targetPath)
     databaseService.withTransaction { Sql sql ->
       int updated = sql.executeUpdate(
           'update attachment set status = ? where id = ?',
@@ -307,6 +317,7 @@ final class AttachmentService {
     int activated = 0
     int failed = 0
     int deletionsDone = 0
+    List<String> warnings = []
 
     databaseService.withTransaction { Sql sql ->
       List<AttachmentMetadata> pending = sql.rows('''
@@ -373,13 +384,15 @@ final class AttachmentService {
           sql.executeUpdate('update attachment set status = ? where id = ?', ['DELETED', attachment.id])
           deletionsDone++
         } else {
-          log.warning("Attachment ${attachment.id} file could not be deleted during recovery; leaving PENDING_DELETE.")
+          String warning = "Attachment ${attachment.id} file could not be deleted during recovery; leaving PENDING_DELETE."
+          log.warning(warning)
+          warnings << warning
         }
       }
     }
 
     List<Path> orphanFiles = findOrphanFiles()
-    new AttachmentRecoveryReport(activated, failed, deletionsDone, orphanFiles)
+    new AttachmentRecoveryReport(activated, failed, deletionsDone, orphanFiles, warnings)
   }
 
   private List<Path> findOrphanFiles() {
@@ -410,9 +423,9 @@ final class AttachmentService {
     orphans
   }
 
-  private static void tryDeleteQuietly(Path path) {
+  private void tryDeleteQuietly(Path path) {
     try {
-      Files.deleteIfExists(path)
+      fileOperations.deleteIfExists(path)
     } catch (IOException ignored) {
       // best-effort cleanup
     }

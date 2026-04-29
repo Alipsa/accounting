@@ -15,4 +15,5 @@ final class AttachmentRecoveryReport {
   int failed
   int deletionsDone
   List<Path> orphanFiles
+  List<String> warnings
 }
