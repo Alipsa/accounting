@@ -51,14 +51,7 @@ final class AlipsaAccounting {
         I18n.instance.setLocale(savedLanguage)
       }
       if (options.mode == RunMode.MCP) {
-        StartupVerificationReport startupReport = new StartupVerificationService().verify()
-        failOnStartupErrors(startupReport)
-        try {
-          new McpServer().run()
-        } finally {
-          DatabaseService.instance.shutdown()
-          LoggingConfigurer.shutdown()
-        }
+        runMcpMode()
         return
       }
       ThemeApplier.apply(userPreferencesService.getTheme())
@@ -94,6 +87,20 @@ final class AlipsaAccounting {
         System.err.println("Failed to start Alipsa Accounting: ${exception.message ?: exception.class.simpleName}")
       }
       throw exception
+    }
+  }
+
+  private static void runMcpMode() {
+    StartupVerificationReport startupReport = new StartupVerificationService().verify()
+    failOnStartupErrors(startupReport)
+    if (!startupReport.warnings.isEmpty()) {
+      log.warning("Startup warnings: ${startupReport.warnings.join(' | ')}")
+    }
+    try {
+      new McpServer().run()
+    } finally {
+      DatabaseService.instance.shutdown()
+      LoggingConfigurer.shutdown()
     }
   }
 

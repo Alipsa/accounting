@@ -18,4 +18,5 @@ final class AttachmentMetadata {
   String checksumSha256
   long fileSize
   LocalDateTime createdAt
+  String status
 }

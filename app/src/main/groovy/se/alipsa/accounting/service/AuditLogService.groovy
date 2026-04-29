@@ -28,6 +28,7 @@ final class AuditLogService {
   static final String CANCEL_VOUCHER = 'CANCEL_VOUCHER'
   static final String CORRECTION_VOUCHER = 'CORRECTION_VOUCHER'
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
+  static final String ATTACHMENT_RECOVERED = 'ATTACHMENT_RECOVERED'
   static final String LOCK_PERIOD = 'LOCK_PERIOD'
   static final String CLOSE_FISCAL_YEAR = 'CLOSE_FISCAL_YEAR'
   static final String REOPEN_FISCAL_YEAR = 'REOPEN_FISCAL_YEAR'
@@ -280,6 +281,19 @@ final class AuditLogService {
   AuditLogEntry recordAttachmentAdded(Sql sql, AttachmentMetadata attachment) {
     recordEvent(sql, ATTACHMENT_ADDED, new AuditReferences(voucherId: attachment.voucherId, attachmentId: attachment.id),
         "Bilaga registrerad: ${attachment.originalFileName}", formatDetails([
+            attachmentId   : attachment.id,
+            voucherId      : attachment.voucherId,
+            contentType    : attachment.contentType,
+            checksumSha256 : attachment.checksumSha256,
+            fileSize       : attachment.fileSize,
+            storagePath    : attachment.storagePath
+        ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordAttachmentRecovered(Sql sql, AttachmentMetadata attachment) {
+    recordEvent(sql, ATTACHMENT_RECOVERED, new AuditReferences(voucherId: attachment.voucherId, attachmentId: attachment.id),
+        "Bilaga återställd: ${attachment.originalFileName}", formatDetails([
             attachmentId   : attachment.id,
             voucherId      : attachment.voucherId,
             contentType    : attachment.contentType,

@@ -23,7 +23,9 @@ import se.alipsa.accounting.support.AppPaths
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneId
 
 class AttachmentServiceTest {
 
@@ -33,6 +35,7 @@ class AttachmentServiceTest {
   private DatabaseService databaseService
   private AuditLogService auditLogService
   private AttachmentService attachmentService
+  private RetentionPolicyService retentionPolicyService
   private FiscalYearService fiscalYearService
   private AccountingPeriodService accountingPeriodService
   private VoucherService voucherService
@@ -46,7 +49,10 @@ class AttachmentServiceTest {
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     auditLogService = new AuditLogService(databaseService)
-    attachmentService = new AttachmentService(databaseService, auditLogService)
+    retentionPolicyService = new RetentionPolicyService(
+        Clock.fixed(java.time.Instant.parse('2033-12-31T23:59:59Z'), ZoneId.systemDefault())
+    )
+    attachmentService = new AttachmentService(databaseService, auditLogService, retentionPolicyService)
     accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
@@ -82,6 +88,7 @@ class AttachmentServiceTest {
 
     assertEquals(1, attachments.size())
     assertEquals(attachment.id, attachments.first().id)
+    assertEquals('ACTIVE', attachment.status)
     assertTrue(Files.exists(attachmentService.resolveStoredPath(attachment)))
     assertTrue(attachmentService.verifyAttachment(attachment.id))
     assertEquals([], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID))
@@ -131,6 +138,247 @@ class AttachmentServiceTest {
 
     assertTrue(exception.message.contains('utanför bilagearkivet'))
     assertEquals([attachment.id], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
+  }
+
+  @Test
+  void addAttachmentCreatesPendingThenActivates() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 4),
+        'Pending test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('pending.txt')
+    Files.writeString(source, 'pending content', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+
+    assertEquals('ACTIVE', attachment.status)
+    assertTrue(attachmentService.verifyAttachment(attachment.id))
+  }
+
+  @Test
+  void recoverPendingWithOkFile() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 6),
+        'Recover ok test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('recover_ok.txt')
+    Files.writeString(source, 'recover me', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    // Simulate crash: set back to PENDING but leave file intact
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING' where id = ?", [attachment.id])
+    }
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(1, report.activated)
+    assertEquals(0, report.failed)
+    assertEquals(0, report.deletionsDone)
+    assertTrue(report.orphanFiles.isEmpty())
+
+    AttachmentMetadata recovered = attachmentService.findAttachment(attachment.id)
+    assertEquals('ACTIVE', recovered.status)
+    List<AuditLogEntry> entries = auditLogService.listEntriesForVoucher(voucher.id)
+    assertTrue(entries.any { it.eventType == AuditLogService.ATTACHMENT_RECOVERED })
+  }
+
+  @Test
+  void recoverPendingWithMissingFile() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 7),
+        'Recover missing test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('recover_missing.txt')
+    Files.writeString(source, 'gone', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING' where id = ?", [attachment.id])
+    }
+    Files.deleteIfExists(attachmentService.resolveStoredPath(attachment))
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(0, report.activated)
+    assertEquals(1, report.failed)
+    assertEquals(0, report.deletionsDone)
+
+    AttachmentMetadata recovered = attachmentService.findAttachment(attachment.id)
+    assertEquals('FAILED', recovered.status)
+    assertEquals([attachment.id], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
+  }
+
+  @Test
+  void recoverPendingWithBadChecksum() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 8),
+        'Recover checksum test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('recover_checksum.txt')
+    Files.writeString(source, 'original', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING' where id = ?", [attachment.id])
+    }
+    Files.writeString(attachmentService.resolveStoredPath(attachment), 'tampered', StandardCharsets.UTF_8)
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(0, report.activated)
+    assertEquals(1, report.failed)
+    assertEquals(0, report.deletionsDone)
+
+    AttachmentMetadata recovered = attachmentService.findAttachment(attachment.id)
+    assertEquals('FAILED', recovered.status)
+    assertEquals([attachment.id], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID)*.id)
+  }
+
+  @Test
+  void deleteAttachmentSetsDeleted() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 9),
+        'Delete test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('delete_me.txt')
+    Files.writeString(source, 'delete me', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    attachmentService.deleteAttachment(attachment.id)
+
+    assertEquals([], attachmentService.listAttachments(voucher.id))
+    AttachmentMetadata deleted = attachmentService.findAttachment(attachment.id)
+    assertEquals('DELETED', deleted.status)
+    assertFalse(Files.exists(attachmentService.resolveStoredPath(attachment)))
+  }
+
+  @Test
+  void recoverPendingDeleteWithFile() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 10),
+        'Recover delete test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('pending_delete.txt')
+    Files.writeString(source, 'pending delete', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING_DELETE' where id = ?", [attachment.id])
+    }
+    // file still exists
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(0, report.activated)
+    assertEquals(0, report.failed)
+    assertEquals(1, report.deletionsDone)
+    assertFalse(Files.exists(attachmentService.resolveStoredPath(attachment)))
+
+    AttachmentMetadata deleted = attachmentService.findAttachment(attachment.id)
+    assertEquals('DELETED', deleted.status)
+  }
+
+  @Test
+  void recoverPendingDeleteMissingFile() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 11),
+        'Recover delete missing test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('pending_delete_missing.txt')
+    Files.writeString(source, 'already gone', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update attachment set status = 'PENDING_DELETE' where id = ?", [attachment.id])
+    }
+    Files.deleteIfExists(attachmentService.resolveStoredPath(attachment))
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(0, report.activated)
+    assertEquals(0, report.failed)
+    assertEquals(1, report.deletionsDone)
+
+    AttachmentMetadata deleted = attachmentService.findAttachment(attachment.id)
+    assertEquals('DELETED', deleted.status)
+  }
+
+  @Test
+  void orphanFileWithoutDbRow() {
+    // Create a file directly in the attachments directory without a DB row
+    Path attachmentsDir = AppPaths.attachmentsDirectory()
+    Path orphanDir = attachmentsDir.resolve('voucher-99999')
+    Files.createDirectories(orphanDir)
+    Path orphanFile = orphanDir.resolve('orphan.txt')
+    Files.writeString(orphanFile, 'orphan', StandardCharsets.UTF_8)
+
+    AttachmentRecoveryReport report = attachmentService.recoverOnStartup()
+
+    assertEquals(1, report.orphanFiles.size())
+  }
+
+  @Test
+  void readDeletedAttachmentThrows() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 13),
+        'Read deleted test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('read_deleted.txt')
+    Files.writeString(source, 'deleted', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    attachmentService.deleteAttachment(attachment.id)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      attachmentService.readAttachment(attachment.id)
+    }
+    assertTrue(exception.message.contains('not active'))
+  }
+
+  @Test
+  void deleteDeletedAttachmentThrows() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 14),
+        'Delete deleted test',
+        balancedLines(10.00G)
+    )
+    Path source = tempDir.resolve('delete_deleted.txt')
+    Files.writeString(source, 'deleted', StandardCharsets.UTF_8)
+
+    AttachmentMetadata attachment = attachmentService.addAttachment(voucher.id, source)
+    attachmentService.deleteAttachment(attachment.id)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      attachmentService.deleteAttachment(attachment.id)
+    }
+    assertTrue(exception.message.contains('not active'))
   }
 
   private void insertTestAccounts() {

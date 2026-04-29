@@ -60,7 +60,8 @@ class StartupVerificationServiceTest {
     StartupVerificationReport report = new StartupVerificationService(
         databaseService,
         reportIntegrityService,
-        reportArchiveService
+        reportArchiveService,
+        attachmentService
     ).verify()
 
     assertFalse(report.ok)
