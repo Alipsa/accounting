@@ -3,10 +3,11 @@
 ## v1.2.0, 2026-05-02
 ### Minor Release
 
-This release adds permanent deletion of fiscal years and companies, and makes attachment storage crash-safe.
+This release adds permanent deletion of fiscal years and companies, makes attachment storage crash-safe, and simplifies the SIE import workflow.
 
 ### Highlights
 
+- **Smart SIE import** — The separate Import and Replace buttons are merged into one. Clicking Import SIE runs a silent preview and picks the right path automatically: plain import when there is no collision, a confirmation with exact data counts when an existing fiscal year would be replaced, an unlock-and-replace offer when the fiscal year is closed but has no closing entries, and a clear error when closing entries prevent replacement.
 - **Archive and unarchive companies** — A company can be archived from the File menu to hide it from normal views while keeping all its data intact. Archived companies can be restored at any time via File → Unarchive company. Addresses issue #45.
 - **Delete company** — Once all fiscal years belonging to a company have been deleted, the company itself can be permanently removed via File → Delete company. All associated data is purged in one step.
 - **Delete fiscal year** — Fiscal years past the 7-year legal retention period can be permanently deleted from the Fiscal Years tab. A preview shows exactly what will be removed: vouchers, attachments, report archives, VAT periods, opening balances, and audit log entries. Attachment and report files stored on disk are deleted as part of the operation; any file that cannot be deleted is listed in the result for manual cleanup.
