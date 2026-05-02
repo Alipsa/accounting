@@ -28,6 +28,7 @@ import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
+import se.alipsa.accounting.service.SieImportPreview
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 
@@ -514,6 +515,81 @@ class SieImportExportServiceTest {
     }
   }
 
+  @Test
+  void previewWithReplaceDetectsClosingEntries() {
+    Path exportPath = tempDir.resolve('closing-preview.sie')
+    createExportFixture(tempDir.resolve('closing-preview-source-db'), exportPath)
+
+    switchHome(tempDir.resolve('closing-preview-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    long fiscalYearId = findFiscalYearId(targetDatabaseService, '2026')
+    insertClosingEntry(targetDatabaseService, fiscalYearId)
+    SieImportExportService service = createSieService(targetDatabaseService)
+
+    SieImportPreview preview = service.previewSieImport(CompanyService.LEGACY_COMPANY_ID, exportPath, true)
+
+    assertTrue(
+        preview.blockingIssues.any { String issue -> issue.contains('bokslutsposter') },
+        "Preview should report closing entries as a blocking issue for replace, got: ${preview.blockingIssues}"
+    )
+  }
+
+  @Test
+  void reopenAndReplaceFiscalYearSucceeds() {
+    Path exportPath = tempDir.resolve('reopen-replace.sie')
+    ExportFixture fixture = createExportFixture(tempDir.resolve('reopen-replace-source-db'), exportPath)
+
+    switchHome(tempDir.resolve('reopen-replace-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(targetDatabaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(targetDatabaseService, accountingPeriodService, auditLogService)
+    long fiscalYearId = findFiscalYearId(targetDatabaseService, '2026')
+    fiscalYearService.closeFiscalYear(fiscalYearId)
+    assertTrue(fiscalYearService.findById(fiscalYearId).closed, 'Year should be closed before test')
+    SieImportExportService service = createSieService(targetDatabaseService)
+
+    SieImportResult result = service.reopenAndReplaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+
+    assertFalse(result.duplicate)
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertTrue(result.job.summary.contains('Ersättningsimport klar'))
+    assertFalse(fiscalYearService.findById(fiscalYearId).closed, 'Year should be open after reopen-and-replace')
+    assertEquals(fixture.voucherCount, countRows(targetDatabaseService, 'voucher'))
+    assertEquals(fixture.openingBalanceCount, countRows(targetDatabaseService, 'opening_balance'))
+  }
+
+  @Test
+  void reopenAndReplaceFiscalYearFailsIfClosingEntriesExist() {
+    Path exportPath = tempDir.resolve('reopen-closing-fail.sie')
+    createExportFixture(tempDir.resolve('reopen-closing-fail-source-db'), exportPath)
+
+    switchHome(tempDir.resolve('reopen-closing-fail-target-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
+    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(targetDatabaseService, auditLogService)
+    FiscalYearService fiscalYearService = new FiscalYearService(targetDatabaseService, accountingPeriodService, auditLogService)
+    long fiscalYearId = findFiscalYearId(targetDatabaseService, '2026')
+    insertClosingEntry(targetDatabaseService, fiscalYearId)
+    fiscalYearService.closeFiscalYear(fiscalYearId)
+    int vouchersBefore = countRows(targetDatabaseService, 'voucher')
+    SieImportExportService service = createSieService(targetDatabaseService)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      service.reopenAndReplaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+    }
+
+    assertTrue(exception.message.contains('bokslutsposter'))
+    assertTrue(fiscalYearService.findById(fiscalYearId).closed, 'Year must remain closed after failed reopen-and-replace')
+    assertEquals(vouchersBefore, countRows(targetDatabaseService, 'voucher'), 'Existing content must remain untouched')
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()
@@ -709,7 +785,8 @@ class SieImportExportServiceTest {
         voucherService,
         new CompanyService(databaseService),
         reportIntegrityService,
-        auditLogService
+        auditLogService,
+        new FiscalYearService(databaseService)
     )
   }
 

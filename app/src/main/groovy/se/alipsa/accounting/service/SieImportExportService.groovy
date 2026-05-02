@@ -55,6 +55,7 @@ final class SieImportExportService {
   private final CompanyService companyService
   private final ReportIntegrityService reportIntegrityService
   private final AuditLogService auditLogService
+  private final FiscalYearService fiscalYearService
   SieImportExportService() {
     this(
         DatabaseService.instance,
@@ -62,7 +63,8 @@ final class SieImportExportService {
         new VoucherService(DatabaseService.instance),
         new CompanyService(DatabaseService.instance),
         new ReportIntegrityService(),
-        new AuditLogService(DatabaseService.instance)
+        new AuditLogService(DatabaseService.instance),
+        new FiscalYearService(DatabaseService.instance)
     )
   }
   SieImportExportService(
@@ -71,7 +73,8 @@ final class SieImportExportService {
       VoucherService voucherService,
       CompanyService companyService,
       ReportIntegrityService reportIntegrityService,
-      AuditLogService auditLogService
+      AuditLogService auditLogService,
+      FiscalYearService fiscalYearService
   ) {
     this.databaseService = databaseService
     this.accountingPeriodService = accountingPeriodService
@@ -79,6 +82,7 @@ final class SieImportExportService {
     this.companyService = companyService
     this.reportIntegrityService = reportIntegrityService
     this.auditLogService = auditLogService
+    this.fiscalYearService = fiscalYearService
   }
 
   SieCompany peekSieCompany(Path filePath) {
@@ -140,14 +144,18 @@ final class SieImportExportService {
   }
 
   SieImportResult importFile(long companyId, Path filePath) {
-    importFile(companyId, filePath, false)
+    importFile(companyId, filePath, false, false)
   }
 
   SieImportResult replaceFiscalYear(long companyId, Path filePath) {
-    importFile(companyId, filePath, true)
+    importFile(companyId, filePath, true, false)
   }
 
-  private SieImportResult importFile(long companyId, Path filePath, boolean replaceExistingFiscalYear) {
+  SieImportResult reopenAndReplaceFiscalYear(long companyId, Path filePath) {
+    importFile(companyId, filePath, true, true)
+  }
+
+  private SieImportResult importFile(long companyId, Path filePath, boolean replaceExistingFiscalYear, boolean reopenFirst) {
     CompanyService.requireValidCompanyId(companyId)
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
@@ -165,6 +173,13 @@ final class SieImportExportService {
     try {
       ParsedSie parsed = parseDocument(safePath)
       SieImportResult result = databaseService.withTransaction { Sql sql ->
+        if (reopenFirst) {
+          SieBookingYear bookingYear = selectPrimaryBookingYear(parsed.document)
+          FiscalYear existingYear = findFiscalYearByPeriod(sql, companyId, bookingYear.start, bookingYear.end)
+          if (existingYear != null) {
+            fiscalYearService.reopenFiscalYear(sql, existingYear.id)
+          }
+        }
         FiscalYear fiscalYear = resolveTargetFiscalYear(sql, companyId, parsed.document, replaceExistingFiscalYear)
         resolvedFiscalYearId = fiscalYear.id
         FiscalYearPurgeSummary purgeSummary = null
@@ -187,8 +202,13 @@ final class SieImportExportService {
         )
         new SieImportResult(job, fiscalYear, false, counts.accountsCreated, counts.openingBalanceCount, counts.voucherCount, counts.lineCount, parsed.warnings)
       }
+      String action = reopenFirst
+          ? "Låste upp och ersatte räkenskapsår från SIE ${result.job.fileName}"
+          : replaceExistingFiscalYear
+              ? "Ersatte räkenskapsår från SIE ${result.job.fileName}"
+              : "Importerade SIE ${result.job.fileName}"
       auditLogService.logImport(
-          replaceExistingFiscalYear ? "Ersatte räkenskapsår från SIE ${result.job.fileName}" : "Importerade SIE ${result.job.fileName}",
+          action,
           buildImportAuditDetail(result, replaceExistingFiscalYear, replacementPlan),
           companyId
       )

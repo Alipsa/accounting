@@ -73,7 +73,8 @@ class AccountingMcpToolsTest {
             voucherService,
             new CompanyService(databaseService),
             reportIntegrityService,
-            auditLogService
+            auditLogService,
+            fiscalYearService
         )
     )
 

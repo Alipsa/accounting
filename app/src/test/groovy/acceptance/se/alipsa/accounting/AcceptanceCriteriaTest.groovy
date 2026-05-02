@@ -369,7 +369,8 @@ class AcceptanceCriteriaTest {
             voucherService,
             companyService,
             reportIntegrityService,
-            auditLogService
+            auditLogService,
+            fiscalYearService
         ),
         backupService: new BackupService(
             databaseService,
