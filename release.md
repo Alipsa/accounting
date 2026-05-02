@@ -1,5 +1,33 @@
 # Alipsa Accounting, Release History
 
+## v1.2.0, 2026-05-02
+### Minor Release
+
+This release adds permanent deletion of fiscal years and companies, and makes attachment storage crash-safe.
+
+### Highlights
+
+- **Archive and unarchive companies** — A company can be archived from the File menu to hide it from normal views while keeping all its data intact. Archived companies can be restored at any time via File → Unarchive company. Addresses issue #45.
+- **Delete company** — Once all fiscal years belonging to a company have been deleted, the company itself can be permanently removed via File → Delete company. All associated data is purged in one step.
+- **Delete fiscal year** — Fiscal years past the 7-year legal retention period can be permanently deleted from the Fiscal Years tab. A preview shows exactly what will be removed: vouchers, attachments, report archives, VAT periods, opening balances, and audit log entries. Attachment and report files stored on disk are deleted as part of the operation; any file that cannot be deleted is listed in the result for manual cleanup.
+- **Crash-safe attachment storage** — Attachments are now written using a two-phase copy-then-confirm approach. If the application is interrupted mid-copy, the incomplete file is detected on next startup and either recovered or reported as a warning rather than silently left in an inconsistent state.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.2.0-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.2.0-windows.zip` |
+| macOS                     | `alipsa-accounting-1.2.0-macos.zip`   |
+| Universal updater archive | `app-1.2.0.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.1.1, 2026-04-26
 ### Patch Release
 
