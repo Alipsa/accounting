@@ -106,7 +106,8 @@ final class MainFrame implements PropertyChangeListener {
   private final StartupVerificationService startupVerificationService = new StartupVerificationService(
       DatabaseService.instance,
       reportIntegrityService,
-      reportArchiveService
+      reportArchiveService,
+      attachmentService
   )
   private final SystemDiagnosticsService diagnosticsService = new SystemDiagnosticsService(
       migrationService,
