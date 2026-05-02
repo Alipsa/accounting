@@ -269,19 +269,19 @@ class FiscalYearDeletionServiceTest {
         'PDF',
         'data'.bytes
     )
-    Path outsideFile = AppPaths.reportsDirectory().resolve('../../outside.txt').toAbsolutePath().normalize()
+    Path outsideFile = AppPaths.reportsDirectory().resolve('../outside.txt').toAbsolutePath().normalize()
     Files.writeString(outsideFile, 'must remain')
     databaseService.withTransaction { Sql sql ->
       sql.executeUpdate(
           'update report_archive set storage_path = ? where fiscal_year_id = ?',
-          ['../../outside.txt', year.id]
+          ['../outside.txt', year.id]
       )
     }
 
     FiscalYearDeletionResult result = deletionService.deleteFiscalYear(year.id)
 
     assertEquals(1, result.failedFiles.size())
-    assertEquals('../../outside.txt', result.failedFiles.first().storagePath)
+    assertEquals('../outside.txt', result.failedFiles.first().storagePath)
     assertTrue(result.failedFiles.first().message.contains('utanför arkivkatalogen'))
     assertTrue(Files.exists(outsideFile))
     assertEquals('must remain', Files.readString(outsideFile))
