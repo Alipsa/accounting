@@ -208,6 +208,34 @@ final class FiscalYearReplacementService {
     ''', [newHeadHash, companyId])
   }
 
+  @PackageScope
+  static int deleteFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
+    int deleted = sql.executeUpdate('''
+        delete from audit_log
+         where company_id = ?
+           and (
+               fiscal_year_id = ?
+               or accounting_period_id in (
+                   select id from accounting_period where fiscal_year_id = ?
+               )
+               or vat_period_id in (
+                   select id from vat_period where fiscal_year_id = ?
+               )
+               or voucher_id in (
+                   select id from voucher where fiscal_year_id = ?
+               )
+               or attachment_id in (
+                   select a.id
+                     from attachment a
+                     join voucher v on v.id = a.voucher_id
+                    where v.fiscal_year_id = ?
+               )
+           )
+    ''', [companyId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId, fiscalYearId])
+    AuditLogService.rebuildIntegrityChain(sql, companyId)
+    deleted
+  }
+
   private static int countRows(Sql sql, String query, List<Object> params) {
     GroovyRowResult row = sql.firstRow(query, params) as GroovyRowResult
     ((Number) row.get('total')).intValue()

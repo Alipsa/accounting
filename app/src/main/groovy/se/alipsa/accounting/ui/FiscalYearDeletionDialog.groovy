@@ -1,11 +1,11 @@
 package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.service.FiscalYearDeletionResult
 import se.alipsa.accounting.service.FiscalYearDeletionService
 import se.alipsa.accounting.service.FiscalYearPurgeSummary
 import se.alipsa.accounting.service.FiscalYearReplacementPlan
-import se.alipsa.accounting.service.FiscalYearReplacementService
-import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.service.StoredFileDeletionFailure
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -202,9 +202,9 @@ final class FiscalYearDeletionDialog extends JDialog {
     setWorkingState(true)
     summaryArea.text = I18n.instance.getString('fiscalYearDeletionDialog.status.executing')
     messageArea.text = ''
-    new SwingWorker<FiscalYearReplacementPlan, Void>() {
+    new SwingWorker<FiscalYearDeletionResult, Void>() {
       @Override
-      protected FiscalYearReplacementPlan doInBackground() {
+      protected FiscalYearDeletionResult doInBackground() {
         deletionService.deleteFiscalYear(fiscalYear.id)
       }
 
@@ -212,13 +212,8 @@ final class FiscalYearDeletionDialog extends JDialog {
       protected void done() {
         setWorkingState(false)
         try {
-          FiscalYearReplacementPlan result = get()
-          FiscalYearReplacementService.deleteStoredFilesQuietly(
-              AppPaths.attachmentsDirectory(), result.attachmentStoragePaths)
-          FiscalYearReplacementService.deleteStoredFilesQuietly(
-              AppPaths.reportsDirectory(), result.reportArchiveStoragePaths)
-          summaryArea.text = I18n.instance.format(
-              'fiscalYearDeletionDialog.result.success', fiscalYear.name)
+          FiscalYearDeletionResult result = get()
+          summaryArea.text = deletionResultText(result)
           renderMessage(new Color(22, 101, 52),
               I18n.instance.format('fiscalYearDeletionDialog.result.success', fiscalYear.name))
           executeButton.enabled = false
@@ -233,6 +228,20 @@ final class FiscalYearDeletionDialog extends JDialog {
         }
       }
     }.execute()
+  }
+
+  private String deletionResultText(FiscalYearDeletionResult result) {
+    List<String> rows = [
+        I18n.instance.format('fiscalYearDeletionDialog.result.success', fiscalYear.name),
+        I18n.instance.format('fiscalYearDeletionDialog.result.deletedFiles', result.deletedFiles.size() as Object)
+    ]
+    if (!result.failedFiles.isEmpty()) {
+      rows << I18n.instance.format('fiscalYearDeletionDialog.result.failedFiles', result.failedFiles.size() as Object)
+      result.failedFiles.each { StoredFileDeletionFailure failure ->
+        rows << "- ${failure.storagePath}: ${failure.message}".toString()
+      }
+    }
+    rows.join('\n')
   }
 
   private void renderMessage(Color color, String text) {
