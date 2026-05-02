@@ -7,9 +7,11 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanyService
+import se.alipsa.accounting.service.FiscalYearPurgeSummary
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
+import se.alipsa.accounting.service.SieImportPreview
 import se.alipsa.accounting.service.SieImportResult
 import se.alipsa.accounting.support.I18n
 
@@ -65,7 +67,6 @@ final class SieExchangeDialog extends JDialog {
   private final ImportJobTableModel importJobTableModel = new ImportJobTableModel()
   private final JTable importJobTable = new JTable(importJobTableModel)
   private final JButton importButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.import'))
-  private final JButton replaceImportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.replaceImport'))
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
 
@@ -162,10 +163,8 @@ final class SieExchangeDialog extends JDialog {
       }
     }
     importButton.addActionListener { importRequested() }
-    replaceImportButton.addActionListener { replaceImportRequested() }
     exportButton.addActionListener { exportRequested() }
     panel.add(importButton)
-    panel.add(replaceImportButton)
     panel.add(exportButton)
     panel.add(closeButton)
     panel
@@ -187,24 +186,6 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void importRequested() {
-    importRequested(false)
-  }
-
-  private void replaceImportRequested() {
-    int choice = JOptionPane.showConfirmDialog(
-        this,
-        I18n.instance.getString('sieExchangeDialog.confirm.replaceImport.message'),
-        I18n.instance.getString('sieExchangeDialog.confirm.replaceImport.title'),
-        JOptionPane.OK_CANCEL_OPTION,
-        JOptionPane.WARNING_MESSAGE
-    )
-    if (choice != JOptionPane.OK_OPTION) {
-      return
-    }
-    importRequested(true)
-  }
-
-  private void importRequested(boolean replaceExistingFiscalYear) {
     JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('sieExchangeDialog.fileFilter.sie'), 'sie', 'si', 'se')
@@ -243,13 +224,123 @@ final class SieExchangeDialog extends JDialog {
             showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
             return
           }
-          doImport(selectedPath, targetCompanyId, replaceExistingFiscalYear)
+          runSmartImport(selectedPath, targetCompanyId)
         } catch (Exception ex) {
           setWorkingState(false)
           showError(ex.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
         }
       }
     }.execute()
+  }
+
+  private void runSmartImport(Path selectedPath, long targetCompanyId) {
+    new SwingWorker<SieImportPreview, Void>() {
+      @Override
+      protected SieImportPreview doInBackground() {
+        sieImportExportService.previewSieImport(targetCompanyId, selectedPath, false)
+      }
+
+      @Override
+      protected void done() {
+        SieImportPreview preview
+        try {
+          preview = get()
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          setWorkingState(false)
+          showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
+          return
+        } catch (ExecutionException exception) {
+          setWorkingState(false)
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+          return
+        }
+        if (preview.blockingIssues.empty) {
+          doImport(selectedPath, targetCompanyId, false)
+        } else {
+          runReplacePreview(selectedPath, targetCompanyId)
+        }
+      }
+    }.execute()
+  }
+
+  private void runReplacePreview(Path selectedPath, long targetCompanyId) {
+    new SwingWorker<SieImportPreview, Void>() {
+      @Override
+      protected SieImportPreview doInBackground() {
+        sieImportExportService.previewSieImport(targetCompanyId, selectedPath, true)
+      }
+
+      @Override
+      protected void done() {
+        SieImportPreview replacePreview
+        try {
+          replacePreview = get()
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          setWorkingState(false)
+          showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
+          return
+        } catch (ExecutionException exception) {
+          setWorkingState(false)
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+          return
+        }
+        handleReplaceDecision(selectedPath, targetCompanyId, replacePreview)
+      }
+    }.execute()
+  }
+
+  private void handleReplaceDecision(Path selectedPath, long targetCompanyId, SieImportPreview replacePreview) {
+    boolean hasClosingEntries = replacePreview.blockingIssues.any { String issue -> issue.contains('bokslutsposter') }
+    if (hasClosingEntries) {
+      setWorkingState(false)
+      showError(I18n.instance.getString('sieExchangeDialog.error.closingEntriesPreventReplace'), null)
+      return
+    }
+    if (replacePreview.purgeSummary != null && replacePreview.blockingIssues.empty) {
+      FiscalYearPurgeSummary purge = replacePreview.purgeSummary
+      int choice = JOptionPane.showConfirmDialog(
+          this,
+          I18n.instance.format('sieExchangeDialog.confirm.replace.message',
+              purge.voucherCount as Object, purge.openingBalanceCount as Object,
+              purge.attachmentCount as Object, purge.vatPeriodCount as Object,
+              purge.reportArchiveCount as Object),
+          I18n.instance.getString('sieExchangeDialog.confirm.replace.title'),
+          JOptionPane.OK_CANCEL_OPTION,
+          JOptionPane.WARNING_MESSAGE
+      )
+      if (choice != JOptionPane.OK_OPTION) {
+        setWorkingState(false)
+        showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+        return
+      }
+      doImport(selectedPath, targetCompanyId, true)
+      return
+    }
+    if (replacePreview.blockingIssues.empty) {
+      doImport(selectedPath, targetCompanyId, false)
+      return
+    }
+    FiscalYearPurgeSummary purge = replacePreview.purgeSummary
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('sieExchangeDialog.confirm.reopenAndReplace.message',
+            purge.voucherCount as Object, purge.openingBalanceCount as Object,
+            purge.attachmentCount as Object, purge.vatPeriodCount as Object,
+            purge.reportArchiveCount as Object),
+        I18n.instance.getString('sieExchangeDialog.confirm.reopenAndReplace.title'),
+        JOptionPane.OK_CANCEL_OPTION,
+        JOptionPane.WARNING_MESSAGE
+    )
+    if (choice != JOptionPane.OK_OPTION) {
+      setWorkingState(false)
+      showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+      return
+    }
+    doReopenAndReplace(selectedPath, targetCompanyId)
   }
 
   private long resolveImportTarget(SieCompany sieCompany) {
@@ -320,6 +411,43 @@ final class SieExchangeDialog extends JDialog {
         replaceExistingFiscalYear
             ? sieImportExportService.replaceFiscalYear(targetCompanyId, selectedPath)
             : sieImportExportService.importFile(targetCompanyId, selectedPath)
+      }
+
+      @Override
+      protected void done() {
+        setWorkingState(false)
+        try {
+          SieImportResult result = get()
+          if (importingToNewCompany) {
+            showInfo(I18n.instance.getString('sieExchangeDialog.company.newCompanyImported'))
+          } else {
+            reloadFiscalYears()
+            reloadJobs()
+            renderImportResult(result)
+          }
+          try {
+            onImportSuccess?.accept(targetCompanyId)
+          } catch (Exception callbackEx) {
+            showError(I18n.instance.getString('sieExchangeDialog.status.refreshFailed'), callbackEx.message)
+          }
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          showError(I18n.instance.getString('sieExchangeDialog.status.importInterrupted'), null)
+        } catch (ExecutionException exception) {
+          Throwable cause = exception.cause ?: exception
+          reloadJobs()
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
+        }
+      }
+    }.execute()
+  }
+
+  private void doReopenAndReplace(Path selectedPath, long targetCompanyId) {
+    boolean importingToNewCompany = targetCompanyId != companyId
+    new SwingWorker<SieImportResult, Void>() {
+      @Override
+      protected SieImportResult doInBackground() {
+        sieImportExportService.reopenAndReplaceFiscalYear(targetCompanyId, selectedPath)
       }
 
       @Override
@@ -488,7 +616,6 @@ final class SieExchangeDialog extends JDialog {
   private void setWorkingState(boolean working) {
     workInProgress = working
     importButton.enabled = !working
-    replaceImportButton.enabled = !working
     exportButton.enabled = !working
     fiscalYearComboBox.enabled = !working
     importJobTable.enabled = !working

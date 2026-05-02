@@ -135,7 +135,8 @@ final class MainFrame implements PropertyChangeListener {
       voucherService,
       companyService,
       reportIntegrityService,
-      auditLogService
+      auditLogService,
+      fiscalYearService
   )
   private final JournoReportService journoReportService = new JournoReportService(
       reportDataService,

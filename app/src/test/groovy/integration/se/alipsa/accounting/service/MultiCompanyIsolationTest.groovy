@@ -77,7 +77,8 @@ class MultiCompanyIsolationTest {
         voucherService,
         companyService,
         reportIntegrityService,
-        auditLogService
+        auditLogService,
+        fiscalYearService
     )
     closingService = new ClosingService(
         databaseService,
