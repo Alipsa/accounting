@@ -232,7 +232,6 @@ final class FiscalYearDeletionDialog extends JDialog {
 
   private String deletionResultText(FiscalYearDeletionResult result) {
     List<String> rows = [
-        I18n.instance.format('fiscalYearDeletionDialog.result.success', fiscalYear.name),
         I18n.instance.format('fiscalYearDeletionDialog.result.deletedFiles', result.deletedFiles.size() as Object)
     ]
     if (!result.failedFiles.isEmpty()) {
