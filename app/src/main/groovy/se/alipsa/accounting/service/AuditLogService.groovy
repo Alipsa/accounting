@@ -449,6 +449,53 @@ final class AuditLogService {
     findById(sql, id)
   }
 
+  @PackageScope
+  static void rebuildIntegrityChain(Sql sql, long companyId) {
+    String previousHash = null
+    sql.withBatch('''
+        update audit_log
+           set previous_hash = ?,
+               entry_hash = ?
+         where id = ?
+    ''') { groovy.sql.BatchingPreparedStatementWrapper statement ->
+      String batchPreviousHash = null
+      sql.rows('''
+          select id,
+                 event_type as eventType,
+                 voucher_id as voucherId,
+                 attachment_id as attachmentId,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
+                 actor,
+                 summary,
+                 details,
+                 created_at as createdAt
+            from audit_log
+           where company_id = ?
+           order by id
+      ''', [companyId]).each { GroovyRowResult row ->
+        String entryHash = calculateHash(new AuditEntrySeed(
+            eventType: row.get('eventType') as String,
+            voucherId: longOrNull(row.get('voucherId')),
+            attachmentId: longOrNull(row.get('attachmentId')),
+            fiscalYearId: longOrNull(row.get('fiscalYearId')),
+            accountingPeriodId: longOrNull(row.get('accountingPeriodId')),
+            vatPeriodId: longOrNull(row.get('vatPeriodId')),
+            actor: row.get('actor') as String,
+            summary: row.get('summary') as String,
+            details: SqlValueMapper.toClob(row.get('details')),
+            previousHash: batchPreviousHash,
+            createdAt: SqlValueMapper.toLocalDateTime(row.get('createdAt'))
+        ))
+        statement.addBatch([batchPreviousHash, entryHash, row.get('id')])
+        batchPreviousHash = entryHash
+      }
+      previousHash = batchPreviousHash
+    }
+    updateChainHead(sql, companyId, previousHash)
+  }
+
   private AuditLogEntry recordStandaloneEvent(String eventType, String summary, String details, long companyId) {
     databaseService.withTransaction { Sql sql ->
       recordEvent(sql, eventType, AuditReferences.EMPTY, summary, details, companyId)

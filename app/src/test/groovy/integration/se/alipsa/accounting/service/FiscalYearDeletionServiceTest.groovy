@@ -10,12 +10,16 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.VatPeriodicity
+import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -69,7 +73,7 @@ class FiscalYearDeletionServiceTest {
         LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
     )
 
-    FiscalYearReplacementPlan result = deletionService.deleteFiscalYear(year.id)
+    FiscalYearDeletionResult result = deletionService.deleteFiscalYear(year.id)
 
     assertNotNull(result)
     assertNull(fiscalYearService.findById(year.id))
@@ -129,13 +133,13 @@ class FiscalYearDeletionServiceTest {
   }
 
   @Test
-  void deleteFiscalYearArchivesAuditLogRows() {
+  void deleteFiscalYearDeletesAuditLogRowsPermanently() {
     FiscalYear year = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2020',
         LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
     )
     seedAccount(CompanyService.LEGACY_COMPANY_ID)
-    voucherService.createVoucher(
+    Voucher voucher = voucherService.createVoucher(
         year.id, 'A', LocalDate.of(2020, 6, 1), 'Voucher for audit test',
         [
             new VoucherLine(null, null, 0, null, '1910', null, null, 50.00G, 0.00G),
@@ -152,8 +156,135 @@ class FiscalYearDeletionServiceTest {
            where company_id = ?
              and archived = true
       ''', [CompanyService.LEGACY_COMPANY_ID]) as GroovyRowResult
-      assertTrue(((Number) archivedRow.get('total')).intValue() > 0)
+      assertEquals(0, ((Number) archivedRow.get('total')).intValue())
+      assertEquals(0, countRows(sql, 'audit_log', 'fiscal_year_id', year.id))
+      assertEquals(0, countRows(sql, 'audit_log', 'voucher_id', voucher.id))
     }
+  }
+
+  @Test
+  void remainingAuditChainValidatesAfterFiscalYearDeletion() {
+    FiscalYear year2020 = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+    FiscalYear year2021 = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2021',
+        LocalDate.of(2021, 1, 1), LocalDate.of(2021, 12, 31)
+    )
+    seedAccount(CompanyService.LEGACY_COMPANY_ID)
+    auditLogService.logImport('Before deletion', null, CompanyService.LEGACY_COMPANY_ID)
+    voucherService.createVoucher(
+        year2020.id, 'A', LocalDate.of(2020, 6, 1), 'Deleted-year voucher',
+        [
+            new VoucherLine(null, null, 0, null, '1910', null, null, 10.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, null, 0.00G, 10.00G)
+        ]
+    )
+    Voucher survivingVoucher = voucherService.createVoucher(
+        year2021.id, 'A', LocalDate.of(2021, 6, 1), 'Surviving-year voucher',
+        [
+            new VoucherLine(null, null, 0, null, '1910', null, null, 20.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, null, 0.00G, 20.00G)
+        ]
+    )
+
+    deletionService.deleteFiscalYear(year2020.id)
+
+    assertEquals([], auditLogService.validateIntegrity())
+    databaseService.withSql { Sql sql ->
+      assertEquals(1, countRows(sql, 'audit_log', 'voucher_id', survivingVoucher.id))
+    }
+  }
+
+  @Test
+  void deleteFiscalYearDeletesStoredFilesFromService() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+    seedAccount(CompanyService.LEGACY_COMPANY_ID)
+    Voucher voucher = voucherService.createVoucher(
+        year.id, 'A', LocalDate.of(2020, 3, 15), 'Voucher with attachment',
+        [
+            new VoucherLine(null, null, 0, null, '1910', null, null, 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, null, 0.00G, 100.00G)
+        ]
+    )
+    Path source = tempDir.resolve('receipt.txt')
+    Files.writeString(source, 'receipt')
+    new AttachmentService(databaseService, auditLogService).addAttachment(voucher.id, source)
+    new ReportArchiveService(databaseService).archiveReport(
+        new ReportSelection(ReportType.VOUCHER_LIST, year.id, null, year.startDate, year.endDate),
+        'PDF',
+        'data'.bytes
+    )
+
+    FiscalYearDeletionResult result = deletionService.deleteFiscalYear(year.id)
+
+    assertEquals(2, result.deletedFiles.size())
+    assertEquals([], result.failedFiles)
+    result.deletedFiles.each { String path ->
+      assertFalse(Files.exists(Path.of(path)))
+    }
+  }
+
+  @Test
+  void fileDeletionFailureIsReported() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+    new ReportArchiveService(databaseService).archiveReport(
+        new ReportSelection(ReportType.VOUCHER_LIST, year.id, null, year.startDate, year.endDate),
+        'PDF',
+        'data'.bytes
+    )
+    Path archivedPath = databaseService.withSql { Sql sql ->
+      String storagePath = sql.firstRow(
+          'select storage_path as storagePath from report_archive where fiscal_year_id = ?',
+          [year.id]
+      ).get('storagePath') as String
+      AppPaths.reportsDirectory().resolve(storagePath)
+    }
+    Files.delete(archivedPath)
+    Files.createDirectories(archivedPath)
+    Files.writeString(archivedPath.resolve('locked-child.txt'), 'still here')
+
+    FiscalYearDeletionResult result = deletionService.deleteFiscalYear(year.id)
+
+    assertEquals(1, result.failedFiles.size())
+    assertEquals(archivedPath.toAbsolutePath().normalize().toString(), result.failedFiles.first().resolvedPath)
+    assertTrue(Files.exists(archivedPath))
+  }
+
+  @Test
+  void pathTraversalStoragePathIsReportedAndNotDeleted() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+    new ReportArchiveService(databaseService).archiveReport(
+        new ReportSelection(ReportType.VOUCHER_LIST, year.id, null, year.startDate, year.endDate),
+        'PDF',
+        'data'.bytes
+    )
+    Path outsideFile = AppPaths.reportsDirectory().resolve('../outside.txt').toAbsolutePath().normalize()
+    Files.writeString(outsideFile, 'must remain')
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate(
+          'update report_archive set storage_path = ? where fiscal_year_id = ?',
+          ['../outside.txt', year.id]
+      )
+    }
+
+    FiscalYearDeletionResult result = deletionService.deleteFiscalYear(year.id)
+
+    assertEquals(1, result.failedFiles.size())
+    assertEquals('../outside.txt', result.failedFiles.first().storagePath)
+    assertTrue(result.failedFiles.first().message.contains('utanför arkivkatalogen'))
+    assertTrue(Files.exists(outsideFile))
+    assertEquals('must remain', Files.readString(outsideFile))
   }
 
   @Test
@@ -192,6 +323,24 @@ class FiscalYearDeletionServiceTest {
       ''', [year2020.id]) as GroovyRowResult
       assertEquals(0, ((Number) ceRow.get('total')).intValue())
     }
+  }
+
+  @Test
+  void companyDeletionSucceedsAfterAllFiscalYearsAreDeleted() {
+    CompanyService companyService = new CompanyService(databaseService, auditLogService)
+    Company company = companyService.save(
+        new Company(null, 'Delete After Years AB', '556111-2222', 'SEK', 'sv-SE',
+            VatPeriodicity.MONTHLY, true, null, null)
+    )
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        company.id, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+
+    deletionService.deleteFiscalYear(year.id)
+    companyService.deleteCompany(company.id)
+
+    assertNull(companyService.findById(company.id))
   }
 
   private void seedAccount(long companyId) {
