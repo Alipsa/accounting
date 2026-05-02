@@ -118,8 +118,8 @@ final class SieImportExportService {
       List<String> blockingIssues = []
       if (existingYear != null && !(duplicate != null && !replaceExisting)) {
         blockingIssues.addAll(importBlockingIssues(sql, existingYear, replaceExisting))
-        if (replaceExisting && blockingIssues.isEmpty()) {
-          purgeSummary = FiscalYearReplacementService.previewFiscalYearReplacement(sql, companyId, existingYear).summary
+        if (replaceExisting) {
+          purgeSummary = FiscalYearReplacementService.collectPurgeSummary(sql, companyId, existingYear.id)
         }
       }
       new SieImportPreview(

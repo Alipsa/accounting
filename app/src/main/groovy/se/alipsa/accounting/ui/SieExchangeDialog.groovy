@@ -256,7 +256,7 @@ final class SieExchangeDialog extends JDialog {
           showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
           return
         }
-        if (preview.blockingIssues.empty && !preview.duplicate) {
+        if (preview.blockingIssues.empty) {
           doImport(selectedPath, targetCompanyId, false)
         } else {
           runReplacePreview(selectedPath, targetCompanyId)
@@ -300,7 +300,7 @@ final class SieExchangeDialog extends JDialog {
       showError(I18n.instance.getString('sieExchangeDialog.error.closingEntriesPreventReplace'), null)
       return
     }
-    if (replacePreview.purgeSummary != null) {
+    if (replacePreview.purgeSummary != null && replacePreview.blockingIssues.empty) {
       FiscalYearPurgeSummary purge = replacePreview.purgeSummary
       int choice = JOptionPane.showConfirmDialog(
           this,
@@ -324,9 +324,13 @@ final class SieExchangeDialog extends JDialog {
       doImport(selectedPath, targetCompanyId, false)
       return
     }
+    FiscalYearPurgeSummary purge = replacePreview.purgeSummary
     int choice = JOptionPane.showConfirmDialog(
         this,
-        I18n.instance.getString('sieExchangeDialog.confirm.reopenAndReplace.message'),
+        I18n.instance.format('sieExchangeDialog.confirm.reopenAndReplace.message',
+            purge.voucherCount as Object, purge.openingBalanceCount as Object,
+            purge.attachmentCount as Object, purge.vatPeriodCount as Object,
+            purge.reportArchiveCount as Object),
         I18n.instance.getString('sieExchangeDialog.confirm.reopenAndReplace.title'),
         JOptionPane.OK_CANCEL_OPTION,
         JOptionPane.WARNING_MESSAGE

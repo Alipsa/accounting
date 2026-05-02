@@ -28,7 +28,6 @@ import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
-import se.alipsa.accounting.service.SieImportPreview
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 
