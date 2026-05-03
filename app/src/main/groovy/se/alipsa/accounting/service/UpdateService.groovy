@@ -13,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.regex.Matcher
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -186,14 +187,24 @@ final class UpdateService {
     if (jarDir == null) {
       return null
     }
-    String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+    launcherPath(jarDir, System.getProperty('os.name', '').toLowerCase(Locale.ROOT))
+  }
+
+  static Path launcherPath(Path jarDir, String osName) {
     if (osName.contains('win')) {
-      return jarDir.parent.resolve('AlipsaAccounting.exe')
+      return appImageRoot(jarDir).resolve('AlipsaAccounting.exe')
     }
     if (osName.contains('mac')) {
-      return jarDir.parent.resolve('MacOS').resolve('AlipsaAccounting')
+      return appImageRoot(jarDir).resolve('MacOS').resolve('AlipsaAccounting')
     }
-    jarDir.parent.resolve('bin').resolve('AlipsaAccounting')
+    appImageRoot(jarDir).resolve('bin').resolve('AlipsaAccounting')
+  }
+
+  static Path appImageRoot(Path jarDir) {
+    if (jarDir?.fileName?.toString() == 'app' && jarDir.parent?.fileName?.toString() == 'lib') {
+      return jarDir.parent.parent
+    }
+    jarDir.parent
   }
 
   private static Path stagingDirectory() {
@@ -220,6 +231,8 @@ final class UpdateService {
     Path launcher = launcherPath()
     String launcherCommand = launcher != null ? "\"${launcher}\"" : ''
     Path backupDir = installDir.resolve('.update-backup')
+    String newMainJar = mainJarFileName(extractedDir) ?: ''
+    String newVersion = versionFromMainJar(newMainJar) ?: ''
 
     Path script
     if (isWindows) {
@@ -239,6 +252,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+${newMainJar.isEmpty() ? '' : windowsConfigUpdateCommand(installDir, newMainJar, newVersion)}
 rd /s /q "${backupDir}"
 rd /s /q "${extractedDir}"
 del "${stagingDir}\\*.zip"
@@ -260,6 +274,7 @@ if ! cp "${extractedDir}/"*.jar "${installDir}/"; then
   echo "Update failed. Please try again."
   exit 1
 fi
+${newMainJar.isEmpty() ? '' : unixConfigUpdateCommand(installDir, newMainJar, newVersion)}
 rm -rf "${backupDir}"
 rm -rf "${extractedDir}"
 rm -f "${stagingDir}/"*.zip
@@ -269,6 +284,48 @@ rm -f "\$0"
       script.toFile().setExecutable(true)
     }
     script
+  }
+
+  private static String mainJarFileName(Path directory) {
+    if (!Files.isDirectory(directory)) {
+      return null
+    }
+    Files.list(directory).withCloseable { stream ->
+      stream
+          .map { Path path -> path.fileName.toString() }
+          .filter { String fileName -> fileName ==~ /app-\d+(\.\d+)*\.jar/ }
+          .sorted()
+          .findFirst()
+          .orElse(null)
+    }
+  }
+
+  private static String versionFromMainJar(String fileName) {
+    Matcher matcher = fileName =~ /^app-(.+)\.jar$/
+    matcher.matches() ? matcher.group(1) : null
+  }
+
+  private static String unixConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
+    String versionCommand = newVersion.isEmpty()
+        ? ''
+        : "  sed -i.bak \"s#^java-options=-Djpackage.app-version=.*#java-options=-Djpackage.app-version=${newVersion}#\" \"\$cfg\"\n"
+    """\
+for cfg in "${installDir}/"*.cfg; do
+  [ -f "\$cfg" ] || continue
+  sed -i.bak "s#^app.classpath=\\\$APPDIR/app-.*\\.jar#app.classpath=\\\$APPDIR/${newMainJar}#" "\$cfg"
+${versionCommand}  rm -f "\$cfg.bak"
+done
+""".stripIndent()
+  }
+
+  private static String windowsConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
+    String escapedInstallDir = installDir.toString().replace('\\', '\\\\')
+    String versionCommand = newVersion.isEmpty()
+        ? ''
+        : "  (Get-Content -LiteralPath \$cfg.FullName) -replace '^java-options=-Djpackage.app-version=.*', 'java-options=-Djpackage.app-version=${newVersion}' | Set-Content -LiteralPath \$cfg.FullName\n"
+    """\
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; (Get-Content -LiteralPath \$cfg.FullName) -replace '^app.classpath=\\\$APPDIR[/\\\\]app-.*\\.jar', 'app.classpath=\\\$APPDIR/${newMainJar}' | Set-Content -LiteralPath \$cfg.FullName; ${versionCommand.trim()} }"
+""".stripIndent()
   }
 
   private static void launchUpdaterAndExit(Path updaterScript) {
