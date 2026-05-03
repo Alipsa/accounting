@@ -2,7 +2,8 @@
 #
 # Triggers the Build Distributions workflow on GitHub, waits for it to finish,
 # downloads all platform artifacts, signs them with GPG, and creates a GitHub
-# release with the signed artifacts attached.
+# release with the signed artifacts attached. Release notes are read from the
+# matching "## v<version>" section in release.md.
 #
 # Usage:
 #   ./release.sh                  # build, download, sign, release
@@ -10,7 +11,8 @@
 #   ./release.sh --no-release     # skip GitHub release creation
 #   ./release.sh --skip-build     # skip CI build (use existing dist/)
 #
-# Prerequisites: gh (GitHub CLI), authenticated with repo access.
+# Prerequisites: gh (GitHub CLI), authenticated with repo access, and a
+# release.md section for the current project version.
 #
 
 set -euo pipefail
@@ -18,6 +20,7 @@ set -euo pipefail
 REPO="Alipsa/accounting"
 WORKFLOW="build-distributions.yml"
 DIST_DIR="dist"
+RELEASE_NOTES_FILE="release.md"
 SIGN=true
 RELEASE=true
 BUILD=true
@@ -40,6 +43,44 @@ if [ -z "$VERSION" ]; then
 fi
 
 echo "Project version: $VERSION (tag: $TAG)"
+
+if [ "$RELEASE" = true ]; then
+  if [ ! -f "$RELEASE_NOTES_FILE" ]; then
+    echo "ERROR: Release notes file not found: $RELEASE_NOTES_FILE"
+    exit 1
+  fi
+
+  release_body=$(awk -v tag="$TAG" '
+    BEGIN {
+      prefix = "## " tag
+    }
+    index($0, prefix) == 1 {
+      suffix = substr($0, length(prefix) + 1)
+      if (suffix == "" || substr(suffix, 1, 1) == "," || substr(suffix, 1, 1) == " ") {
+        found = 1
+        print
+        next
+      }
+    }
+    found && /^## v[0-9]/ {
+      exit
+    }
+    found {
+      print
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  ' "$RELEASE_NOTES_FILE") || {
+    echo "ERROR: No release notes section found for $TAG in $RELEASE_NOTES_FILE"
+    echo "Expected a heading like: ## $TAG, YYYY-MM-DD"
+    exit 1
+  }
+
+  echo "Using release notes from $RELEASE_NOTES_FILE section $TAG."
+fi
 
 if [ "$BUILD" = true ]; then
   branch=$(git rev-parse --abbrev-ref HEAD)
@@ -116,49 +157,6 @@ fi
 
 if [ "$RELEASE" = true ]; then
   echo ""
-
-  # Generate release notes from commits since the last tag (or all if no tags exist)
-  last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
-  if [ -n "$last_tag" ]; then
-    range="${last_tag}..HEAD"
-  else
-    range="HEAD"
-  fi
-  notes=$(git log "$range" --pretty=format:"- %s" --no-merges)
-
-  release_body="## Alipsa Accounting ${VERSION}
-
-### Changes
-${notes}
-
-### Downloads
-| Platform | File |
-|----------|------|"
-
-  for file in "$DIST_DIR"/*; do
-    [ -f "$file" ] || continue
-    case "$file" in *.asc|*.sha256) continue ;; esac
-    name=$(basename "$file")
-    case "$name" in
-      *windows*)  platform="Windows" ;;
-      *linux*)    platform="Linux" ;;
-      *macos*)    platform="macOS" ;;
-      app-*.zip)  platform="Auto-updater" ;;
-      *)          platform="$name" ;;
-    esac
-    release_body="${release_body}
-| ${platform} | \`${name}\` |"
-  done
-
-  if [ "$SIGN" = true ]; then
-    release_body="${release_body}
-
-All artifacts are signed with GPG. Verify with:
-\`\`\`
-gpg --verify <file>.asc <file>
-\`\`\`"
-  fi
-
   echo "Creating GitHub release $TAG..."
   mapfile -t release_assets < <(find "$DIST_DIR" -maxdepth 1 -type f)
   gh release create "$TAG" \
