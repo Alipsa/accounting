@@ -8,6 +8,8 @@ import org.junit.jupiter.params.provider.CsvSource
 
 import se.alipsa.accounting.service.UpdateService
 
+import java.nio.file.Path
+
 final class UpdateServiceTest {
 
   @ParameterizedTest
@@ -61,5 +63,29 @@ final class UpdateServiceTest {
   @Test
   void parseVersionTreatsNonNumericAsZero() {
     assertArrayEquals([1, 0, 0] as int[], UpdateService.parseVersion('1.beta.0'))
+  }
+
+  @Test
+  void launcherPathUsesJpackageAppImageRootOnLinux() {
+    assertEquals(
+        Path.of('/opt/AlipsaAccounting/bin/AlipsaAccounting'),
+        UpdateService.launcherPath(Path.of('/opt/AlipsaAccounting/lib/app'), 'linux')
+    )
+  }
+
+  @Test
+  void launcherPathUsesJpackageAppImageRootOnWindows() {
+    assertEquals(
+        Path.of('C:/Programs/AlipsaAccounting/AlipsaAccounting.exe'),
+        UpdateService.launcherPath(Path.of('C:/Programs/AlipsaAccounting/lib/app'), 'windows')
+    )
+  }
+
+  @Test
+  void launcherPathUsesJpackageAppImageRootOnMacos() {
+    assertEquals(
+        Path.of('/Applications/AlipsaAccounting.app/Contents/MacOS/AlipsaAccounting'),
+        UpdateService.launcherPath(Path.of('/Applications/AlipsaAccounting.app/Contents/app'), 'mac os x')
+    )
   }
 }
