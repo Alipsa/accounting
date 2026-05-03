@@ -175,7 +175,7 @@ final class UpdateDialog extends JDialog {
         } catch (Exception exception) {
           log.log(Level.WARNING, 'Update apply failed.', exception)
           resetAfterError()
-          showError(I18n.instance.format('updateDialog.error.downloadFailed',
+          showError(I18n.instance.format('updateDialog.error.applyFailed',
               exception.message ?: exception.class.simpleName))
         }
       }

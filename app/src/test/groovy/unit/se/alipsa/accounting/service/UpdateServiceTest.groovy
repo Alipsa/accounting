@@ -82,7 +82,7 @@ final class UpdateServiceTest {
   }
 
   @Test
-  void launcherPathUsesJpackageAppImageRootOnMacos() {
+  void launcherPathUsesMacosAppBundleContentsRoot() {
     assertEquals(
         Path.of('/Applications/AlipsaAccounting.app/Contents/MacOS/AlipsaAccounting'),
         UpdateService.launcherPath(Path.of('/Applications/AlipsaAccounting.app/Contents/app'), 'mac os x')

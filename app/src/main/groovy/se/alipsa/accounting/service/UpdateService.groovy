@@ -308,12 +308,13 @@ rm -f "\$0"
   private static String unixConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
     String versionCommand = newVersion.isEmpty()
         ? ''
-        : "  sed -i \"s#^java-options=-Djpackage.app-version=.*#java-options=-Djpackage.app-version=${newVersion}#\" \"\$cfg\"\n"
+        : "  sed -i.bak \"s#^java-options=-Djpackage.app-version=.*#java-options=-Djpackage.app-version=${newVersion}#\" \"\$cfg\"\n"
     """\
 for cfg in "${installDir}/"*.cfg; do
   [ -f "\$cfg" ] || continue
-  sed -i "s#^app.classpath=\\\$APPDIR/app-.*\\.jar#app.classpath=\\\$APPDIR/${newMainJar}#" "\$cfg"
-${versionCommand}done
+  sed -i.bak "s#^app.classpath=\\\$APPDIR/app-.*\\.jar#app.classpath=\\\$APPDIR/${newMainJar}#" "\$cfg"
+${versionCommand}  rm -f "\$cfg.bak"
+done
 """.stripIndent()
   }
 
@@ -323,7 +324,7 @@ ${versionCommand}done
         ? ''
         : "  (Get-Content -LiteralPath \$cfg.FullName) -replace '^java-options=-Djpackage.app-version=.*', 'java-options=-Djpackage.app-version=${newVersion}' | Set-Content -LiteralPath \$cfg.FullName\n"
     """\
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; (Get-Content -LiteralPath \$cfg.FullName) -replace '^app.classpath=\\\$APPDIR/app-.*\\.jar', 'app.classpath=\\\$APPDIR/${newMainJar}' | Set-Content -LiteralPath \$cfg.FullName; ${versionCommand.trim()} }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; (Get-Content -LiteralPath \$cfg.FullName) -replace '^app.classpath=\\\$APPDIR[/\\\\]app-.*\\.jar', 'app.classpath=\\\$APPDIR/${newMainJar}' | Set-Content -LiteralPath \$cfg.FullName; ${versionCommand.trim()} }"
 """.stripIndent()
   }
 
