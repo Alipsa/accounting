@@ -19,19 +19,21 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 - **Verifikationer** — registrera, bokför och korrigera verifikationer med bilagor.
 - **Moms** — beräkna, rapportera och bokför momsöverföring per period. Stöder månads-, kvartals- och årsmoms.
 - **Rapporter** — generera verifikationslista, huvudbok, provbalans, resultat- och balansrapport, transaktionsrapport och momsrapport som PDF eller CSV. Rapporter arkiveras med checksumma.
-- **SIE4** — importera och exportera bokföringsdata via SIE4 med dubblettskydd och integritetskontroll.
+- **SIE4** — importera och exportera bokföringsdata via SIE4 med dubblettskydd, automatisk import/ersätt-logik och integritetskontroll.
 - **Bokslut** — stäng räkenskapsår med bokslutsverifikation och automatisk generering av nästa års ingående balanser.
+- **Arkivering och radering** — arkivera företag som inte längre ska visas i normalflödet, återställ arkiverade företag och radera företag eller räkenskapsår när bevarandekraven tillåter det.
+- **Kraschsäkra filarkiv** — bilagor och rapportarkiv verifieras vid start, och avbrutna bilageoperationer återställs eller rapporteras tydligt.
 - **Revisionskedja** — alla väsentliga händelser loggas i en hashkedja för spårbarhet.
+- **Uppdateringar och avinstallation** — kontrollera uppdateringar från programmet, installera generiska uppdateringsarkiv och använd plattformsspecifika avinstallationsskript med separata bekräftelser för programfiler och användardata.
 
 ### Avgränsningar
 
-Följande funktioner ingår inte i v1.1.x:
+Följande funktioner ingår inte i v1.2.1:
 
 - Fakturering och lön
 - Bankintegration
 - Årsredovisningsflöden
 - Anläggningsregister (planerat till v1.3.0)
-- Förbättrad kraschsäker bilagehantering (planerat till v1.2.0)
 
 ## Förutsättningar
 
@@ -110,6 +112,7 @@ Kör alla kommandon från rotmappen.
 - Startup-verifiering kontrollerar driftkonfiguration och integritet för hashkedjor, bilagor och rapportarkiv.
 - Känsliga operationer som rapportexport, SIE-export, backup och årsstängning blockerar på kritiska integritetsfel.
 - Bokföringsdata, bilagor och rapportarkiv omfattas av sju års bevarandespärr.
+- Borttagning av räkenskapsår och företag visar förhandsgranskning eller blockerande fel innan data tas bort.
 
 ## Backup och restore
 
@@ -199,6 +202,8 @@ The application stores accounting data locally on the user's system.
 The application does not upload accounting records, attachments, reports, backups, or exported files to project-operated servers.
 
 The application can perform a background update check against GitHub Releases on startup, and may download release artifacts from GitHub when the user explicitly chooses to install an update. Automatic update checks can be disabled in Settings. See the privacy policy for details.
+
+The in-app updater uses the generic `app-<version>.zip` archive and updates the installed jpackage app image in place. Platform release zips are used for fresh installs or manual upgrades.
 
 ### Bygga en release
 
