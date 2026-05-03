@@ -1,0 +1,58 @@
+param(
+  [string]$InstallDir = ""
+)
+
+$ErrorActionPreference = "Stop"
+
+function Confirm-Removal {
+  param([string]$Prompt)
+
+  $answer = Read-Host "$Prompt [y/N]"
+  return $answer -match "^(y|yes|j|ja)$"
+}
+
+function Remove-DirectoryAfterPrompt {
+  param(
+    [string]$Path,
+    [string]$Description
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  if (Test-Path -LiteralPath $Path -PathType Container) {
+    if (Confirm-Removal "Ta bort $Description $Path?") {
+      Remove-Item -LiteralPath $Path -Recurse -Force
+      Write-Host "$Description borttagen: $Path"
+    } else {
+      Write-Host "$Description lämnades kvar: $Path"
+    }
+  } else {
+    Write-Host "Ingen $Description att ta bort ($Path finns inte)."
+  }
+}
+
+$defaultInstallDirs = @(
+  (Join-Path $env:LOCALAPPDATA "@APP_NAME@"),
+  (Join-Path $env:ProgramFiles "@APP_NAME@")
+)
+
+if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+  $existingInstallDir = $defaultInstallDirs | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+  if ($existingInstallDir) {
+    $InstallDir = $existingInstallDir
+  } else {
+    $entered = Read-Host "Installationskatalog att ta bort, lämna tomt för att hoppa över"
+    $InstallDir = $entered.Trim()
+  }
+}
+
+Write-Host "Kör först Windows vanliga avinstallation om @DISPLAY_NAME@ finns i Installerade appar."
+Remove-DirectoryAfterPrompt -Path $InstallDir -Description "installationskatalog"
+
+$dataDir = Join-Path $env:APPDATA "Alipsa\Accounting"
+if (Test-Path -LiteralPath $dataDir -PathType Container) {
+  Write-Host "Användardata innehåller databas, bilagor, rapporter, säkerhetskopior och loggar."
+}
+Remove-DirectoryAfterPrompt -Path $dataDir -Description "användardata"

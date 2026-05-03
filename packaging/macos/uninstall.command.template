@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# Avinstallationsskript för @DISPLAY_NAME@.
+# Tar bort app-paketet och kan även ta bort användardata.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_APP="${SCRIPT_DIR}/@APP_NAME@.app"
+APPLICATIONS_APP="/Applications/@APP_NAME@.app"
+DATA_DIR="${HOME}/Library/Application Support/@APP_NAME@"
+
+confirm() {
+  local prompt="$1"
+  local answer
+  read -r -p "${prompt} [y/N] " answer
+  case "${answer}" in
+    [yY]|[yY][eE][sS]|[jJ]|[jJ][aA])
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+remove_app() {
+  local app_path="$1"
+  if [ -d "${app_path}" ]; then
+    if confirm "Ta bort applikationen ${app_path}?"; then
+      rm -rf "${app_path}"
+      echo "Applikationen borttagen: ${app_path}"
+    else
+      echo "Applikationen lämnades kvar: ${app_path}"
+    fi
+  fi
+}
+
+if [ -d "${LOCAL_APP}" ]; then
+  remove_app "${LOCAL_APP}"
+elif [ -d "${APPLICATIONS_APP}" ]; then
+  remove_app "${APPLICATIONS_APP}"
+else
+  echo "Ingen applikation att ta bort (${LOCAL_APP} eller ${APPLICATIONS_APP} finns inte)."
+fi
+
+if [ -d "${DATA_DIR}" ]; then
+  echo "Användardata innehåller databas, bilagor, rapporter, säkerhetskopior och loggar."
+  if confirm "Ta bort användardata ${DATA_DIR}?"; then
+    rm -rf "${DATA_DIR}"
+    echo "Användardata borttagen: ${DATA_DIR}"
+  else
+    echo "Användardata lämnades kvar: ${DATA_DIR}"
+  fi
+else
+  echo "Ingen användardata att ta bort (${DATA_DIR} finns inte)."
+fi

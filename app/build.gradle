@@ -74,8 +74,12 @@ def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file
 def linuxDesktopEntry = releaseConfig.generatedRoot.map { it.file("linux-desktop/${releaseConfig.appName}.desktop") }
 def linuxInstallTemplate = releaseConfig.packagingRoot.dir('linux').file('install.sh.template')
 def linuxUninstallTemplate = releaseConfig.packagingRoot.dir('linux').file('uninstall.sh.template')
+def macosUninstallTemplate = releaseConfig.packagingRoot.dir('macos').file('uninstall.command.template')
+def windowsUninstallCleanupTemplate = releaseConfig.packagingRoot.dir('windows').file('uninstall-cleanup.ps1.template')
 def linuxInstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/install.sh') }
 def linuxUninstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/uninstall.sh') }
+def macosUninstallScript = releaseConfig.generatedRoot.map { it.file('macos-scripts/uninstall.command') }
+def windowsUninstallCleanupScript = releaseConfig.generatedRoot.map { it.file('windows-scripts/uninstall-cleanup.ps1') }
 
 def currentOsName = System.getProperty('os.name', 'unknown').toLowerCase(Locale.ROOT)
 def currentPlatform = currentOsName.contains('win') ? 'windows' : currentOsName.contains('mac') ? 'macos' : 'linux'
@@ -289,6 +293,30 @@ tasks.register('generateLinuxInstallScripts') {
   }
 }
 
+tasks.register('generateMacosUninstallScript') {
+  inputs.file(macosUninstallTemplate)
+  outputs.file(macosUninstallScript)
+  doLast {
+    File target = macosUninstallScript.get().asFile
+    target.parentFile.mkdirs()
+    target.text = macosUninstallTemplate.asFile.getText('UTF-8')
+        .replace('@DISPLAY_NAME@', releaseConfig.displayName)
+        .replace('@APP_NAME@', releaseConfig.appName)
+  }
+}
+
+tasks.register('generateWindowsUninstallCleanupScript') {
+  inputs.file(windowsUninstallCleanupTemplate)
+  outputs.file(windowsUninstallCleanupScript)
+  doLast {
+    File target = windowsUninstallCleanupScript.get().asFile
+    target.parentFile.mkdirs()
+    target.text = windowsUninstallCleanupTemplate.asFile.getText('UTF-8')
+        .replace('@DISPLAY_NAME@', releaseConfig.displayName)
+        .replace('@APP_NAME@', releaseConfig.appName)
+  }
+}
+
 tasks.register('prepareLinuxPackagingResources', Copy) {
   dependsOn 'generateReleaseMetadata', 'generateLinuxDesktopEntry'
   from(releaseConfig.packagingRoot.dir('linux'))
@@ -427,7 +455,7 @@ tasks.register('copySkillToMacosAppImage', Copy) {
 
 tasks.register('packageWindowsReleaseZip', Zip) {
   onlyIf { isWindows }
-  dependsOn 'packageWindowsInstaller'
+  dependsOn 'packageWindowsInstaller', 'generateWindowsUninstallCleanupScript'
   archiveBaseName = releaseConfig.packageName
   archiveVersion = releaseConfig.version
   archiveClassifier = 'windows'
@@ -438,6 +466,7 @@ tasks.register('packageWindowsReleaseZip', Zip) {
   from(rootProject.file('skill')) {
     into('skill')
   }
+  from(windowsUninstallCleanupScript)
 }
 
 tasks.register('packageWindowsRelease') {
@@ -447,12 +476,15 @@ tasks.register('packageWindowsRelease') {
 
 tasks.register('packageMacosReleaseZip', Zip) {
   onlyIf { isMacos }
-  dependsOn 'copySkillToMacosAppImage'
+  dependsOn 'copySkillToMacosAppImage', 'generateMacosUninstallScript'
   archiveBaseName = releaseConfig.packageName
   archiveVersion = releaseConfig.version
   archiveClassifier = 'macos'
   destinationDirectory = releaseConfig.releaseRoot.map { it.dir('macos-release') }
   from(releaseConfig.releaseRoot.map { it.dir('macos') })
+  from(macosUninstallScript) {
+    filePermissions { unix(0755) }
+  }
 }
 
 tasks.register('packageMacosRelease') {

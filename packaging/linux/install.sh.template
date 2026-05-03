@@ -46,7 +46,11 @@ Categories=Office;Finance;
 StartupWMClass=@APP_NAME@
 DESKTOP_EOF
 
-chmod 644 "${DESKTOP_FILE}"
+chmod 755 "${DESKTOP_FILE}"
+
+if command -v gio >/dev/null 2>&1; then
+  gio set "${DESKTOP_FILE}" metadata::trusted true >/dev/null 2>&1 || true
+fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${APPLICATIONS_DIR}" >/dev/null 2>&1 || true

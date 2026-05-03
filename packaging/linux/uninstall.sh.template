@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 #
 # Avinstallationsskript för @DISPLAY_NAME@.
-# Tar bort desktop-genvägen. Radera sedan katalogen @APP_NAME@/ manuellt.
+# Tar bort desktop-genvägen och kan även ta bort installation och användardata.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="${SCRIPT_DIR}/@APP_NAME@"
 APPLICATIONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
 DESKTOP_FILE="${APPLICATIONS_DIR}/@APP_NAME@.desktop"
+DATA_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/alipsa-accounting"
+
+confirm() {
+  local prompt="$1"
+  local answer
+  read -r -p "${prompt} [y/N] " answer
+  case "${answer}" in
+    [yY]|[yY][eE][sS]|[jJ]|[jJ][aA])
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
 
 if [ -f "${DESKTOP_FILE}" ]; then
   rm -f "${DESKTOP_FILE}"
@@ -18,5 +35,25 @@ else
   echo "Ingen genväg att ta bort (${DESKTOP_FILE} finns inte)."
 fi
 
-echo "Radera katalogen @APP_NAME@/ manuellt om du vill ta bort applikationen helt."
-echo "Användardata ligger under \${XDG_DATA_HOME:-\$HOME/.local/share}/alipsa-accounting — ta bort det separat om det inte ska sparas."
+if [ -d "${INSTALL_DIR}" ]; then
+  if confirm "Ta bort installationskatalogen ${INSTALL_DIR}?"; then
+    rm -rf "${INSTALL_DIR}"
+    echo "Installationskatalogen borttagen: ${INSTALL_DIR}"
+  else
+    echo "Installationskatalogen lämnades kvar: ${INSTALL_DIR}"
+  fi
+else
+  echo "Ingen installationskatalog att ta bort (${INSTALL_DIR} finns inte)."
+fi
+
+if [ -d "${DATA_DIR}" ]; then
+  echo "Användardata innehåller databas, bilagor, rapporter, säkerhetskopior och loggar."
+  if confirm "Ta bort användardata ${DATA_DIR}?"; then
+    rm -rf "${DATA_DIR}"
+    echo "Användardata borttagen: ${DATA_DIR}"
+  else
+    echo "Användardata lämnades kvar: ${DATA_DIR}"
+  fi
+else
+  echo "Ingen användardata att ta bort (${DATA_DIR} finns inte)."
+fi

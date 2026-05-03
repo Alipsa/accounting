@@ -177,8 +177,12 @@ class AcceptanceCriteriaTest {
     assertTrue(output.contains('Launch verification OK'))
     assertTrue(Files.isRegularFile(verifyHome.resolve('data').resolve('accounting.mv.db')))
     assertTrue(Files.isRegularFile(packagingRoot.resolve('linux').resolve('AlipsaAccounting.png')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('linux').resolve('install.sh.template')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('linux').resolve('uninstall.sh.template')))
     assertTrue(Files.isRegularFile(packagingRoot.resolve('windows').resolve('AlipsaAccounting.ico')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('windows').resolve('uninstall-cleanup.ps1.template')))
     assertTrue(Files.isRegularFile(packagingRoot.resolve('macos').resolve('AlipsaAccounting.icns')))
+    assertTrue(Files.isRegularFile(packagingRoot.resolve('macos').resolve('uninstall.command.template')))
   }
 
   @Test

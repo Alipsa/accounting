@@ -166,9 +166,9 @@ Varje release publiceras på [GitHub Releases](https://github.com/Alipsa/account
 
 | Fil                                       | Plattform                                                             |
 |-------------------------------------------|-----------------------------------------------------------------------|
-| `alipsa-accounting-<version>-linux.zip`   | Linux — app-image, `.desktop`-fil och `skill/accounting-mcp.md`       |
-| `alipsa-accounting-<version>-windows.zip` | Windows — exe-installerare och `skill/accounting-mcp.md`              |
-| `alipsa-accounting-<version>-macos.zip`   | macOS — `AlipsaAccounting.app` och `skill/accounting-mcp.md`          |
+| `alipsa-accounting-<version>-linux.zip`   | Linux — app-image, install-/avinstallationsskript och `skill/accounting-mcp.md` |
+| `alipsa-accounting-<version>-windows.zip` | Windows — exe-installerare, cleanup-skript och `skill/accounting-mcp.md`        |
+| `alipsa-accounting-<version>-macos.zip`   | macOS — `AlipsaAccounting.app`, avinstallationsskript och `skill/accounting-mcp.md` |
 | `app-<version>.zip`                       | Generiskt arkiv som används av den inbyggda automatiska uppdateraren  |
 
 Varje distributionsfil åtföljs av två verifieringsfiler:
@@ -218,7 +218,7 @@ Om Gradle hittar fel JDK för jpackage (t.ex. en inbäddad JDK utan jpackage) ka
 
 Byggartefakter skrivs till `app/build/release/` och använder samma appnamn, versionsnummer och ikonuppsättning för alla tre plattformar.
 
-Alla tre plattformsreleaserna producerar ett zip-arkiv som innehåller `skill/accounting-mcp.md`. Linux-arkivet innehåller app-imagen och installationsskripten. Windows-arkivet innehåller exe-installeraren med meny- och skrivbordsgenväg. macOS-arkivet innehåller `AlipsaAccounting.app`.
+Alla tre plattformsreleaserna producerar ett zip-arkiv som innehåller `skill/accounting-mcp.md`. Linux-arkivet innehåller app-imagen samt `install.sh` och `uninstall.sh`. Windows-arkivet innehåller exe-installeraren med meny- och skrivbordsgenväg samt `uninstall-cleanup.ps1` för valfri borttagning av kvarvarande installationskatalog och användardata. macOS-arkivet innehåller `AlipsaAccounting.app` och `uninstall.command`.
 
 Claude Code och Codex läser inte automatiskt `skill/`-katalogen; extrahera arkivet och länka eller kopiera den till klientens skill-katalog:
 
@@ -243,5 +243,7 @@ Applikationen använder plattformsspecifika standardvägar för data och loggar:
 - macOS: `~/Library/Application Support/AlipsaAccounting`
 
 Datakatalogen är skild från applikationsinstallationen. Det innebär att befintlig data är tillgänglig direkt när en ny version installeras — ingen manuell flytt behövs. På Windows tar avinstallationen av den gamla versionen inte bort `%APPDATA%\Alipsa\Accounting`.
+
+Avinstallationsskripten frågar innan de tar bort installationskatalogen och frågar separat innan de tar bort användardata. Standardvalet är att behålla både installation och data om användaren bara trycker Enter.
 
 Signering av Windows-installatör och notarisering/signering av macOS-app är avsiktligt lämnade som framtida release-steg. Nuvarande buildflöde producerar signerbara artefakter men utför inte signering automatiskt.
