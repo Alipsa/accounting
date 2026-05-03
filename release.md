@@ -1,5 +1,35 @@
 # Alipsa Accounting, Release History
 
+## v1.2.1, 2026-05-03
+### Patch Release
+
+This patch release improves update installation reliability, adds safer uninstall helpers, and tightens the smart SIE import replacement flow.
+
+### Highlights
+
+- **Fixed in-app updater for jpackage installs** — Updating from an installed app-image now resolves the correct launcher path, updates `AlipsaAccounting.cfg` to point at the new `app-<version>.jar`, and updates the packaged app-version metadata. The updater script is portable across Linux and macOS `sed`, handles Windows classpath separators, and the update dialog now reports installation failures instead of remaining stuck in the applying state.
+- **Safer uninstall helpers** — Linux, macOS, and Windows releases now include uninstall or cleanup scripts that prompt before deleting the application installation directory and prompt separately before deleting accounting data. The default answer keeps both installation files and user data.
+- **Trusted Linux desktop entries** — The Linux install script now marks the generated `.desktop` launcher executable and sets desktop trust metadata when `gio` is available, reducing “untrusted launcher” prompts after installation.
+- **Smart SIE import refinements** — Replacement previews now use the same purge-summary collection path for blocked and unblocked replacements, and the unlock-and-replace confirmation shows the affected data counts before replacing a closed fiscal year without closing entries.
+- **Startup verification fix** — The main window now constructs startup verification with the attachment service dependency required by the v1.2 attachment recovery checks.
+- **Release housekeeping** — Local `releases/` and `issues/` directories are ignored by Git, and the project version is bumped to 1.2.1.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.2.1-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.2.1-windows.zip` |
+| macOS                     | `alipsa-accounting-1.2.1-macos.zip`   |
+| Universal updater archive | `app-1.2.1.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.2.0, 2026-05-02
 ### Minor Release
 
