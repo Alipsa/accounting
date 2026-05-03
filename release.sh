@@ -44,6 +44,31 @@ fi
 
 echo "Project version: $VERSION (tag: $TAG)"
 
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_branch" != "main" ]; then
+  echo "ERROR: release.sh must be run from the main branch. Current branch: $current_branch"
+  exit 1
+fi
+
+upstream_ref=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true)
+if [ "$upstream_ref" != "origin/main" ]; then
+  echo "ERROR: main must track origin/main. Current upstream: ${upstream_ref:-none}"
+  exit 1
+fi
+
+echo "Fetching origin/main..."
+git fetch origin main
+
+local_main=$(git rev-parse main)
+remote_main=$(git rev-parse origin/main)
+if [ "$local_main" != "$remote_main" ]; then
+  echo "ERROR: local main is not in sync with origin/main."
+  echo "  local main:  $local_main"
+  echo "  origin/main: $remote_main"
+  echo "Push or pull main before releasing."
+  exit 1
+fi
+
 if [ "$RELEASE" = true ]; then
   if [ ! -f "$RELEASE_NOTES_FILE" ]; then
     echo "ERROR: Release notes file not found: $RELEASE_NOTES_FILE"
@@ -83,7 +108,7 @@ if [ "$RELEASE" = true ]; then
 fi
 
 if [ "$BUILD" = true ]; then
-  branch=$(git rev-parse --abbrev-ref HEAD)
+  branch="$current_branch"
   echo "Triggering workflow on branch: $branch"
   gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$branch"
 
