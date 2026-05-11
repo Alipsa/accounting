@@ -143,4 +143,24 @@ final class AmountFormatterTest {
     assertEquals(2, result.scale())
     assertEquals(42.00G, result)
   }
+
+  @Test
+  void formatEditedTreatsZeroAsEmpty() {
+    assertEquals('', AmountFormatter.formatEdited('0', EN))
+  }
+
+  @Test
+  void formatEditedFormatsValidSwedishAmount() {
+    assertEquals(AmountFormatter.format(1234.56G, SV), AmountFormatter.formatEdited('1234,56', SV))
+  }
+
+  @Test
+  void formatEditedFormatsValidUsAmount() {
+    assertEquals('1,234.56', AmountFormatter.formatEdited('1234.56', EN))
+  }
+
+  @Test
+  void formatEditedKeepsInvalidInput() {
+    assertEquals('abc', AmountFormatter.formatEdited(' abc ', SV))
+  }
 }
