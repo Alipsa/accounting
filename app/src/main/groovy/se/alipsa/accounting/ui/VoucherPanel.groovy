@@ -128,6 +128,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (event.propertyName == ActiveCompanyManager.COMPANY_ID_PROPERTY) {
       SwingUtilities.invokeLater {
         installAccountLookupEditor()
+        installAmountAndTextEditors()
         reloadVoucherList()
       }
     } else if (event.propertyName == ActiveCompanyManager.FISCAL_YEAR_PROPERTY) {

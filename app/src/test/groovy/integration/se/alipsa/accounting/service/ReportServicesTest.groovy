@@ -23,6 +23,7 @@ import se.alipsa.accounting.domain.report.ReportArchive
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 
@@ -109,8 +110,8 @@ class ReportServicesTest {
     assertEquals(ReportType.VOUCHER_LIST, archive.reportType)
     assertEquals(
         '''﻿Datum;Verifikation;Serie;Text;Status;Debet;Kredit
-2026-01-10;A-1;A;Försäljning januari;ACTIVE;1250.00;1250.00
-2026-01-18;A-2;A;Leverantörsfaktura;ACTIVE;250.00;250.00
+2026-01-10;A-1;A;Försäljning januari;ACTIVE;1\u00A0250,00;1\u00A0250,00
+2026-01-18;A-2;A;Leverantörsfaktura;ACTIVE;250,00;250,00
 ''',
         new String(archivedCsv, StandardCharsets.UTF_8)
     )
@@ -175,18 +176,18 @@ class ReportServicesTest {
 
     assertEquals(
         '''﻿Konto;Namn;Datum;Verifikation;Text;Debet;Kredit;Saldo
-1510;Kundfordringar;;;Ingående balans;0.00;0.00;0.00
-1510;Kundfordringar;2026-01-10;A-1;Kundfordran;1250.00;0.00;1250.00
-2440;Leverantörsskulder;;;Ingående balans;0.00;0.00;0.00
-2440;Leverantörsskulder;2026-01-18;A-2;Leverantörsskuld;0.00;250.00;250.00
-2611;Utgående moms 25%;;;Ingående balans;0.00;0.00;0.00
-2611;Utgående moms 25%;2026-01-10;A-1;Utgående moms;0.00;250.00;250.00
-2641;Debiterad ingående moms;;;Ingående balans;0.00;0.00;0.00
-2641;Debiterad ingående moms;2026-01-18;A-2;Ingående moms;50.00;0.00;50.00
-3010;Försäljning;;;Ingående balans;0.00;0.00;0.00
-3010;Försäljning;2026-01-10;A-1;Försäljning;0.00;1000.00;1000.00
-4010;Varuinköp;;;Ingående balans;0.00;0.00;0.00
-4010;Varuinköp;2026-01-18;A-2;Varuinköp;200.00;0.00;200.00
+1510;Kundfordringar;;;Ingående balans;0,00;0,00;0,00
+1510;Kundfordringar;2026-01-10;A-1;Kundfordran;1\u00A0250,00;0,00;1\u00A0250,00
+2440;Leverantörsskulder;;;Ingående balans;0,00;0,00;0,00
+2440;Leverantörsskulder;2026-01-18;A-2;Leverantörsskuld;0,00;250,00;250,00
+2611;Utgående moms 25%;;;Ingående balans;0,00;0,00;0,00
+2611;Utgående moms 25%;2026-01-10;A-1;Utgående moms;0,00;250,00;250,00
+2641;Debiterad ingående moms;;;Ingående balans;0,00;0,00;0,00
+2641;Debiterad ingående moms;2026-01-18;A-2;Ingående moms;50,00;0,00;50,00
+3010;Försäljning;;;Ingående balans;0,00;0,00;0,00
+3010;Försäljning;2026-01-10;A-1;Försäljning;0,00;1\u00A0000,00;1\u00A0000,00
+4010;Varuinköp;;;Ingående balans;0,00;0,00;0,00
+4010;Varuinköp;2026-01-18;A-2;Varuinköp;200,00;0,00;200,00
 ''',
         csv
     )
@@ -300,7 +301,7 @@ class ReportServicesTest {
     String csv = new String(reportExportService.renderCsv(reportDataService.generate(selection)), StandardCharsets.UTF_8)
 
     assertTrue(csv.startsWith('\uFEFF'))
-    assertTrue(csv.contains("2026-01-20;A-3;A;'=2+2;ACTIVE;10.00;10.00"))
+    assertTrue(csv.contains("2026-01-20;A-3;A;'=2+2;ACTIVE;10,00;10,00"))
   }
 
   @Test
@@ -326,8 +327,8 @@ class ReportServicesTest {
         LocalDate.of(2026, 2, 28)
     ))
 
-    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '', '', 'Ingående balans', '0.00', '0.00', '1350.00']))
-    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '2026-02-10', 'A-3', 'Kundfordran', '125.00', '0.00', '1475.00']))
+    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '', '', 'Ingående balans', '0,00', '0,00', '1\u00A0350,00']))
+    assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '2026-02-10', 'A-3', 'Kundfordran', '125,00', '0,00', '1\u00A0475,00']))
   }
 
   @Test
@@ -340,8 +341,8 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 31)
     ))
 
-    BigDecimal debitTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> new BigDecimal(row[3]) } as BigDecimal
-    BigDecimal creditTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> new BigDecimal(row[4]) } as BigDecimal
+    BigDecimal debitTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> AmountFormatter.parseAmount(row[3], Locale.forLanguageTag('sv-SE')) } as BigDecimal
+    BigDecimal creditTotal = report.tableRows.sum(BigDecimal.ZERO) { List<String> row -> AmountFormatter.parseAmount(row[4], Locale.forLanguageTag('sv-SE')) } as BigDecimal
 
     assertEquals(1500.00G, debitTotal)
     assertEquals(debitTotal, creditTotal)
@@ -365,9 +366,9 @@ class ReportServicesTest {
     ))
 
     List<String> row1930 = report.tableRows.find { List<String> row -> row[0] == '1930' }
-    assertEquals('500.00', row1930[3])
-    assertEquals('0.00', row1930[4])
-    assertEquals('500.00', row1930[5])
+    assertEquals('500,00', row1930[3])
+    assertEquals('0,00', row1930[4])
+    assertEquals('500,00', row1930[5])
   }
 
   @Test
@@ -407,8 +408,8 @@ class ReportServicesTest {
     ))
 
     assertEquals(2, report.tableRows.size())
-    assertTrue(report.tableRows.contains(['OUTPUT_25', 'Utgående moms 25 %', '1000.00', '250.00', '0.00']))
-    assertTrue(report.tableRows.contains(['INPUT_25', 'Ingående moms 25 %', '200.00', '0.00', '50.00']))
+    assertTrue(report.tableRows.contains(['OUTPUT_25', 'Utgående moms 25 %', '1\u00A0000,00', '250,00', '0,00']))
+    assertTrue(report.tableRows.contains(['INPUT_25', 'Ingående moms 25 %', '200,00', '0,00', '50,00']))
   }
 
   @Test
