@@ -42,6 +42,7 @@ final class AmountFormatter {
     if (groupSep == ' ' as char) {
       normalized = normalized.replace(' ', '')
     }
+    // For sv-SE, '.' is not a grouping separator, so plain decimal-dot input reaches BigDecimal unchanged.
     normalized = normalized.replace(String.valueOf(decSep), '.')
     if (decSep != '.' as char && normalized.count('.') > 1) {
       throw new IllegalArgumentException("Ogiltigt belopp: ${text}")
