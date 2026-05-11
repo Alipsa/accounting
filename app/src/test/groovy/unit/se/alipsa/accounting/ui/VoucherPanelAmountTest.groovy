@@ -1,4 +1,4 @@
-package se.alipsa.accounting.ui
+package unit.se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 
@@ -13,21 +13,21 @@ final class VoucherPanelAmountTest {
 
   @Test
   void formatEditedAmountTreatsZeroAsEmpty() {
-    assertEquals('', VoucherPanel.formatEditedAmount('0', SV))
+    assertEquals('', AmountFormatter.formatEdited('0', SV))
   }
 
   @Test
   void formatEditedAmountFormatsValidSwedishAmount() {
-    assertEquals(AmountFormatter.format(1234.56G, SV), VoucherPanel.formatEditedAmount('1234,56', SV))
+    assertEquals(AmountFormatter.format(1234.56G, SV), AmountFormatter.formatEdited('1234,56', SV))
   }
 
   @Test
   void formatEditedAmountFormatsValidUsAmount() {
-    assertEquals('1,234.56', VoucherPanel.formatEditedAmount('1234.56', EN))
+    assertEquals('1,234.56', AmountFormatter.formatEdited('1234.56', EN))
   }
 
   @Test
   void formatEditedAmountKeepsInvalidInput() {
-    assertEquals('abc', VoucherPanel.formatEditedAmount(' abc ', SV))
+    assertEquals('abc', AmountFormatter.formatEdited(' abc ', SV))
   }
 }

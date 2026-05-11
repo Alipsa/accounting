@@ -13,6 +13,8 @@ final class AmountFormatterTest {
 
   @Test
   void formatWithSwedishLocale() {
+    // Loose contains checks because the exact grouping separator (thin space vs regular space)
+    // varies across JVM versions and locales.
     String result = AmountFormatter.format(1234.56G, SV)
     assertTrue(result.contains('1'), "Expected formatted result to contain '1': ${result}")
     assertTrue(result.contains('234'), "Expected formatted result to contain '234': ${result}")
@@ -52,6 +54,11 @@ final class AmountFormatterTest {
   @Test
   void formatOrEmptyReturnsFormattedForNonZero() {
     assertEquals('42.00', AmountFormatter.formatOrEmpty(42.0G, EN))
+  }
+
+  @Test
+  void formatOrEmptyReturnsFormattedForNegativeNonZero() {
+    assertEquals('-42.00', AmountFormatter.formatOrEmpty(-42.0G, EN))
   }
 
   @Test
@@ -122,12 +129,12 @@ final class AmountFormatterTest {
 
   @Test
   void resolveLocaleNull() {
-    assertEquals(Locale.ROOT, AmountFormatter.resolveLocale(null))
+    assertEquals(Locale.forLanguageTag('sv-SE'), AmountFormatter.resolveLocale(null))
   }
 
   @Test
   void resolveLocaleBlank() {
-    assertEquals(Locale.ROOT, AmountFormatter.resolveLocale(''))
+    assertEquals(Locale.forLanguageTag('sv-SE'), AmountFormatter.resolveLocale(''))
   }
 
   @Test

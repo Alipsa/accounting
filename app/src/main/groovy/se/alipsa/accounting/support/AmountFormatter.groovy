@@ -56,16 +56,29 @@ final class AmountFormatter {
     result != null ? result : BigDecimal.ZERO.setScale(SCALE)
   }
 
+  static String formatEdited(String text, Locale locale) {
+    String trimmed = text?.trim()
+    if (!trimmed) {
+      return ''
+    }
+    try {
+      BigDecimal parsed = parseAmountOrZero(trimmed, locale)
+      formatOrEmpty(parsed, locale)
+    } catch (IllegalArgumentException ignored) {
+      trimmed
+    }
+  }
+
   static char decimalSeparator(Locale locale) {
     DecimalFormatSymbols.getInstance(locale).decimalSeparator
   }
 
   static Locale resolveLocale(String localeTag) {
     if (!localeTag) {
-      return Locale.ROOT
+      return Locale.forLanguageTag('sv-SE')
     }
     Locale resolved = Locale.forLanguageTag(localeTag)
-    resolved.language ? resolved : Locale.ROOT
+    resolved.language ? resolved : Locale.forLanguageTag('sv-SE')
   }
 
   private static DecimalFormat formatter(Locale locale) {

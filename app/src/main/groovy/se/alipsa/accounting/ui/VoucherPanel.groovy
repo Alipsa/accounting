@@ -947,19 +947,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     String.format(Locale.ROOT, '%.1f MB', bytes / (1024.0d * 1024.0d))
   }
 
-  static String formatEditedAmount(String text, Locale locale) {
-    String trimmed = text?.trim()
-    if (!trimmed) {
-      return ''
-    }
-    try {
-      BigDecimal parsed = AmountFormatter.parseAmountOrZero(trimmed, locale)
-      AmountFormatter.formatOrEmpty(parsed, locale)
-    } catch (IllegalArgumentException ignored) {
-      trimmed
-    }
-  }
-
   private static final class LineEntry {
 
     String accountNumber = ''
@@ -1189,7 +1176,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
 
     private String formatEditedAmount(String text) {
-      VoucherPanel.formatEditedAmount(text, activeCompanyManager.companyLocale)
+      AmountFormatter.formatEdited(text, activeCompanyManager.companyLocale)
     }
   }
 
