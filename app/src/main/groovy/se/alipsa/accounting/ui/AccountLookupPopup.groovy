@@ -36,7 +36,7 @@ final class AccountLookupPopup {
   private static final int DEBOUNCE_MILLIS = 200
   private static final int MAX_VISIBLE_ROWS = 10
 
-  private final AccountService accountService
+  private final AccountSearcher accountSearcher
   private final long companyId
   private final Consumer<Account> onSelect
   private final DefaultListModel<String> listModel = new DefaultListModel<>()
@@ -47,7 +47,13 @@ final class AccountLookupPopup {
   private JWindow popupWindow
 
   AccountLookupPopup(AccountService accountService, long companyId, Consumer<Account> onSelect) {
-    this.accountService = accountService
+    this({ long lookupCompanyId, String query, String classFilter, boolean activeOnly, boolean manualReviewOnly ->
+      accountService.searchAccounts(lookupCompanyId, query, classFilter, activeOnly, manualReviewOnly)
+    } as AccountSearcher, companyId, onSelect)
+  }
+
+  AccountLookupPopup(AccountSearcher accountSearcher, long companyId, Consumer<Account> onSelect) {
+    this.accountSearcher = accountSearcher
     this.companyId = companyId
     this.onSelect = onSelect
     resultList.selectionMode = ListSelectionModel.SINGLE_SELECTION
@@ -133,7 +139,7 @@ final class AccountLookupPopup {
       return
     }
     try {
-      currentResults = accountService.searchAccounts(companyId, query, null, true, false)
+      currentResults = accountSearcher.searchAccounts(companyId, query, null, true, false)
     } catch (Exception ex) {
       log.warning("Kontosökning misslyckades: ${ex.message}")
       hide()
@@ -142,6 +148,7 @@ final class AccountLookupPopup {
     if (currentResults.size() == 1
         && currentResults[0].accountNumber.toString() == query) {
       hide()
+      listModel.clear()
       onSelect.accept(currentResults[0])
       return
     }
@@ -191,6 +198,10 @@ final class AccountLookupPopup {
       hide()
       onSelect.accept(selected)
     }
+  }
+
+  static interface AccountSearcher {
+    List<Account> searchAccounts(long companyId, String query, String classFilter, boolean activeOnly, boolean manualReviewOnly)
   }
 
 }
