@@ -54,6 +54,10 @@ class ReportServicesTest {
   void setUp() {
     previousLocale = I18n.instance.locale
     I18n.instance.setLocale(Locale.forLanguageTag('sv'))
+    // NOTE: Expected sv-SE formatted amounts in this test use \u00A0 (NBSP) as the grouping
+    // separator because that is what the current JVM returns for Swedish locale. Newer JVMs
+    // (Java 9+ with CLDR data) may return \u202F (thin no-break space) instead, which would
+    // cause string-match assertions to fail until the expected values are updated.
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
