@@ -132,15 +132,17 @@ final class AccountLookupPopup {
       hide()
       return
     }
-    if (query.matches('[0-9]{4,}')) {
-      hide()
-      return
-    }
     try {
       currentResults = accountService.searchAccounts(companyId, query, null, true, false)
     } catch (Exception ex) {
       log.warning("Kontosökning misslyckades: ${ex.message}")
       hide()
+      return
+    }
+    if (currentResults.size() == 1
+        && currentResults[0].accountNumber.toString() == query) {
+      hide()
+      onSelect.accept(currentResults[0])
       return
     }
     listModel.clear()
