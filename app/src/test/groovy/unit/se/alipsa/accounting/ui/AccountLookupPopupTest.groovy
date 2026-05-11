@@ -19,26 +19,7 @@ final class AccountLookupPopupTest {
   void autoSelectsSingleExactAccountMatchAndClearsStaleResults() {
     Account account = new Account(null, 7L, '1510', 'Kassa', 'ASSET', 'DEBIT', null, true, false, null, null)
     List<Account> selectedAccounts = []
-    int callCount = 0
-    long capturedCompanyId = 0L
-    String capturedQuery = null
-    String capturedClassFilter = 'unused'
-    boolean capturedActiveOnly = false
-    boolean capturedManualReviewOnly = true
-    AccountLookupPopup popup = new AccountLookupPopup(
-        { long companyId, String query, String classFilter, boolean activeOnly, boolean manualReviewOnly ->
-          callCount++
-          capturedCompanyId = companyId
-          capturedQuery = query
-          capturedClassFilter = classFilter
-          capturedActiveOnly = activeOnly
-          capturedManualReviewOnly = manualReviewOnly
-          [account]
-        } as AccountLookupPopup.AccountSearcher,
-        7L,
-        { Account selected -> selectedAccounts << selected } as Consumer<Account>
-        )
-    popup.attachToEditor(new JTextField('1510'))
+    AccountLookupPopup popup = createPopup('1510', [account], selectedAccounts)
 
     DefaultListModel<String> listModel = fieldValue(popup, 'listModel') as DefaultListModel<String>
     listModel.addElement('stale result')
@@ -47,12 +28,33 @@ final class AccountLookupPopupTest {
 
     assertEquals([account], selectedAccounts)
     assertEquals(0, listModel.size())
-    assertEquals(1, callCount)
-    assertEquals(7L, capturedCompanyId)
-    assertEquals('1510', capturedQuery)
-    assertEquals(null, capturedClassFilter)
-    assertEquals(true, capturedActiveOnly)
-    assertEquals(false, capturedManualReviewOnly)
+  }
+
+  @Test
+  void keepsSinglePartialAccountMatchInResultList() {
+    Account account = new Account(null, 7L, '1510', 'Kassa', 'ASSET', 'DEBIT', null, true, false, null, null)
+    List<Account> selectedAccounts = []
+    AccountLookupPopup popup = createPopup('151', [account], selectedAccounts)
+
+    invokeSearch(popup)
+
+    DefaultListModel<String> listModel = fieldValue(popup, 'listModel') as DefaultListModel<String>
+    assertEquals([], selectedAccounts)
+    assertEquals(1, listModel.size())
+  }
+
+  @Test
+  void keepsMultipleAccountMatchesInResultList() {
+    Account account = new Account(null, 7L, '1510', 'Kassa', 'ASSET', 'DEBIT', null, true, false, null, null)
+    Account otherAccount = new Account(null, 7L, '1511', 'Bank', 'ASSET', 'DEBIT', null, true, false, null, null)
+    List<Account> selectedAccounts = []
+    AccountLookupPopup popup = createPopup('1510', [account, otherAccount], selectedAccounts)
+
+    invokeSearch(popup)
+
+    DefaultListModel<String> listModel = fieldValue(popup, 'listModel') as DefaultListModel<String>
+    assertEquals([], selectedAccounts)
+    assertEquals(2, listModel.size())
   }
 
   private static void invokeSearch(AccountLookupPopup popup) {
@@ -65,5 +67,16 @@ final class AccountLookupPopupTest {
     Field field = AccountLookupPopup.getDeclaredField(fieldName)
     field.accessible = true
     field.get(popup)
+  }
+
+  private static AccountLookupPopup createPopup(String query, List<Account> results, List<Account> selectedAccounts) {
+    AccountLookupPopup popup = new AccountLookupPopup(
+        { long companyId, String searchQuery, String classFilter, boolean activeOnly, boolean manualReviewOnly -> results }
+            as AccountLookupPopup.AccountSearcher,
+        7L,
+        { Account selected -> selectedAccounts << selected } as Consumer<Account>
+        )
+    popup.attachToEditor(new JTextField(query))
+    popup
   }
 }
