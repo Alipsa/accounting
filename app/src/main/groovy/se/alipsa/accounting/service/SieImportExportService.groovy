@@ -724,7 +724,7 @@ final class SieImportExportService {
     }
     List<VoucherLine> lines = []
     int lineIndex = 1
-    voucher.rows.each { SieVoucherRow row ->
+    voucher.rows.findAll { it.token == SIE.TRANS }.each { SieVoucherRow row ->
       BigDecimal amount = scale(row.amount)
       if (amount == BigDecimal.ZERO) {
         return
