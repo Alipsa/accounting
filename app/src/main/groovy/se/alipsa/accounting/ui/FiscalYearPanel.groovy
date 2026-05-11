@@ -247,7 +247,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
       )])
       return
     }
-    YearEndClosingDialog.showDialog(ownerFrame(), closingService, year, {
+    YearEndClosingDialog.showDialog(ownerFrame(), closingService, year, activeCompanyManager.companyLocale, {
       reloadData()
       selectFiscalYear(year.id)
       showInfo(I18n.instance.format('fiscalYearPanel.message.closed', year.name))
@@ -426,6 +426,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
         openingBalanceService,
         activeCompanyManager.companyId,
         fiscalYear,
+        activeCompanyManager.companyLocale,
         { activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id) } as Runnable
     )
   }

@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.service.YearEndClosingResult
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -32,6 +33,7 @@ final class YearEndClosingDialog extends JDialog {
 
   private final ClosingService closingService
   private final FiscalYear fiscalYear
+  private final Locale locale
   private final Runnable onClosed
 
   private final JTextField closingAccountField = new JTextField(8)
@@ -42,18 +44,19 @@ final class YearEndClosingDialog extends JDialog {
   private final JButton executeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.execute'))
   private boolean workInProgress
 
-  YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Runnable onClosed) {
+  YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Locale locale, Runnable onClosed) {
     super(owner, I18n.instance.getString('yearEndClosingDialog.title'), true)
     this.closingService = closingService
     this.fiscalYear = fiscalYear
+    this.locale = locale
     this.onClosed = onClosed ?: ({ } as Runnable)
     closingAccountField.text = ClosingService.DEFAULT_CLOSING_ACCOUNT
     buildUi()
     reloadPreview()
   }
 
-  static void showDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Runnable onClosed) {
-    YearEndClosingDialog dialog = new YearEndClosingDialog(owner, closingService, fiscalYear, onClosed)
+  static void showDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Locale locale, Runnable onClosed) {
+    YearEndClosingDialog dialog = new YearEndClosingDialog(owner, closingService, fiscalYear, locale, onClosed)
     dialog.visible = true
   }
 
@@ -170,9 +173,9 @@ final class YearEndClosingDialog extends JDialog {
         : I18n.instance.format('yearEndClosingDialog.status.nextFiscalYear.exists', preview.nextFiscalYear.name)
 
     List<String> rows = [
-        I18n.instance.format('yearEndClosingDialog.summary.income', preview.incomeTotal.toPlainString()),
-        I18n.instance.format('yearEndClosingDialog.summary.expenses', preview.expenseTotal.toPlainString()),
-        I18n.instance.format('yearEndClosingDialog.summary.netResult', preview.netResult.toPlainString()),
+        I18n.instance.format('yearEndClosingDialog.summary.income', AmountFormatter.format(preview.incomeTotal, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.expenses', AmountFormatter.format(preview.expenseTotal, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.netResult', AmountFormatter.format(preview.netResult, locale)),
         I18n.instance.format('yearEndClosingDialog.summary.resultAccounts', preview.resultAccountCount as Object)
     ]
     summaryArea.text = rows.join('\n')

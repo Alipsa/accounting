@@ -27,13 +27,11 @@ import se.alipsa.accounting.domain.report.TransactionReportRow
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.domain.report.VatReportEntry
 import se.alipsa.accounting.domain.report.VoucherListRow
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
 import java.math.RoundingMode
 import java.sql.Date
-import java.text.DecimalFormat
-import java.text.DecimalFormatSymbols
-import java.text.NumberFormat
 import java.time.LocalDate
 import java.util.logging.Logger
 
@@ -98,8 +96,8 @@ final class ReportDataService {
           row.seriesCode,
           row.description,
           row.status,
-          formatAmount(row.debitAmount),
-          formatAmount(row.creditAmount)
+          formatAmountLocale(row.debitAmount, effective.locale),
+          formatAmountLocale(row.creditAmount, effective.locale)
       )
     }
     BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { VoucherListRow row -> row.debitAmount } as BigDecimal
@@ -108,8 +106,8 @@ final class ReportDataService {
         effective,
         [
             I18n.instance.format('voucherListReport.summary.count', rows.size()),
-            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmount(scale(debitTotal))),
-            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmount(scale(creditTotal)))
+            I18n.instance.format('voucherListReport.summary.debitTotal', formatAmountLocale(scale(debitTotal), effective.locale)),
+            I18n.instance.format('voucherListReport.summary.creditTotal', formatAmountLocale(scale(creditTotal), effective.locale))
         ],
         voucherListHeaders(),
         tableRows,
@@ -229,9 +227,9 @@ final class ReportDataService {
             row.accountingDate?.toString() ?: '',
             row.voucherNumber ?: '',
             row.description ?: '',
-            formatAmount(row.debitAmount),
-            formatAmount(row.creditAmount),
-            formatAmount(row.balance)
+            formatAmountLocale(row.debitAmount, effective.locale),
+            formatAmountLocale(row.creditAmount, effective.locale),
+            formatAmountLocale(row.balance, effective.locale)
         )
       }
       createResult(
@@ -276,10 +274,10 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              I18n.instance.format('trialBalanceReport.summary.openingBalance', formatAmount(scale(openingTotal))),
-              I18n.instance.format('trialBalanceReport.summary.periodDebit', formatAmount(scale(debitTotal))),
-              I18n.instance.format('trialBalanceReport.summary.periodCredit', formatAmount(scale(creditTotal))),
-              I18n.instance.format('trialBalanceReport.summary.closingBalance', formatAmount(scale(closingTotal)))
+              I18n.instance.format('trialBalanceReport.summary.openingBalance', formatAmountLocale(scale(openingTotal), effective.locale)),
+              I18n.instance.format('trialBalanceReport.summary.periodDebit', formatAmountLocale(scale(debitTotal), effective.locale)),
+              I18n.instance.format('trialBalanceReport.summary.periodCredit', formatAmountLocale(scale(creditTotal), effective.locale)),
+              I18n.instance.format('trialBalanceReport.summary.closingBalance', formatAmountLocale(scale(closingTotal), effective.locale))
           ],
           [
               I18n.instance.getString('trialBalanceReport.column.account'),
@@ -293,10 +291,10 @@ final class ReportDataService {
             stringRow(
                 row.accountNumber,
                 row.accountName,
-                formatAmount(row.openingBalance),
-                formatAmount(row.debitAmount),
-                formatAmount(row.creditAmount),
-                formatAmount(row.closingBalance)
+                formatAmountLocale(row.openingBalance, effective.locale),
+                formatAmountLocale(row.debitAmount, effective.locale),
+                formatAmountLocale(row.creditAmount, effective.locale),
+                formatAmountLocale(row.closingBalance, effective.locale)
             )
           },
           rows.collect { TrialBalanceRow ignored -> null as Long } as List<Long>,
@@ -356,13 +354,13 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO))}".toString(),
-              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO))}".toString(),
-              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmountLocale(scale(netResult))}".toString()
+              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO), effective.locale)}".toString(),
+              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO), effective.locale)}".toString(),
+              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmountLocale(scale(netResult), effective.locale)}".toString()
           ],
           [I18n.instance.getString('incomeStatementSection.column.item'), i18nOrFallback('incomeStatementSection.column.closingBalance', I18n.instance.getString('incomeStatementSection.column.amount'))],
           rows.collect { IncomeStatementRow row ->
-            stringRow(row.displayLabel, row.amount == null ? '' : formatAmountLocale(row.amount))
+            stringRow(row.displayLabel, row.amount == null ? '' : formatAmountLocale(row.amount, effective.locale))
           },
           rows.collect { IncomeStatementRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, result: scale(netResult)]
@@ -625,8 +623,8 @@ final class ReportDataService {
       BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
 
       List<String> summaryLines = [
-          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmountLocale(scale(assetTotal))}".toString(),
-          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmountLocale(scale(equityAndLiabilitiesTotal))}".toString()
+          "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmountLocale(scale(assetTotal), effective.locale)}".toString(),
+          "${BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES.displayName}: ${formatAmountLocale(scale(equityAndLiabilitiesTotal), effective.locale)}".toString()
       ]
       if (skippedAccounts) {
         summaryLines.add(I18n.instance.format('balanceSheetReport.summary.unmappedAccounts', skippedAccounts.join(', ')))
@@ -640,7 +638,7 @@ final class ReportDataService {
             String label = row.accountNumber
                 ? "${row.accountNumber} ${row.accountName}"
                 : (row.subgroupDisplayName ?: row.section)
-            stringRow(label, formatAmountLocale(row.amount))
+            stringRow(label, formatAmountLocale(row.amount, effective.locale))
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, assetTotal: scale(assetTotal), equityAndLiabilitiesTotal: scale(equityAndLiabilitiesTotal)]
@@ -750,8 +748,8 @@ final class ReportDataService {
         effective,
         [
             I18n.instance.format('transactionReport.summary.count', rows.size()),
-            I18n.instance.format('transactionReport.summary.debitTotal', formatAmount(scale(debitTotal))),
-            I18n.instance.format('transactionReport.summary.creditTotal', formatAmount(scale(creditTotal)))
+            I18n.instance.format('transactionReport.summary.debitTotal', formatAmountLocale(scale(debitTotal), effective.locale)),
+            I18n.instance.format('transactionReport.summary.creditTotal', formatAmountLocale(scale(creditTotal), effective.locale))
         ],
         transactionReportHeaders(),
         rows.collect { TransactionReportRow row ->
@@ -762,8 +760,8 @@ final class ReportDataService {
               row.accountName,
               row.voucherDescription,
               row.lineDescription ?: '',
-              formatAmount(row.debitAmount),
-              formatAmount(row.creditAmount),
+              formatAmountLocale(row.debitAmount, effective.locale),
+              formatAmountLocale(row.creditAmount, effective.locale),
               row.status
           )
         },
@@ -820,9 +818,9 @@ final class ReportDataService {
       createResult(
           effective,
           [
-              I18n.instance.format('vatReport.summary.outputVat', formatAmount(scale(outputTotal))),
-              I18n.instance.format('vatReport.summary.inputVat', formatAmount(scale(inputTotal))),
-              I18n.instance.format('vatReport.summary.net', formatAmount(netTotal))
+              I18n.instance.format('vatReport.summary.outputVat', formatAmountLocale(scale(outputTotal), effective.locale)),
+              I18n.instance.format('vatReport.summary.inputVat', formatAmountLocale(scale(inputTotal), effective.locale)),
+              I18n.instance.format('vatReport.summary.net', formatAmountLocale(netTotal, effective.locale))
           ],
           [
               I18n.instance.getString('vatReport.column.code'),
@@ -832,7 +830,7 @@ final class ReportDataService {
               I18n.instance.getString('vatReport.column.inputVat')
           ],
           rows.collect { VatReportEntry row ->
-            stringRow(row.vatCode, row.label, formatAmount(row.baseAmount), formatAmount(row.outputVatAmount), formatAmount(row.inputVatAmount))
+            stringRow(row.vatCode, row.label, formatAmountLocale(row.baseAmount, effective.locale), formatAmountLocale(row.outputVatAmount, effective.locale), formatAmountLocale(row.inputVatAmount, effective.locale))
           },
           rows.collect { VatReportEntry ignored -> null as Long } as List<Long>,
           [
@@ -866,10 +864,11 @@ final class ReportDataService {
       throw new IllegalArgumentException('Rapportintervallet måste ligga inom räkenskapsåret.')
     }
     long companyId = resolveCompanyId(fiscalYear.id)
+    Locale locale = resolveCompanyLocale(companyId)
     String selectionLabel = period == null
         ? I18n.instance.format('report.selection.interval', startDate.toString(), endDate.toString())
         : I18n.instance.format('report.selection.period', period.periodName, startDate.toString(), endDate.toString())
-    new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel)
+    new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel, locale)
   }
 
   private static Map<String, AccountInfo> loadAccountInfos(Sql sql, long companyId) {
@@ -1077,6 +1076,13 @@ final class ReportDataService {
     }
   }
 
+  private Locale resolveCompanyLocale(long companyId) {
+    String localeTag = databaseService.withSql { Sql sql ->
+      sql.firstRow('select locale_tag from company where id = ?', [companyId])?.locale_tag as String
+    }
+    AmountFormatter.resolveLocale(localeTag)
+  }
+
   private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
     String safeNormalBalanceSide = normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
     if (!safeNormalBalanceSide) {
@@ -1091,30 +1097,9 @@ final class ReportDataService {
     (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
   }
 
-  private static String formatAmount(BigDecimal amount) {
-    scale(amount).toPlainString()
-  }
 
-  // One cached DecimalFormat per thread per locale; avoids repeated NumberFormat.getNumberInstance()
-  // calls (expensive) while keeping thread-safety (DecimalFormat is not thread-safe).
-  private static final ThreadLocal<Map<Locale, DecimalFormat>> AMOUNT_FORMATTERS =
-      ThreadLocal.withInitial { [:] }
-
-  private static String formatAmountLocale(BigDecimal amount) {
-    Locale locale = I18n.instance.locale
-    DecimalFormat formatter = AMOUNT_FORMATTERS.get().computeIfAbsent(locale) { Locale loc ->
-      DecimalFormat fmt = (DecimalFormat) NumberFormat.getNumberInstance(loc)
-      fmt.minimumFractionDigits = AMOUNT_SCALE
-      fmt.maximumFractionDigits = AMOUNT_SCALE
-      // The locale-provided minus sign (U+2212) is missing from openhtmltopdf's default
-      // WinAnsi PDF fonts and renders as '#'. ASCII hyphen-minus avoids that and is
-      // equally valid in CSV and Excel output.
-      DecimalFormatSymbols symbols = fmt.decimalFormatSymbols
-      symbols.minusSign = (char) '-'
-      fmt.decimalFormatSymbols = symbols
-      fmt
-    }
-    formatter.format(scale(amount))
+  private static String formatAmountLocale(BigDecimal amount, Locale locale) {
+    AmountFormatter.format(amount, locale)
   }
 
   private static List<String> stringRow(String... values) {
@@ -1129,6 +1114,7 @@ final class ReportDataService {
     final LocalDate startDate
     final LocalDate endDate
     final String selectionLabel
+    final Locale locale
 
     private EffectiveSelection(
         ReportSelection selection,
@@ -1136,7 +1122,8 @@ final class ReportDataService {
         long companyId,
         LocalDate startDate,
         LocalDate endDate,
-        String selectionLabel
+        String selectionLabel,
+        Locale locale
     ) {
       this.selection = new ReportSelection(
           selection.reportType,
@@ -1150,6 +1137,7 @@ final class ReportDataService {
       this.startDate = startDate
       this.endDate = endDate
       this.selectionLabel = selectionLabel
+      this.locale = locale
     }
   }
 

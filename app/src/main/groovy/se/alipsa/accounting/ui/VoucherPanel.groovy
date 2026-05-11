@@ -13,6 +13,7 @@ import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 import se.alipsa.datepicker.DatePicker
 
@@ -21,6 +22,7 @@ import java.awt.Color
 import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.event.ActionEvent
+import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -126,6 +128,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (event.propertyName == ActiveCompanyManager.COMPANY_ID_PROPERTY) {
       SwingUtilities.invokeLater {
         installAccountLookupEditor()
+        installAmountAndTextEditors()
         reloadVoucherList()
       }
     } else if (event.propertyName == ActiveCompanyManager.FISCAL_YEAR_PROPERTY) {
@@ -446,11 +449,24 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void installAmountAndTextEditors() {
-    [2, 3, 4].each { int col ->
+    char decSep = AmountFormatter.decimalSeparator(activeCompanyManager.companyLocale)
+    [2, 3].each { int col ->
       JTextField field = new JTextField()
+      field.addKeyListener(new KeyAdapter() {
+        @Override
+        void keyTyped(KeyEvent event) {
+          char typed = event.keyChar
+          if ((typed == ',' as char || typed == '.' as char) && typed != decSep) {
+            event.keyChar = decSep
+          }
+        }
+      })
       suppressEditorKeys(field)
       lineTable.columnModel.getColumn(col).cellEditor = new DefaultCellEditor(field)
     }
+    JTextField descField = new JTextField()
+    suppressEditorKeys(descField)
+    lineTable.columnModel.getColumn(4).cellEditor = new DefaultCellEditor(descField)
   }
 
   private JPanel buildAttachmentTab() {
@@ -753,10 +769,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         debit = debit.add(parseAmount(line.debit))
         credit = credit.add(parseAmount(line.credit))
       }
+      Locale loc = activeCompanyManager.companyLocale
       totalsLabel.text = I18n.instance.format('voucherPanel.totals',
-          debit.setScale(2).toPlainString(),
-          credit.setScale(2).toPlainString(),
-          debit.subtract(credit).setScale(2).toPlainString())
+          AmountFormatter.format(debit, loc),
+          AmountFormatter.format(credit, loc),
+          AmountFormatter.format(debit.subtract(credit), loc))
     } catch (IllegalArgumentException ignored) {
       totalsLabel.text = I18n.instance.getString('voucherPanel.totals.invalid')
     }
@@ -891,14 +908,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     picker
   }
 
-  private static BigDecimal parseAmount(String value) {
-    String normalized = value?.trim()
-    if (!normalized) {
-      return BigDecimal.ZERO.setScale(2)
-    }
+  private BigDecimal parseAmount(String value) {
     try {
-      new BigDecimal(normalized.replace(',', '.')).setScale(2)
-    } catch (NumberFormatException exception) {
+      AmountFormatter.parseAmountOrZero(value, activeCompanyManager.companyLocale)
+    } catch (IllegalArgumentException ignored) {
       throw new IllegalArgumentException(I18n.instance.getString('voucherPanel.error.invalidAmount'))
     }
   }
@@ -1066,7 +1079,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         case 4:
           return row.description
         case 5:
-          return row.balanceBefore == null ? '' : row.balanceBefore.toPlainString()
+          return AmountFormatter.formatOrEmpty(row.balanceBefore, activeCompanyManager.companyLocale)
         case 6:
           return calculateBalanceAfter(row)
         default:
@@ -1083,7 +1096,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         BigDecimal credit = parseAmount(row.credit)
         BigDecimal after = AccountService.calculateBalanceAfter(
             row.balanceBefore, debit, credit, row.normalBalanceSide)
-        after.toPlainString()
+        AmountFormatter.format(after, activeCompanyManager.companyLocale)
       } catch (IllegalArgumentException ignored) {
         ''
       }
@@ -1117,14 +1130,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           row.accountName = text
           break
         case 2:
-          row.debit = text.trim()
+          row.debit = formatEditedAmount(text)
           if (hasText(row.debit)) {
             row.credit = ''
           }
           recalculateBalances(rowIndex)
           break
         case 3:
-          row.credit = text.trim()
+          row.credit = formatEditedAmount(text)
           if (hasText(row.credit)) {
             row.debit = ''
           }
@@ -1159,8 +1172,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
     }
 
-    private static String amountText(BigDecimal amount) {
-      amount == null || amount == BigDecimal.ZERO ? '' : amount.setScale(2).toPlainString()
+    private String amountText(BigDecimal amount) {
+      AmountFormatter.formatOrEmpty(amount, activeCompanyManager.companyLocale)
+    }
+
+    private String formatEditedAmount(String text) {
+      AmountFormatter.formatEdited(text, activeCompanyManager.companyLocale)
     }
   }
 

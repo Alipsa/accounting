@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.support.AmountFormatter
 
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
@@ -61,6 +62,10 @@ final class ActiveCompanyManager {
 
   Company getActiveCompany() {
     companyId > 0 ? companyService.findById(companyId) : null
+  }
+
+  Locale getCompanyLocale() {
+    AmountFormatter.resolveLocale(activeCompany?.localeTag)
   }
 
   FiscalYear getFiscalYear() {

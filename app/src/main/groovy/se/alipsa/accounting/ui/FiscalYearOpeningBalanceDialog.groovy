@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.service.OpeningBalanceService
 import se.alipsa.accounting.service.OpeningBalanceService.OpeningBalanceDrift
 import se.alipsa.accounting.service.OpeningBalanceService.OpeningBalanceLine
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -30,6 +31,7 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
   private final OpeningBalanceService openingBalanceService
   private final long companyId
   private final FiscalYear fiscalYear
+  private final Locale locale
   private final Runnable onSave
   private final OpeningBalanceTableModel tableModel = new OpeningBalanceTableModel()
   private final JTable table = new JTable(tableModel)
@@ -41,12 +43,14 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
       OpeningBalanceService openingBalanceService,
       long companyId,
       FiscalYear fiscalYear,
+      Locale locale,
       Runnable onSave
   ) {
     super(owner, I18n.instance.getString('fiscalYearOpeningBalanceDialog.title'), true)
     this.openingBalanceService = openingBalanceService
     this.companyId = companyId
     this.fiscalYear = fiscalYear
+    this.locale = locale
     this.onSave = onSave ?: ({ } as Runnable)
     buildUi()
     reloadData()
@@ -57,6 +61,7 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
       OpeningBalanceService openingBalanceService,
       long companyId,
       FiscalYear fiscalYear,
+      Locale locale,
       Runnable onSave
   ) {
     FiscalYearOpeningBalanceDialog dialog = new FiscalYearOpeningBalanceDialog(
@@ -64,6 +69,7 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
         openingBalanceService,
         companyId,
         fiscalYear,
+        locale,
         onSave
     )
     dialog.visible = true
@@ -186,14 +192,10 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
     infoArea.text = message ?: ''
   }
 
-  private static BigDecimal parseAmount(String value) {
-    String normalized = value?.trim()
-    if (!normalized) {
-      return BigDecimal.ZERO
-    }
+  private BigDecimal parseAmount(String value) {
     try {
-      new BigDecimal(normalized.replace(',', '.'))
-    } catch (NumberFormatException exception) {
+      AmountFormatter.parseAmountOrZero(value, locale)
+    } catch (IllegalArgumentException ignored) {
       throw new IllegalArgumentException(I18n.instance.getString('fiscalYearOpeningBalanceDialog.error.invalidAmount'))
     }
   }
@@ -213,7 +215,7 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
         new OpeningBalanceRow(
             line.accountNumber,
             line.accountName,
-            line.amount == BigDecimal.ZERO ? '' : line.amount.toPlainString(),
+            AmountFormatter.formatOrEmpty(line.amount, locale),
             originLabel(line.originType)
         )
       }
