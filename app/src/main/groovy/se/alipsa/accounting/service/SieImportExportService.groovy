@@ -89,6 +89,8 @@ final class SieImportExportService {
     Path safePath = validateImportPath(filePath)
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
+    reader.ignoreBTRANS = true
+    reader.ignoreRTRANS = true
     SieDocument document = reader.readDocument(safePath.toString())
     List<String> errors = reader.validationExceptions*.message.findAll() as List<String>
     if (document == null) {
@@ -105,11 +107,9 @@ final class SieImportExportService {
     ParsedSie parsed = parseDocument(safePath)
     SieDocument document = parsed.document
     SieBookingYear bookingYear = selectPrimaryBookingYear(document)
-    int voucherCount = document.getVER()?.size() ?: 0
-    int lineCount = 0
-    (document.getVER() ?: []).each { SieVoucher voucher ->
-      lineCount += voucher.rows?.count { SieVoucherRow row -> scale(row.amount) != BigDecimal.ZERO } ?: 0
-    }
+    int[] counts = countImportableVouchers(document)
+    int voucherCount = counts[0]
+    int lineCount = counts[1]
 
     databaseService.withSql { Sql sql ->
       FiscalYear existingYear = findFiscalYearByPeriod(sql, companyId, bookingYear.start, bookingYear.end)
@@ -141,6 +141,22 @@ final class SieImportExportService {
           duplicate?.id
       )
     }
+  }
+
+  private static int[] countImportableVouchers(SieDocument document) {
+    List<SieVoucher> vouchers = document.getVER() ?: []
+    int voucherCount = 0
+    int lineCount = 0
+    for (SieVoucher voucher : vouchers) {
+      int rows = (voucher.rows?.count { SieVoucherRow row ->
+        row.token == SIE.TRANS && scale(row.amount) != BigDecimal.ZERO
+      } ?: 0) as int
+      if (rows > 0) {
+        voucherCount++
+        lineCount += rows
+      }
+    }
+    [voucherCount, lineCount] as int[]
   }
 
   SieImportResult importFile(long companyId, Path filePath) {
@@ -374,6 +390,8 @@ final class SieImportExportService {
     SieDocumentReader reader = new SieDocumentReader()
     reader.throwErrors = false
     reader.acceptSIETypes = EnumSet.of(SieType.TYPE_4)
+    reader.ignoreBTRANS = true
+    reader.ignoreRTRANS = true
     SieDocument document = reader.readDocument(filePath.toString())
 
     List<String> errors = []
@@ -684,6 +702,11 @@ final class SieImportExportService {
     int lineCount = 0
     for (SieVoucher voucher : sortedVouchers) {
       List<VoucherLine> lines = buildVoucherLines(voucher)
+      if (lines.isEmpty()) {
+        // Voucher has no valid #TRANS rows (e.g. fully deleted via #BTRANS).
+        // Per SIE 4B spec these represent deleted vouchers and are skipped.
+        continue
+      }
       voucherService.createVoucher(
           sql,
           fiscalYearId,
@@ -743,6 +766,9 @@ final class SieImportExportService {
           debitAmount,
           creditAmount
       )
+    }
+    if (lines.isEmpty()) {
+      return []
     }
     if (lines.size() < 2) {
       throw new IllegalArgumentException("Verifikationen ${voucher.series ?: 'A'}-${voucher.number ?: '?'} saknar tillräckliga transaktionsrader.")

@@ -1,7 +1,6 @@
 package unit.se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertThrows
 
 import alipsa.sieparser.SIE
 import alipsa.sieparser.SieAccount
@@ -49,7 +48,7 @@ final class SieVoucherImportTest {
   }
 
   @Test
-  void buildVoucherLinesRejectsVoucherWithOnlyBtransRows() {
+  void buildVoucherLinesReturnsNullForVoucherWithOnlyBtransRows() {
     SieVoucher voucher = new SieVoucher()
     voucher.series = 'A'
     voucher.number = '2'
@@ -61,10 +60,23 @@ final class SieVoucherImportTest {
         btransRow('3010', 1000.00)
     ]
 
-    IllegalArgumentException ex = assertThrows(IllegalArgumentException) {
-      buildVoucherLines(voucher)
-    }
-    assertEquals('Verifikationen A-2 saknar tillräckliga transaktionsrader.', ex.message)
+    assertEquals([], buildVoucherLines(voucher))
+  }
+
+  @Test
+  void buildVoucherLinesReturnsNullForVoucherWithOnlyRtransRows() {
+    SieVoucher voucher = new SieVoucher()
+    voucher.series = 'A'
+    voucher.number = '3'
+    voucher.voucherDate = java.time.LocalDate.of(2026, 1, 15)
+    voucher.text = 'Rättat'
+
+    voucher.rows = [
+        rtransRow('1930', -1000.00),
+        rtransRow('3010', 1000.00)
+    ]
+
+    assertEquals([], buildVoucherLines(voucher))
   }
 
   private static SieVoucherRow transRow(String accountNumber, BigDecimal amount) {
