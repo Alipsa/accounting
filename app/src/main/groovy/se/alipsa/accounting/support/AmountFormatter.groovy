@@ -39,8 +39,9 @@ final class AmountFormatter {
     char decSep = symbols.decimalSeparator
     String normalized = trimmed
     normalized = normalized.replace(String.valueOf(groupSep), '')
-    if (groupSep == ' ' as char) {
+    if (Character.isWhitespace(groupSep) || Character.isSpaceChar(groupSep)) {
       normalized = normalized.replace(' ', '')
+      normalized = normalized.replace(String.valueOf((char) 0x00A0), '')
     }
     // For sv-SE, '.' is not a grouping separator, so plain decimal-dot input reaches BigDecimal unchanged.
     normalized = normalized.replace(String.valueOf(decSep), '.')

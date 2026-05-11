@@ -61,6 +61,12 @@ final class AmountFormatterTest {
   }
 
   @Test
+  void parseAmountSwedishNoBreakSpace() {
+    BigDecimal result = AmountFormatter.parseAmount("1${(char) 0x00A0}234,56", SV)
+    assertEquals(1234.56G, result)
+  }
+
+  @Test
   void parseAmountSwedishNegative() {
     BigDecimal result = AmountFormatter.parseAmount('-1 234,56', SV)
     assertEquals(-1234.56G, result)
