@@ -5,6 +5,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
 import java.awt.Color
@@ -31,6 +32,7 @@ final class OpeningBalanceDialog extends JDialog {
   private final AccountService accountService
   private final Account account
   private final Runnable onSave
+  private final Locale locale
 
   private final JComboBox<FiscalYear> fiscalYearComboBox
   private final JTextField amountField = new JTextField(14)
@@ -43,11 +45,13 @@ final class OpeningBalanceDialog extends JDialog {
       FiscalYearService fiscalYearService,
       long companyId,
       Account account,
+      Locale locale,
       Runnable onSave
   ) {
     super(owner, I18n.instance.getString('openingBalanceDialog.title'), true)
     this.accountService = accountService
     this.account = account
+    this.locale = locale
     this.onSave = onSave
 
     List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(companyId)
@@ -62,12 +66,13 @@ final class OpeningBalanceDialog extends JDialog {
       FiscalYearService fiscalYearService,
       long companyId,
       Account account,
+      Locale locale,
       Runnable onSave
   ) {
     if (!account.isBalanceAccount()) {
       throw new IllegalArgumentException('Opening balances may only be set on balance accounts.')
     }
-    OpeningBalanceDialog dialog = new OpeningBalanceDialog(owner, accountService, fiscalYearService, companyId, account, onSave)
+    OpeningBalanceDialog dialog = new OpeningBalanceDialog(owner, accountService, fiscalYearService, companyId, account, locale, onSave)
     dialog.setVisible(true)
   }
 
@@ -154,8 +159,8 @@ final class OpeningBalanceDialog extends JDialog {
     }
 
     OpeningBalance openingBalance = accountService.getOpeningBalance(fiscalYear.id, account.accountNumber)
-    currentAmountLabel.text = openingBalance.amount.toPlainString()
-    amountField.text = openingBalance.amount == BigDecimal.ZERO ? '' : openingBalance.amount.toPlainString()
+    currentAmountLabel.text = AmountFormatter.format(openingBalance.amount, locale)
+    amountField.text = AmountFormatter.formatOrEmpty(openingBalance.amount, locale)
   }
 
   private void saveRequested() {
@@ -179,14 +184,10 @@ final class OpeningBalanceDialog extends JDialog {
     fiscalYearComboBox.selectedItem as FiscalYear
   }
 
-  private static BigDecimal parseAmount(String value) {
-    String normalized = value?.trim()
-    if (!normalized) {
-      return BigDecimal.ZERO
-    }
+  private BigDecimal parseAmount(String value) {
     try {
-      new BigDecimal(normalized.replace(',', '.'))
-    } catch (NumberFormatException exception) {
+      AmountFormatter.parseAmountOrZero(value, locale)
+    } catch (IllegalArgumentException ignored) {
       throw new IllegalArgumentException(I18n.instance.getString('openingBalanceDialog.error.invalidAmount'))
     }
   }

@@ -4,6 +4,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VatService
+import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -11,8 +12,6 @@ import java.awt.Color
 import java.awt.FlowLayout
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
-import java.math.RoundingMode
-import java.text.DecimalFormat
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -32,8 +31,6 @@ import javax.swing.table.AbstractTableModel
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
 final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
-
-  private static final DecimalFormat AMOUNT_FORMAT = new DecimalFormat('#,##0.00')
 
   private final VatService vatService
   private final FiscalYearService fiscalYearService
@@ -294,8 +291,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     feedbackArea.text = message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected')
   }
 
-  private static String formatAmount(BigDecimal amount) {
-    AMOUNT_FORMAT.format((amount ?: BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP))
+  private String formatAmount(BigDecimal amount) {
+    AmountFormatter.format(amount, activeCompanyManager.companyLocale)
   }
 
   private static final class VatPeriodTableModel extends AbstractTableModel {
@@ -357,7 +354,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private static final class VatReportTableModel extends AbstractTableModel {
+  private final class VatReportTableModel extends AbstractTableModel {
 
     private List<VatService.VatReportRow> rows = []
 
