@@ -858,6 +858,62 @@ class SieImportExportServiceTest {
     ]
   }
 
+  @Test
+  void importSkipsVouchersWithOnlyBtransOrRtransRows() {
+    switchHome(tempDir.resolve('btrans-rtrans-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    CompanyService companyService = new CompanyService(databaseService)
+    companyService.save(new Company(
+        CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null
+    ))
+    SieImportExportService service = createSieService(databaseService)
+
+    Path sieFile = tempDir.resolve('btrans-rtrans.sie')
+    sieFile.toFile().text = """\
+#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 1510 "Kundfordringar"
+#KONTO 1930 "Bank"
+#KONTO 3010 "Intakt"
+#VER A 1 20260115 "Normal"
+{
+  #TRANS 1510 {} 1000.00
+  #TRANS 3010 {} -1000.00
+}
+#VER A 2 20260120 "Borttagen"
+{
+  #BTRANS 1930 {} 500.00
+  #BTRANS 3010 {} -500.00
+}
+#VER A 3 20260125 "Struken"
+{
+  #RTRANS 1510 {} 200.00
+  #RTRANS 3010 {} -200.00
+}
+#VER A 4 20260130 "Blandad"
+{
+  #TRANS 1930 {} 750.00
+  #BTRANS 1930 {} -100.00
+  #RTRANS 1930 {} -50.00
+  #TRANS 3010 {} -750.00
+}
+"""
+
+    SieImportResult result = service.importFile(CompanyService.LEGACY_COMPANY_ID, sieFile)
+
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertEquals(2, result.voucherCount)
+    assertEquals(4, result.lineCount)
+  }
+
   private Path writeSimpleSie(Path filePath, String accountNumber, String accountName) {
     filePath.toFile().text = """#FLAGGA 0
 #PROGRAM "Test" "1.0"

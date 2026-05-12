@@ -768,6 +768,7 @@ final class SieImportExportService {
       )
     }
     if (lines.isEmpty()) {
+      // No valid #TRANS rows — signal caller to skip this voucher (distinct from the < 2 check below which is an error).
       return []
     }
     if (lines.size() < 2) {

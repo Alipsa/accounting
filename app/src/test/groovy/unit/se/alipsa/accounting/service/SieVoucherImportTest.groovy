@@ -48,7 +48,7 @@ final class SieVoucherImportTest {
   }
 
   @Test
-  void buildVoucherLinesReturnsNullForVoucherWithOnlyBtransRows() {
+  void buildVoucherLinesReturnsEmptyListForVoucherWithOnlyBtransRows() {
     SieVoucher voucher = new SieVoucher()
     voucher.series = 'A'
     voucher.number = '2'
@@ -64,7 +64,7 @@ final class SieVoucherImportTest {
   }
 
   @Test
-  void buildVoucherLinesReturnsNullForVoucherWithOnlyRtransRows() {
+  void buildVoucherLinesReturnsEmptyListForVoucherWithOnlyRtransRows() {
     SieVoucher voucher = new SieVoucher()
     voucher.series = 'A'
     voucher.number = '3'
