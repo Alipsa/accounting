@@ -654,7 +654,6 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private static DatePicker createDatePicker() {
     DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale, 'yyyy-MM-dd')
     picker.textFieldPosition = TextFieldPosition.RIGHT
-    picker.textField.editable = false
     picker
   }
 
