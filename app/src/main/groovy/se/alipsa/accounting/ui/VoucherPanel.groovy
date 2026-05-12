@@ -16,6 +16,7 @@ import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 import se.alipsa.datepicker.DatePicker
+import se.alipsa.datepicker.TextFieldPosition
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -904,7 +905,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private static DatePicker createDatePicker() {
     DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale)
-    picker.textField.editable = false
+    picker.textFieldPosition = TextFieldPosition.RIGHT
     picker
   }
 
