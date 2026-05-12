@@ -151,6 +151,7 @@ final class MainFrame implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
 
   private JLabel statusLabel
+  private Timer statusTimer
   private OverviewPanel overviewPanel
   private JLabel companyLabel
   private JComboBox<Company> companyComboBox
@@ -207,6 +208,14 @@ final class MainFrame implements PropertyChangeListener {
 
   void setStatus(String text) {
     statusLabel.text = text
+    if (statusTimer == null) {
+      statusTimer = new Timer(5000, {
+        statusLabel.text = I18n.instance.getString('mainFrame.status.ready')
+      })
+      statusTimer.repeats = false
+    }
+    statusTimer.stop()
+    statusTimer.start()
   }
 
   @Override
