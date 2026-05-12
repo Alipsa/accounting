@@ -1,5 +1,7 @@
 # Alipsa Accounting, Release History
 
+## v1.3.0, In progress
+
 ## v1.2.1, 2026-05-03
 ### Patch Release
 
