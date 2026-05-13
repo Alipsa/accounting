@@ -27,11 +27,15 @@ final class ActiveCompanyManager {
   private FiscalYear fiscalYear
 
   ActiveCompanyManager(CompanyService companyService, FiscalYearService fiscalYearService) {
+    this(companyService, fiscalYearService, null)
+  }
+
+  ActiveCompanyManager(CompanyService companyService, FiscalYearService fiscalYearService, Long preferredCompanyId) {
     this.companyService = companyService
     this.fiscalYearService = fiscalYearService
     try {
       List<Company> companies = companyService.listCompanies(true) ?: []
-      this.companyId = companies.isEmpty() ? 0L : companies.first().id
+      this.companyId = resolveInitialCompanyId(companies, preferredCompanyId)
       if (this.companyId > 0) {
         List<FiscalYear> years = fiscalYearService.listFiscalYears(this.companyId)
         this.fiscalYear = years.isEmpty() ? null : years.first()
@@ -39,6 +43,14 @@ final class ActiveCompanyManager {
     } catch (Exception ignored) {
       this.companyId = 0L
     }
+  }
+
+  private static long resolveInitialCompanyId(List<Company> companies, Long preferredCompanyId) {
+    if (companies.isEmpty()) {
+      return 0L
+    }
+    Company preferred = companies.find { Company company -> company.id == preferredCompanyId }
+    preferred?.id ?: companies.first().id
   }
 
   long getCompanyId() {

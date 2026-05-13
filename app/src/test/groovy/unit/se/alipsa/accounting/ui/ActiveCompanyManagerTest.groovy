@@ -60,6 +60,24 @@ class ActiveCompanyManagerTest {
   }
 
   @Test
+  void initializesToPreferredCompanyWhenItExists() {
+    Company second = companyService.save(new Company(
+        null, 'Zetterberg AB', '556000-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
+    ))
+
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService, second.id)
+
+    assertEquals(second.id, manager.companyId)
+  }
+
+  @Test
+  void fallsBackToFirstCompanyWhenPreferredCompanyDoesNotExist() {
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService, 999_999L)
+
+    assertEquals(CompanyService.LEGACY_COMPANY_ID, manager.companyId)
+  }
+
+  @Test
   void firesPropertyChangeEventOnCompanySwitch() {
     Company second = companyService.save(new Company(
         null, 'Zetterberg AB', '556000-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
