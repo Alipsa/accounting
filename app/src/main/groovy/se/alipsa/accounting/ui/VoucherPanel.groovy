@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
@@ -95,6 +97,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final AuditLogService auditLogService
   private final ActiveCompanyManager activeCompanyManager
 
+  @PackageScope
+  Closure<Void> cursorMover = { int row, int col -> moveCursorToCell(row, col) }
+
   private final JLabel voucherNumberLabel = new JLabel('')
   private final DatePicker datePicker = createDatePicker()
   private final JTextField descriptionField = new JTextField(30)
@@ -113,7 +118,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JButton openAttachmentButton
   private JTabbedPane tabs
 
-  private LineTableModel lineTableModel
+  @PackageScope
+  LineTableModel lineTableModel
   private JTable lineTable
   private final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
   private final JTable attachmentTable = new JTable(attachmentTableModel)
@@ -310,28 +316,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
           int row = lineTable.editingRow
           int col = lineTable.editingColumn
           lineTable.cellEditor.stopCellEditing()
-          tabFromCell(row, col)
+          advanceFromCell(row, col)
         } else {
           int row = lineTable.selectedRow
           int col = lineTable.selectedColumn
           if (row >= 0 && col >= 0) {
-            tabFromCell(row, col)
+            advanceFromCell(row, col)
           }
         }
       }
     })
-  }
-
-  private static final List<Integer> EDITABLE_COLUMNS = [0, 1, 2, 3, 4]
-
-  private void tabFromCell(int row, int col) {
-    int currentIndex = EDITABLE_COLUMNS.indexOf(col)
-    if (currentIndex >= 0 && currentIndex < EDITABLE_COLUMNS.size() - 1) {
-      moveCursorToCell(row, EDITABLE_COLUMNS[currentIndex + 1])
-    } else {
-      ensureAutoRow()
-      moveCursorToCell(row + 1, EDITABLE_COLUMNS[0])
-    }
   }
 
   private void installEnterKeyNavigation() {
@@ -358,34 +352,36 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     })
   }
 
-  private void advanceFromCell(int row, int col) {
+  // Internal keyboard-navigation hook, package-scoped for focused UI tests.
+  @PackageScope
+  void advanceFromCell(int row, int col) {
     switch (col) {
       case 0: // Account number — jump to debet/kredit based on normalBalanceSide
         LineEntry entry = lineTableModel.rows[row]
         if (hasText(entry.normalBalanceSide)) {
-          moveCursorToAmountColumn(row, entry.normalBalanceSide)
+          cursorToAmountColumn(row, entry.normalBalanceSide)
         } else {
-          moveCursorToCell(row, 2)
+          cursorMover.call(row, 2)
         }
         break
       case 1: // Account description — same as account number
         LineEntry descEntry = lineTableModel.rows[row]
         if (hasText(descEntry.normalBalanceSide)) {
-          moveCursorToAmountColumn(row, descEntry.normalBalanceSide)
+          cursorToAmountColumn(row, descEntry.normalBalanceSide)
         } else {
-          moveCursorToCell(row, 2)
+          cursorMover.call(row, 2)
         }
         break
       case 2: // Debet — always advance to kredit
-        moveCursorToCell(row, 3)
+        cursorMover.call(row, 3)
         break
       case 3: // Kredit — advance to next row account number
         ensureAutoRow()
-        moveCursorToCell(row + 1, 0)
+        cursorMover.call(row + 1, 0)
         break
       case 4: // Text — next row account
         ensureAutoRow()
-        moveCursorToCell(row + 1, 0)
+        cursorMover.call(row + 1, 0)
         break
       default:
         break
@@ -952,7 +948,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void moveCursorToAmountColumn(int row, String normalBalanceSide) {
-    moveCursorToCell(row, 'CREDIT' == normalBalanceSide ? 3 : 2)
+    cursorToAmountColumn(row, normalBalanceSide)
+  }
+
+  private void cursorToAmountColumn(int row, String normalBalanceSide) {
+    cursorMover.call(row, 'CREDIT' == normalBalanceSide ? 3 : 2)
   }
 
   private static boolean hasText(String value) {
@@ -973,7 +973,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     String.format(Locale.ROOT, '%.1f MB', bytes / (1024.0d * 1024.0d))
   }
 
-  private static final class LineEntry {
+  @PackageScope
+  static final class LineEntry {
 
     String accountNumber = ''
     String accountName = ''
@@ -984,7 +985,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     BigDecimal balanceBefore = null
   }
 
-  private final class LineTableModel extends AbstractTableModel {
+  @PackageScope
+  final class LineTableModel extends AbstractTableModel {
 
     private final List<LineEntry> rows = []
     private boolean editable = true
