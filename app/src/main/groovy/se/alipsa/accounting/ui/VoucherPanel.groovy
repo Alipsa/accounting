@@ -56,6 +56,30 @@ import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 
+class VoucherLineCellEditor extends DefaultCellEditor {
+
+  private boolean selectTextOnEdit = true
+
+  VoucherLineCellEditor(JTextField textField) {
+    super(textField)
+  }
+
+  @Override
+  boolean isCellEditable(EventObject event) {
+    selectTextOnEdit = !(event instanceof MouseEvent)
+    super.isCellEditable(event)
+  }
+
+  @Override
+  java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+    java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
+    if (selectTextOnEdit && comp instanceof JTextField) {
+      ((JTextField) comp).selectAll()
+    }
+    comp
+  }
+}
+
 /**
  * Inline voucher editor panel with sequential navigation.
  * Replaces VoucherListPanel and VoucherEditor.
@@ -411,7 +435,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     } as Consumer<Account>
     AccountLookupPopup numberPopup = new AccountLookupPopup(
         accountService, activeCompanyManager.companyId, onNumberSelected)
-    DefaultCellEditor numberEditor = new DefaultCellEditor(numberEditorField) {
+    DefaultCellEditor numberEditor = new VoucherLineCellEditor(numberEditorField) {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
         java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
@@ -438,7 +462,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     } as Consumer<Account>
     AccountLookupPopup namePopup = new AccountLookupPopup(
         accountService, activeCompanyManager.companyId, onNameSelected)
-    DefaultCellEditor nameEditor = new DefaultCellEditor(nameEditorField) {
+    DefaultCellEditor nameEditor = new VoucherLineCellEditor(nameEditorField) {
       @Override
       java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
         java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
@@ -463,11 +487,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         }
       })
       suppressEditorKeys(field)
-      lineTable.columnModel.getColumn(col).cellEditor = new DefaultCellEditor(field)
+      lineTable.columnModel.getColumn(col).cellEditor = new VoucherLineCellEditor(field)
     }
     JTextField descField = new JTextField()
     suppressEditorKeys(descField)
-    lineTable.columnModel.getColumn(4).cellEditor = new DefaultCellEditor(descField)
+    lineTable.columnModel.getColumn(4).cellEditor = new VoucherLineCellEditor(descField)
   }
 
   private JPanel buildAttachmentTab() {
