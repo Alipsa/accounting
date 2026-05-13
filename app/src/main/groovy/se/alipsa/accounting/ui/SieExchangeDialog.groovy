@@ -187,8 +187,7 @@ final class SieExchangeDialog extends JDialog {
 
   private void importRequested() {
     JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
-    chooser.fileFilter = new FileNameExtensionFilter(
-        I18n.instance.getString('sieExchangeDialog.fileFilter.sie'), 'sie', 'si', 'se')
+    chooser.fileFilter = sieImportFileFilter()
     if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
       return
     }
@@ -231,6 +230,18 @@ final class SieExchangeDialog extends JDialog {
         }
       }
     }.execute()
+  }
+
+  static FileNameExtensionFilter sieImportFileFilter() {
+    new FileNameExtensionFilter(
+        I18n.instance.getString('sieExchangeDialog.fileFilter.sie'),
+        'sie',
+        'SIE',
+        'si',
+        'SI',
+        'se',
+        'SE'
+    )
   }
 
   private void runSmartImport(Path selectedPath, long targetCompanyId) {
