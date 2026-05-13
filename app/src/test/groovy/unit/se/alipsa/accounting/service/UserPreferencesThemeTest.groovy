@@ -16,6 +16,7 @@ class UserPreferencesThemeTest {
   void cleanup() {
     service.setTheme(null)
     service.setAutomaticUpdateCheckEnabled(true)
+    service.setLastActiveCompanyId(null)
   }
 
   @Test
@@ -53,5 +54,14 @@ class UserPreferencesThemeTest {
 
     service.setAutomaticUpdateCheckEnabled(true)
     assertEquals(true, service.isAutomaticUpdateCheckEnabled())
+  }
+
+  @Test
+  void roundTripsLastActiveCompanyPreference() {
+    service.setLastActiveCompanyId(17L)
+    assertEquals(17L, service.getLastActiveCompanyId())
+
+    service.setLastActiveCompanyId(null)
+    assertEquals(null, service.getLastActiveCompanyId())
   }
 }

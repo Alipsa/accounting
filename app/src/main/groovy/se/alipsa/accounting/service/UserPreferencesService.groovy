@@ -12,6 +12,7 @@ final class UserPreferencesService {
   private static final String LANGUAGE_KEY = 'ui.language'
   private static final String THEME_KEY = 'ui.theme'
   private static final String UPDATE_CHECK_ENABLED_KEY = 'update.autoCheckEnabled'
+  private static final String LAST_ACTIVE_COMPANY_ID_KEY = 'company.lastActiveId'
 
   private final Preferences preferences = Preferences.userNodeForPackage(UserPreferencesService)
 
@@ -47,5 +48,18 @@ final class UserPreferencesService {
     } else {
       preferences.putBoolean(UPDATE_CHECK_ENABLED_KEY, false)
     }
+  }
+
+  Long getLastActiveCompanyId() {
+    long companyId = preferences.getLong(LAST_ACTIVE_COMPANY_ID_KEY, 0L)
+    companyId > 0L ? companyId : null
+  }
+
+  void setLastActiveCompanyId(Long companyId) {
+    if (companyId == null || companyId <= 0L) {
+      preferences.remove(LAST_ACTIVE_COMPANY_ID_KEY)
+      return
+    }
+    preferences.putLong(LAST_ACTIVE_COMPANY_ID_KEY, companyId)
   }
 }

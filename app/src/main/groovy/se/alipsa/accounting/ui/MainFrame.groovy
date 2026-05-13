@@ -148,7 +148,11 @@ final class MainFrame implements PropertyChangeListener {
       DatabaseService.instance
   )
   private final FiscalYearDeletionService fiscalYearDeletionService = new FiscalYearDeletionService(DatabaseService.instance)
-  private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService)
+  private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(
+      companyService,
+      fiscalYearService,
+      userPreferencesService.lastActiveCompanyId
+  )
 
   private JLabel statusLabel
   private Timer statusTimer
@@ -234,6 +238,7 @@ final class MainFrame implements PropertyChangeListener {
     reloadFiscalYearComboBox()
     Company active = activeCompanyManager.activeCompany
     if (active != null) {
+      userPreferencesService.setLastActiveCompanyId(active.id)
       setStatus(I18n.instance.format('mainFrame.status.companySwitched', active.companyName))
     }
   }
@@ -510,11 +515,10 @@ final class MainFrame implements PropertyChangeListener {
     try {
       companyComboBox.removeAllItems()
       companies.each { Company c -> companyComboBox.addItem(c) }
-      if (selected != null) {
-        Company match = companies.find { Company c -> c.id == selected.id }
-        if (match != null) {
-          companyComboBox.selectedItem = match
-        }
+      Long selectedCompanyId = selected?.id ?: activeCompanyManager.companyId
+      Company match = companies.find { Company c -> c.id == selectedCompanyId }
+      if (match != null) {
+        companyComboBox.selectedItem = match
       } else if (!companies.isEmpty()) {
         companyComboBox.selectedIndex = 0
       }
