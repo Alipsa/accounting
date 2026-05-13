@@ -54,6 +54,7 @@ Recent history favors short, descriptive commit messages, often in Swedish imper
 
 ## Agent-Specific Notes
 - Always ask before creating a new git branch.
+- Never push directly to `main` unless the user explicitly says to push `main`, or you ask for and receive confirmation immediately before pushing.
 - After finishing an implementation or code fix, always run `./gradlew spotlessApply` to auto-format before committing.
 - For Swing work, preserve the existing desktop patterns in `ui/`; prefer small, targeted dialog/panel changes over broad rewrites.
 - Verify UI-related changes with at least `./gradlew build`, even when behavior is mostly visual.
