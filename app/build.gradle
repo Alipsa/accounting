@@ -570,7 +570,7 @@ tasks.withType(CodeNarc).configureEach {
   reports {
     html.required = true
     text.required = false
-    xml.required = false
+    xml.required = true
   }
 }
 
