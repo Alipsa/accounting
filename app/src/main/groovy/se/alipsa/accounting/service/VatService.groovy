@@ -292,7 +292,7 @@ final class VatService {
   }
 
   @Canonical
-  static final class PeriodDescriptor {
+  private static final class PeriodDescriptor {
     LocalDate startDate
     LocalDate endDate
   }
@@ -350,7 +350,7 @@ final class VatService {
       return false
     }
     for (int i = 0; i < expected.size(); i++) {
-      if (expected[i].startDate != actual[i].startDate || expected[i].endDate != actual[i].endDate) {
+      if (expected[i] != actual[i]) {
         return false
       }
     }
