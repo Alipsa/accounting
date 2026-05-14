@@ -7,6 +7,8 @@ import se.alipsa.accounting.support.I18n
 import java.awt.BorderLayout
 import java.awt.IllegalComponentStateException
 import java.awt.Point
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -84,6 +86,12 @@ final class AccountLookupPopup {
       void removeUpdate(DocumentEvent event) { scheduleSearch() }
       @Override
       void changedUpdate(DocumentEvent event) { scheduleSearch() }
+    })
+    editor.addFocusListener(new FocusAdapter() {
+      @Override
+      void focusLost(FocusEvent event) {
+        hide()
+      }
     })
     editor.addKeyListener(new KeyAdapter() {
       @Override
