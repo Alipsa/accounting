@@ -145,9 +145,9 @@ final class AccountService {
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
       Account account = requireAccount(sql, companyId, normalized)
-      if (vatCode != null && !isVatCompatibleClass(account.accountClass)) {
+      if (vatCode != null && !isVatCompatible(account, vatCode)) {
         throw new IllegalArgumentException(
-            "Konto ${normalized} har kontoklass ${account.accountClass} och kan inte ha momskod."
+            "Konto ${normalized} med kontoklass ${account.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
         )
       }
       sql.executeUpdate('''
@@ -162,8 +162,20 @@ final class AccountService {
 
   static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
 
-  private static boolean isVatCompatibleClass(String accountClass) {
-    accountClass in VAT_COMPATIBLE_CLASSES
+  private static boolean isVatCompatible(Account account, VatCode vatCode) {
+    if (!(account.accountClass in VAT_COMPATIBLE_CLASSES)) {
+      return false
+    }
+    if (account.accountClass in ['INCOME', 'EXPENSE']) {
+      return true
+    }
+    if (account.accountClass == 'ASSET') {
+      return vatCode.inputRate > BigDecimal.ZERO
+    }
+    if (account.accountClass == 'LIABILITY') {
+      return vatCode.outputRate > BigDecimal.ZERO
+    }
+    false
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
