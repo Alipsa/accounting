@@ -7,10 +7,16 @@ This repository is a Gradle-based desktop accounting application with one main m
 - `app/src/main/groovy/se/alipsa/accounting/service/`: database and business services.
 - `app/src/main/groovy/se/alipsa/accounting/ui/`: Swing UI panels and dialogs.
 - `app/src/main/groovy/se/alipsa/accounting/domain/`: domain models.
+- `app/src/main/groovy/se/alipsa/accounting/support/`: shared support utilities.
+- `app/src/main/groovy/se/alipsa/accounting/mcp/`: local MCP server and tool dispatcher.
 - `app/src/main/resources/db/`: schema, indexes, and SQL migrations.
+- `app/src/main/resources/reports/`: FreeMarker templates for generated reports.
+- `app/src/main/resources/docs/`, `i18n/`, and `icons/`: bundled manual, translations, and image assets.
 - `app/src/test/groovy/`: tests, organized into `unit`, `integration`, and `acceptance`.
 - `config/codenarc/` and `config/groovy/`: static analysis and compiler config.
-- `req/`: roadmap and implementation task documents.
+- `packaging/`: platform packaging resources for `jpackage` releases.
+- `skill/`: bundled MCP skill documentation included in distributions.
+- `docs/`, `specs/`, `issues/`, and `req/`: design notes, task documents, and roadmap material.
 
 ## Build, Test, and Development Commands
 - `./gradlew build`: full validation, including compilation, tests, Spotless, and CodeNarc.
@@ -18,6 +24,8 @@ This repository is a Gradle-based desktop accounting application with one main m
 - `./gradlew run`: start the desktop application locally.
 - `./gradlew codenarcMain`: run static analysis on production code.
 - `./gradlew spotlessCheck`: verify formatting.
+- `./gradlew :app:packageCurrentPlatformRelease`: build the release package for the current platform with `jpackage`.
+- `./gradlew :app:verifyCurrentPlatformRelease`: package and smoke-test the current platform launcher.
 
 Run commands from the repository root.
 
@@ -49,13 +57,13 @@ Recent history favors short, descriptive commit messages, often in Swedish imper
 
 ## Security & Configuration Tips
 - H2 is embedded-only; do not introduce networked DB modes.
-- All schema changes must go through migrations in `app/src/main/resources/db/migrations/`.
-- Do not edit generated build output under `app/build/`.
+- All schema changes must go through migrations in `app/src/main/resources/db/migrations/`, and new migrations must be registered in `DatabaseService.MIGRATIONS`.
+- Do not edit generated build output under `app/build/`, root `build/`, `.gradle/`, `.gradle-user/`, `dist/`, or `releases/`.
 
 ## Agent-Specific Notes
 - Always ask before creating a new git branch.
 - Never push directly to `main` unless the user explicitly says to push `main`, or you ask for and receive confirmation immediately before pushing.
-- After finishing an implementation or code fix, always run `./gradlew spotlessApply` to auto-format before committing.
+- After finishing an implementation or code fix, always run `./gradlew spotlessApply` to auto-format before committing, then inspect the diff because Spotless can also touch Markdown files.
 - For Swing work, preserve the existing desktop patterns in `ui/`; prefer small, targeted dialog/panel changes over broad rewrites.
 - Verify UI-related changes with at least `./gradlew build`, even when behavior is mostly visual.
 - For SQL work, update migrations first and keep `schema.sql` readable and aligned with the intended bootstrap state.
