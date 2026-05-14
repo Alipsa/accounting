@@ -98,7 +98,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager
 
   @PackageScope
-  Closure<Void> cursorMover = { int row, int col -> moveCursorToCell(row, col) }
+  Closure cursorMover = { int row, int col -> moveCursorToCell(row, col) }
 
   private final JLabel voucherNumberLabel = new JLabel('')
   private final DatePicker datePicker = createDatePicker()
