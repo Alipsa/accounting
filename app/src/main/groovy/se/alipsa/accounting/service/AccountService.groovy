@@ -150,21 +150,20 @@ final class AccountService {
             "Konto ${normalized} har kontoklass ${account.accountClass} och kan inte ha momskod."
         )
       }
-      int updated = sql.executeUpdate('''
+      sql.executeUpdate('''
           update account
              set vat_code = ?,
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
       ''', [vatCode?.name(), companyId, normalized])
-      if (updated != 1) {
-        throw new IllegalArgumentException("Unknown account number: ${normalized}")
-      }
     }
   }
 
+  static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
+
   private static boolean isVatCompatibleClass(String accountClass) {
-    accountClass in ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY']
+    accountClass in VAT_COMPATIBLE_CLASSES
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
