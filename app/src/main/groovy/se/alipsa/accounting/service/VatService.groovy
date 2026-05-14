@@ -96,6 +96,19 @@ final class VatService {
       if (period.status == LOCKED) {
         throw new IllegalStateException("Momsperiod ${period.periodName} är redan låst.")
       }
+      if (period.status == OPEN) {
+        GroovyRowResult earlierOpen = sql.firstRow('''
+            select count(*) as total from vat_period
+             where fiscal_year_id = ?
+               and period_index < ?
+               and status = ?
+        ''', [period.fiscalYearId, period.periodIndex, OPEN])
+        if (((Number) earlierOpen.get('total')).intValue() > 0) {
+          throw new IllegalStateException(
+              "Momsperiod ${period.periodName} kan inte rapporteras innan tidigare perioder har rapporterats."
+          )
+        }
+      }
       VatReport report = buildReport(sql, period)
       String reportHash = calculateReportHash(report)
       int updated = sql.executeUpdate('''
@@ -221,8 +234,8 @@ final class VatService {
 
   /**
    * Removes accounting periods that are already covered by reported VAT periods.
-   * Assumes reporting is contiguous from the start of the fiscal year; only the
-   * trailing portion after the last reported period is returned for recreation.
+   * Reporting is enforced to be contiguous in {@link #reportPeriod(long)}, so only
+   * the trailing portion after the last reported period needs recreation.
    */
   private static List<GroovyRowResult> removeCoveredAccountingPeriods(
       Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods

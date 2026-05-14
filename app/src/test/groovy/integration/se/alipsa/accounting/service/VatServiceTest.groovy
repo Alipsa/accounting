@@ -226,6 +226,19 @@ class VatServiceTest {
   }
 
   @Test
+  void reportingOutOfOrderIsRejected() {
+    bookSaleVoucher()
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod march = periods.find { VatPeriod p -> p.periodName == '2026-03' }
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.reportPeriod(march.id)
+    }
+
+    assertTrue(exception.message.contains('tidigare perioder'))
+  }
+
+  @Test
   void annualVatSettingCreatesOneVatPeriodForWholeFiscalYear() {
     companySettingsService.save(
         new se.alipsa.accounting.domain.CompanySettings(
