@@ -181,7 +181,7 @@ final class VatService {
       return
     }
 
-    int expectedPeriodCount = resolveExpectedPeriodCount(periodicity, accountingPeriods)
+    List<PeriodDescriptor> expected = buildExpectedDescriptors(periodicity, accountingPeriods)
 
     GroovyRowResult existing = sql.firstRow(
         'select count(*) as total from vat_period where fiscal_year_id = ?',
@@ -189,7 +189,8 @@ final class VatService {
     ) as GroovyRowResult
     int existingCount = ((Number) existing.get('total')).intValue()
     if (existingCount > 0) {
-      if (existingCount == expectedPeriodCount) {
+      List<PeriodDescriptor> current = loadExistingDescriptors(sql, fiscalYearId)
+      if (descriptorsMatch(expected, current)) {
         return
       }
       GroovyRowResult reported = sql.firstRow(
@@ -200,12 +201,9 @@ final class VatService {
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
       } else {
         List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
-        int expectedRemainingCount = resolveExpectedPeriodCount(periodicity, remainingPeriods)
-        GroovyRowResult open = sql.firstRow(
-            'select count(*) as total from vat_period where fiscal_year_id = ? and status = ?',
-            [fiscalYearId, OPEN]
-        ) as GroovyRowResult
-        if (((Number) open.get('total')).intValue() == expectedRemainingCount) {
+        List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
+        List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
+        if (descriptorsMatch(remainingExpected, currentOpen)) {
           return
         }
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
@@ -293,14 +291,70 @@ final class VatService {
     }
   }
 
-  private static int resolveExpectedPeriodCount(VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods) {
+  @Canonical
+  static final class PeriodDescriptor {
+    LocalDate startDate
+    LocalDate endDate
+  }
+
+  private static List<PeriodDescriptor> buildExpectedDescriptors(
+      VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
+  ) {
+    if (accountingPeriods.isEmpty()) {
+      return []
+    }
     if (periodicity == VatPeriodicity.ANNUAL) {
-      return 1
+      return [new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(accountingPeriods.first().get('startDate')),
+          SqlValueMapper.toLocalDate(accountingPeriods.last().get('endDate'))
+      )]
     }
     if (periodicity == VatPeriodicity.QUARTERLY) {
-      return groupByCalendarQuarter(accountingPeriods).size()
+      return groupByCalendarQuarter(accountingPeriods).collect { List<GroovyRowResult> quarter ->
+        new PeriodDescriptor(
+            SqlValueMapper.toLocalDate(quarter.first().get('startDate')),
+            SqlValueMapper.toLocalDate(quarter.last().get('endDate'))
+        )
+      }
     }
-    accountingPeriods.size()
+    accountingPeriods.collect { GroovyRowResult row ->
+      new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(row.get('startDate')),
+          SqlValueMapper.toLocalDate(row.get('endDate'))
+      )
+    }
+  }
+
+  private static List<PeriodDescriptor> loadExistingDescriptors(Sql sql, long fiscalYearId, String statusFilter = null) {
+    StringBuilder query = new StringBuilder('''
+        select start_date as startDate, end_date as endDate
+          from vat_period
+         where fiscal_year_id = ?
+    ''')
+    List<Object> params = [fiscalYearId]
+    if (statusFilter != null) {
+      query.append(' and status = ?')
+      params << statusFilter
+    }
+    query.append(' order by period_index')
+    sql.rows(query.toString(), params).collect { GroovyRowResult row ->
+      new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(row.get('startDate')),
+          SqlValueMapper.toLocalDate(row.get('endDate'))
+      )
+    }
+  }
+
+  private static boolean descriptorsMatch(List<PeriodDescriptor> expected, List<PeriodDescriptor> actual) {
+    if (expected.size() != actual.size()) {
+      return false
+    }
+    for (int i = 0; i < expected.size(); i++) {
+      if (expected[i].startDate != actual[i].startDate || expected[i].endDate != actual[i].endDate) {
+        return false
+      }
+    }
+    true
   }
 
   private static void insertVatPeriod(Sql sql, long fiscalYearId, int periodIndex, String periodName, Object startDate, Object endDate) {
