@@ -94,7 +94,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     add(buildTables(), BorderLayout.CENTER)
     add(buildFooter(), BorderLayout.SOUTH)
 
-    periodTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
+    periodTable.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
     reportTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
     periodTable.selectionModel.addListSelectionListener { ListSelectionEvent event ->
       if (!event.valueIsAdjusting) {
@@ -214,38 +214,68 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reportSelectedPeriod() {
-    VatPeriod period = selectedPeriod()
-    if (period == null) {
+    List<VatPeriod> periods = selectedPeriods()
+    if (periods.isEmpty()) {
       showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodReport'))
       return
     }
-    try {
-      VatPeriod reportedPeriod = vatService.reportPeriod(period.id)
-      reloadPeriods()
-      selectPeriod(reportedPeriod.id)
-      showInfo(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriod.periodName))
-    } catch (IllegalArgumentException exception) {
-      showError(exception.message)
-    } catch (IllegalStateException exception) {
-      showError(exception.message)
+    int successCount = 0
+    List<String> errors = []
+    periods.each { VatPeriod period ->
+      try {
+        vatService.reportPeriod(period.id)
+        successCount++
+      } catch (IllegalArgumentException exception) {
+        errors << exception.message
+      } catch (IllegalStateException exception) {
+        errors << exception.message
+      }
+    }
+    reloadPeriods()
+    if (!periods.isEmpty()) {
+      selectPeriod(periods.first().id)
+    }
+    if (errors.isEmpty()) {
+      if (successCount == 1) {
+        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', periods.first().periodName))
+      } else {
+        showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
+      }
+    } else {
+      showError(errors.join('\n'))
     }
   }
 
   private void bookTransferForSelectedPeriod() {
-    VatPeriod period = selectedPeriod()
-    if (period == null) {
+    List<VatPeriod> periods = selectedPeriods()
+    if (periods.isEmpty()) {
       showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodTransfer'))
       return
     }
-    try {
-      vatService.bookTransfer(period.id)
-      reloadPeriods()
-      selectPeriod(period.id)
-      showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName))
-    } catch (IllegalArgumentException exception) {
-      showError(exception.message)
-    } catch (IllegalStateException exception) {
-      showError(exception.message)
+    int successCount = 0
+    List<String> errors = []
+    periods.each { VatPeriod period ->
+      try {
+        vatService.bookTransfer(period.id)
+        successCount++
+      } catch (IllegalArgumentException exception) {
+        errors << exception.message
+      } catch (IllegalStateException exception) {
+        errors << exception.message
+      }
+    }
+    reloadPeriods()
+    if (!periods.isEmpty()) {
+      selectPeriod(periods.first().id)
+    }
+    if (errors.isEmpty()) {
+      if (successCount == 1) {
+        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', periods.first().periodName))
+      } else {
+        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
+      }
+    } else {
+      showError(errors.join('\n'))
     }
   }
 
@@ -253,9 +283,14 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     fiscalYearComboBox.selectedItem as FiscalYear
   }
 
+  private List<VatPeriod> selectedPeriods() {
+    int[] rows = periodTable.selectedRows
+    rows.collect { int row -> periodTableModel.rowAt(row) }
+  }
+
   private VatPeriod selectedPeriod() {
-    int row = periodTable.selectedRow
-    row < 0 ? null : periodTableModel.rowAt(row)
+    List<VatPeriod> periods = selectedPeriods()
+    periods.isEmpty() ? null : periods.first()
   }
 
   private void selectFiscalYear(Long fiscalYearId) {

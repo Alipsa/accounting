@@ -139,6 +139,23 @@ final class AccountService {
     }
   }
 
+  void setAccountVatCode(long companyId, String accountNumber, String vatCode) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withTransaction { Sql sql ->
+      int updated = sql.executeUpdate('''
+          update account
+             set vat_code = ?,
+                 updated_at = current_timestamp
+           where company_id = ?
+             and account_number = ?
+      ''', [vatCode, companyId, normalized])
+      if (updated != 1) {
+        throw new IllegalArgumentException("Unknown account number: ${normalized}")
+      }
+    }
+  }
+
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->

@@ -172,7 +172,15 @@ final class VatService {
         [fiscalYearId]
     ) as GroovyRowResult
     if (((Number) existing.get('total')).intValue() > 0) {
-      return
+      GroovyRowResult reported = sql.firstRow(
+          'select count(*) as total from vat_period where fiscal_year_id = ? and status != ?',
+          [fiscalYearId, OPEN]
+      ) as GroovyRowResult
+      if (((Number) reported.get('total')).intValue() == 0) {
+        sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
+      } else {
+        return
+      }
     }
 
     VatPeriodicity periodicity = loadPeriodicity(sql, companyId)

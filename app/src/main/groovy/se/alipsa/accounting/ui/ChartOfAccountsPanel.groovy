@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ChartOfAccountsImportService.ImportSummary
@@ -22,6 +23,7 @@ import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JFileChooser
 import javax.swing.JLabel
+import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTable
@@ -58,6 +60,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private JButton importButton
   private JButton resetButton
   private JButton toggleActiveButton
+  private JButton setVatCodeButton
 
   ChartOfAccountsPanel(
       AccountService accountService,
@@ -184,10 +187,13 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     resetButton.addActionListener { resetFilters() }
     toggleActiveButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.toggleActive'))
     toggleActiveButton.addActionListener { toggleSelectedAccountActive() }
+    setVatCodeButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.setVatCode'))
+    setVatCodeButton.addActionListener { setVatCodeForSelectedAccount() }
 
     actionPanel.add(importButton)
     actionPanel.add(resetButton)
     actionPanel.add(toggleActiveButton)
+    actionPanel.add(setVatCodeButton)
 
     actionPanel
   }
@@ -260,6 +266,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String note = account.classificationNote
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.note', account.classificationNote))}</p>"
         : ''
+    String vatCode = account.vatCode
+        ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', account.vatCode))}</p>"
+        : "<p>${escapeHtml(I18n.instance.getString('chartOfAccountsPanel.details.noVatCode'))}</p>"
     detailsLabel.text = """
         <html>
         <h3>${escapeHtml(account.accountNumber)} ${escapeHtml(account.accountName)}</h3>
@@ -267,6 +276,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         <p>${escapeHtml(normalSide)}</p>
         <p>${escapeHtml(active)}</p>
         <p>${escapeHtml(manualReview)}</p>
+        ${vatCode}
         ${note}
         </html>
     """.stripIndent().trim()
@@ -307,6 +317,42 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         ? I18n.instance.getString('chartOfAccountsPanel.message.toggledInactive')
         : I18n.instance.getString('chartOfAccountsPanel.message.toggledActive')
     showInfo(I18n.instance.format('chartOfAccountsPanel.message.toggled', account.accountNumber, status))
+  }
+
+  private void setVatCodeForSelectedAccount() {
+    Account account = selectedAccount()
+    if (account == null) {
+      showError(I18n.instance.getString('chartOfAccountsPanel.error.selectAccount'))
+      return
+    }
+
+    VatCode[] values = VatCode.values()
+    String[] options = new String[values.length + 1]
+    options[0] = I18n.instance.getString('chartOfAccountsPanel.vatCode.none')
+    values.eachWithIndex { VatCode code, int index ->
+      options[index + 1] = code.name()
+    }
+
+    String selected = JOptionPane.showInputDialog(
+        this,
+        I18n.instance.getString('chartOfAccountsPanel.vatCode.prompt'),
+        I18n.instance.getString('chartOfAccountsPanel.vatCode.title'),
+        JOptionPane.QUESTION_MESSAGE,
+        null,
+        options,
+        account.vatCode ?: options[0]
+    ) as String
+
+    if (selected == null) {
+      return
+    }
+
+    String newVatCode = selected == options[0] ? null : selected
+    accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
+    reloadAccounts()
+    selectAccount(account.accountNumber)
+    showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
+        account.accountNumber, selected))
   }
 
   private void resetFilters() {
@@ -377,7 +423,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     @Override
     @SuppressWarnings('GetterMethodCouldBeProperty')
     int getColumnCount() {
-      6
+      7
     }
 
     @Override
@@ -387,8 +433,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         case 1: return I18n.instance.getString('chartOfAccountsPanel.table.name')
         case 2: return I18n.instance.getString('chartOfAccountsPanel.table.class')
         case 3: return I18n.instance.getString('chartOfAccountsPanel.table.normal')
-        case 4: return I18n.instance.getString('chartOfAccountsPanel.table.active')
-        case 5: return I18n.instance.getString('chartOfAccountsPanel.table.review')
+        case 4: return I18n.instance.getString('chartOfAccountsPanel.table.vatCode')
+        case 5: return I18n.instance.getString('chartOfAccountsPanel.table.active')
+        case 6: return I18n.instance.getString('chartOfAccountsPanel.table.review')
         default: return ''
       }
     }
@@ -406,10 +453,12 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         case 3:
           return account.normalBalanceSide ?: ''
         case 4:
+          return account.vatCode ?: ''
+        case 5:
           String yes = I18n.instance.getString('chartOfAccountsPanel.details.yes')
           String no = I18n.instance.getString('chartOfAccountsPanel.details.no')
           return account.active ? yes : no
-        case 5:
+        case 6:
           String yes2 = I18n.instance.getString('chartOfAccountsPanel.details.yes')
           String no2 = I18n.instance.getString('chartOfAccountsPanel.details.no')
           return account.manualReviewRequired ? yes2 : no2
