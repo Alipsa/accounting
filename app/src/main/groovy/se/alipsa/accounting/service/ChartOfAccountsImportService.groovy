@@ -203,6 +203,9 @@ final class ChartOfAccountsImportService {
         if (subgroup <= 20) {
           return new Classification('EQUITY', 'CREDIT', false, null, accountSubgroup)
         }
+        if (accountNumber.startsWith('264')) {
+          return new Classification('ASSET', 'DEBIT', false, null, accountSubgroup)
+        }
         return new Classification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
       case 3:
         return new Classification('INCOME', 'CREDIT', false, null, accountSubgroup)
