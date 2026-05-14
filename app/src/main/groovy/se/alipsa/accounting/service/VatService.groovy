@@ -167,22 +167,6 @@ final class VatService {
     }
     long companyId = ((Number) fiscalYearRow.get('companyId')).longValue()
 
-    GroovyRowResult existing = sql.firstRow(
-        'select count(*) as total from vat_period where fiscal_year_id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (((Number) existing.get('total')).intValue() > 0) {
-      GroovyRowResult reported = sql.firstRow(
-          'select count(*) as total from vat_period where fiscal_year_id = ? and status != ?',
-          [fiscalYearId, OPEN]
-      ) as GroovyRowResult
-      if (((Number) reported.get('total')).intValue() == 0) {
-        sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
-      } else {
-        return
-      }
-    }
-
     VatPeriodicity periodicity = loadPeriodicity(sql, companyId)
     List<GroovyRowResult> accountingPeriods = sql.rows('''
         select period_index as periodIndex,
@@ -195,6 +179,28 @@ final class VatService {
     ''', [fiscalYearId]) as List<GroovyRowResult>
     if (accountingPeriods.isEmpty()) {
       return
+    }
+
+    int expectedPeriodCount = resolveExpectedPeriodCount(periodicity, accountingPeriods)
+
+    GroovyRowResult existing = sql.firstRow(
+        'select count(*) as total from vat_period where fiscal_year_id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    int existingCount = ((Number) existing.get('total')).intValue()
+    if (existingCount > 0) {
+      if (existingCount == expectedPeriodCount) {
+        return
+      }
+      GroovyRowResult reported = sql.firstRow(
+          'select count(*) as total from vat_period where fiscal_year_id = ? and status != ?',
+          [fiscalYearId, OPEN]
+      ) as GroovyRowResult
+      if (((Number) reported.get('total')).intValue() == 0) {
+        sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
+      } else {
+        return
+      }
     }
 
     if (periodicity == VatPeriodicity.ANNUAL) {
@@ -230,6 +236,16 @@ final class VatService {
           row.get('periodName') as String,
           row.get('startDate'), row.get('endDate'))
     }
+  }
+
+  private static int resolveExpectedPeriodCount(VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods) {
+    if (periodicity == VatPeriodicity.ANNUAL) {
+      return 1
+    }
+    if (periodicity == VatPeriodicity.QUARTERLY) {
+      return groupByCalendarQuarter(accountingPeriods).size()
+    }
+    accountingPeriods.size()
   }
 
   private static void insertVatPeriod(Sql sql, long fiscalYearId, int periodIndex, String periodName, Object startDate, Object endDate) {

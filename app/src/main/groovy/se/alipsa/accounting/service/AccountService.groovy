@@ -6,6 +6,7 @@ import groovy.transform.Canonical
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
+import se.alipsa.accounting.domain.VatCode
 
 import java.math.RoundingMode
 
@@ -139,7 +140,7 @@ final class AccountService {
     }
   }
 
-  void setAccountVatCode(long companyId, String accountNumber, String vatCode) {
+  void setAccountVatCode(long companyId, String accountNumber, VatCode vatCode) {
     CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
@@ -149,7 +150,7 @@ final class AccountService {
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
-      ''', [vatCode, companyId, normalized])
+      ''', [vatCode?.name(), companyId, normalized])
       if (updated != 1) {
         throw new IllegalArgumentException("Unknown account number: ${normalized}")
       }

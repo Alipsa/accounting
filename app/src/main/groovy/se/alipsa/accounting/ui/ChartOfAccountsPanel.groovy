@@ -347,12 +347,12 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    String newVatCode = selected == options[0] ? null : selected
+    VatCode newVatCode = selected == options[0] ? null : VatCode.valueOf(selected)
     accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
     reloadAccounts()
     selectAccount(account.accountNumber)
     showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
-        account.accountNumber, selected))
+        account.accountNumber, newVatCode?.name() ?: options[0]))
   }
 
   private void resetFilters() {

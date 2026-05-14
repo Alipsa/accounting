@@ -232,9 +232,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    if (!periods.isEmpty()) {
-      selectPeriod(periods.first().id)
-    }
+    selectPeriod(periods.first().id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
         showInfo(I18n.instance.format('vatPeriodPanel.message.reported', periods.first().periodName))
@@ -265,9 +263,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    if (!periods.isEmpty()) {
-      selectPeriod(periods.first().id)
-    }
+    selectPeriod(periods.first().id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
         showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', periods.first().periodName))
