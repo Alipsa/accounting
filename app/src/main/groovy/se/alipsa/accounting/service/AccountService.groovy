@@ -172,10 +172,7 @@ final class AccountService {
     if (account.accountClass == 'ASSET') {
       return vatCode.inputRate > BigDecimal.ZERO
     }
-    if (account.accountClass == 'LIABILITY') {
-      return vatCode.outputRate > BigDecimal.ZERO
-    }
-    false
+    account.accountClass == 'LIABILITY' && vatCode.outputRate > BigDecimal.ZERO
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
