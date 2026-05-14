@@ -199,10 +199,40 @@ final class VatService {
       if (((Number) reported.get('total')).intValue() == 0) {
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
       } else {
-        return
+        sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
+        accountingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
+        if (accountingPeriods.isEmpty()) {
+          return
+        }
       }
     }
 
+    createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods)
+  }
+
+  private static List<GroovyRowResult> removeCoveredAccountingPeriods(
+      Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods
+  ) {
+    List<GroovyRowResult> reportedPeriods = sql.rows('''
+        select start_date as startDate, end_date as endDate
+          from vat_period
+         where fiscal_year_id = ?
+           and status != ?
+    ''', [fiscalYearId, OPEN])
+    if (reportedPeriods.isEmpty()) {
+      return accountingPeriods
+    }
+    LocalDate maxReportedEnd = reportedPeriods.collect { GroovyRowResult row ->
+      SqlValueMapper.toLocalDate(row.get('endDate'))
+    }.max()
+    accountingPeriods.findAll { GroovyRowResult row ->
+      SqlValueMapper.toLocalDate(row.get('startDate')).isAfter(maxReportedEnd)
+    }
+  }
+
+  private static void createVatPeriodsForStructure(
+      Sql sql, long fiscalYearId, VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
+  ) {
     if (periodicity == VatPeriodicity.ANNUAL) {
       GroovyRowResult first = accountingPeriods.first()
       GroovyRowResult last = accountingPeriods.last()

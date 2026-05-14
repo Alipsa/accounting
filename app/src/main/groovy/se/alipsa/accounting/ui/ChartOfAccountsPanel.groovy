@@ -269,6 +269,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String vatCode = account.vatCode
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', account.vatCode))}</p>"
         : "<p>${escapeHtml(I18n.instance.getString('chartOfAccountsPanel.details.noVatCode'))}</p>"
+    setVatCodeButton.enabled = account.accountClass in ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY']
     detailsLabel.text = """
         <html>
         <h3>${escapeHtml(account.accountNumber)} ${escapeHtml(account.accountName)}</h3>

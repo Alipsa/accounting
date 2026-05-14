@@ -144,6 +144,12 @@ final class AccountService {
     CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
+      Account account = requireAccount(sql, companyId, normalized)
+      if (vatCode != null && !isVatCompatibleClass(account.accountClass)) {
+        throw new IllegalArgumentException(
+            "Konto ${normalized} har kontoklass ${account.accountClass} och kan inte ha momskod."
+        )
+      }
       int updated = sql.executeUpdate('''
           update account
              set vat_code = ?,
@@ -155,6 +161,10 @@ final class AccountService {
         throw new IllegalArgumentException("Unknown account number: ${normalized}")
       }
     }
+  }
+
+  private static boolean isVatCompatibleClass(String accountClass) {
+    accountClass in ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY']
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
@@ -331,6 +341,29 @@ final class AccountService {
     if (((Number) row.get('total')).intValue() != 1) {
       throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
     }
+  }
+
+  private static Account requireAccount(Sql sql, long companyId, String accountNumber) {
+    GroovyRowResult row = sql.firstRow('''
+        select id,
+               company_id as companyId,
+               account_number as accountNumber,
+               account_name as accountName,
+               account_class as accountClass,
+               normal_balance_side as normalBalanceSide,
+               vat_code as vatCode,
+               active,
+               manual_review_required as manualReviewRequired,
+               classification_note as classificationNote,
+               account_subgroup as accountSubgroup
+          from account
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber]) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException("Unknown account number: ${accountNumber}")
+    }
+    mapAccount(row)
   }
 
   private static Account requireBalanceAccount(Sql sql, long companyId, String accountNumber) {
