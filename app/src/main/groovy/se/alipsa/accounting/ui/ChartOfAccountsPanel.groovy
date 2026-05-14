@@ -327,10 +327,20 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    VatCode[] values = VatCode.values()
-    String[] options = new String[values.length + 1]
-    options[0] = I18n.instance.getString('chartOfAccountsPanel.vatCode.none')
-    values.eachWithIndex { VatCode code, int index ->
+    List<VatCode> allowedCodes = VatCode.values().findAll { VatCode code ->
+      switch (account.accountClass) {
+        case 'INCOME':
+        case 'EXPENSE': return true
+        case 'ASSET': return code.inputRate > BigDecimal.ZERO
+        case 'LIABILITY': return code.outputRate > BigDecimal.ZERO
+        default: return false
+      }
+    }
+
+    String noneOption = I18n.instance.getString('chartOfAccountsPanel.vatCode.none')
+    String[] options = new String[allowedCodes.size() + 1]
+    options[0] = noneOption
+    allowedCodes.eachWithIndex { VatCode code, int index ->
       options[index + 1] = code.name()
     }
 
@@ -348,12 +358,12 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    VatCode newVatCode = selected == options[0] ? null : VatCode.valueOf(selected)
+    VatCode newVatCode = selected == noneOption ? null : VatCode.valueOf(selected)
     accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
     reloadAccounts()
     selectAccount(account.accountNumber)
     showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
-        account.accountNumber, newVatCode?.name() ?: options[0]))
+        account.accountNumber, newVatCode?.name() ?: noneOption))
   }
 
   private void resetFilters() {
