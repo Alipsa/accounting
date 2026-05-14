@@ -199,15 +199,26 @@ final class VatService {
       if (((Number) reported.get('total')).intValue() == 0) {
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
       } else {
+        List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
+        int expectedRemainingCount = resolveExpectedPeriodCount(periodicity, remainingPeriods)
+        GroovyRowResult open = sql.firstRow(
+            'select count(*) as total from vat_period where fiscal_year_id = ? and status = ?',
+            [fiscalYearId, OPEN]
+        ) as GroovyRowResult
+        if (((Number) open.get('total')).intValue() == expectedRemainingCount) {
+          return
+        }
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
-        accountingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
+        accountingPeriods = remainingPeriods
         if (accountingPeriods.isEmpty()) {
           return
         }
       }
     }
 
-    createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods)
+    int nextPeriodIndex = resolveNextPeriodIndex(sql, fiscalYearId)
+
+    createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods, nextPeriodIndex)
   }
 
   /**
@@ -235,13 +246,22 @@ final class VatService {
     }
   }
 
+  private static int resolveNextPeriodIndex(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select coalesce(max(period_index), 0) as maxIndex from vat_period where fiscal_year_id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    ((Number) row.get('maxIndex')).intValue() + 1
+  }
+
   private static void createVatPeriodsForStructure(
-      Sql sql, long fiscalYearId, VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
+      Sql sql, long fiscalYearId, VatPeriodicity periodicity,
+      List<GroovyRowResult> accountingPeriods, int startIndex
   ) {
     if (periodicity == VatPeriodicity.ANNUAL) {
       GroovyRowResult first = accountingPeriods.first()
       GroovyRowResult last = accountingPeriods.last()
-      insertVatPeriod(sql, fiscalYearId, 1,
+      insertVatPeriod(sql, fiscalYearId, startIndex,
           "${SqlValueMapper.toLocalDate(first.get('startDate'))} - ${SqlValueMapper.toLocalDate(last.get('endDate'))}".toString(),
           first.get('startDate'), last.get('endDate'))
       return
@@ -259,15 +279,15 @@ final class VatService {
         if (isPartialQuarter(start, end, calendarQuarter)) {
           label = "${label} (del)"
         }
-        insertVatPeriod(sql, fiscalYearId, index + 1, label,
+        insertVatPeriod(sql, fiscalYearId, startIndex + index, label,
             first.get('startDate'), last.get('endDate'))
       }
       return
     }
 
-    accountingPeriods.each { GroovyRowResult row ->
+    accountingPeriods.eachWithIndex { GroovyRowResult row, int index ->
       insertVatPeriod(sql, fiscalYearId,
-          ((Number) row.get('periodIndex')).intValue(),
+          startIndex + index,
           row.get('periodName') as String,
           row.get('startDate'), row.get('endDate'))
     }
