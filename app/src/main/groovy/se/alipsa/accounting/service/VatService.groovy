@@ -190,7 +190,7 @@ final class VatService {
     int existingCount = ((Number) existing.get('total')).intValue()
     if (existingCount > 0) {
       List<PeriodDescriptor> current = loadExistingDescriptors(sql, fiscalYearId)
-      if (descriptorsMatch(expected, current)) {
+      if (expected == current) {
         return
       }
       GroovyRowResult reported = sql.firstRow(
@@ -203,7 +203,7 @@ final class VatService {
         List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
         List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
         List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
-        if (descriptorsMatch(remainingExpected, currentOpen)) {
+        if (remainingExpected == currentOpen) {
           return
         }
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
@@ -343,18 +343,6 @@ final class VatService {
           SqlValueMapper.toLocalDate(row.get('endDate'))
       )
     }
-  }
-
-  private static boolean descriptorsMatch(List<PeriodDescriptor> expected, List<PeriodDescriptor> actual) {
-    if (expected.size() != actual.size()) {
-      return false
-    }
-    for (int i = 0; i < expected.size(); i++) {
-      if (expected[i] != actual[i]) {
-        return false
-      }
-    }
-    true
   }
 
   private static void insertVatPeriod(Sql sql, long fiscalYearId, int periodIndex, String periodName, Object startDate, Object endDate) {

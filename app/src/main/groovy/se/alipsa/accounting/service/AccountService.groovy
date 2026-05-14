@@ -162,6 +162,12 @@ final class AccountService {
 
   static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
 
+  static List<VatCode> compatibleVatCodes(Account account) {
+    VatCode.values().findAll { VatCode vatCode ->
+      isVatCompatible(account, vatCode)
+    }.toList()
+  }
+
   private static boolean isVatCompatible(Account account, VatCode vatCode) {
     if (!(account.accountClass in VAT_COMPATIBLE_CLASSES)) {
       return false

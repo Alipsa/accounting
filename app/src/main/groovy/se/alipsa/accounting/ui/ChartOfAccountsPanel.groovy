@@ -327,15 +327,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    List<VatCode> allowedCodes = VatCode.values().findAll { VatCode code ->
-      switch (account.accountClass) {
-        case 'INCOME':
-        case 'EXPENSE': return true
-        case 'ASSET': return code.inputRate > BigDecimal.ZERO
-        case 'LIABILITY': return code.outputRate > BigDecimal.ZERO
-        default: return false
-      }
-    }
+    List<VatCode> allowedCodes = AccountService.compatibleVatCodes(account)
 
     String noneOption = I18n.instance.getString('chartOfAccountsPanel.vatCode.none')
     String[] options = new String[allowedCodes.size() + 1]
