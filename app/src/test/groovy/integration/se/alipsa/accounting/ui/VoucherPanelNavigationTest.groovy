@@ -25,6 +25,7 @@ final class VoucherPanelNavigationTest {
   Path tempDir
 
   private String previousHome
+  private DatabaseService databaseService
   private VoucherPanel panel
   private List<List<Integer>> moves
 
@@ -32,7 +33,7 @@ final class VoucherPanelNavigationTest {
   void setUp() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
-    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
@@ -50,11 +51,12 @@ final class VoucherPanelNavigationTest {
     panel.cursorMover = { int row, int col ->
       moves << [row, col]
       null
-    } as Closure<Void>
+    } as Closure
   }
 
   @AfterEach
   void tearDown() {
+    databaseService?.shutdown()
     if (previousHome == null) {
       System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     } else {
@@ -78,6 +80,51 @@ final class VoucherPanelNavigationTest {
     panel.advanceFromCell(0, 0)
 
     assertEquals([[0, 3]], moves)
+  }
+
+  @Test
+  void advancesFromDescriptionColumnToDebitForDebitAccount() {
+    setSingleLine('DEBIT')
+
+    panel.advanceFromCell(0, 1)
+
+    assertEquals([[0, 2]], moves)
+  }
+
+  @Test
+  void advancesFromDescriptionColumnToCreditForCreditAccount() {
+    setSingleLine('CREDIT')
+
+    panel.advanceFromCell(0, 1)
+
+    assertEquals([[0, 3]], moves)
+  }
+
+  @Test
+  void advancesFromDebitColumnToCredit() {
+    setSingleLine('DEBIT')
+
+    panel.advanceFromCell(0, 2)
+
+    assertEquals([[0, 3]], moves)
+  }
+
+  @Test
+  void advancesFromCreditColumnToNextRowAccount() {
+    setSingleLine('CREDIT')
+
+    panel.advanceFromCell(0, 3)
+
+    assertEquals([[1, 0]], moves)
+  }
+
+  @Test
+  void advancesFromTextColumnToNextRowAccount() {
+    setSingleLine('DEBIT')
+
+    panel.advanceFromCell(0, 4)
+
+    assertEquals([[1, 0]], moves)
   }
 
   private void setSingleLine(String normalBalanceSide) {

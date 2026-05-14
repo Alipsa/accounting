@@ -426,7 +426,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         if (lineTable.cellEditor != null) {
           lineTable.cellEditor.stopCellEditing()
         }
-        moveCursorToAmountColumn(row, selected.normalBalanceSide)
+        cursorToAmountColumn(row, selected.normalBalanceSide)
       }
     } as Consumer<Account>
     AccountLookupPopup numberPopup = new AccountLookupPopup(
@@ -453,7 +453,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         if (lineTable.cellEditor != null) {
           lineTable.cellEditor.stopCellEditing()
         }
-        moveCursorToAmountColumn(row, selected.normalBalanceSide)
+        cursorToAmountColumn(row, selected.normalBalanceSide)
       }
     } as Consumer<Account>
     AccountLookupPopup namePopup = new AccountLookupPopup(
@@ -945,10 +945,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private void showError(String message) {
     feedbackArea.foreground = new Color(153, 27, 27)
     feedbackArea.text = message
-  }
-
-  private void moveCursorToAmountColumn(int row, String normalBalanceSide) {
-    cursorToAmountColumn(row, normalBalanceSide)
   }
 
   private void cursorToAmountColumn(int row, String normalBalanceSide) {
