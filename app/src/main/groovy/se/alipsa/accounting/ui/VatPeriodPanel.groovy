@@ -221,7 +221,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
     int successCount = 0
     List<String> errors = []
-    periods.each { VatPeriod period ->
+    periods.sort { VatPeriod period -> period.periodIndex }.each { VatPeriod period ->
       try {
         vatService.reportPeriod(period.id)
         successCount++

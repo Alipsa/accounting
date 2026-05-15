@@ -94,6 +94,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
     toggleActiveButton.text = I18n.instance.getString('chartOfAccountsPanel.button.toggleActive')
+    setVatCodeButton.text = I18n.instance.getString('chartOfAccountsPanel.button.setVatCode')
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
     refreshOverview()
@@ -188,6 +189,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     toggleActiveButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.toggleActive'))
     toggleActiveButton.addActionListener { toggleSelectedAccountActive() }
     setVatCodeButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.setVatCode'))
+    setVatCodeButton.enabled = false
     setVatCodeButton.addActionListener { setVatCodeForSelectedAccount() }
 
     actionPanel.add(importButton)
@@ -250,6 +252,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     Account account = selectedAccount()
     if (account == null) {
       detailsLabel.text = I18n.instance.getString('chartOfAccountsPanel.details.selectAccount')
+      setVatCodeButton.enabled = false
       return
     }
 

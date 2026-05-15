@@ -162,6 +162,27 @@ final class AccountService {
 
   static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
 
+  private static final Set<VatCode> INCOME_VAT_CODES = [
+      VatCode.OUTPUT_25,
+      VatCode.OUTPUT_12,
+      VatCode.OUTPUT_6,
+      VatCode.EU_SUPPLY_GOODS,
+      VatCode.EU_SUPPLY_SERVICES,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
+  private static final Set<VatCode> EXPENSE_VAT_CODES = [
+      VatCode.INPUT_25,
+      VatCode.INPUT_12,
+      VatCode.INPUT_6,
+      VatCode.REVERSE_CHARGE_DOMESTIC,
+      VatCode.EU_ACQUISITION_GOODS,
+      VatCode.EU_ACQUISITION_SERVICES,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
   static List<VatCode> compatibleVatCodes(Account account) {
     VatCode.values().findAll { VatCode vatCode ->
       isVatCompatible(account, vatCode)
@@ -172,8 +193,11 @@ final class AccountService {
     if (!(account.accountClass in VAT_COMPATIBLE_CLASSES)) {
       return false
     }
-    if (account.accountClass in ['INCOME', 'EXPENSE']) {
-      return true
+    if (account.accountClass == 'INCOME') {
+      return vatCode in INCOME_VAT_CODES
+    }
+    if (account.accountClass == 'EXPENSE') {
+      return vatCode in EXPENSE_VAT_CODES
     }
     if (account.accountClass == 'ASSET') {
       return vatCode.inputRate > BigDecimal.ZERO

@@ -68,6 +68,26 @@ class AccountServiceTest {
   }
 
   @Test
+  void setAccountVatCodeRejectsInputCodeOnIncomeAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountVatCode(
+          CompanyService.LEGACY_COMPANY_ID, '3010', VatCode.EU_ACQUISITION_GOODS)
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
+  }
+
+  @Test
+  void setAccountVatCodeRejectsOutputCodeOnExpenseAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountVatCode(
+          CompanyService.LEGACY_COMPANY_ID, '4010', VatCode.OUTPUT_25)
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
+  }
+
+  @Test
   void setAccountVatCodeToNullClearsExistingCode() {
     accountService.setAccountVatCode(
         CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.INPUT_25)
@@ -92,6 +112,22 @@ class AccountServiceTest {
     List<VatCode> liabilityCodes = AccountService.compatibleVatCodes(liability)
     assertTrue(liabilityCodes.contains(VatCode.OUTPUT_25))
     assertFalse(liabilityCodes.contains(VatCode.INPUT_25))
+
+    Account income = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '3010')
+    List<VatCode> incomeCodes = AccountService.compatibleVatCodes(income)
+    assertTrue(incomeCodes.contains(VatCode.OUTPUT_25))
+    assertTrue(incomeCodes.contains(VatCode.EU_SUPPLY_GOODS))
+    assertFalse(incomeCodes.contains(VatCode.INPUT_25))
+    assertFalse(incomeCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
+
+    Account expense = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '4010')
+    List<VatCode> expenseCodes = AccountService.compatibleVatCodes(expense)
+    assertTrue(expenseCodes.contains(VatCode.INPUT_25))
+    assertTrue(expenseCodes.contains(VatCode.EU_ACQUISITION_GOODS))
+    assertFalse(expenseCodes.contains(VatCode.OUTPUT_25))
+    assertFalse(expenseCodes.contains(VatCode.EU_SUPPLY_GOODS))
 
     Account equity = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '2010')
@@ -123,6 +159,22 @@ class AccountServiceTest {
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
           ) values (1, '2010', 'Eget kapital', 'EQUITY', 'CREDIT',
+              true, false, current_timestamp, current_timestamp)
+      ''')
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (1, '3010', 'Försäljning', 'INCOME', 'CREDIT',
+              true, false, current_timestamp, current_timestamp)
+      ''')
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (1, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT',
               true, false, current_timestamp, current_timestamp)
       ''')
     }
