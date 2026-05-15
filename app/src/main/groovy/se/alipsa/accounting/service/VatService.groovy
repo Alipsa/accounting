@@ -96,6 +96,19 @@ final class VatService {
       if (period.status == LOCKED) {
         throw new IllegalStateException("Momsperiod ${period.periodName} är redan låst.")
       }
+      if (period.status == OPEN) {
+        GroovyRowResult earlierOpen = sql.firstRow('''
+            select count(*) as total from vat_period
+             where fiscal_year_id = ?
+               and period_index < ?
+               and status = ?
+        ''', [period.fiscalYearId, period.periodIndex, OPEN])
+        if (((Number) earlierOpen.get('total')).intValue() > 0) {
+          throw new IllegalStateException(
+              "Momsperiod ${period.periodName} kan inte rapporteras innan tidigare perioder har rapporterats."
+          )
+        }
+      }
       VatReport report = buildReport(sql, period)
       String reportHash = calculateReportHash(report)
       int updated = sql.executeUpdate('''
@@ -167,14 +180,6 @@ final class VatService {
     }
     long companyId = ((Number) fiscalYearRow.get('companyId')).longValue()
 
-    GroovyRowResult existing = sql.firstRow(
-        'select count(*) as total from vat_period where fiscal_year_id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    if (((Number) existing.get('total')).intValue() > 0) {
-      return
-    }
-
     VatPeriodicity periodicity = loadPeriodicity(sql, companyId)
     List<GroovyRowResult> accountingPeriods = sql.rows('''
         select period_index as periodIndex,
@@ -189,10 +194,85 @@ final class VatService {
       return
     }
 
+    List<PeriodDescriptor> expected = buildExpectedDescriptors(periodicity, accountingPeriods)
+
+    GroovyRowResult existing = sql.firstRow(
+        'select count(*) as total from vat_period where fiscal_year_id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    int existingCount = ((Number) existing.get('total')).intValue()
+    if (existingCount > 0) {
+      List<PeriodDescriptor> current = loadExistingDescriptors(sql, fiscalYearId)
+      if (expected == current) {
+        return
+      }
+      GroovyRowResult reported = sql.firstRow(
+          'select count(*) as total from vat_period where fiscal_year_id = ? and status != ?',
+          [fiscalYearId, OPEN]
+      ) as GroovyRowResult
+      if (((Number) reported.get('total')).intValue() == 0) {
+        sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
+      } else {
+        List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
+        List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
+        List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
+        if (remainingExpected == currentOpen) {
+          return
+        }
+        sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
+        accountingPeriods = remainingPeriods
+        if (accountingPeriods.isEmpty()) {
+          return
+        }
+      }
+    }
+
+    int nextPeriodIndex = resolveNextPeriodIndex(sql, fiscalYearId)
+
+    createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods, nextPeriodIndex)
+  }
+
+  /**
+   * Removes accounting periods that are already covered by reported VAT periods.
+   * Reporting is enforced to be contiguous in {@link #reportPeriod(long)}, so only
+   * the trailing portion after the last reported period needs recreation.
+   */
+  private static List<GroovyRowResult> removeCoveredAccountingPeriods(
+      Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods
+  ) {
+    List<GroovyRowResult> reportedPeriods = sql.rows('''
+        select start_date as startDate, end_date as endDate
+          from vat_period
+         where fiscal_year_id = ?
+           and status != ?
+    ''', [fiscalYearId, OPEN])
+    if (reportedPeriods.isEmpty()) {
+      return accountingPeriods
+    }
+    LocalDate maxReportedEnd = reportedPeriods.collect { GroovyRowResult row ->
+      SqlValueMapper.toLocalDate(row.get('endDate'))
+    }.max()
+    accountingPeriods.findAll { GroovyRowResult row ->
+      SqlValueMapper.toLocalDate(row.get('startDate')).isAfter(maxReportedEnd)
+    }
+  }
+
+  private static int resolveNextPeriodIndex(Sql sql, long fiscalYearId) {
+    GroovyRowResult row = sql.firstRow(
+        'select coalesce(max(period_index), 0) as maxIndex from vat_period where fiscal_year_id = ?',
+        [fiscalYearId]
+    ) as GroovyRowResult
+    ((Number) row.get('maxIndex')).intValue() + 1
+  }
+
+  private static void createVatPeriodsForStructure(
+      Sql sql, long fiscalYearId, VatPeriodicity periodicity,
+      List<GroovyRowResult> accountingPeriods, int startIndex
+  ) {
     if (periodicity == VatPeriodicity.ANNUAL) {
       GroovyRowResult first = accountingPeriods.first()
       GroovyRowResult last = accountingPeriods.last()
-      insertVatPeriod(sql, fiscalYearId, 1,
+      insertVatPeriod(sql, fiscalYearId, startIndex,
           "${SqlValueMapper.toLocalDate(first.get('startDate'))} - ${SqlValueMapper.toLocalDate(last.get('endDate'))}".toString(),
           first.get('startDate'), last.get('endDate'))
       return
@@ -210,17 +290,71 @@ final class VatService {
         if (isPartialQuarter(start, end, calendarQuarter)) {
           label = "${label} (del)"
         }
-        insertVatPeriod(sql, fiscalYearId, index + 1, label,
+        insertVatPeriod(sql, fiscalYearId, startIndex + index, label,
             first.get('startDate'), last.get('endDate'))
       }
       return
     }
 
-    accountingPeriods.each { GroovyRowResult row ->
+    accountingPeriods.eachWithIndex { GroovyRowResult row, int index ->
       insertVatPeriod(sql, fiscalYearId,
-          ((Number) row.get('periodIndex')).intValue(),
+          startIndex + index,
           row.get('periodName') as String,
           row.get('startDate'), row.get('endDate'))
+    }
+  }
+
+  @Canonical
+  private static final class PeriodDescriptor {
+    LocalDate startDate
+    LocalDate endDate
+  }
+
+  private static List<PeriodDescriptor> buildExpectedDescriptors(
+      VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
+  ) {
+    if (accountingPeriods.isEmpty()) {
+      return []
+    }
+    if (periodicity == VatPeriodicity.ANNUAL) {
+      return [new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(accountingPeriods.first().get('startDate')),
+          SqlValueMapper.toLocalDate(accountingPeriods.last().get('endDate'))
+      )]
+    }
+    if (periodicity == VatPeriodicity.QUARTERLY) {
+      return groupByCalendarQuarter(accountingPeriods).collect { List<GroovyRowResult> quarter ->
+        new PeriodDescriptor(
+            SqlValueMapper.toLocalDate(quarter.first().get('startDate')),
+            SqlValueMapper.toLocalDate(quarter.last().get('endDate'))
+        )
+      }
+    }
+    accountingPeriods.collect { GroovyRowResult row ->
+      new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(row.get('startDate')),
+          SqlValueMapper.toLocalDate(row.get('endDate'))
+      )
+    }
+  }
+
+  private static List<PeriodDescriptor> loadExistingDescriptors(Sql sql, long fiscalYearId, String statusFilter = null) {
+    StringBuilder query = new StringBuilder('''
+        select start_date as startDate, end_date as endDate
+          from vat_period
+         where fiscal_year_id = ?
+    ''')
+    List<Object> params = [fiscalYearId]
+    if (statusFilter != null) {
+      query.append(' and status = ?')
+      params << statusFilter
+    }
+    query.append(' order by period_index')
+    sql.rows(query.toString(), params).collect { GroovyRowResult row ->
+      new PeriodDescriptor(
+          SqlValueMapper.toLocalDate(row.get('startDate')),
+          SqlValueMapper.toLocalDate(row.get('endDate'))
+      )
     }
   }
 

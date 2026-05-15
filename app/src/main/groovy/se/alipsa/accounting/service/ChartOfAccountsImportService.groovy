@@ -12,6 +12,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AccountSubgroup
+import se.alipsa.accounting.domain.VatCode
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -168,7 +169,7 @@ final class ChartOfAccountsImportService {
         accountName: accountName,
         accountClass: classification.accountClass,
         normalBalanceSide: classification.normalBalanceSide,
-        vatCode: null,
+        vatCode: resolveVatCode(accountNumber),
         active: true,
         manualReviewRequired: classification.manualReviewRequired,
         classificationNote: classification.note,
@@ -201,6 +202,9 @@ final class ChartOfAccountsImportService {
       case 2:
         if (subgroup <= 20) {
           return new Classification('EQUITY', 'CREDIT', false, null, accountSubgroup)
+        }
+        if (accountNumber.startsWith('264')) {
+          return new Classification('ASSET', 'DEBIT', false, null, accountSubgroup)
         }
         return new Classification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
       case 3:
@@ -243,6 +247,33 @@ final class ChartOfAccountsImportService {
         'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.',
         accountSubgroup
     )
+  }
+
+  private static String resolveVatCode(String accountNumber) {
+    switch (accountNumber) {
+      case '2610':
+      case '2611':
+        return VatCode.OUTPUT_25.name()
+      case '2614':
+        return VatCode.REVERSE_CHARGE_EU_25.name()
+      case '2620':
+      case '2621':
+        return VatCode.OUTPUT_12.name()
+      case '2630':
+      case '2631':
+        return VatCode.OUTPUT_6.name()
+      case '2640':
+      case '2641':
+        return VatCode.INPUT_25.name()
+      case '2642':
+        return VatCode.INPUT_12.name()
+      case '2643':
+        return VatCode.INPUT_6.name()
+      case '2645':
+        return VatCode.EU_ACQUISITION_GOODS.name()
+      default:
+        return null
+    }
   }
 
   private static String stripDiacritics(String value) {

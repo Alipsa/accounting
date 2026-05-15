@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -225,6 +226,20 @@ class VatServiceTest {
   }
 
   @Test
+  void reportingOutOfOrderIsRejected() {
+    bookSaleVoucher()
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod march = periods.find { VatPeriod p -> p.periodName == '2026-03' }
+    assertNotNull(march, 'Expected a March 2026 VAT period')
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.reportPeriod(march.id)
+    }
+
+    assertTrue(exception.message.contains('tidigare perioder'))
+  }
+
+  @Test
   void annualVatSettingCreatesOneVatPeriodForWholeFiscalYear() {
     companySettingsService.save(
         new se.alipsa.accounting.domain.CompanySettings(
@@ -360,6 +375,52 @@ class VatServiceTest {
     assertEquals(LocalDate.of(2028, 1, 1), periods[3].startDate)
     assertEquals(LocalDate.of(2028, 3, 31), periods[3].endDate)
     assertEquals('Q1 2028', periods[3].periodName)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearRestructuresOpenPeriodsWhenPeriodicityChanges() {
+    bookSaleVoucher()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, monthlyPeriods.size())
+
+    VatPeriod january = monthlyPeriods.first()
+    vatService.reportPeriod(january.id)
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> restructured = vatService.listPeriods(fiscalYear.id)
+
+    assertEquals(5, restructured.size())
+
+    VatPeriod preserved = restructured.find { VatPeriod p -> p.id == january.id }
+    assertNotNull(preserved)
+    assertEquals(VatService.REPORTED, preserved.status)
+    assertEquals(LocalDate.of(2026, 1, 1), preserved.startDate)
+    assertEquals(LocalDate.of(2026, 1, 31), preserved.endDate)
+
+    List<VatPeriod> open = restructured.findAll { VatPeriod p -> p.status == VatService.OPEN }
+    assertEquals(4, open.size())
+    assertEquals(LocalDate.of(2026, 2, 1), open[0].startDate)
+    assertEquals(LocalDate.of(2026, 3, 31), open[0].endDate)
+    assertEquals(LocalDate.of(2026, 4, 1), open[1].startDate)
+    assertEquals(LocalDate.of(2026, 6, 30), open[1].endDate)
+    assertEquals(LocalDate.of(2026, 7, 1), open[2].startDate)
+    assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
+    assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
+    assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
   }
 
   private List<Voucher> bookVatFixtures() {

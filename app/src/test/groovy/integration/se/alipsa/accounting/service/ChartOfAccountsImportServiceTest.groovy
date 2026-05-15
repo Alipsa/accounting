@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
+import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
@@ -77,6 +78,36 @@ class ChartOfAccountsImportServiceTest {
     assertNotNull(manualReviewAccount)
     assertTrue(manualReviewAccount.manualReviewRequired)
     assertTrue(manualReviewAccount.accountClass == null)
+  }
+
+  @Test
+  void importedVatAccountsHaveCorrectClassAndCode() {
+    importService.importFromExcel(workbookPath())
+
+    Account output25 = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2611')
+    Account euGoods = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2614')
+    Account input25 = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2641')
+    Account euAcqGoods = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2645')
+
+    assertNotNull(output25)
+    assertEquals('LIABILITY', output25.accountClass)
+    assertEquals('CREDIT', output25.normalBalanceSide)
+    assertEquals(VatCode.OUTPUT_25.name(), output25.vatCode)
+
+    assertNotNull(euGoods)
+    assertEquals('LIABILITY', euGoods.accountClass)
+    assertEquals('CREDIT', euGoods.normalBalanceSide)
+    assertEquals(VatCode.REVERSE_CHARGE_EU_25.name(), euGoods.vatCode)
+
+    assertNotNull(input25)
+    assertEquals('ASSET', input25.accountClass)
+    assertEquals('DEBIT', input25.normalBalanceSide)
+    assertEquals(VatCode.INPUT_25.name(), input25.vatCode)
+
+    assertNotNull(euAcqGoods)
+    assertEquals('ASSET', euAcqGoods.accountClass)
+    assertEquals('DEBIT', euAcqGoods.normalBalanceSide)
+    assertEquals(VatCode.EU_ACQUISITION_GOODS.name(), euAcqGoods.vatCode)
   }
 
   @Test
