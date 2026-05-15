@@ -88,6 +88,16 @@ class AccountServiceTest {
   }
 
   @Test
+  void setAccountVatCodeRejectsEuReverseChargeCodeOnExpenseAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountVatCode(
+          CompanyService.LEGACY_COMPANY_ID, '4010', VatCode.REVERSE_CHARGE_EU_25)
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
+  }
+
+  @Test
   void setAccountVatCodeToNullClearsExistingCode() {
     accountService.setAccountVatCode(
         CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.INPUT_25)
@@ -111,6 +121,7 @@ class AccountServiceTest {
         CompanyService.LEGACY_COMPANY_ID, '2611')
     List<VatCode> liabilityCodes = AccountService.compatibleVatCodes(liability)
     assertTrue(liabilityCodes.contains(VatCode.OUTPUT_25))
+    assertTrue(liabilityCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
     assertFalse(liabilityCodes.contains(VatCode.INPUT_25))
 
     Account income = accountService.findAccount(
@@ -127,6 +138,7 @@ class AccountServiceTest {
     assertTrue(expenseCodes.contains(VatCode.INPUT_25))
     assertTrue(expenseCodes.contains(VatCode.EU_ACQUISITION_GOODS))
     assertFalse(expenseCodes.contains(VatCode.OUTPUT_25))
+    assertFalse(expenseCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
     assertFalse(expenseCodes.contains(VatCode.EU_SUPPLY_GOODS))
 
     Account equity = accountService.findAccount(

@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -126,6 +127,26 @@ class VatPeriodPanelTest {
     assertEquals('LOCKED', onEdt { periodTable.getValueAt(0, 3) })
     assertNotNull(onEdt { periodTable.getValueAt(0, 5) })
     assertTrue(onEdt { feedbackArea.text }.contains('Momsöverföring bokfördes'))
+  }
+
+  @Test
+  void multiSelectReportingStopsAfterFirstSequentialFailure() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(1, 3)
+      reportButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertTrue(feedback.contains('tidigare perioder'))
+    assertFalse(feedback.contains('\n'))
   }
 
   private List<Voucher> bookVatFixtures() {

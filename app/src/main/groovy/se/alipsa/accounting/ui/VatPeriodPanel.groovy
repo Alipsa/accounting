@@ -221,21 +221,24 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
     int successCount = 0
     List<String> errors = []
-    periods.sort { VatPeriod period -> period.periodIndex }.each { VatPeriod period ->
+    List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
+    for (VatPeriod period : sortedPeriods) {
       try {
         vatService.reportPeriod(period.id)
         successCount++
       } catch (IllegalArgumentException exception) {
         errors << exception.message
+        break
       } catch (IllegalStateException exception) {
         errors << exception.message
+        break
       }
     }
     reloadPeriods()
-    selectPeriod(periods.first().id)
+    selectPeriod(sortedPeriods.first().id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', periods.first().periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', sortedPeriods.first().periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
       }
@@ -252,21 +255,24 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
     int successCount = 0
     List<String> errors = []
-    periods.each { VatPeriod period ->
+    List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
+    for (VatPeriod period : sortedPeriods) {
       try {
         vatService.bookTransfer(period.id)
         successCount++
       } catch (IllegalArgumentException exception) {
         errors << exception.message
+        break
       } catch (IllegalStateException exception) {
         errors << exception.message
+        break
       }
     }
     reloadPeriods()
-    selectPeriod(periods.first().id)
+    selectPeriod(sortedPeriods.first().id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', periods.first().periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', sortedPeriods.first().periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
       }
