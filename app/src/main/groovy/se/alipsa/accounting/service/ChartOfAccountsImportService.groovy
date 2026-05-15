@@ -169,7 +169,7 @@ final class ChartOfAccountsImportService {
         accountName: accountName,
         accountClass: classification.accountClass,
         normalBalanceSide: classification.normalBalanceSide,
-        vatCode: resolveVatCode(accountNumber),
+        vatCode: resolveVatCode(accountNumber)?.name(),
         active: true,
         manualReviewRequired: classification.manualReviewRequired,
         classificationNote: classification.note,
@@ -249,28 +249,28 @@ final class ChartOfAccountsImportService {
     )
   }
 
-  private static String resolveVatCode(String accountNumber) {
+  private static VatCode resolveVatCode(String accountNumber) {
     switch (accountNumber) {
       case '2610':
       case '2611':
-        return VatCode.OUTPUT_25.name()
+        return VatCode.OUTPUT_25
       case '2614':
-        return VatCode.REVERSE_CHARGE_EU_25.name()
+        return VatCode.REVERSE_CHARGE_EU_25
       case '2620':
       case '2621':
-        return VatCode.OUTPUT_12.name()
+        return VatCode.OUTPUT_12
       case '2630':
       case '2631':
-        return VatCode.OUTPUT_6.name()
+        return VatCode.OUTPUT_6
       case '2640':
       case '2641':
-        return VatCode.INPUT_25.name()
+        return VatCode.INPUT_25
       case '2642':
-        return VatCode.INPUT_12.name()
+        return VatCode.INPUT_12
       case '2643':
-        return VatCode.INPUT_6.name()
+        return VatCode.INPUT_6
       case '2645':
-        return VatCode.EU_ACQUISITION_GOODS.name()
+        return VatCode.EU_ACQUISITION_GOODS
       default:
         return null
     }

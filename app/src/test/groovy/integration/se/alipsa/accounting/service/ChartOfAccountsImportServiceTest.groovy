@@ -84,30 +84,17 @@ class ChartOfAccountsImportServiceTest {
   void importedVatAccountsHaveCorrectClassAndCode() {
     importService.importFromExcel(workbookPath())
 
-    Account output25 = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2611')
-    Account euGoods = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2614')
-    Account input25 = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2641')
-    Account euAcqGoods = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2645')
-
-    assertNotNull(output25)
-    assertEquals('LIABILITY', output25.accountClass)
-    assertEquals('CREDIT', output25.normalBalanceSide)
-    assertEquals(VatCode.OUTPUT_25.name(), output25.vatCode)
-
-    assertNotNull(euGoods)
-    assertEquals('LIABILITY', euGoods.accountClass)
-    assertEquals('CREDIT', euGoods.normalBalanceSide)
-    assertEquals(VatCode.REVERSE_CHARGE_EU_25.name(), euGoods.vatCode)
-
-    assertNotNull(input25)
-    assertEquals('ASSET', input25.accountClass)
-    assertEquals('DEBIT', input25.normalBalanceSide)
-    assertEquals(VatCode.INPUT_25.name(), input25.vatCode)
-
-    assertNotNull(euAcqGoods)
-    assertEquals('ASSET', euAcqGoods.accountClass)
-    assertEquals('DEBIT', euAcqGoods.normalBalanceSide)
-    assertEquals(VatCode.EU_ACQUISITION_GOODS.name(), euAcqGoods.vatCode)
+    assertImportedVatAccount('2610', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25)
+    assertImportedVatAccount('2611', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25)
+    assertImportedVatAccount('2614', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25)
+    assertImportedVatAccount('2620', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_12)
+    assertImportedVatAccount('2621', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_12)
+    assertImportedVatAccount('2630', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_6)
+    assertImportedVatAccount('2631', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_6)
+    assertImportedVatAccount('2640', 'ASSET', 'DEBIT', VatCode.INPUT_25)
+    assertImportedVatAccount('2641', 'ASSET', 'DEBIT', VatCode.INPUT_25)
+    assertImportedVatAccount('2642', 'ASSET', 'DEBIT', VatCode.INPUT_12)
+    assertImportedVatAccount('2645', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS)
   }
 
   @Test
@@ -155,5 +142,14 @@ class ChartOfAccountsImportServiceTest {
       throw new IllegalStateException('Could not locate BAS_kontoplan_2026.xlsx for integration test.')
     }
     workbook.normalize()
+  }
+
+  private void assertImportedVatAccount(String accountNumber, String accountClass, String side, VatCode vatCode) {
+    Account account = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, accountNumber)
+    assertNotNull(account)
+    assertEquals(accountClass, account.accountClass)
+    assertEquals(side, account.normalBalanceSide)
+    assertEquals(vatCode.name(), account.vatCode)
+    assertTrue(AccountService.compatibleVatCodes(account).contains(vatCode))
   }
 }

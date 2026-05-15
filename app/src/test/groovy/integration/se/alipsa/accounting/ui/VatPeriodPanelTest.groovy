@@ -1,7 +1,6 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -145,8 +144,10 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains('tidigare perioder'))
-    assertFalse(feedback.contains('\n'))
+    assertEquals(
+        'Momsperiod 2026-02 kan inte rapporteras innan tidigare perioder har rapporterats.',
+        feedback
+    )
   }
 
   private List<Voucher> bookVatFixtures() {
