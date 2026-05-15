@@ -243,6 +243,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
       }
+    } else if (successCount > 0) {
+      showError(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount) + '\n' + errors.join('\n'))
     } else {
       showError(errors.join('\n'))
     }
@@ -278,6 +280,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
       }
+    } else if (successCount > 0) {
+      showError(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount) + '\n' + errors.join('\n'))
     } else {
       showError(errors.join('\n'))
     }

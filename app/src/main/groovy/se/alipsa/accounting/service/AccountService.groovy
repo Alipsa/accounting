@@ -160,7 +160,7 @@ final class AccountService {
     }
   }
 
-  static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
+  private static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
 
   private static final Set<VatCode> INCOME_VAT_CODES = [
       VatCode.OUTPUT_25,
@@ -189,8 +189,12 @@ final class AccountService {
     }.toList()
   }
 
+  static boolean isVatCompatibleClass(String accountClass) {
+    accountClass in VAT_COMPATIBLE_CLASSES
+  }
+
   private static boolean isVatCompatible(Account account, VatCode vatCode) {
-    if (!(account.accountClass in VAT_COMPATIBLE_CLASSES)) {
+    if (!isVatCompatibleClass(account.accountClass)) {
       return false
     }
     if (account.accountClass == 'INCOME') {
@@ -200,7 +204,7 @@ final class AccountService {
       return vatCode in EXPENSE_VAT_CODES
     }
     if (account.accountClass == 'ASSET') {
-      return vatCode.inputRate > BigDecimal.ZERO && vatCode != VatCode.REVERSE_CHARGE_EU_25
+      return vatCode.assetEligible
     }
     account.accountClass == 'LIABILITY' && vatCode.outputRate > BigDecimal.ZERO
   }

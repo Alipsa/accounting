@@ -272,7 +272,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String vatCode = account.vatCode
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', account.vatCode))}</p>"
         : "<p>${escapeHtml(I18n.instance.getString('chartOfAccountsPanel.details.noVatCode'))}</p>"
-    setVatCodeButton.enabled = account.accountClass in AccountService.VAT_COMPATIBLE_CLASSES
+    setVatCodeButton.enabled = AccountService.isVatCompatibleClass(account.accountClass)
     detailsLabel.text = """
         <html>
         <h3>${escapeHtml(account.accountNumber)} ${escapeHtml(account.accountName)}</h3>
@@ -353,12 +353,16 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    VatCode newVatCode = selected == noneOption ? null : VatCode.valueOf(selected)
-    accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
-    reloadAccounts()
-    selectAccount(account.accountNumber)
-    showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
-        account.accountNumber, newVatCode?.name() ?: noneOption))
+    try {
+      VatCode newVatCode = selected == noneOption ? null : VatCode.valueOf(selected)
+      accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
+      reloadAccounts()
+      selectAccount(account.accountNumber)
+      showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
+          account.accountNumber, newVatCode?.name() ?: noneOption))
+    } catch (IllegalArgumentException exception) {
+      showError(exception.message)
+    }
   }
 
   private void resetFilters() {

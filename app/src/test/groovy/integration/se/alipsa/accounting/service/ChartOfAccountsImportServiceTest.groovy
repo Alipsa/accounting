@@ -17,6 +17,7 @@ import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.support.AppPaths
 
+import java.lang.reflect.Method
 import java.nio.file.Path
 import java.time.LocalDate
 
@@ -98,6 +99,11 @@ class ChartOfAccountsImportServiceTest {
   }
 
   @Test
+  void resolvesVatCodeForMappedAccountsNotPresentInBasWorkbook() {
+    assertEquals(VatCode.INPUT_6, resolveVatCode('2643'))
+  }
+
+  @Test
   void searchToggleAndOpeningBalanceRulesWork() {
     importService.importFromExcel(workbookPath())
     long fiscalYearId = fiscalYearService.createFiscalYear(
@@ -151,5 +157,11 @@ class ChartOfAccountsImportServiceTest {
     assertEquals(side, account.normalBalanceSide)
     assertEquals(vatCode.name(), account.vatCode)
     assertTrue(AccountService.compatibleVatCodes(account).contains(vatCode))
+  }
+
+  private static VatCode resolveVatCode(String accountNumber) {
+    Method method = ChartOfAccountsImportService.getDeclaredMethod('resolveVatCode', String)
+    method.accessible = true
+    method.invoke(null, accountNumber) as VatCode
   }
 }

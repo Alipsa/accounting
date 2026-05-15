@@ -135,6 +135,7 @@ class AccountServiceTest {
         CompanyService.LEGACY_COMPANY_ID, '1510')
     List<VatCode> assetCodes = AccountService.compatibleVatCodes(asset)
     assertTrue(assetCodes.contains(VatCode.INPUT_25))
+    assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_GOODS))
     assertFalse(assetCodes.contains(VatCode.OUTPUT_25))
     assertFalse(assetCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
 

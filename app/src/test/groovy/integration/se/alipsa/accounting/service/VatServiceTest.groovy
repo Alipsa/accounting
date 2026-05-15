@@ -229,8 +229,9 @@ class VatServiceTest {
   void reportingOutOfOrderIsRejected() {
     bookSaleVoucher()
     List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
-    VatPeriod march = periods.find { VatPeriod p -> p.periodName == '2026-03' }
-    assertNotNull(march, 'Expected a March 2026 VAT period')
+    assertTrue(periods.size() >= 3, 'Expected at least three VAT periods')
+    VatPeriod march = periods[2]
+    assertEquals(3, march.periodIndex)
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
       vatService.reportPeriod(march.id)

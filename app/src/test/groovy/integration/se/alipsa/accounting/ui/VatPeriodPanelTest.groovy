@@ -150,6 +150,32 @@ class VatPeriodPanelTest {
     )
   }
 
+  @Test
+  void multiSelectReportingShowsSuccessCountBeforeLaterFailure() {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate(
+          "update vat_period set status = 'LOCKED' where fiscal_year_id = ? and period_index = 2",
+          [fiscalYear.id]
+      )
+    }
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      reportButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertTrue(feedback.contains('1 momsperiod(er) rapporterade.'))
+    assertTrue(feedback.contains('Momsperiod 2026-02 är redan låst.'))
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),

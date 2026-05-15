@@ -14,7 +14,7 @@ enum VatCode {
   INPUT_12(0.00G, 0.12G),
   INPUT_6(0.00G, 0.06G),
   REVERSE_CHARGE_DOMESTIC(0.25G, 0.25G),
-  REVERSE_CHARGE_EU_25(0.25G, 0.25G),
+  REVERSE_CHARGE_EU_25(0.25G, 0.25G, false),
   EU_ACQUISITION_GOODS(0.25G, 0.25G),
   EU_ACQUISITION_SERVICES(0.25G, 0.25G),
   EU_SUPPLY_GOODS(0.00G, 0.00G),
@@ -24,10 +24,16 @@ enum VatCode {
 
   final BigDecimal outputRate
   final BigDecimal inputRate
+  final boolean assetEligible
 
   VatCode(BigDecimal outputRate, BigDecimal inputRate) {
+    this(outputRate, inputRate, inputRate > BigDecimal.ZERO)
+  }
+
+  VatCode(BigDecimal outputRate, BigDecimal inputRate, boolean assetEligible) {
     this.outputRate = outputRate
     this.inputRate = inputRate
+    this.assetEligible = assetEligible
   }
 
   String getDisplayName() {
