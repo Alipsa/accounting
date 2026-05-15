@@ -68,6 +68,16 @@ class AccountServiceTest {
   }
 
   @Test
+  void setAccountVatCodeRejectsUnknownAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountVatCode(
+          CompanyService.LEGACY_COMPANY_ID, '9999', VatCode.INPUT_25)
+    }
+
+    assertTrue(exception.message.contains('Unknown account number'))
+  }
+
+  @Test
   void setAccountVatCodeRejectsInputCodeOnIncomeAccount() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
       accountService.setAccountVatCode(
@@ -116,6 +126,7 @@ class AccountServiceTest {
     List<VatCode> assetCodes = AccountService.compatibleVatCodes(asset)
     assertTrue(assetCodes.contains(VatCode.INPUT_25))
     assertFalse(assetCodes.contains(VatCode.OUTPUT_25))
+    assertFalse(assetCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
 
     Account liability = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '2611')

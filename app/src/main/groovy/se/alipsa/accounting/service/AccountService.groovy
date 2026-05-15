@@ -200,7 +200,7 @@ final class AccountService {
       return vatCode in EXPENSE_VAT_CODES
     }
     if (account.accountClass == 'ASSET') {
-      return vatCode.inputRate > BigDecimal.ZERO
+      return vatCode.inputRate > BigDecimal.ZERO && vatCode != VatCode.REVERSE_CHARGE_EU_25
     }
     account.accountClass == 'LIABILITY' && vatCode.outputRate > BigDecimal.ZERO
   }

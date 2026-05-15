@@ -62,7 +62,7 @@ final class AccountLookupPopup {
     resultList.focusable = false
     resultList.addMouseListener(new MouseAdapter() {
       @Override
-      void mouseClicked(MouseEvent event) {
+      void mousePressed(MouseEvent event) {
         int index = resultList.locationToIndex(event.point)
         if (index >= 0) {
           resultList.selectedIndex = index
@@ -90,7 +90,7 @@ final class AccountLookupPopup {
     editor.addFocusListener(new FocusAdapter() {
       @Override
       void focusLost(FocusEvent event) {
-        hide()
+        SwingUtilities.invokeLater { hide() }
       }
     })
     editor.addKeyListener(new KeyAdapter() {

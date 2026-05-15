@@ -235,10 +235,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    selectPeriod(sortedPeriods.first().id)
+    VatPeriod selectedProcessedPeriod = selectedProcessedPeriod(sortedPeriods, successCount)
+    selectPeriod(selectedProcessedPeriod.id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', sortedPeriods.first().periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', selectedProcessedPeriod.periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
       }
@@ -269,16 +270,21 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    selectPeriod(sortedPeriods.first().id)
+    VatPeriod selectedProcessedPeriod = selectedProcessedPeriod(sortedPeriods, successCount)
+    selectPeriod(selectedProcessedPeriod.id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', sortedPeriods.first().periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', selectedProcessedPeriod.periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
       }
     } else {
       showError(errors.join('\n'))
     }
+  }
+
+  private static VatPeriod selectedProcessedPeriod(List<VatPeriod> sortedPeriods, int successCount) {
+    sortedPeriods[Math.max(0, successCount - 1)]
   }
 
   private FiscalYear selectedFiscalYear() {

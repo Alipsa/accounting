@@ -6,11 +6,13 @@ import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.Account
 
+import java.awt.event.MouseEvent
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.function.Consumer
 
 import javax.swing.DefaultListModel
+import javax.swing.JList
 import javax.swing.JTextField
 
 final class AccountLookupPopupTest {
@@ -55,6 +57,34 @@ final class AccountLookupPopupTest {
     DefaultListModel<String> listModel = fieldValue(popup, 'listModel') as DefaultListModel<String>
     assertEquals([], selectedAccounts)
     assertEquals(2, listModel.size())
+  }
+
+  @Test
+  void selectsAccountOnMousePressed() {
+    Account account = new Account(null, 7L, '1510', 'Kassa', 'ASSET', 'DEBIT', null, true, false, null, null)
+    Account otherAccount = new Account(null, 7L, '1511', 'Bank', 'ASSET', 'DEBIT', null, true, false, null, null)
+    List<Account> selectedAccounts = []
+    AccountLookupPopup popup = createPopup('151', [account, otherAccount], selectedAccounts)
+
+    invokeSearch(popup)
+    JList<String> resultList = fieldValue(popup, 'resultList') as JList<String>
+    resultList.setFixedCellHeight(20)
+    resultList.setSize(200, 40)
+
+    resultList.mouseListeners.each { listener ->
+      listener.mousePressed(new MouseEvent(
+          resultList,
+          MouseEvent.MOUSE_PRESSED,
+          System.currentTimeMillis(),
+          0,
+          1,
+          1,
+          1,
+          false
+      ))
+    }
+
+    assertEquals([account], selectedAccounts)
   }
 
   private static void invokeSearch(AccountLookupPopup popup) {

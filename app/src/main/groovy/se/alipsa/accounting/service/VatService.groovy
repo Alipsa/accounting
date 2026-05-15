@@ -97,6 +97,7 @@ final class VatService {
         throw new IllegalStateException("Momsperiod ${period.periodName} är redan låst.")
       }
       if (period.status == OPEN) {
+        // VAT reporting order is enforced within each fiscal year; fiscal years are independent.
         GroovyRowResult earlierOpen = sql.firstRow('''
             select count(*) as total from vat_period
              where fiscal_year_id = ?
