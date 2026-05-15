@@ -97,7 +97,7 @@ class ChartOfAccountsImportServiceTest {
     assertNotNull(euGoods)
     assertEquals('LIABILITY', euGoods.accountClass)
     assertEquals('CREDIT', euGoods.normalBalanceSide)
-    assertEquals(VatCode.EU_ACQUISITION_GOODS.name(), euGoods.vatCode)
+    assertEquals(VatCode.REVERSE_CHARGE_EU_25.name(), euGoods.vatCode)
 
     assertNotNull(input25)
     assertEquals('ASSET', input25.accountClass)

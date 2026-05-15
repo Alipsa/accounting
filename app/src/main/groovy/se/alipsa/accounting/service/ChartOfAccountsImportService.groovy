@@ -255,14 +255,20 @@ final class ChartOfAccountsImportService {
       case '2611':
         return VatCode.OUTPUT_25.name()
       case '2614':
-        return VatCode.EU_ACQUISITION_GOODS.name()
+        return VatCode.REVERSE_CHARGE_EU_25.name()
       case '2620':
+      case '2621':
         return VatCode.OUTPUT_12.name()
       case '2630':
+      case '2631':
         return VatCode.OUTPUT_6.name()
       case '2640':
       case '2641':
         return VatCode.INPUT_25.name()
+      case '2642':
+        return VatCode.INPUT_12.name()
+      case '2643':
+        return VatCode.INPUT_6.name()
       case '2645':
         return VatCode.EU_ACQUISITION_GOODS.name()
       default:
