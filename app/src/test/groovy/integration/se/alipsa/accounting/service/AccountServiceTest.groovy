@@ -136,6 +136,7 @@ class AccountServiceTest {
     List<VatCode> assetCodes = AccountService.compatibleVatCodes(asset)
     assertTrue(assetCodes.contains(VatCode.INPUT_25))
     assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_GOODS))
+    assertTrue(assetCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
     assertFalse(assetCodes.contains(VatCode.OUTPUT_25))
     assertFalse(assetCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
 
@@ -159,6 +160,7 @@ class AccountServiceTest {
     List<VatCode> expenseCodes = AccountService.compatibleVatCodes(expense)
     assertTrue(expenseCodes.contains(VatCode.INPUT_25))
     assertTrue(expenseCodes.contains(VatCode.EU_ACQUISITION_GOODS))
+    assertTrue(expenseCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
     assertFalse(expenseCodes.contains(VatCode.OUTPUT_25))
     assertFalse(expenseCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
     assertFalse(expenseCodes.contains(VatCode.EU_SUPPLY_GOODS))

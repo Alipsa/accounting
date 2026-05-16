@@ -133,21 +133,20 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
 
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')
     JTextArea feedbackArea = findFeedbackArea(panel)
 
+    String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
     onEdt {
       periodTable.setRowSelectionInterval(1, 3)
       reportButton.doClick()
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertEquals(
-        'Momsperiod 2026-02 kan inte rapporteras innan tidigare perioder har rapporterats.',
-        feedback
-    )
+    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} kan inte rapporteras innan tidigare perioder har rapporterats."))
   }
 
   @Test
@@ -161,6 +160,7 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
 
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')

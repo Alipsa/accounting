@@ -37,6 +37,68 @@ final class VatReportSupport {
       LocalDate endDate,
       boolean excludeVatTransferVouchers = false
   ) {
+    List<VatSeed> seeds = loadAggregatedSeeds(sql, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    List<RawVatLine> sharedOutputLines = loadSharedReverseChargeOutputLines(
+        sql, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    if (sharedOutputLines.isEmpty()) {
+      return seeds
+    }
+
+    Map<Long, Map<VatCode, BigDecimal>> reverseBaseAmountsByVoucher = loadReverseBaseAmountsByVoucher(
+        sql, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    sharedOutputLines.each { RawVatLine line ->
+      seeds.addAll(classifySharedReverseChargeOutput(line, reverseBaseAmountsByVoucher[line.voucherId] ?: [:]))
+    }
+    seeds
+  }
+
+  private static List<VatSeed> loadAggregatedSeeds(
+      Sql sql,
+      long fiscalYearId,
+      LocalDate startDate,
+      LocalDate endDate,
+      boolean excludeVatTransferVouchers
+  ) {
+    StringBuilder query = new StringBuilder('''
+        select a.vat_code as vatCode,
+               a.account_class as accountClass,
+               a.normal_balance_side as normalBalanceSide,
+               sum(vl.debit_amount) as debitAmount,
+               sum(vl.credit_amount) as creditAmount
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+           and v.accounting_date between ? and ?
+           and a.vat_code is not null
+    ''')
+    List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
+    appendTransferExclusion(query, params, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    appendExcludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES)
+    query.append('''
+         group by a.vat_code, a.account_class, a.normal_balance_side
+         order by a.vat_code, a.account_class
+    ''')
+
+    sql.rows(query.toString(), params).collect { GroovyRowResult row ->
+      VatCode vatCode = parseVatCode(row.get('vatCode') as String)
+      BigDecimal signedAmount = signedAmount(
+          new BigDecimal(row.get('debitAmount').toString()),
+          new BigDecimal(row.get('creditAmount').toString()),
+          row.get('normalBalanceSide') as String
+      )
+      classify(vatCode, row.get('accountClass') as String, signedAmount)
+    }
+  }
+
+  private static List<RawVatLine> loadSharedReverseChargeOutputLines(
+      Sql sql,
+      long fiscalYearId,
+      LocalDate startDate,
+      LocalDate endDate,
+      boolean excludeVatTransferVouchers
+  ) {
     StringBuilder query = new StringBuilder('''
         select v.id as voucherId,
                a.vat_code as vatCode,
@@ -51,72 +113,130 @@ final class VatReportSupport {
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
            and a.vat_code is not null
+           and a.account_class = 'LIABILITY'
     ''')
     List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
-    if (excludeVatTransferVouchers) {
-      query.append('''
-           and not exists (
-                 select 1
-                   from vat_period vp
-                  where vp.fiscal_year_id = ?
-                    and vp.transfer_voucher_id = v.id
-                    and vp.start_date <= ?
-                    and vp.end_date >= ?
-           )
-      ''')
-      params << fiscalYearId
-      params << Date.valueOf(endDate)
-      params << Date.valueOf(startDate)
-    }
+    appendTransferExclusion(query, params, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    appendIncludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES)
     query.append('''
          group by v.id, a.vat_code, a.account_class, a.normal_balance_side
          order by v.id, a.vat_code, a.account_class
     ''')
 
-    List<RawVatLine> rawLines = sql.rows(query.toString(), params).collect { GroovyRowResult row ->
-      VatCode vatCode = parseVatCode(row.get('vatCode') as String)
-      BigDecimal signedAmount = signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          row.get('normalBalanceSide') as String
-      )
-      new RawVatLine(
-          ((Number) row.get('voucherId')).longValue(),
-          vatCode,
-          row.get('accountClass') as String,
-          signedAmount
-      )
+    sql.rows(query.toString(), params).collect { GroovyRowResult row ->
+      toRawVatLine(row)
     }
-
-    rawLines
-        .groupBy { RawVatLine line -> line.voucherId }
-        .values()
-        .collectMany { List<RawVatLine> voucherLines ->
-          classifyVoucher(voucherLines)
-        }
   }
 
-  private static List<VatSeed> classifyVoucher(List<RawVatLine> lines) {
-    List<VatSeed> seeds = []
-    Map<VatCode, BigDecimal> reverseBaseAmounts = [:].withDefault { BigDecimal.ZERO }
-    List<RawVatLine> deferredOutputLines = []
+  private static Map<Long, Map<VatCode, BigDecimal>> loadReverseBaseAmountsByVoucher(
+      Sql sql,
+      long fiscalYearId,
+      LocalDate startDate,
+      LocalDate endDate,
+      boolean excludeVatTransferVouchers
+  ) {
+    StringBuilder query = new StringBuilder('''
+        select v.id as voucherId,
+               a.vat_code as vatCode,
+               a.account_class as accountClass,
+               a.normal_balance_side as normalBalanceSide,
+               sum(vl.debit_amount) as debitAmount,
+               sum(vl.credit_amount) as creditAmount
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+           and v.accounting_date between ? and ?
+           and a.account_class in ('INCOME', 'EXPENSE')
+           and exists (
+                 select 1
+                   from voucher_line shared_vl
+                   join account shared_a on shared_a.id = shared_vl.account_id
+                  where shared_vl.voucher_id = v.id
+                    and shared_a.account_class = 'LIABILITY'
+    ''')
+    List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
+    appendIncludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES, 'shared_a')
+    query.append('''
+           )
+    ''')
+    appendTransferExclusion(query, params, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
+    appendIncludedVatCodes(query, params, REVERSE_CHARGE_BASE_CODES)
+    query.append('''
+         group by v.id, a.vat_code, a.account_class, a.normal_balance_side
+         order by v.id, a.vat_code, a.account_class
+    ''')
 
-    lines.each { RawVatLine line ->
-      if (isSharedReverseChargeOutputLine(line)) {
-        deferredOutputLines << line
-        return
+    Map<Long, Map<VatCode, BigDecimal>> result = [:]
+    sql.rows(query.toString(), params).each { GroovyRowResult row ->
+      RawVatLine line = toRawVatLine(row)
+      Map<VatCode, BigDecimal> voucherAmounts = result.computeIfAbsent(line.voucherId) {
+        [:].withDefault { BigDecimal.ZERO }
       }
-      VatSeed seed = classify(line.vatCode, line.accountClass, line.signedAmount)
-      seeds << seed
-      if (line.accountClass in BASE_ACCOUNT_CLASSES && line.vatCode in REVERSE_CHARGE_BASE_CODES) {
-        reverseBaseAmounts[line.vatCode] = scale(reverseBaseAmounts[line.vatCode] + seed.baseAmount)
-      }
+      voucherAmounts[line.vatCode] = scale(voucherAmounts[line.vatCode] + line.signedAmount)
     }
+    result
+  }
 
-    deferredOutputLines.each { RawVatLine line ->
-      seeds.addAll(classifySharedReverseChargeOutput(line, reverseBaseAmounts))
+  private static void appendTransferExclusion(
+      StringBuilder query,
+      List<Object> params,
+      long fiscalYearId,
+      LocalDate startDate,
+      LocalDate endDate,
+      boolean excludeVatTransferVouchers
+  ) {
+    if (!excludeVatTransferVouchers) {
+      return
     }
-    seeds
+    query.append('''
+         and not exists (
+               select 1
+                 from vat_period vp
+                where vp.fiscal_year_id = ?
+                  and vp.transfer_voucher_id = v.id
+                  and vp.start_date <= ?
+                  and vp.end_date >= ?
+         )
+    ''')
+    params << fiscalYearId
+    params << Date.valueOf(endDate)
+    params << Date.valueOf(startDate)
+  }
+
+  private static void appendIncludedVatCodes(
+      StringBuilder query,
+      List<Object> params,
+      Set<VatCode> vatCodes,
+      String accountAlias = 'a'
+  ) {
+    query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
+    params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
+  }
+
+  private static void appendExcludedVatCodes(StringBuilder query, List<Object> params, Set<VatCode> vatCodes) {
+    query.append(" and a.vat_code not in (${placeholders(vatCodes.size())})")
+    params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
+  }
+
+  private static String placeholders(int count) {
+    (['?'] * count).join(', ')
+  }
+
+  private static RawVatLine toRawVatLine(GroovyRowResult row) {
+    VatCode vatCode = parseVatCode(row.get('vatCode') as String)
+    BigDecimal signedAmount = signedAmount(
+        new BigDecimal(row.get('debitAmount').toString()),
+        new BigDecimal(row.get('creditAmount').toString()),
+        row.get('normalBalanceSide') as String
+    )
+    new RawVatLine(
+        ((Number) row.get('voucherId')).longValue(),
+        vatCode,
+        row.get('accountClass') as String,
+        signedAmount
+    )
   }
 
   private static VatSeed classify(VatCode vatCode, String accountClass, BigDecimal signedAmount) {
@@ -148,10 +268,6 @@ final class VatReportSupport {
         outputPostingCount,
         inputPostingCount
     )
-  }
-
-  private static boolean isSharedReverseChargeOutputLine(RawVatLine line) {
-    line.accountClass == 'LIABILITY' && line.vatCode in SHARED_REVERSE_CHARGE_OUTPUT_CODES
   }
 
   private static List<VatSeed> classifySharedReverseChargeOutput(

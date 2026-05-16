@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
+import groovy.transform.PackageScope
 
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.Row
@@ -30,6 +31,9 @@ final class ChartOfAccountsImportService {
       'KOSTNAD', 'KOSTNADER', 'FORLUST', 'FORLUSTER', 'RANTEKOSTNAD',
       'RANTEKOSTNADER', 'SKATT', 'NEDSKRIVNING', 'NEDSKRIVNINGAR',
       'AVSATTNING', 'LAMNADE', 'UTGIFT', 'UTGIFTER'
+  ] as Set<String>
+  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = [
+      '2640', '2641', '2642', '2643', '2645'
   ] as Set<String>
 
   private final DatabaseService databaseService
@@ -203,7 +207,7 @@ final class ChartOfAccountsImportService {
         if (subgroup <= 20) {
           return new Classification('EQUITY', 'CREDIT', false, null, accountSubgroup)
         }
-        if (accountNumber.startsWith('264')) {
+        if (accountNumber in STANDARD_INPUT_VAT_ACCOUNTS) {
           return new Classification('ASSET', 'DEBIT', false, null, accountSubgroup)
         }
         return new Classification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
@@ -249,7 +253,8 @@ final class ChartOfAccountsImportService {
     )
   }
 
-  private static VatCode resolveVatCode(String accountNumber) {
+  @PackageScope
+  static VatCode resolveVatCode(String accountNumber) {
     switch (accountNumber) {
       case '2610':
       case '2611':

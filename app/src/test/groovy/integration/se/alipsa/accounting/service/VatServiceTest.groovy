@@ -113,6 +113,30 @@ class VatServiceTest {
   }
 
   @Test
+  void domesticReverseChargeCodeSupportsExpenseAndVatBalanceAccounts() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 28),
+        'Byggtjänst omvänd moms',
+        [
+            new VoucherLine(null, null, 0, null, '4425', null, 'Inköp omvänd moms', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2648', null, 'Ingående omvänd moms', 250.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2617', null, 'Utgående omvänd moms', 0.00G, 250.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 1000.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertVatRow(report, VatCode.REVERSE_CHARGE_DOMESTIC, 1000.00G, 250.00G, 250.00G)
+    assertEquals(250.00G, report.outputVatTotal)
+    assertEquals(250.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
   void vatReportComputesOutputVatWhenTaxLineIsMissing() {
     voucherService.createVoucher(
         fiscalYear.id,
@@ -524,12 +548,15 @@ class VatServiceTest {
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25.name())
+      insertAccount(sql, '2617', 'Utgående omvänd moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '2645', 'Beräknad ingående moms', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
       insertAccount(sql, '2647', 'Beräknad ingående moms tjänster', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
+      insertAccount(sql, '2648', 'Ingående omvänd moms', 'ASSET', 'DEBIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name())
+      insertAccount(sql, '4425', 'Inköp med omvänd skattskyldighet', 'EXPENSE', 'DEBIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '4515', 'Inköp av varor från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
       insertAccount(sql, '4535', 'Inköp av tjänster från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
     }

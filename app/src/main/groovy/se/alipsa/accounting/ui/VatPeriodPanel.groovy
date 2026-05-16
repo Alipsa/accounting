@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.service.FiscalYearService
@@ -17,6 +19,7 @@ import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
@@ -51,6 +54,17 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
+
+  @PackageScope
+  Closure<Boolean> bulkActionConfirmation = { String message, String title ->
+    JOptionPane.showConfirmDialog(
+        this,
+        message,
+        title,
+        JOptionPane.YES_NO_OPTION,
+        JOptionPane.WARNING_MESSAGE
+    ) == JOptionPane.YES_OPTION
+  }
 
   VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService, ActiveCompanyManager activeCompanyManager) {
     this.vatService = vatService
@@ -222,6 +236,13 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     int successCount = 0
     List<String> errors = []
     List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
+    if (!confirmBulkAction(
+        sortedPeriods,
+        'vatPeriodPanel.confirm.reportMultiple',
+        'vatPeriodPanel.confirm.reportMultiple.title'
+    )) {
+      return
+    }
     for (VatPeriod period : sortedPeriods) {
       try {
         vatService.reportPeriod(period.id)
@@ -259,6 +280,13 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     int successCount = 0
     List<String> errors = []
     List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
+    if (!confirmBulkAction(
+        sortedPeriods,
+        'vatPeriodPanel.confirm.transferMultiple',
+        'vatPeriodPanel.confirm.transferMultiple.title'
+    )) {
+      return
+    }
     for (VatPeriod period : sortedPeriods) {
       try {
         vatService.bookTransfer(period.id)
@@ -289,6 +317,17 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private static VatPeriod selectedProcessedPeriod(List<VatPeriod> sortedPeriods, int successCount) {
     sortedPeriods[Math.max(0, successCount - 1)]
+  }
+
+  private boolean confirmBulkAction(List<VatPeriod> sortedPeriods, String messageKey, String titleKey) {
+    if (sortedPeriods.size() <= 1) {
+      return true
+    }
+    String periodNames = sortedPeriods.collect { VatPeriod period -> period.periodName }.join(', ')
+    bulkActionConfirmation.call(
+        I18n.instance.format(messageKey, sortedPeriods.size(), periodNames),
+        I18n.instance.getString(titleKey)
+    )
   }
 
   private FiscalYear selectedFiscalYear() {
