@@ -103,6 +103,30 @@ class ChartOfAccountsImportServiceTest {
   }
 
   @Test
+  void standardVatCodeMappingsAreCompatibleWithImportedAccountClasses() {
+    ChartOfAccountsImportService.STANDARD_VAT_CODES.each { String accountNumber, VatCode vatCode ->
+      Account account = new Account(
+          null,
+          CompanyService.LEGACY_COMPANY_ID,
+          accountNumber,
+          'Testkonto',
+          accountNumber.startsWith('264') ? 'ASSET' : 'LIABILITY',
+          accountNumber.startsWith('264') ? 'DEBIT' : 'CREDIT',
+          vatCode.name(),
+          true,
+          false,
+          null,
+          null
+      )
+
+      assertTrue(
+          AccountService.compatibleVatCodes(account).contains(vatCode),
+          "${accountNumber} should resolve to an import-compatible VAT code"
+      )
+    }
+  }
+
+  @Test
   void searchToggleAndOpeningBalanceRulesWork() {
     importService.importFromExcel(workbookPath())
     long fiscalYearId = fiscalYearService.createFiscalYear(

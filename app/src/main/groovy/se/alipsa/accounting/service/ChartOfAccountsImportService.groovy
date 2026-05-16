@@ -32,9 +32,25 @@ final class ChartOfAccountsImportService {
       'RANTEKOSTNADER', 'SKATT', 'NEDSKRIVNING', 'NEDSKRIVNINGAR',
       'AVSATTNING', 'LAMNADE', 'UTGIFT', 'UTGIFTER'
   ] as Set<String>
-  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = [
-      '2640', '2641', '2642', '2643', '2645'
-  ] as Set<String>
+
+  @PackageScope
+  static final Map<String, VatCode> STANDARD_VAT_CODES = [
+      '2610': VatCode.OUTPUT_25,
+      '2611': VatCode.OUTPUT_25,
+      '2614': VatCode.REVERSE_CHARGE_EU_25,
+      '2620': VatCode.OUTPUT_12,
+      '2621': VatCode.OUTPUT_12,
+      '2630': VatCode.OUTPUT_6,
+      '2631': VatCode.OUTPUT_6,
+      '2640': VatCode.INPUT_25,
+      '2641': VatCode.INPUT_25,
+      '2642': VatCode.INPUT_12,
+      '2643': VatCode.INPUT_6,
+      '2645': VatCode.EU_ACQUISITION_GOODS
+  ].asImmutable() as Map<String, VatCode>
+  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = STANDARD_VAT_CODES.keySet().findAll { String accountNumber ->
+    accountNumber.startsWith('264')
+  } as Set<String>
 
   private final DatabaseService databaseService
 
@@ -168,17 +184,20 @@ final class ChartOfAccountsImportService {
 
     String accountName = normalizeAccountName(formatter.formatCellValue(row.getCell(nameColumn)))
     Classification classification = classifyAccount(accountNumber, accountName)
-    accounts[accountNumber] = new Account(
+    VatCode vatCode = resolveVatCode(accountNumber)
+    Account account = new Account(
         accountNumber: accountNumber,
         accountName: accountName,
         accountClass: classification.accountClass,
         normalBalanceSide: classification.normalBalanceSide,
-        vatCode: resolveVatCode(accountNumber)?.name(),
+        vatCode: vatCode?.name(),
         active: true,
         manualReviewRequired: classification.manualReviewRequired,
         classificationNote: classification.note,
         accountSubgroup: classification.accountSubgroup
     )
+    validateResolvedVatCode(account, vatCode)
+    accounts[accountNumber] = account
   }
 
   private static String normalizeAccountNumber(String value) {
@@ -255,29 +274,17 @@ final class ChartOfAccountsImportService {
 
   @PackageScope
   static VatCode resolveVatCode(String accountNumber) {
-    switch (accountNumber) {
-      case '2610':
-      case '2611':
-        return VatCode.OUTPUT_25
-      case '2614':
-        return VatCode.REVERSE_CHARGE_EU_25
-      case '2620':
-      case '2621':
-        return VatCode.OUTPUT_12
-      case '2630':
-      case '2631':
-        return VatCode.OUTPUT_6
-      case '2640':
-      case '2641':
-        return VatCode.INPUT_25
-      case '2642':
-        return VatCode.INPUT_12
-      case '2643':
-        return VatCode.INPUT_6
-      case '2645':
-        return VatCode.EU_ACQUISITION_GOODS
-      default:
-        return null
+    STANDARD_VAT_CODES[accountNumber]
+  }
+
+  private static void validateResolvedVatCode(Account account, VatCode vatCode) {
+    if (vatCode == null) {
+      return
+    }
+    if (!AccountService.compatibleVatCodes(account).contains(vatCode)) {
+      throw new IllegalStateException(
+          "Importerad momskod ${vatCode.name()} är inte kompatibel med konto ${account.accountNumber} (${account.accountClass})."
+      )
     }
   }
 

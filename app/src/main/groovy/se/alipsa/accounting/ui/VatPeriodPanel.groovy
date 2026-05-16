@@ -212,7 +212,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadReportPreview() {
-    VatPeriod period = selectedPeriod()
+    List<VatPeriod> selected = selectedPeriods()
+    VatPeriod period = selected.isEmpty() ? null : selected.first()
     if (period == null) {
       reportTableModel.setRows([])
       summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
@@ -337,11 +338,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private List<VatPeriod> selectedPeriods() {
     int[] rows = periodTable.selectedRows
     rows.collect { int row -> periodTableModel.rowAt(row) }
-  }
-
-  private VatPeriod selectedPeriod() {
-    List<VatPeriod> periods = selectedPeriods()
-    periods.isEmpty() ? null : periods.first()
   }
 
   private void selectFiscalYear(Long fiscalYearId) {

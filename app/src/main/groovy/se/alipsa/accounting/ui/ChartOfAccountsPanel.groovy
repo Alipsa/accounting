@@ -269,8 +269,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String note = account.classificationNote
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.note', account.classificationNote))}</p>"
         : ''
-    String vatCode = account.vatCode
-        ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', account.vatCode))}</p>"
+    String vatCodeLabel = displayVatCode(account.vatCode)
+    String vatCode = vatCodeLabel
+        ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', vatCodeLabel))}</p>"
         : "<p>${escapeHtml(I18n.instance.getString('chartOfAccountsPanel.details.noVatCode'))}</p>"
     setVatCodeButton.enabled = AccountService.isVatCompatibleClass(account.accountClass)
     detailsLabel.text = """
@@ -332,34 +333,36 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
     List<VatCode> allowedCodes = AccountService.compatibleVatCodes(account)
 
-    String noneOption = I18n.instance.getString('chartOfAccountsPanel.vatCode.none')
-    String[] options = new String[allowedCodes.size() + 1]
+    VatCodeOption noneOption = new VatCodeOption(null, I18n.instance.getString('chartOfAccountsPanel.vatCode.none'))
+    VatCodeOption[] options = new VatCodeOption[allowedCodes.size() + 1]
     options[0] = noneOption
     allowedCodes.eachWithIndex { VatCode code, int index ->
-      options[index + 1] = code.name()
+      options[index + 1] = new VatCodeOption(code, code.displayName)
     }
+    VatCode currentVatCode = VatCode.fromDatabaseValue(account.vatCode)
+    VatCodeOption selectedOption = options.find { VatCodeOption option -> option.vatCode == currentVatCode } ?: noneOption
 
-    String selected = JOptionPane.showInputDialog(
+    VatCodeOption selected = JOptionPane.showInputDialog(
         this,
         I18n.instance.getString('chartOfAccountsPanel.vatCode.prompt'),
         I18n.instance.getString('chartOfAccountsPanel.vatCode.title'),
         JOptionPane.QUESTION_MESSAGE,
         null,
         options,
-        account.vatCode ?: options[0]
-    ) as String
+        selectedOption
+    ) as VatCodeOption
 
     if (selected == null) {
       return
     }
 
     try {
-      VatCode newVatCode = selected == noneOption ? null : VatCode.valueOf(selected)
+      VatCode newVatCode = selected.vatCode
       accountService.setAccountVatCode(activeCompanyManager.companyId, account.accountNumber, newVatCode)
       reloadAccounts()
       selectAccount(account.accountNumber)
       showInfo(I18n.instance.format('chartOfAccountsPanel.message.vatCodeSet',
-          account.accountNumber, newVatCode?.name() ?: noneOption))
+          account.accountNumber, newVatCode?.displayName ?: noneOption.label))
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
     }
@@ -406,6 +409,26 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         .replace('&', '&amp;')
         .replace('<', '&lt;')
         .replace('>', '&gt;')
+  }
+
+  private static String displayVatCode(String value) {
+    VatCode.fromDatabaseValue(value)?.displayName ?: ''
+  }
+
+  private static final class VatCodeOption {
+
+    final VatCode vatCode
+    final String label
+
+    VatCodeOption(VatCode vatCode, String label) {
+      this.vatCode = vatCode
+      this.label = label
+    }
+
+    @Override
+    String toString() {
+      label
+    }
   }
 
   private static final class AccountTableModel extends AbstractTableModel {
@@ -463,7 +486,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         case 3:
           return account.normalBalanceSide ?: ''
         case 4:
-          return account.vatCode ?: ''
+          return displayVatCode(account.vatCode)
         case 5:
           String yes = I18n.instance.getString('chartOfAccountsPanel.details.yes')
           String no = I18n.instance.getString('chartOfAccountsPanel.details.no')

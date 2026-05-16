@@ -139,6 +139,7 @@ class VatPeriodPanelTest {
     JButton reportButton = findButton(panel, 'Rapportera vald period')
     JTextArea feedbackArea = findFeedbackArea(panel)
 
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(0, 3) })
     String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
     onEdt {
       periodTable.setRowSelectionInterval(1, 3)

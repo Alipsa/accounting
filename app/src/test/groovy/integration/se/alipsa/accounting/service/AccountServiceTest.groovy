@@ -136,6 +136,7 @@ class AccountServiceTest {
     List<VatCode> assetCodes = AccountService.compatibleVatCodes(asset)
     assertTrue(assetCodes.contains(VatCode.INPUT_25))
     assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_GOODS))
+    assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_SERVICES))
     assertTrue(assetCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
     assertFalse(assetCodes.contains(VatCode.OUTPUT_25))
     assertFalse(assetCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
@@ -154,6 +155,7 @@ class AccountServiceTest {
     assertTrue(incomeCodes.contains(VatCode.EU_SUPPLY_GOODS))
     assertFalse(incomeCodes.contains(VatCode.INPUT_25))
     assertFalse(incomeCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
+    assertFalse(incomeCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
 
     Account expense = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '4010')
