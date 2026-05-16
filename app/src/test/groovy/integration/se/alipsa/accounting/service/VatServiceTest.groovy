@@ -84,6 +84,35 @@ class VatServiceTest {
   }
 
   @Test
+  void sharedReverseChargeOutputAccountIsAssignedToMatchingBaseBuckets() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv varor och tjänster',
+        [
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '4535', null, 'EU-tjänsteinköp', 200.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2645', null, 'Beräknad ingående moms varor', 25.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2647', null, 'Beräknad ingående moms tjänster', 50.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 75.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 300.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertEquals(2, report.rows.size())
+    assertVatRow(report, VatCode.EU_ACQUISITION_GOODS, 100.00G, 25.00G, 25.00G)
+    assertVatRow(report, VatCode.EU_ACQUISITION_SERVICES, 200.00G, 50.00G, 50.00G)
+    assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
+    assertEquals(75.00G, report.outputVatTotal)
+    assertEquals(75.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
   void vatReportComputesOutputVatWhenTaxLineIsMissing() {
     voucherService.createVoucher(
         fiscalYear.id,
@@ -494,13 +523,15 @@ class VatServiceTest {
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '2645', 'Beräknad ingående moms', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2647', 'Beräknad ingående moms tjänster', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
       insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '4515', 'Inköp av varor från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '4535', 'Inköp av tjänster från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
     }
   }
 

@@ -238,7 +238,7 @@ class VatPeriodPanelTest {
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '2645', 'Beräknad ingående moms', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
       insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
