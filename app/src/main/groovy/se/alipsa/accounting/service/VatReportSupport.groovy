@@ -274,7 +274,7 @@ final class VatReportSupport {
       RawVatLine line, Map<VatCode, BigDecimal> reverseBaseAmounts
   ) {
     List<Map.Entry<VatCode, BigDecimal>> matchingBases = reverseBaseAmounts.entrySet().findAll { Map.Entry<VatCode, BigDecimal> entry ->
-      entry.value != BigDecimal.ZERO && entry.key.outputRate == line.vatCode.outputRate
+      (entry.value <=> BigDecimal.ZERO) != 0 && (entry.key.outputRate <=> line.vatCode.outputRate) == 0
     }.toList()
     if (matchingBases.isEmpty()) {
       return [classify(line.vatCode, line.accountClass, line.signedAmount)]

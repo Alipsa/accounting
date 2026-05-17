@@ -15,6 +15,7 @@ enum VatCode {
   INPUT_6(0.00G, 0.06G),
   REVERSE_CHARGE_DOMESTIC(0.25G, 0.25G, true),
   // TODO: Add 12% and 6% EU reverse-charge codes when account defaults and report rows need those rates.
+  // The input rate is used for reverse-charge balancing, but this shared output code belongs only on liability accounts.
   REVERSE_CHARGE_EU_25(0.25G, 0.25G, false),
   EU_ACQUISITION_GOODS(0.25G, 0.25G),
   EU_ACQUISITION_SERVICES(0.25G, 0.25G),

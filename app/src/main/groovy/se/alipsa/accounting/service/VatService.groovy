@@ -218,6 +218,7 @@ final class VatService {
         List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
         List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
         List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
+        // Both descriptor lists are ordered by period_index/chronology; equality is intentionally order-sensitive here.
         if (remainingExpected == currentOpen) {
           return
         }

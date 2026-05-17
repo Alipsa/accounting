@@ -109,15 +109,14 @@ class VatPeriodPanelTest {
     }
 
     JTable periodTable = findTable(panel, 'Period')
-    String previewPrefix = messagePrefix('vatPeriodPanel.summary.preview')
-    JLabel summaryLabel = findLabel(panel) { JLabel label ->
-      label.text.startsWith(previewPrefix)
-    }
-
     onEdt {
       periodTable.setRowSelectionInterval(1, 3)
     }
 
+    String previewPrefix = messagePrefix('vatPeriodPanel.summary.preview')
+    JLabel summaryLabel = findLabel(panel) { JLabel label ->
+      label.text.startsWith(previewPrefix)
+    }
     String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
     String summary = onEdt { summaryLabel.text }
     assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selectedPeriodName, 3)))
@@ -188,6 +187,8 @@ class VatPeriodPanelTest {
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')
     JTextArea feedbackArea = findFeedbackArea(panel)
+    String reportedPeriodName = onEdt { periodTable.getValueAt(0, 0) as String }
+    String lockedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
 
     onEdt {
       periodTable.setRowSelectionInterval(0, 1)
@@ -195,8 +196,8 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reported', '2026-01')))
-    assertTrue(feedback.contains('Momsperiod 2026-02 är redan låst.'))
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriodName)))
+    assertTrue(feedback.contains("Momsperiod ${lockedPeriodName} är redan låst."))
   }
 
   private List<Voucher> bookVatFixtures() {

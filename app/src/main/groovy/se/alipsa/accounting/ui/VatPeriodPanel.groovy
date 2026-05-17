@@ -273,7 +273,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     if (errors.isEmpty()) {
       showInfo(reportSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {
-      showError(reportSuccessMessage(successCount, periodToSelect) + '\n' + errors.join('\n'))
+      showError(partialFailureMessage(reportSuccessMessage(successCount, periodToSelect), errors))
     } else {
       showError(errors.join('\n'))
     }
@@ -313,7 +313,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     if (errors.isEmpty()) {
       showInfo(transferSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {
-      showError(transferSuccessMessage(successCount, periodToSelect) + '\n' + errors.join('\n'))
+      showError(partialFailureMessage(transferSuccessMessage(successCount, periodToSelect), errors))
     } else {
       showError(errors.join('\n'))
     }
@@ -329,6 +329,10 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     successCount == 1
         ? I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName)
         : I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount)
+  }
+
+  private static String partialFailureMessage(String successMessage, List<String> errors) {
+    I18n.instance.format('vatPeriodPanel.message.partialFailure', successMessage, errors.join('\n'))
   }
 
   private static VatPeriod selectedPeriodAfterProcessing(List<VatPeriod> sortedPeriods, int successCount) {

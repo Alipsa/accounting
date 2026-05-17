@@ -19,6 +19,18 @@ final class AccountService {
   @PackageScope
   static final String UNKNOWN_ACCOUNT_MESSAGE_PREFIX = 'Okänt kontonummer:'
 
+  @PackageScope
+  static final String ACCOUNT_CLASS_INCOME = 'INCOME'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_EXPENSE = 'EXPENSE'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_ASSET = 'ASSET'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_LIABILITY = 'LIABILITY'
+
   private final DatabaseService databaseService
 
   AccountService(DatabaseService databaseService = DatabaseService.instance) {
@@ -164,7 +176,12 @@ final class AccountService {
     }
   }
 
-  private static final Set<String> VAT_COMPATIBLE_CLASSES = ['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY'] as Set<String>
+  private static final Set<String> VAT_COMPATIBLE_CLASSES = [
+      ACCOUNT_CLASS_INCOME,
+      ACCOUNT_CLASS_EXPENSE,
+      ACCOUNT_CLASS_ASSET,
+      ACCOUNT_CLASS_LIABILITY
+  ] as Set<String>
 
   private static final Set<VatCode> INCOME_VAT_CODES = [
       VatCode.OUTPUT_25,
@@ -202,16 +219,16 @@ final class AccountService {
     if (!isVatCompatibleClass(account.accountClass)) {
       return false
     }
-    if (account.accountClass == 'INCOME') {
+    if (account.accountClass == ACCOUNT_CLASS_INCOME) {
       return vatCode in INCOME_VAT_CODES
     }
-    if (account.accountClass == 'EXPENSE') {
+    if (account.accountClass == ACCOUNT_CLASS_EXPENSE) {
       return vatCode in EXPENSE_VAT_CODES
     }
-    if (account.accountClass == 'ASSET') {
+    if (account.accountClass == ACCOUNT_CLASS_ASSET) {
       return vatCode.assetEligible
     }
-    account.accountClass == 'LIABILITY' && vatCode.outputRate > BigDecimal.ZERO
+    account.accountClass == ACCOUNT_CLASS_LIABILITY && vatCode.outputRate > BigDecimal.ZERO
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {

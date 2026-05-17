@@ -324,6 +324,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     showInfo(I18n.instance.format('chartOfAccountsPanel.message.toggled', account.accountNumber, status))
   }
 
+  @SuppressWarnings('CatchRuntimeException')
   private void setVatCodeForSelectedAccount() {
     Account account = selectedAccount()
     if (account == null) {
@@ -365,6 +366,8 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
           account.accountNumber, newVatCode?.displayName ?: noneOption.label))
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
+    } catch (RuntimeException exception) {
+      showError(exception.message ?: I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
     }
   }
 
