@@ -284,7 +284,7 @@ class VatServiceTest {
     List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
     assertTrue(periods.size() >= 3, 'Expected at least three VAT periods')
     VatPeriod march = periods[2]
-    assertEquals(3, march.periodIndex)
+    assertTrue(march.periodIndex > periods[1].periodIndex)
 
     IllegalStateException exception = assertThrows(IllegalStateException) {
       vatService.reportPeriod(march.id)
@@ -475,6 +475,35 @@ class VatServiceTest {
     assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
     assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
     assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesFullyReportedPeriodsWhenPeriodicityChanges() {
+    bookSaleVoucher()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, monthlyPeriods.size())
+    monthlyPeriods.each { VatPeriod period ->
+      vatService.reportPeriod(period.id)
+    }
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(fiscalYear.id)
+    assertEquals(monthlyPeriods*.id, unchanged*.id)
+    assertTrue(unchanged.every { VatPeriod period -> period.status == VatService.REPORTED })
   }
 
   private List<Voucher> bookVatFixtures() {

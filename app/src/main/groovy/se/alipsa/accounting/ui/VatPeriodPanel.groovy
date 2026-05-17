@@ -221,6 +221,13 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       summaryLabel.toolTipText = null
       return
     }
+    if (selected.size() > 1) {
+      String previewText = previewSummary(selected, period)
+      reportTableModel.setRows([])
+      summaryLabel.text = previewText
+      summaryLabel.toolTipText = previewText
+      return
+    }
     VatService.VatReport report = vatService.calculateReport(period.id)
     reportTableModel.setRows(report.rows)
     String previewText = previewSummary(selected, period)
@@ -236,7 +243,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     if (selected.size() <= 1) {
       return I18n.instance.format('vatPeriodPanel.summary.preview', period.periodName)
     }
-    I18n.instance.format('vatPeriodPanel.summary.previewMultiple', period.periodName, selected.size())
+    I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selected.size())
   }
 
   private void reportSelectedPeriod() {
@@ -337,6 +344,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private static VatPeriod selectedPeriodAfterProcessing(List<VatPeriod> sortedPeriods, int successCount) {
     if (successCount <= 0) {
+      // Focus the first blocked period when nothing was processed successfully.
       return sortedPeriods.first()
     }
     sortedPeriods[successCount - 1]

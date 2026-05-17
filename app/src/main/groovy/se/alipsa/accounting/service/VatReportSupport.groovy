@@ -148,7 +148,7 @@ final class VatReportSupport {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
-           and a.account_class in ('INCOME', 'EXPENSE')
+           and a.account_class = 'EXPENSE'
            and exists (
                  select 1
                    from voucher_line shared_vl

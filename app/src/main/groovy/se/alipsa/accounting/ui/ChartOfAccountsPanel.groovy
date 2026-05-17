@@ -16,6 +16,8 @@ import java.awt.Insets
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.nio.file.Path
+import java.util.logging.Level
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
@@ -39,6 +41,8 @@ import javax.swing.table.AbstractTableModel
  * Imports, displays and filters the chart of accounts.
  */
 final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener {
+
+  private static final Logger log = Logger.getLogger(ChartOfAccountsPanel.name)
 
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
@@ -367,6 +371,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     } catch (IllegalArgumentException exception) {
       showError(exception.message)
     } catch (RuntimeException exception) {
+      log.log(Level.WARNING, "Kunde inte sätta momskod för konto ${account.accountNumber}.", exception)
       showError(exception.message ?: I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
     }
   }

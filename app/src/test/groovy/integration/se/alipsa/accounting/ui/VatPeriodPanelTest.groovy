@@ -110,17 +110,18 @@ class VatPeriodPanelTest {
     }
 
     JTable periodTable = findTable(panel, 'Period')
+    JTable reportTable = findTable(panel, 'Kod')
     onEdt {
       periodTable.setRowSelectionInterval(1, 3)
     }
 
-    String previewPrefix = messagePrefix('vatPeriodPanel.summary.preview')
+    String previewPrefix = messagePrefix('vatPeriodPanel.summary.previewMultiple')
     JLabel summaryLabel = findLabel(panel) { JLabel label ->
       label.text.startsWith(previewPrefix)
     }
-    String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
     String summary = onEdt { summaryLabel.text }
-    assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selectedPeriodName, 3)))
+    assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', 3)))
+    assertEquals(0, onEdt { reportTable.rowCount })
   }
 
   @Test
@@ -175,6 +176,7 @@ class VatPeriodPanelTest {
   @Test
   void multiSelectReportingShowsSuccessCountBeforeLaterFailure() {
     databaseService.withTransaction { Sql sql ->
+      // This impossible domain state isolates the UI loop's partial-success handling for a later locked row.
       sql.executeUpdate(
           "update vat_period set status = 'LOCKED' where fiscal_year_id = ? and period_index = 2",
           [fiscalYear.id]
@@ -204,14 +206,19 @@ class VatPeriodPanelTest {
   @Test
   void multiSelectTransferShowsSuccessBeforeLaterFailure() {
     bookVatFixtures()
-    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = periods[0]
+    VatPeriod february = periods[1]
     vatService.reportPeriod(january.id)
-    databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate(
-          "update vat_period set status = 'LOCKED' where fiscal_year_id = ? and period_index = 2",
-          [fiscalYear.id]
-      )
-    }
+    vatService.reportPeriod(february.id)
+    vatService.bookTransfer(february.id)
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
