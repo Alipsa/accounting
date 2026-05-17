@@ -146,7 +146,10 @@ class AccountServiceTest {
     List<VatCode> liabilityCodes = AccountService.compatibleVatCodes(liability)
     assertTrue(liabilityCodes.contains(VatCode.OUTPUT_25))
     assertTrue(liabilityCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
+    assertTrue(liabilityCodes.contains(VatCode.EXEMPT))
     assertFalse(liabilityCodes.contains(VatCode.INPUT_25))
+    assertFalse(liabilityCodes.contains(VatCode.EU_ACQUISITION_GOODS))
+    assertFalse(liabilityCodes.contains(VatCode.EU_ACQUISITION_SERVICES))
 
     Account income = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '3010')

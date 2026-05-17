@@ -13,6 +13,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
+import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -168,7 +169,7 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} ${VatService.REPORTING_ORDER_ERROR_FRAGMENT}"))
+    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} kan inte rapporteras innan tidigare perioder har rapporterats."))
   }
 
   @Test
@@ -197,6 +198,39 @@ class VatPeriodPanelTest {
 
     String feedback = onEdt { feedbackArea.text }
     assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriodName)))
+    assertTrue(feedback.contains("Momsperiod ${lockedPeriodName} är redan låst."))
+  }
+
+  @Test
+  void multiSelectTransferShowsSuccessBeforeLaterFailure() {
+    bookVatFixtures()
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    vatService.reportPeriod(january.id)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate(
+          "update vat_period set status = 'LOCKED' where fiscal_year_id = ? and period_index = 2",
+          [fiscalYear.id]
+      )
+    }
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton transferButton = findButton(panel, 'Bokför momsöverföring')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+    String transferredPeriodName = onEdt { periodTable.getValueAt(0, 0) as String }
+    String lockedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      transferButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertEquals(VatService.LOCKED, onEdt { periodTable.getValueAt(0, 3) })
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.transferBooked', transferredPeriodName)))
     assertTrue(feedback.contains("Momsperiod ${lockedPeriodName} är redan låst."))
   }
 

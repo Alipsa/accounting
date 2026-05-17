@@ -201,6 +201,7 @@ final class VatReportSupport {
          )
     ''')
     params << fiscalYearId
+    // Overlap check: a transfer period is relevant when it starts before this report ends and ends after it starts.
     params << Date.valueOf(endDate)
     params << Date.valueOf(startDate)
   }
@@ -211,11 +212,18 @@ final class VatReportSupport {
       Set<VatCode> vatCodes,
       String accountAlias = 'a'
   ) {
+    if (vatCodes.isEmpty()) {
+      query.append(' and 1 = 0')
+      return
+    }
     query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
     params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
   }
 
   private static void appendExcludedVatCodes(StringBuilder query, List<Object> params, Set<VatCode> vatCodes) {
+    if (vatCodes.isEmpty()) {
+      return
+    }
     query.append(" and a.vat_code not in (${placeholders(vatCodes.size())})")
     params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
   }

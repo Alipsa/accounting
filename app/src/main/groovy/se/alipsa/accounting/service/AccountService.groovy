@@ -166,13 +166,16 @@ final class AccountService {
             "Konto ${normalized} med kontoklass ${account.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
         )
       }
-      sql.executeUpdate('''
+      int updated = sql.executeUpdate('''
           update account
              set vat_code = ?,
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
       ''', [vatCode?.name(), companyId, normalized])
+      if (updated != 1) {
+        throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      }
     }
   }
 
@@ -205,6 +208,16 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
+  private static final Set<VatCode> LIABILITY_VAT_CODES = [
+      VatCode.OUTPUT_25,
+      VatCode.OUTPUT_12,
+      VatCode.OUTPUT_6,
+      VatCode.REVERSE_CHARGE_EU_25,
+      VatCode.REVERSE_CHARGE_DOMESTIC,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
   static List<VatCode> compatibleVatCodes(Account account) {
     VatCode.values().findAll { VatCode vatCode ->
       isVatCompatible(account, vatCode)
@@ -228,7 +241,7 @@ final class AccountService {
     if (account.accountClass == ACCOUNT_CLASS_ASSET) {
       return vatCode.assetEligible
     }
-    account.accountClass == ACCOUNT_CLASS_LIABILITY && vatCode.outputRate > BigDecimal.ZERO
+    account.accountClass == ACCOUNT_CLASS_LIABILITY && vatCode in LIABILITY_VAT_CODES
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {

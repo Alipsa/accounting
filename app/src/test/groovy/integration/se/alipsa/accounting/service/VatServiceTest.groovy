@@ -290,7 +290,7 @@ class VatServiceTest {
       vatService.reportPeriod(march.id)
     }
 
-    assertTrue(exception.message.contains(VatService.REPORTING_ORDER_ERROR_FRAGMENT))
+    assertTrue(exception.message.contains('kan inte rapporteras innan tidigare perioder har rapporterats'))
   }
 
   @Test

@@ -30,7 +30,6 @@ final class VatService {
   private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = ['ASSET', 'LIABILITY'] as Set<String>
   static final String DEFAULT_TRANSFER_SERIES = 'M'
   static final String DEFAULT_SETTLEMENT_ACCOUNT = '2650'
-  static final String REPORTING_ORDER_ERROR_FRAGMENT = 'kan inte rapporteras innan tidigare perioder har rapporterats.'
 
   private final DatabaseService databaseService
   private final VoucherService voucherService
@@ -107,7 +106,7 @@ final class VatService {
         ''', [period.fiscalYearId, period.periodIndex, OPEN])
         if (((Number) earlierOpen.get('total')).intValue() > 0) {
           throw new IllegalStateException(
-              "Momsperiod ${period.periodName} ${REPORTING_ORDER_ERROR_FRAGMENT}"
+              "Momsperiod ${period.periodName} kan inte rapporteras innan tidigare perioder har rapporterats."
           )
         }
       }
