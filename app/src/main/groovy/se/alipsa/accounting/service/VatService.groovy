@@ -142,6 +142,20 @@ final class VatService {
       if (period.status == LOCKED) {
         throw new IllegalStateException("Momsperiod ${period.periodName} är redan låst.")
       }
+      GroovyRowResult earlierUnlocked = sql.firstRow('''
+          select period_name as periodName
+            from vat_period
+           where fiscal_year_id = ?
+             and period_index < ?
+             and status != ?
+           order by period_index
+           limit 1
+      ''', [period.fiscalYearId, period.periodIndex, LOCKED]) as GroovyRowResult
+      if (earlierUnlocked != null) {
+        throw new IllegalStateException(
+            "Momsperiod ${period.periodName} kan inte låsas innan tidigare perioder har låsts."
+        )
+      }
 
       List<TransferBalance> balances = loadTransferBalances(sql, period)
       if (balances.isEmpty()) {

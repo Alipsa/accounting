@@ -196,6 +196,18 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
+  @PackageScope
+  static final Set<VatCode> ASSET_VAT_CODES = [
+      VatCode.INPUT_25,
+      VatCode.INPUT_12,
+      VatCode.INPUT_6,
+      VatCode.REVERSE_CHARGE_DOMESTIC,
+      VatCode.EU_ACQUISITION_GOODS,
+      VatCode.EU_ACQUISITION_SERVICES,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
   // EU reverse-charge output is posted on liability accounts such as 2614; expenses carry the matching base code.
   private static final Set<VatCode> EXPENSE_VAT_CODES = [
       VatCode.INPUT_25,
@@ -239,7 +251,7 @@ final class AccountService {
       return vatCode in EXPENSE_VAT_CODES
     }
     if (account.accountClass == ACCOUNT_CLASS_ASSET) {
-      return vatCode.assetEligible
+      return vatCode in ASSET_VAT_CODES
     }
     account.accountClass == ACCOUNT_CLASS_LIABILITY && vatCode in LIABILITY_VAT_CODES
   }

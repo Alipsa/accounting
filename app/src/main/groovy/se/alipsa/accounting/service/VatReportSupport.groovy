@@ -16,8 +16,14 @@ import java.time.LocalDate
 final class VatReportSupport {
 
   private static final int AMOUNT_SCALE = 2
-  private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = ['ASSET', 'LIABILITY'] as Set<String>
-  private static final Set<String> BASE_ACCOUNT_CLASSES = ['INCOME', 'EXPENSE'] as Set<String>
+  private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = [
+      AccountService.ACCOUNT_CLASS_ASSET,
+      AccountService.ACCOUNT_CLASS_LIABILITY
+  ] as Set<String>
+  private static final Set<String> BASE_ACCOUNT_CLASSES = [
+      AccountService.ACCOUNT_CLASS_INCOME,
+      AccountService.ACCOUNT_CLASS_EXPENSE
+  ] as Set<String>
   private static final Set<VatCode> REVERSE_CHARGE_BASE_CODES = [
       VatCode.REVERSE_CHARGE_DOMESTIC,
       VatCode.EU_ACQUISITION_GOODS,
@@ -113,9 +119,14 @@ final class VatReportSupport {
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
            and a.vat_code is not null
-           and a.account_class = 'LIABILITY'
+           and a.account_class = ?
     ''')
-    List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
+    List<Object> params = [
+        fiscalYearId,
+        Date.valueOf(startDate),
+        Date.valueOf(endDate),
+        AccountService.ACCOUNT_CLASS_LIABILITY
+    ]
     appendTransferExclusion(query, params, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
     appendIncludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES)
     query.append('''
@@ -148,15 +159,21 @@ final class VatReportSupport {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
-           and a.account_class = 'EXPENSE'
+           and a.account_class = ?
            and exists (
                  select 1
                    from voucher_line shared_vl
                    join account shared_a on shared_a.id = shared_vl.account_id
                   where shared_vl.voucher_id = v.id
-                    and shared_a.account_class = 'LIABILITY'
+                    and shared_a.account_class = ?
     ''')
-    List<Object> params = [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]
+    List<Object> params = [
+        fiscalYearId,
+        Date.valueOf(startDate),
+        Date.valueOf(endDate),
+        AccountService.ACCOUNT_CLASS_EXPENSE,
+        AccountService.ACCOUNT_CLASS_LIABILITY
+    ]
     appendIncludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES, 'shared_a')
     query.append('''
            )

@@ -13,10 +13,9 @@ enum VatCode {
   INPUT_25(0.00G, 0.25G),
   INPUT_12(0.00G, 0.12G),
   INPUT_6(0.00G, 0.06G),
-  REVERSE_CHARGE_DOMESTIC(0.25G, 0.25G, true),
-  // TODO: Add 12% and 6% EU reverse-charge codes when account defaults and report rows need those rates.
+  REVERSE_CHARGE_DOMESTIC(0.25G, 0.25G),
   // The input rate is used for reverse-charge balancing, but this shared output code belongs only on liability accounts.
-  REVERSE_CHARGE_EU_25(0.25G, 0.25G, false),
+  REVERSE_CHARGE_EU_25(0.25G, 0.25G),
   EU_ACQUISITION_GOODS(0.25G, 0.25G),
   EU_ACQUISITION_SERVICES(0.25G, 0.25G),
   EU_SUPPLY_GOODS(0.00G, 0.00G),
@@ -26,17 +25,10 @@ enum VatCode {
 
   final BigDecimal outputRate
   final BigDecimal inputRate
-  final boolean assetEligible
 
   VatCode(BigDecimal outputRate, BigDecimal inputRate) {
-    // Codes with deductible input VAT are asset-account eligible unless an enum entry opts out explicitly.
-    this(outputRate, inputRate, inputRate > BigDecimal.ZERO)
-  }
-
-  VatCode(BigDecimal outputRate, BigDecimal inputRate, boolean assetEligible) {
     this.outputRate = outputRate
     this.inputRate = inputRate
-    this.assetEligible = assetEligible
   }
 
   String getDisplayName() {

@@ -204,7 +204,7 @@ class VatPeriodPanelTest {
   }
 
   @Test
-  void multiSelectTransferShowsSuccessBeforeLaterFailure() {
+  void multiSelectTransferBooksSelectedPeriodsInOrder() {
     bookVatFixtures()
     voucherService.createVoucher(
         fiscalYear.id,
@@ -218,7 +218,6 @@ class VatPeriodPanelTest {
     VatPeriod february = periods[1]
     vatService.reportPeriod(january.id)
     vatService.reportPeriod(february.id)
-    vatService.bookTransfer(february.id)
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
@@ -227,8 +226,6 @@ class VatPeriodPanelTest {
     JTable periodTable = findTable(panel, 'Period')
     JButton transferButton = findButton(panel, 'Bokför momsöverföring')
     JTextArea feedbackArea = findFeedbackArea(panel)
-    String transferredPeriodName = onEdt { periodTable.getValueAt(0, 0) as String }
-    String lockedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
 
     onEdt {
       periodTable.setRowSelectionInterval(0, 1)
@@ -237,8 +234,8 @@ class VatPeriodPanelTest {
 
     String feedback = onEdt { feedbackArea.text }
     assertEquals(VatService.LOCKED, onEdt { periodTable.getValueAt(0, 3) })
-    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.transferBooked', transferredPeriodName)))
-    assertTrue(feedback.contains("Momsperiod ${lockedPeriodName} är redan låst."))
+    assertEquals(VatService.LOCKED, onEdt { periodTable.getValueAt(1, 3) })
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', 2)))
   }
 
   private List<Voucher> bookVatFixtures() {

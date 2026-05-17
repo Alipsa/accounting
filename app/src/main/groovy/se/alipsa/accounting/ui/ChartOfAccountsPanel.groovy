@@ -372,7 +372,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       showError(exception.message)
     } catch (RuntimeException exception) {
       log.log(Level.WARNING, "Kunde inte sätta momskod för konto ${account.accountNumber}.", exception)
-      showError(exception.message ?: I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
+      showError(I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
     }
   }
 

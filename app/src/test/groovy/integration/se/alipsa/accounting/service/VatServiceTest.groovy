@@ -213,6 +213,29 @@ class VatServiceTest {
   }
 
   @Test
+  void bookingTransferOutOfOrderIsRejected() {
+    bookVatFixtures()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = periods[0]
+    VatPeriod february = periods[1]
+    vatService.reportPeriod(january.id)
+    vatService.reportPeriod(february.id)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.bookTransfer(february.id)
+    }
+
+    assertTrue(exception.message.contains('tidigare perioder'))
+  }
+
+  @Test
   void lockedPeriodStillValidatesAgainstOriginalReportedHash() {
     bookVatFixtures()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
@@ -504,6 +527,59 @@ class VatServiceTest {
     List<VatPeriod> unchanged = vatService.listPeriods(fiscalYear.id)
     assertEquals(monthlyPeriods*.id, unchanged*.id)
     assertTrue(unchanged.every { VatPeriod period -> period.status == VatService.REPORTED })
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearRestructuresAnnualAfterReportedFirstQuarter() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.ANNUAL
+        )
+    )
+    FiscalYear annualYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('''
+          update vat_period
+             set start_date = date '2027-01-01',
+                 end_date = date '2027-03-31',
+                 period_name = 'Q1 2027',
+                 status = ?
+           where fiscal_year_id = ?
+      ''', [VatService.REPORTED, annualYear.id])
+    }
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, annualYear.id)
+    }
+
+    List<VatPeriod> periods = vatService.listPeriods(annualYear.id)
+    assertEquals(4, periods.size())
+    assertEquals(VatService.REPORTED, periods[0].status)
+    assertEquals(LocalDate.of(2027, 1, 1), periods[0].startDate)
+    assertEquals(LocalDate.of(2027, 3, 31), periods[0].endDate)
+    assertTrue(periods.drop(1).every { VatPeriod period -> period.status == VatService.OPEN })
+    assertEquals(LocalDate.of(2027, 4, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), periods.last().endDate)
   }
 
   private List<Voucher> bookVatFixtures() {
