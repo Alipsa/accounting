@@ -33,6 +33,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JLabel
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
@@ -102,6 +103,27 @@ class VatPeriodPanelTest {
   }
 
   @Test
+  void multiSelectPreviewShowsWhichPeriodIsDisplayed() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JLabel summaryLabel = findLabel(panel) { JLabel label ->
+      label.text.startsWith('Förhandsvisning:')
+    }
+
+    onEdt {
+      periodTable.setRowSelectionInterval(1, 3)
+    }
+
+    String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
+    String summary = onEdt { summaryLabel.text }
+    assertTrue(summary.contains("Förhandsvisning: ${selectedPeriodName}"))
+    assertTrue(summary.contains('(3 valda)'))
+  }
+
+  @Test
   void reportAndTransferButtonsUpdateStatusAndFeedback() {
     bookVatFixtures()
 
@@ -147,7 +169,7 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} kan inte rapporteras innan tidigare perioder har rapporterats."))
+    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} ${VatService.REPORTING_ORDER_ERROR_FRAGMENT}"))
   }
 
   @Test
@@ -290,6 +312,10 @@ class VatPeriodPanelTest {
     findComponent(root, JTextArea) { JTextArea textArea ->
       !textArea.editable
     } as JTextArea
+  }
+
+  private static JLabel findLabel(Container root, Closure<Boolean> predicate) {
+    findComponent(root, JLabel, predicate) as JLabel
   }
 
   private static <T extends Component> T findComponent(Container root, Class<T> type, Closure<Boolean> predicate) {

@@ -386,53 +386,38 @@ final class AccountService {
   }
 
   private static Account requireAccount(Sql sql, long companyId, String accountNumber) {
-    GroovyRowResult row = sql.firstRow('''
-        select id,
-               company_id as companyId,
-               account_number as accountNumber,
-               account_name as accountName,
-               account_class as accountClass,
-               normal_balance_side as normalBalanceSide,
-               vat_code as vatCode,
-               active,
-               manual_review_required as manualReviewRequired,
-               classification_note as classificationNote,
-               account_subgroup as accountSubgroup
-          from account
-         where company_id = ?
-           and account_number = ?
-    ''', [companyId, accountNumber]) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Unknown account number: ${accountNumber}")
-    }
-    mapAccount(row)
+    loadAccount(sql, companyId, accountNumber, "Unknown account number: ${accountNumber}")
   }
 
   private static Account requireBalanceAccount(Sql sql, long companyId, String accountNumber) {
-    GroovyRowResult row = sql.firstRow('''
-        select id,
-               company_id as companyId,
-               account_number as accountNumber,
-               account_name as accountName,
-               account_class as accountClass,
-               normal_balance_side as normalBalanceSide,
-               vat_code as vatCode,
-               active,
-               manual_review_required as manualReviewRequired,
-               classification_note as classificationNote,
-               account_subgroup as accountSubgroup
-          from account
-         where company_id = ?
-           and account_number = ?
-    ''', [companyId, accountNumber]) as GroovyRowResult
-    if (row == null) {
-      throw new IllegalArgumentException("Unknown account number: ${accountNumber}")
-    }
-    Account account = mapAccount(row)
+    Account account = loadAccount(sql, companyId, accountNumber, "Unknown account number: ${accountNumber}")
     if (!account.isBalanceAccount()) {
       throw new IllegalArgumentException("Opening balances may only be stored on balance accounts: ${accountNumber}")
     }
     account
+  }
+
+  private static Account loadAccount(Sql sql, long companyId, String accountNumber, String missingMessage) {
+    GroovyRowResult row = sql.firstRow('''
+        select id,
+               company_id as companyId,
+               account_number as accountNumber,
+               account_name as accountName,
+               account_class as accountClass,
+               normal_balance_side as normalBalanceSide,
+               vat_code as vatCode,
+               active,
+               manual_review_required as manualReviewRequired,
+               classification_note as classificationNote,
+               account_subgroup as accountSubgroup
+          from account
+         where company_id = ?
+           and account_number = ?
+    ''', [companyId, accountNumber]) as GroovyRowResult
+    if (row == null) {
+      throw new IllegalArgumentException(missingMessage)
+    }
+    mapAccount(row)
   }
 
   private static Account mapAccount(GroovyRowResult row) {

@@ -48,9 +48,13 @@ final class ChartOfAccountsImportService {
       '2643': VatCode.INPUT_6,
       '2645': VatCode.EU_ACQUISITION_GOODS
   ].asImmutable() as Map<String, VatCode>
-  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = STANDARD_VAT_CODES.keySet().findAll { String accountNumber ->
-    accountNumber.startsWith('264')
-  } as Set<String>
+  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = [
+      '2640',
+      '2641',
+      '2642',
+      '2643',
+      '2645'
+  ] as Set<String>
 
   private final DatabaseService databaseService
 

@@ -105,13 +105,14 @@ class ChartOfAccountsImportServiceTest {
   @Test
   void standardVatCodeMappingsAreCompatibleWithImportedAccountClasses() {
     ChartOfAccountsImportService.STANDARD_VAT_CODES.each { String accountNumber, VatCode vatCode ->
+      boolean inputVatAccount = accountNumber in ['2640', '2641', '2642', '2643', '2645']
       Account account = new Account(
           null,
           CompanyService.LEGACY_COMPANY_ID,
           accountNumber,
           'Testkonto',
-          accountNumber.startsWith('264') ? 'ASSET' : 'LIABILITY',
-          accountNumber.startsWith('264') ? 'DEBIT' : 'CREDIT',
+          inputVatAccount ? 'ASSET' : 'LIABILITY',
+          inputVatAccount ? 'DEBIT' : 'CREDIT',
           vatCode.name(),
           true,
           false,

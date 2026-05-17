@@ -289,6 +289,7 @@ final class VatReportSupport {
 
     BigDecimal allocated = BigDecimal.ZERO
     matchingBases.withIndex().collect { Map.Entry<VatCode, BigDecimal> entry, int index ->
+      // Let the final bucket absorb cent rounding so allocations add back to the posted VAT line.
       BigDecimal outputVat = index == matchingBases.size() - 1
           ? scale(line.signedAmount - allocated)
           : scale(line.signedAmount * scale(entry.value * entry.key.outputRate).abs() / totalComputedOutput)

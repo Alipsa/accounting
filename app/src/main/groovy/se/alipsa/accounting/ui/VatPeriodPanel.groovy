@@ -208,6 +208,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     } else {
       reportTableModel.setRows([])
       summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.noPeriods')
+      summaryLabel.toolTipText = null
     }
   }
 
@@ -217,15 +218,25 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     if (period == null) {
       reportTableModel.setRows([])
       summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
+      summaryLabel.toolTipText = null
       return
     }
     VatService.VatReport report = vatService.calculateReport(period.id)
     reportTableModel.setRows(report.rows)
-    summaryLabel.text = I18n.instance.format('vatPeriodPanel.summary.base',
+    String previewText = previewSummary(selected, period)
+    summaryLabel.text = previewText + '  ' + I18n.instance.format('vatPeriodPanel.summary.base',
         formatAmount(report.rows.sum(BigDecimal.ZERO) { VatService.VatReportRow row -> row.baseAmount } as BigDecimal)) +
         "  ${I18n.instance.format('vatPeriodPanel.summary.output', formatAmount(report.outputVatTotal))}" +
         "  ${I18n.instance.format('vatPeriodPanel.summary.input', formatAmount(report.inputVatTotal))}" +
         "  ${I18n.instance.format('vatPeriodPanel.summary.net', formatAmount(report.netVatToPay))}"
+    summaryLabel.toolTipText = previewText
+  }
+
+  private static String previewSummary(List<VatPeriod> selected, VatPeriod period) {
+    if (selected.size() <= 1) {
+      return I18n.instance.format('vatPeriodPanel.summary.preview', period.periodName)
+    }
+    I18n.instance.format('vatPeriodPanel.summary.previewMultiple', period.periodName, selected.size())
   }
 
   private void reportSelectedPeriod() {
@@ -257,11 +268,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    VatPeriod selectedProcessedPeriod = selectedProcessedPeriod(sortedPeriods, successCount)
-    selectPeriod(selectedProcessedPeriod.id)
+    VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
+    selectPeriod(periodToSelect.id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', selectedProcessedPeriod.periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', periodToSelect.periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
       }
@@ -301,11 +312,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       }
     }
     reloadPeriods()
-    VatPeriod selectedProcessedPeriod = selectedProcessedPeriod(sortedPeriods, successCount)
-    selectPeriod(selectedProcessedPeriod.id)
+    VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
+    selectPeriod(periodToSelect.id)
     if (errors.isEmpty()) {
       if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', selectedProcessedPeriod.periodName))
+        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', periodToSelect.periodName))
       } else {
         showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
       }
@@ -316,8 +327,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private static VatPeriod selectedProcessedPeriod(List<VatPeriod> sortedPeriods, int successCount) {
-    sortedPeriods[Math.max(0, successCount - 1)]
+  private static VatPeriod selectedPeriodAfterProcessing(List<VatPeriod> sortedPeriods, int successCount) {
+    if (successCount <= 0) {
+      return sortedPeriods.first()
+    }
+    sortedPeriods[successCount - 1]
   }
 
   private boolean confirmBulkAction(List<VatPeriod> sortedPeriods, String messageKey, String titleKey) {
