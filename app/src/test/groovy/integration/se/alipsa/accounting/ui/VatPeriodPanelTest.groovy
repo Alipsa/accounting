@@ -109,8 +109,9 @@ class VatPeriodPanelTest {
     }
 
     JTable periodTable = findTable(panel, 'Period')
+    String previewPrefix = messagePrefix('vatPeriodPanel.summary.preview')
     JLabel summaryLabel = findLabel(panel) { JLabel label ->
-      label.text.startsWith('Förhandsvisning:')
+      label.text.startsWith(previewPrefix)
     }
 
     onEdt {
@@ -119,8 +120,7 @@ class VatPeriodPanelTest {
 
     String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
     String summary = onEdt { summaryLabel.text }
-    assertTrue(summary.contains("Förhandsvisning: ${selectedPeriodName}"))
-    assertTrue(summary.contains('(3 valda)'))
+    assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selectedPeriodName, 3)))
   }
 
   @Test
@@ -195,7 +195,7 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains('1 momsperiod(er) rapporterade.'))
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reported', '2026-01')))
     assertTrue(feedback.contains('Momsperiod 2026-02 är redan låst.'))
   }
 
@@ -316,6 +316,12 @@ class VatPeriodPanelTest {
 
   private static JLabel findLabel(Container root, Closure<Boolean> predicate) {
     findComponent(root, JLabel, predicate) as JLabel
+  }
+
+  private static String messagePrefix(String key) {
+    String pattern = I18n.instance.getString(key)
+    int placeholderIndex = pattern.indexOf('{0}')
+    placeholderIndex < 0 ? pattern : pattern.substring(0, placeholderIndex)
   }
 
   private static <T extends Component> T findComponent(Container root, Class<T> type, Closure<Boolean> predicate) {

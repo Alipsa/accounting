@@ -271,13 +271,9 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
     selectPeriod(periodToSelect.id)
     if (errors.isEmpty()) {
-      if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.reported', periodToSelect.periodName))
-      } else {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount))
-      }
+      showInfo(reportSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {
-      showError(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount) + '\n' + errors.join('\n'))
+      showError(reportSuccessMessage(successCount, periodToSelect) + '\n' + errors.join('\n'))
     } else {
       showError(errors.join('\n'))
     }
@@ -315,16 +311,24 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
     selectPeriod(periodToSelect.id)
     if (errors.isEmpty()) {
-      if (successCount == 1) {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', periodToSelect.periodName))
-      } else {
-        showInfo(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount))
-      }
+      showInfo(transferSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {
-      showError(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount) + '\n' + errors.join('\n'))
+      showError(transferSuccessMessage(successCount, periodToSelect) + '\n' + errors.join('\n'))
     } else {
       showError(errors.join('\n'))
     }
+  }
+
+  private static String reportSuccessMessage(int successCount, VatPeriod period) {
+    successCount == 1
+        ? I18n.instance.format('vatPeriodPanel.message.reported', period.periodName)
+        : I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount)
+  }
+
+  private static String transferSuccessMessage(int successCount, VatPeriod period) {
+    successCount == 1
+        ? I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName)
+        : I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount)
   }
 
   private static VatPeriod selectedPeriodAfterProcessing(List<VatPeriod> sortedPeriods, int successCount) {

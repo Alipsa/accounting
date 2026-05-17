@@ -48,13 +48,11 @@ final class ChartOfAccountsImportService {
       '2643': VatCode.INPUT_6,
       '2645': VatCode.EU_ACQUISITION_GOODS
   ].asImmutable() as Map<String, VatCode>
-  private static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = [
-      '2640',
-      '2641',
-      '2642',
-      '2643',
-      '2645'
-  ] as Set<String>
+
+  @PackageScope
+  static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = STANDARD_VAT_CODES.findAll { Map.Entry<String, VatCode> entry ->
+    entry.value.assetEligible
+  }.keySet().asImmutable() as Set<String>
 
   private final DatabaseService databaseService
 
@@ -281,7 +279,8 @@ final class ChartOfAccountsImportService {
     STANDARD_VAT_CODES[accountNumber]
   }
 
-  private static void validateResolvedVatCode(Account account, VatCode vatCode) {
+  @PackageScope
+  static void validateResolvedVatCode(Account account, VatCode vatCode) {
     if (vatCode == null) {
       return
     }

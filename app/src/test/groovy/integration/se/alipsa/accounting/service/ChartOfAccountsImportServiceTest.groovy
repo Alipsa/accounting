@@ -105,7 +105,7 @@ class ChartOfAccountsImportServiceTest {
   @Test
   void standardVatCodeMappingsAreCompatibleWithImportedAccountClasses() {
     ChartOfAccountsImportService.STANDARD_VAT_CODES.each { String accountNumber, VatCode vatCode ->
-      boolean inputVatAccount = accountNumber in ['2640', '2641', '2642', '2643', '2645']
+      boolean inputVatAccount = accountNumber in ChartOfAccountsImportService.STANDARD_INPUT_VAT_ACCOUNTS
       Account account = new Account(
           null,
           CompanyService.LEGACY_COMPANY_ID,
@@ -125,6 +125,29 @@ class ChartOfAccountsImportServiceTest {
           "${accountNumber} should resolve to an import-compatible VAT code"
       )
     }
+  }
+
+  @Test
+  void validateResolvedVatCodeRejectsIncompatibleImportClassification() {
+    Account account = new Account(
+        null,
+        CompanyService.LEGACY_COMPANY_ID,
+        '2614',
+        'Felklassat momskonto',
+        'ASSET',
+        'DEBIT',
+        VatCode.REVERSE_CHARGE_EU_25.name(),
+        true,
+        false,
+        null,
+        null
+    )
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      ChartOfAccountsImportService.validateResolvedVatCode(account, VatCode.REVERSE_CHARGE_EU_25)
+    }
+
+    assertTrue(exception.message.contains('inte kompatibel'))
   }
 
   @Test

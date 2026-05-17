@@ -74,7 +74,7 @@ class AccountServiceTest {
           CompanyService.LEGACY_COMPANY_ID, '9999', VatCode.INPUT_25)
     }
 
-    assertTrue(exception.message.contains('Unknown account number'))
+    assertTrue(exception.message.contains(AccountService.UNKNOWN_ACCOUNT_MESSAGE_PREFIX))
   }
 
   @Test

@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
@@ -14,6 +15,9 @@ import java.math.RoundingMode
  * Queries and updates chart of accounts data and opening balances.
  */
 final class AccountService {
+
+  @PackageScope
+  static final String UNKNOWN_ACCOUNT_MESSAGE_PREFIX = 'Okänt kontonummer:'
 
   private final DatabaseService databaseService
 
@@ -135,7 +139,7 @@ final class AccountService {
              and account_number = ?
       ''', [active, companyId, normalized])
       if (updated != 1) {
-        throw new IllegalArgumentException("Unknown account number: ${normalized}")
+        throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }
     }
   }
@@ -172,6 +176,7 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
+  // EU reverse-charge output is posted on liability accounts such as 2614; expenses carry the matching base code.
   private static final Set<VatCode> EXPENSE_VAT_CODES = [
       VatCode.INPUT_25,
       VatCode.INPUT_12,
@@ -386,11 +391,11 @@ final class AccountService {
   }
 
   private static Account requireAccount(Sql sql, long companyId, String accountNumber) {
-    loadAccount(sql, companyId, accountNumber, "Unknown account number: ${accountNumber}")
+    loadAccount(sql, companyId, accountNumber, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${accountNumber}")
   }
 
   private static Account requireBalanceAccount(Sql sql, long companyId, String accountNumber) {
-    Account account = loadAccount(sql, companyId, accountNumber, "Unknown account number: ${accountNumber}")
+    Account account = loadAccount(sql, companyId, accountNumber, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${accountNumber}")
     if (!account.isBalanceAccount()) {
       throw new IllegalArgumentException("Opening balances may only be stored on balance accounts: ${accountNumber}")
     }
