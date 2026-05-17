@@ -274,7 +274,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.note', account.classificationNote))}</p>"
         : ''
     String vatCodeLabel = displayVatCode(account.vatCode)
-    String vatCode = vatCodeLabel
+    String vatCodeDetails = vatCodeLabel
         ? "<p>${escapeHtml(I18n.instance.format('chartOfAccountsPanel.details.vatCode', vatCodeLabel))}</p>"
         : "<p>${escapeHtml(I18n.instance.getString('chartOfAccountsPanel.details.noVatCode'))}</p>"
     setVatCodeButton.enabled = AccountService.isVatCompatibleClass(account.accountClass)
@@ -285,7 +285,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         <p>${escapeHtml(normalSide)}</p>
         <p>${escapeHtml(active)}</p>
         <p>${escapeHtml(manualReview)}</p>
-        ${vatCode}
+        ${vatCodeDetails}
         ${note}
         </html>
     """.stripIndent().trim()

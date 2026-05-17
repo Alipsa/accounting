@@ -90,7 +90,7 @@ final class AccountLookupPopup {
     editor.addFocusListener(new FocusAdapter() {
       @Override
       void focusLost(FocusEvent event) {
-        // resultList is non-focusable; focus loss only fires when focus leaves the editor entirely.
+        // resultList is non-focusable; defer hiding until any pending mousePressed selection has run.
         SwingUtilities.invokeLater { hide() }
       }
     })

@@ -29,6 +29,10 @@ final class VatReportSupport {
       VatCode.EU_ACQUISITION_GOODS,
       VatCode.EU_ACQUISITION_SERVICES
   ] as Set<VatCode>
+  private static final Set<VatCode> EU_REVERSE_CHARGE_BASE_CODES = [
+      VatCode.EU_ACQUISITION_GOODS,
+      VatCode.EU_ACQUISITION_SERVICES
+  ] as Set<VatCode>
   private static final Set<VatCode> SHARED_REVERSE_CHARGE_OUTPUT_CODES = [
       VatCode.REVERSE_CHARGE_EU_25
   ] as Set<VatCode>
@@ -298,8 +302,9 @@ final class VatReportSupport {
   private static List<VatSeed> classifySharedReverseChargeOutput(
       RawVatLine line, Map<VatCode, BigDecimal> reverseBaseAmounts
   ) {
+    Set<VatCode> expectedBaseCodes = sharedReverseChargeBaseCodes(line.vatCode)
     List<Map.Entry<VatCode, BigDecimal>> matchingBases = reverseBaseAmounts.entrySet().findAll { Map.Entry<VatCode, BigDecimal> entry ->
-      (entry.value <=> BigDecimal.ZERO) != 0 && (entry.key.outputRate <=> line.vatCode.outputRate) == 0
+      (entry.value <=> BigDecimal.ZERO) != 0 && entry.key in expectedBaseCodes
     }.toList()
     if (matchingBases.isEmpty()) {
       return [classify(line.vatCode, line.accountClass, line.signedAmount)]
@@ -328,6 +333,10 @@ final class VatReportSupport {
           0
       )
     }
+  }
+
+  private static Set<VatCode> sharedReverseChargeBaseCodes(VatCode outputVatCode) {
+    outputVatCode == VatCode.REVERSE_CHARGE_EU_25 ? EU_REVERSE_CHARGE_BASE_CODES : Collections.emptySet()
   }
 
   private static boolean isOutputVatAccount(VatCode vatCode, String accountClass) {

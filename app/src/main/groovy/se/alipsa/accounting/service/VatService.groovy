@@ -152,8 +152,9 @@ final class VatService {
            limit 1
       ''', [period.fiscalYearId, period.periodIndex, LOCKED]) as GroovyRowResult
       if (earlierUnlocked != null) {
+        String blockingPeriodName = earlierUnlocked.get('periodName') as String
         throw new IllegalStateException(
-            "Momsperiod ${period.periodName} kan inte låsas innan tidigare perioder har låsts."
+            "Momsperiod ${period.periodName} kan inte låsas innan tidigare period ${blockingPeriodName} har låsts."
         )
       }
 

@@ -232,7 +232,7 @@ class VatServiceTest {
       vatService.bookTransfer(february.id)
     }
 
-    assertTrue(exception.message.contains('tidigare perioder'))
+    assertTrue(exception.message.contains("tidigare period ${january.periodName}"))
   }
 
   @Test
@@ -498,6 +498,22 @@ class VatServiceTest {
     assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
     assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
     assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesUnchangedPeriodicityUntouched() {
+    List<VatPeriod> existing = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, existing.size())
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(fiscalYear.id)
+    assertEquals(existing*.id, unchanged*.id)
+    assertEquals(existing*.startDate, unchanged*.startDate)
+    assertEquals(existing*.endDate, unchanged*.endDate)
   }
 
   @Test

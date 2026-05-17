@@ -208,17 +208,8 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
-  // EU reverse-charge output is posted on liability accounts such as 2614; expenses carry the matching base code.
-  private static final Set<VatCode> EXPENSE_VAT_CODES = [
-      VatCode.INPUT_25,
-      VatCode.INPUT_12,
-      VatCode.INPUT_6,
-      VatCode.REVERSE_CHARGE_DOMESTIC,
-      VatCode.EU_ACQUISITION_GOODS,
-      VatCode.EU_ACQUISITION_SERVICES,
-      VatCode.EXEMPT,
-      VatCode.OUTSIDE_SCOPE
-  ] as Set<VatCode>
+  // Expense and asset accounts accept the same deductible VAT/base codes.
+  private static final Set<VatCode> EXPENSE_VAT_CODES = ASSET_VAT_CODES
 
   private static final Set<VatCode> LIABILITY_VAT_CODES = [
       VatCode.OUTPUT_25,
