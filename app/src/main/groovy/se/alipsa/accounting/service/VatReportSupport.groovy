@@ -47,6 +47,9 @@ final class VatReportSupport {
       LocalDate endDate,
       boolean excludeVatTransferVouchers = false
   ) {
+    // REVERSE_CHARGE_EU_25 is shared by multiple EU acquisition base codes. Keep it out of
+    // the aggregate query so each output VAT line can be allocated proportionally per voucher
+    // to the matching goods/services base code instead of collapsing into one bucket.
     List<VatSeed> seeds = loadAggregatedSeeds(sql, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)
     List<RawVatLine> sharedOutputLines = loadSharedReverseChargeOutputLines(
         sql, fiscalYearId, startDate, endDate, excludeVatTransferVouchers)

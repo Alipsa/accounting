@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
+import org.apache.poi.ss.usermodel.Row
+import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -221,11 +224,11 @@ class ChartOfAccountsImportServiceTest {
 
   private Path createSyntheticWorkbook(List<List<String>> accountRows) {
     Path path = tempDir.resolve('test_accounts.xlsx')
-    org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()
+    XSSFWorkbook workbook = new XSSFWorkbook()
     try {
-      org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet()
+      Sheet sheet = workbook.createSheet()
       accountRows.eachWithIndex { List<String> cols, int rowIdx ->
-        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIdx)
+        Row row = sheet.createRow(rowIdx)
         cols.eachWithIndex { String value, int colIdx ->
           row.createCell(colIdx).setCellValue(value)
         }

@@ -112,6 +112,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void buildUi() {
+    summaryLabel.name = 'vatPeriodPanel.summaryLabel'
     setLayout(new BorderLayout(12, 12))
     setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16))
     add(buildToolbar(), BorderLayout.NORTH)
@@ -406,7 +407,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       return true
     }
     String periodNames = sortedPeriods.collect { VatPeriod period -> period.periodName }.join(', ')
-    bulkActionConfirmation.confirm(
+    return bulkActionConfirmation.confirm(
         I18n.instance.format(messageKey, sortedPeriods.size(), periodNames),
         I18n.instance.getString(titleKey)
     )

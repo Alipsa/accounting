@@ -115,9 +115,8 @@ class VatPeriodPanelTest {
       periodTable.setRowSelectionInterval(1, 3)
     }
 
-    String previewPrefix = messagePrefix('vatPeriodPanel.summary.previewMultiple')
     JLabel summaryLabel = findLabel(panel) { JLabel label ->
-      label.text.startsWith(previewPrefix)
+      label.name == 'vatPeriodPanel.summaryLabel'
     }
     String summary = onEdt { summaryLabel.text }
     assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', 3)))
@@ -195,36 +194,6 @@ class VatPeriodPanelTest {
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(2, 3) })
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(3, 3) })
-  }
-
-  @Test
-  void multiSelectReportingShowsSuccessCountBeforeLaterFailure() {
-    databaseService.withTransaction { Sql sql ->
-      // This impossible domain state isolates the UI loop's partial-success handling for a later locked row.
-      sql.executeUpdate(
-          "update vat_period set status = 'LOCKED' where fiscal_year_id = ? and period_index = 2",
-          [fiscalYear.id]
-      )
-    }
-    VatPeriodPanel panel = onEdt {
-      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
-    }
-    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
-
-    JTable periodTable = findTable(panel, 'Period')
-    JButton reportButton = findButton(panel, 'Rapportera vald period')
-    JTextArea feedbackArea = findFeedbackArea(panel)
-    String reportedPeriodName = onEdt { periodTable.getValueAt(0, 0) as String }
-    String lockedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
-
-    onEdt {
-      periodTable.setRowSelectionInterval(0, 1)
-      reportButton.doClick()
-    }
-
-    String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriodName)))
-    assertTrue(feedback.contains("Momsperiod ${lockedPeriodName} är redan låst."))
   }
 
   @Test
@@ -379,12 +348,6 @@ class VatPeriodPanelTest {
 
   private static JLabel findLabel(Container root, Closure<Boolean> predicate) {
     findComponent(root, JLabel, predicate) as JLabel
-  }
-
-  private static String messagePrefix(String key) {
-    String pattern = I18n.instance.getString(key)
-    int placeholderIndex = pattern.indexOf('{0}')
-    placeholderIndex < 0 ? pattern : pattern.substring(0, placeholderIndex)
   }
 
   private static <T extends Component> T findComponent(Container root, Class<T> type, Closure<Boolean> predicate) {

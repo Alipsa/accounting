@@ -64,6 +64,16 @@ class AccountServiceTest {
   }
 
   @Test
+  void setAccountVatCodeAcceptsEuReverseChargeCodeOnLiabilityAccount() {
+    accountService.setAccountVatCode(
+        CompanyService.LEGACY_COMPANY_ID, '2611', VatCode.REVERSE_CHARGE_EU_25)
+
+    Account updated = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '2611')
+    assertEquals(VatCode.REVERSE_CHARGE_EU_25.name(), updated.vatCode)
+  }
+
+  @Test
   void setAccountVatCodeRejectsIncompatibleCode() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
       accountService.setAccountVatCode(

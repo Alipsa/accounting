@@ -232,6 +232,7 @@ class VatServiceTest {
       vatService.bookTransfer(february.id)
     }
 
+    assertTrue(exception.message.contains('kan inte låsas'))
     assertTrue(exception.message.contains("period ${january.periodName}"))
   }
 
