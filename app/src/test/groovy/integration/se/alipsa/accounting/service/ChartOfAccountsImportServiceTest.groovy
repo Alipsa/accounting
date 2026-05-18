@@ -185,6 +185,19 @@ class ChartOfAccountsImportServiceTest {
     assertThrows(IllegalArgumentException, action)
   }
 
+  @Test
+  void reimportPreservesManuallyConfiguredVatCode() {
+    Path workbook = createSyntheticWorkbook([['1510', 'Kundfordringar']])
+    importService.importFromExcel(workbook)
+
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.OUTSIDE_SCOPE)
+
+    importService.importFromExcel(workbook)
+
+    Account account = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1510')
+    assertEquals(VatCode.OUTSIDE_SCOPE.name(), account.vatCode)
+  }
+
   private Path createSyntheticWorkbook(List<List<String>> accountRows) {
     Path path = tempDir.resolve('test_accounts.xlsx')
     org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()

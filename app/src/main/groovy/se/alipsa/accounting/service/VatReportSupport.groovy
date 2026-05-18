@@ -245,7 +245,7 @@ final class VatReportSupport {
       return
     }
     query.append(" and a.vat_code not in (${placeholders(vatCodes.size())})")
-    params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
+    params.addAll(vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() })
   }
 
   private static String placeholders(int count) {
@@ -312,8 +312,8 @@ final class VatReportSupport {
     BigDecimal totalComputedOutput = matchingBases.sum(BigDecimal.ZERO) { Map.Entry<VatCode, BigDecimal> entry ->
       scale(entry.value * entry.key.outputRate).abs()
     } as BigDecimal
-    // Safety net: EU acquisition codes have outputRate=0.25, so this only fires if base amounts
-    // somehow net to zero after scaling — fall back to treating the whole output line as one bucket.
+    // Safety net: scale() truncates to 2 decimal places, so a very small base amount can produce
+    // zero computed output even with a non-zero rate — fall back to one bucket in that case.
     if (totalComputedOutput == BigDecimal.ZERO) {
       return [classify(line.vatCode, line.accountClass, line.signedAmount)]
     }

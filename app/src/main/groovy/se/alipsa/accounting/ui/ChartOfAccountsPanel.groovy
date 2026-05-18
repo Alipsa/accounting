@@ -312,6 +312,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     }
   }
 
+  @SuppressWarnings('CatchRuntimeException')
   private void toggleSelectedAccountActive() {
     Account account = selectedAccount()
     if (account == null) {
@@ -319,13 +320,18 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    accountService.setAccountActive(activeCompanyManager.companyId, account.accountNumber, !account.active)
-    reloadAccounts()
-    selectAccount(account.accountNumber)
-    String status = account.active
-        ? I18n.instance.getString('chartOfAccountsPanel.message.toggledInactive')
-        : I18n.instance.getString('chartOfAccountsPanel.message.toggledActive')
-    showInfo(I18n.instance.format('chartOfAccountsPanel.message.toggled', account.accountNumber, status))
+    try {
+      accountService.setAccountActive(activeCompanyManager.companyId, account.accountNumber, !account.active)
+      reloadAccounts()
+      selectAccount(account.accountNumber)
+      String status = account.active
+          ? I18n.instance.getString('chartOfAccountsPanel.message.toggledInactive')
+          : I18n.instance.getString('chartOfAccountsPanel.message.toggledActive')
+      showInfo(I18n.instance.format('chartOfAccountsPanel.message.toggled', account.accountNumber, status))
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, "Kunde inte ändra status för konto ${account.accountNumber}.", exception)
+      showError(I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
+    }
   }
 
   @SuppressWarnings('CatchRuntimeException')
@@ -406,7 +412,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
   private void showError(String message) {
     feedbackArea.foreground = new Color(153, 27, 27)
-    feedbackArea.text = message
+    feedbackArea.text = message ?: I18n.instance.getString('chartOfAccountsPanel.error.unexpected')
   }
 
   private static String escapeHtml(String text) {

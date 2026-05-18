@@ -205,7 +205,7 @@ final class AccountService {
   ] as Set<VatCode>
 
   @PackageScope
-  static boolean isInputVatCode(VatCode vatCode) {
+  static boolean isInputSideVatCode(VatCode vatCode) {
     vatCode in ASSET_VAT_CODES
   }
 

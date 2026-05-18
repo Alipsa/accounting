@@ -237,7 +237,9 @@ final class VatService {
     createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods, nextPeriodIndex)
   }
 
-  // Returns an empty list when no new periods need to be created (structure already matches or no remaining periods).
+  // Deletes all OPEN vat_periods and returns the uncovered accounting periods for recreation when
+  // the expected structure differs from the current open periods. Returns an empty list when the
+  // structure already matches or no accounting periods remain after removing covered ones.
   // Both descriptor lists are ordered by period_index/chronology; equality is intentionally order-sensitive.
   private static List<GroovyRowResult> restructureOpenPeriods(
       Sql sql, long fiscalYearId, VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
@@ -252,7 +254,9 @@ final class VatService {
     remainingPeriods
   }
 
-  // Relies on reportPeriod enforcing contiguous order: only the tail after the last reported end needs recreation.
+  // Returns all accounting periods unchanged when no non-OPEN vat_periods exist (maxEnd == null).
+  // Otherwise returns only accounting periods whose start date is after the latest non-OPEN vat_period end.
+  // Relies on reportPeriod enforcing contiguous order so only the uncovered tail needs recreation.
   private static List<GroovyRowResult> removeCoveredAccountingPeriods(
       Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods
   ) {

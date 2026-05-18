@@ -144,6 +144,7 @@ class AccountServiceTest {
     Account asset = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '1510')
     List<VatCode> assetCodes = AccountService.compatibleVatCodes(asset)
+    assertEquals(8, assetCodes.size())
     assertTrue(assetCodes.contains(VatCode.INPUT_25))
     assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_GOODS))
     assertTrue(assetCodes.contains(VatCode.EU_ACQUISITION_SERVICES))
@@ -154,6 +155,7 @@ class AccountServiceTest {
     Account liability = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '2611')
     List<VatCode> liabilityCodes = AccountService.compatibleVatCodes(liability)
+    assertEquals(7, liabilityCodes.size())
     assertTrue(liabilityCodes.contains(VatCode.OUTPUT_25))
     assertTrue(liabilityCodes.contains(VatCode.REVERSE_CHARGE_EU_25))
     assertTrue(liabilityCodes.contains(VatCode.EXEMPT))
@@ -164,6 +166,7 @@ class AccountServiceTest {
     Account income = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '3010')
     List<VatCode> incomeCodes = AccountService.compatibleVatCodes(income)
+    assertEquals(7, incomeCodes.size())
     assertTrue(incomeCodes.contains(VatCode.OUTPUT_25))
     assertTrue(incomeCodes.contains(VatCode.EU_SUPPLY_GOODS))
     assertFalse(incomeCodes.contains(VatCode.INPUT_25))
@@ -173,6 +176,7 @@ class AccountServiceTest {
     Account expense = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '4010')
     List<VatCode> expenseCodes = AccountService.compatibleVatCodes(expense)
+    assertEquals(8, expenseCodes.size())
     assertTrue(expenseCodes.contains(VatCode.INPUT_25))
     assertTrue(expenseCodes.contains(VatCode.EU_ACQUISITION_GOODS))
     assertTrue(expenseCodes.contains(VatCode.REVERSE_CHARGE_DOMESTIC))
@@ -183,7 +187,7 @@ class AccountServiceTest {
     Account equity = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '2010')
     List<VatCode> equityCodes = AccountService.compatibleVatCodes(equity)
-    assertTrue(equityCodes.isEmpty())
+    assertEquals(0, equityCodes.size())
   }
 
   private void insertTestAccounts() {
