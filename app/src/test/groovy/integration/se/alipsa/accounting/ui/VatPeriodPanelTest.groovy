@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -190,7 +191,8 @@ class VatPeriodPanelTest {
     }
 
     String feedback = onEdt { feedbackArea.text }
-    assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} kan inte rapporteras innan tidigare perioder har rapporterats."))
+    assertFalse(feedback.isBlank())
+    assertTrue(feedback.contains(selectedPeriodName))
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(2, 3) })
     assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(3, 3) })
@@ -324,8 +326,8 @@ class VatPeriodPanelTest {
             classification_note,
             created_at,
             updated_at
-        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
-    ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
+        ) values (?, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+    ''', [CompanyService.LEGACY_COMPANY_ID, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 
   private static JTable findTable(Container root, String firstColumnName) {

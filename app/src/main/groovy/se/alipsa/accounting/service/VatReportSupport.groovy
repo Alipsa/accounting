@@ -236,12 +236,13 @@ final class VatReportSupport {
       StringBuilder query,
       List<Object> params,
       Set<VatCode> vatCodes,
-      String accountAlias = 'a'
+      String sqlAlias = 'a'
   ) {
     if (vatCodes.isEmpty()) {
       throw new IllegalArgumentException('appendIncludedVatCodes called with empty VAT code set.')
     }
-    query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
+    assert sqlAlias ==~ /[a-z_]+/
+    query.append(" and ${sqlAlias}.vat_code in (${placeholders(vatCodes.size())})")
     params.addAll(sortedNames(vatCodes))
   }
 
@@ -316,7 +317,7 @@ final class VatReportSupport {
       (entry.value <=> BigDecimal.ZERO) != 0 && entry.key in expectedBaseCodes
     }.toList()
     if (matchingBases.isEmpty()) {
-      return [classify(line.vatCode, line.accountClass, line.signedAmount)]
+      return []
     }
 
     BigDecimal totalComputedOutput = matchingBases.sum(BigDecimal.ZERO) { Map.Entry<VatCode, BigDecimal> entry ->

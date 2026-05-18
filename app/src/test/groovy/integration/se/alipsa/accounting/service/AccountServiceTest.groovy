@@ -202,41 +202,41 @@ class AccountServiceTest {
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
-          ) values (1, '1510', 'Kundfordringar', 'ASSET', 'DEBIT',
+          ) values (?, '1510', 'Kundfordringar', 'ASSET', 'DEBIT',
               true, false, current_timestamp, current_timestamp)
-      ''')
+      ''', [CompanyService.LEGACY_COMPANY_ID])
       sql.executeInsert('''
           insert into account (
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
-          ) values (1, '2611', 'Utgående moms', 'LIABILITY', 'CREDIT',
+          ) values (?, '2611', 'Utgående moms', 'LIABILITY', 'CREDIT',
               true, false, current_timestamp, current_timestamp)
-      ''')
+      ''', [CompanyService.LEGACY_COMPANY_ID])
       sql.executeInsert('''
           insert into account (
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
-          ) values (1, '2010', 'Eget kapital', 'EQUITY', 'CREDIT',
+          ) values (?, '2010', 'Eget kapital', 'EQUITY', 'CREDIT',
               true, false, current_timestamp, current_timestamp)
-      ''')
+      ''', [CompanyService.LEGACY_COMPANY_ID])
       sql.executeInsert('''
           insert into account (
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
-          ) values (1, '3010', 'Försäljning', 'INCOME', 'CREDIT',
+          ) values (?, '3010', 'Försäljning', 'INCOME', 'CREDIT',
               true, false, current_timestamp, current_timestamp)
-      ''')
+      ''', [CompanyService.LEGACY_COMPANY_ID])
       sql.executeInsert('''
           insert into account (
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
               manual_review_required, created_at, updated_at
-          ) values (1, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT',
+          ) values (?, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT',
               true, false, current_timestamp, current_timestamp)
-      ''')
+      ''', [CompanyService.LEGACY_COMPANY_ID])
     }
   }
 }

@@ -113,6 +113,28 @@ class VatServiceTest {
   }
 
   @Test
+  void unmatchedSharedReverseChargeOutputDoesNotCreateOwnVatReportRow() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-moms utan basrad',
+        [
+            new VoucherLine(null, null, 0, null, '2440', null, 'Korrigering', 75.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 75.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertEquals(0, report.rows.size())
+    assertEquals(0.00G, report.outputVatTotal)
+    assertEquals(0.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
   void domesticReverseChargeCodeSupportsExpenseAndVatBalanceAccounts() {
     voucherService.createVoucher(
         fiscalYear.id,

@@ -166,13 +166,16 @@ final class AccountService {
             "Konto ${normalized} med kontoklass ${account.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
         )
       }
-      sql.executeUpdate('''
+      int updated = sql.executeUpdate('''
           update account
              set vat_code = ?,
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
       ''', [vatCode?.name(), companyId, normalized])
+      if (updated != 1) {
+        throw new IllegalStateException("Konto ${normalized} kunde inte uppdateras med momskod.")
+      }
     }
   }
 

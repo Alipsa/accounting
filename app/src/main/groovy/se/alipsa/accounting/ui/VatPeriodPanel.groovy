@@ -66,6 +66,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   @PackageScope
+  // Mutable for tests that need to bypass JOptionPane confirmation.
   BulkConfirmation bulkActionConfirmation = { String message, String title ->
     JOptionPane.showConfirmDialog(
         this,
