@@ -196,8 +196,7 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
-  @PackageScope
-  static final Set<VatCode> ASSET_VAT_CODES = [
+  private static final Set<VatCode> ASSET_VAT_CODES = [
       VatCode.INPUT_25,
       VatCode.INPUT_12,
       VatCode.INPUT_6,
@@ -207,6 +206,11 @@ final class AccountService {
       VatCode.EXEMPT,
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
+
+  @PackageScope
+  static boolean isInputVatCode(VatCode vatCode) {
+    vatCode in ASSET_VAT_CODES
+  }
 
   private static final Set<VatCode> EXPENSE_VAT_CODES = [
       VatCode.INPUT_25,

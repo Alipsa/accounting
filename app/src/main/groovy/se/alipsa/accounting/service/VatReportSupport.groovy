@@ -234,8 +234,7 @@ final class VatReportSupport {
       String accountAlias = 'a'
   ) {
     if (vatCodes.isEmpty()) {
-      query.append(' and 1 = 0')
-      return
+      throw new IllegalArgumentException('appendIncludedVatCodes called with empty VAT code set.')
     }
     query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
     params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })

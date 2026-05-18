@@ -103,6 +103,14 @@ class ChartOfAccountsImportServiceTest {
   }
 
   @Test
+  void importSetsCorrectClassAndVatCodeFor2643WhenPresentInWorkbook() {
+    Path workbook = createSyntheticWorkbook([['2643', 'Ingående moms 6%']])
+    importService.importFromExcel(workbook)
+
+    assertImportedVatAccount('2643', 'ASSET', 'DEBIT', VatCode.INPUT_6)
+  }
+
+  @Test
   void standardVatCodeMappingsAreCompatibleWithImportedAccountClasses() {
     ChartOfAccountsImportService.STANDARD_VAT_CODES.each { String accountNumber, VatCode vatCode ->
       boolean inputVatAccount = accountNumber in ChartOfAccountsImportService.STANDARD_INPUT_VAT_ACCOUNTS
@@ -175,6 +183,24 @@ class ChartOfAccountsImportServiceTest {
     } as Executable
 
     assertThrows(IllegalArgumentException, action)
+  }
+
+  private Path createSyntheticWorkbook(List<List<String>> accountRows) {
+    Path path = tempDir.resolve('test_accounts.xlsx')
+    org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()
+    try {
+      org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet()
+      accountRows.eachWithIndex { List<String> cols, int rowIdx ->
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIdx)
+        cols.eachWithIndex { String value, int colIdx ->
+          row.createCell(colIdx).setCellValue(value)
+        }
+      }
+      new FileOutputStream(path.toFile()).withCloseable { OutputStream os -> workbook.write(os) }
+    } finally {
+      workbook.close()
+    }
+    path
   }
 
   private static void restoreProperty(String name, String value) {

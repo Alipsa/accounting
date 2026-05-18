@@ -51,7 +51,7 @@ final class ChartOfAccountsImportService {
 
   @PackageScope
   static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = STANDARD_VAT_CODES.findAll { Map.Entry<String, VatCode> entry ->
-    entry.value in AccountService.ASSET_VAT_CODES
+    AccountService.isInputVatCode(entry.value)
   }.keySet().asImmutable() as Set<String>
 
   private final DatabaseService databaseService

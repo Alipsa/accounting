@@ -213,13 +213,8 @@ final class VatService {
 
     List<PeriodDescriptor> expected = buildExpectedDescriptors(periodicity, accountingPeriods)
 
-    GroovyRowResult existing = sql.firstRow(
-        'select count(*) as total from vat_period where fiscal_year_id = ?',
-        [fiscalYearId]
-    ) as GroovyRowResult
-    int existingCount = ((Number) existing.get('total')).intValue()
-    if (existingCount > 0) {
-      List<PeriodDescriptor> current = loadExistingDescriptors(sql, fiscalYearId)
+    List<PeriodDescriptor> current = loadExistingDescriptors(sql, fiscalYearId)
+    if (!current.isEmpty()) {
       if (expected == current) {
         return
       }
@@ -254,18 +249,15 @@ final class VatService {
   private static List<GroovyRowResult> removeCoveredAccountingPeriods(
       Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods
   ) {
-    List<GroovyRowResult> reportedPeriods = sql.rows('''
-        select start_date as startDate, end_date as endDate
-          from vat_period
-         where fiscal_year_id = ?
-           and status != ?
-    ''', [fiscalYearId, OPEN])
-    if (reportedPeriods.isEmpty()) {
+    GroovyRowResult maxRow = sql.firstRow(
+        'select max(end_date) as maxEnd from vat_period where fiscal_year_id = ? and status != ?',
+        [fiscalYearId, OPEN]
+    ) as GroovyRowResult
+    Object maxEndValue = maxRow?.get('maxEnd')
+    if (maxEndValue == null) {
       return accountingPeriods
     }
-    LocalDate maxReportedEnd = reportedPeriods.collect { GroovyRowResult row ->
-      SqlValueMapper.toLocalDate(row.get('endDate'))
-    }.max()
+    LocalDate maxReportedEnd = SqlValueMapper.toLocalDate(maxEndValue)
     accountingPeriods.findAll { GroovyRowResult row ->
       SqlValueMapper.toLocalDate(row.get('startDate')).isAfter(maxReportedEnd)
     }
