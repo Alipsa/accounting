@@ -209,7 +209,7 @@ final class AccountService {
   ] as Set<VatCode>
 
   // Expense and asset accounts accept the same deductible VAT/base codes.
-  private static final Set<VatCode> EXPENSE_VAT_CODES = ASSET_VAT_CODES
+  private static final Set<VatCode> EXPENSE_VAT_CODES = ASSET_VAT_CODES.asImmutable() as Set<VatCode>
 
   private static final Set<VatCode> LIABILITY_VAT_CODES = [
       VatCode.OUTPUT_25,

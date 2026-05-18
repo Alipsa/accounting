@@ -249,11 +249,7 @@ final class VatService {
     createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods, nextPeriodIndex)
   }
 
-  /**
-   * Removes accounting periods that are already covered by reported VAT periods.
-   * Reporting is enforced to be contiguous in {@link #reportPeriod(long)}, so only
-   * the trailing portion after the last reported period needs recreation.
-   */
+  // Relies on reportPeriod enforcing contiguous order: only the tail after the last reported end needs recreation.
   private static List<GroovyRowResult> removeCoveredAccountingPeriods(
       Sql sql, long fiscalYearId, List<GroovyRowResult> accountingPeriods
   ) {

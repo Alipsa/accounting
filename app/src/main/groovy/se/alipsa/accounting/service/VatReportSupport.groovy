@@ -313,6 +313,8 @@ final class VatReportSupport {
     BigDecimal totalComputedOutput = matchingBases.sum(BigDecimal.ZERO) { Map.Entry<VatCode, BigDecimal> entry ->
       scale(entry.value * entry.key.outputRate).abs()
     } as BigDecimal
+    // Safety net: EU acquisition codes have outputRate=0.25, so this only fires if base amounts
+    // somehow net to zero after scaling — fall back to treating the whole output line as one bucket.
     if (totalComputedOutput == BigDecimal.ZERO) {
       return [classify(line.vatCode, line.accountClass, line.signedAmount)]
     }

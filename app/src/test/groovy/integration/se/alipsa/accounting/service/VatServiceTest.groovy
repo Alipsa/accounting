@@ -563,6 +563,9 @@ class VatServiceTest {
         LocalDate.of(2027, 1, 1),
         LocalDate.of(2027, 12, 31)
     )
+    // Synthetic domain state: shrink the annual period to Q1 only so ensurePeriodsForFiscalYear
+    // must handle a reported period whose dates don't match a whole fiscal year.
+    // This cannot arise through normal UI flows but ensures robustness.
     databaseService.withTransaction { Sql sql ->
       sql.executeUpdate('''
           update vat_period

@@ -125,6 +125,27 @@ class VatPeriodPanelTest {
   }
 
   @Test
+  void cancellingBulkConfirmationLeavesPeriodsUnchangedAndFeedbackEmpty() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> false }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      reportButton.doClick()
+    }
+
+    assertEquals('', onEdt { feedbackArea.text })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(0, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
+  }
+
+  @Test
   void reportAndTransferButtonsUpdateStatusAndFeedback() {
     bookVatFixtures()
 
