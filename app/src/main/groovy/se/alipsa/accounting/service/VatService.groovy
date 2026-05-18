@@ -321,6 +321,8 @@ final class VatService {
     }
   }
 
+  // @Canonical generates equals() from startDate and endDate only.
+  // Period names/labels are deliberately excluded: structural equivalence depends solely on date ranges.
   @Canonical
   private static final class PeriodDescriptor {
     LocalDate startDate

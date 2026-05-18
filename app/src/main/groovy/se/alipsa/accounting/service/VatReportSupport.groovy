@@ -239,7 +239,7 @@ final class VatReportSupport {
       throw new IllegalArgumentException('appendIncludedVatCodes called with empty VAT code set.')
     }
     query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
-    params.addAll(vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() })
+    params.addAll(sortedNames(vatCodes))
   }
 
   // Returns silently on an empty set because excluding nothing is a valid no-op.
@@ -248,7 +248,11 @@ final class VatReportSupport {
       return
     }
     query.append(" and a.vat_code not in (${placeholders(vatCodes.size())})")
-    params.addAll(vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() })
+    params.addAll(sortedNames(vatCodes))
+  }
+
+  private static List<String> sortedNames(Set<VatCode> vatCodes) {
+    vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() }
   }
 
   private static String placeholders(int count) {

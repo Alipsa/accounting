@@ -100,6 +100,7 @@ class ChartOfAccountsImportServiceTest {
   @Test
   void resolvesVatCodeForMappedAccountsNotPresentInBasWorkbook() {
     assertEquals(VatCode.INPUT_6, ChartOfAccountsImportService.resolveVatCode('2643'))
+    assertEquals(VatCode.REVERSE_CHARGE_DOMESTIC, ChartOfAccountsImportService.resolveVatCode('2644'))
   }
 
   @Test
@@ -108,6 +109,14 @@ class ChartOfAccountsImportServiceTest {
     importService.importFromExcel(workbook)
 
     assertImportedVatAccount('2643', 'ASSET', 'DEBIT', VatCode.INPUT_6)
+  }
+
+  @Test
+  void importSetsCorrectClassAndVatCodeFor2644WhenPresentInWorkbook() {
+    Path workbook = createSyntheticWorkbook([['2644', 'Ingående moms vid omvänd skattskyldighet']])
+    importService.importFromExcel(workbook)
+
+    assertImportedVatAccount('2644', 'ASSET', 'DEBIT', VatCode.REVERSE_CHARGE_DOMESTIC)
   }
 
   @Test

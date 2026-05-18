@@ -314,7 +314,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
     reloadPeriods()
     VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
-    selectPeriod(periodToSelect.id)
+    try {
+      selectPeriod(periodToSelect.id)
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Oväntat fel vid val av momsperiod efter rapportering.', exception)
+    }
     if (errors.isEmpty()) {
       showInfo(reportSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {
@@ -359,7 +363,11 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     }
     reloadPeriods()
     VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
-    selectPeriod(periodToSelect.id)
+    try {
+      selectPeriod(periodToSelect.id)
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Oväntat fel vid val av momsperiod efter momsöverföring.', exception)
+    }
     if (errors.isEmpty()) {
       showInfo(transferSuccessMessage(successCount, periodToSelect))
     } else if (successCount > 0) {

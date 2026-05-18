@@ -46,7 +46,7 @@ final class ChartOfAccountsImportService {
       '2641': VatCode.INPUT_25,
       '2642': VatCode.INPUT_12,
       '2643': VatCode.INPUT_6,
-      '2644': VatCode.INPUT_25,
+      '2644': VatCode.REVERSE_CHARGE_DOMESTIC,
       '2645': VatCode.EU_ACQUISITION_GOODS
   ].asImmutable() as Map<String, VatCode>
 

@@ -209,6 +209,7 @@ final class AccountService {
     vatCode in ASSET_VAT_CODES
   }
 
+  // Expense accounts accept the same input-side VAT codes as asset accounts.
   private static final Set<VatCode> EXPENSE_VAT_CODES = ASSET_VAT_CODES
 
   private static final Set<VatCode> LIABILITY_VAT_CODES = [
