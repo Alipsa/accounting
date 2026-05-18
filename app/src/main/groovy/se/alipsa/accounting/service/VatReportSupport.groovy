@@ -227,6 +227,8 @@ final class VatReportSupport {
     params << Date.valueOf(startDate) // vp.end_date >= report start (overlap: period must end after report starts)
   }
 
+  // Throws on an empty set because an empty inclusion filter is always a programming error:
+  // the generated SQL would match nothing and silently discard all rows.
   private static void appendIncludedVatCodes(
       StringBuilder query,
       List<Object> params,
@@ -240,6 +242,7 @@ final class VatReportSupport {
     params.addAll(vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() })
   }
 
+  // Returns silently on an empty set because excluding nothing is a valid no-op.
   private static void appendExcludedVatCodes(StringBuilder query, List<Object> params, Set<VatCode> vatCodes) {
     if (vatCodes.isEmpty()) {
       return
@@ -318,6 +321,9 @@ final class VatReportSupport {
       return [classify(line.vatCode, line.accountClass, line.signedAmount)]
     }
 
+    // matchingBases is ordered by VatCode name (inherited from the SQL ORDER BY a.vat_code on the
+    // base-amount query). This makes the last bucket deterministic — always the alphabetically
+    // last matching code — so cent rounding absorption is stable and predictable.
     BigDecimal allocated = BigDecimal.ZERO
     matchingBases.withIndex().collect { Map.Entry<VatCode, BigDecimal> entry, int index ->
       // Let the final bucket absorb cent rounding so allocations add back to the posted VAT line.

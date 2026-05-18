@@ -232,6 +232,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       log.log(Level.WARNING, 'Kunde inte ladda momsperioder.', exception)
       periodTableModel.setRows([])
       reportTableModel.setRows([])
+      summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
+      summaryLabel.toolTipText = null
       showError(I18n.instance.getString('vatPeriodPanel.error.unexpected'))
     }
   }
