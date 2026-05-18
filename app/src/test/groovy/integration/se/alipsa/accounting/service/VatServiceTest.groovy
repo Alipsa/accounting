@@ -232,7 +232,7 @@ class VatServiceTest {
       vatService.bookTransfer(february.id)
     }
 
-    assertTrue(exception.message.contains(january.periodName))
+    assertTrue(exception.message.contains("period ${january.periodName}"))
   }
 
   @Test
@@ -625,6 +625,7 @@ class VatServiceTest {
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
     VatService.VatReport report = vatService.calculateReport(january.id)
 
+    assertEquals(1, report.rows.size())
     assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
     assertVatRow(report, VatCode.EU_ACQUISITION_GOODS, 0.00G, 100.00G, 100.00G)
   }
