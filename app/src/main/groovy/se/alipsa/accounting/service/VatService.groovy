@@ -99,12 +99,13 @@ final class VatService {
       if (period.status == OPEN) {
         // VAT reporting order is enforced within each fiscal year; fiscal years are independent.
         GroovyRowResult earlierOpen = sql.firstRow('''
-            select count(*) as total from vat_period
+            select 1 as found from vat_period
              where fiscal_year_id = ?
                and period_index < ?
                and status = ?
-        ''', [period.fiscalYearId, period.periodIndex, OPEN])
-        if (((Number) earlierOpen.get('total')).intValue() > 0) {
+             limit 1
+        ''', [period.fiscalYearId, period.periodIndex, OPEN]) as GroovyRowResult
+        if (earlierOpen != null) {
           throw new IllegalStateException(
               "Momsperiod ${period.periodName} kan inte rapporteras innan tidigare perioder har rapporterats."
           )
@@ -222,11 +223,11 @@ final class VatService {
       if (expected == current) {
         return
       }
-      GroovyRowResult reported = sql.firstRow(
-          'select count(*) as total from vat_period where fiscal_year_id = ? and status != ?',
+      boolean hasReported = sql.firstRow(
+          'select 1 as found from vat_period where fiscal_year_id = ? and status != ? limit 1',
           [fiscalYearId, OPEN]
-      ) as GroovyRowResult
-      if (((Number) reported.get('total')).intValue() == 0) {
+      ) != null
+      if (!hasReported) {
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
       } else {
         List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)

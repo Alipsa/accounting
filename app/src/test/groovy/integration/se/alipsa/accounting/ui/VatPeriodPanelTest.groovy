@@ -192,6 +192,9 @@ class VatPeriodPanelTest {
 
     String feedback = onEdt { feedbackArea.text }
     assertTrue(feedback.contains("Momsperiod ${selectedPeriodName} kan inte rapporteras innan tidigare perioder har rapporterats."))
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(2, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(3, 3) })
   }
 
   @Test

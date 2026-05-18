@@ -163,7 +163,7 @@ final class VatReportSupport {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and v.accounting_date between ? and ?
-           and a.account_class = ?
+           and a.account_class in (?, ?)
            and exists (
                  select 1
                    from voucher_line shared_vl
@@ -176,6 +176,7 @@ final class VatReportSupport {
         Date.valueOf(startDate),
         Date.valueOf(endDate),
         AccountService.ACCOUNT_CLASS_EXPENSE,
+        AccountService.ACCOUNT_CLASS_ASSET,
         AccountService.ACCOUNT_CLASS_LIABILITY
     ]
     appendIncludedVatCodes(query, params, SHARED_REVERSE_CHARGE_OUTPUT_CODES, 'shared_a')
@@ -222,9 +223,8 @@ final class VatReportSupport {
          )
     ''')
     params << fiscalYearId
-    // Overlap check: a transfer period is relevant when it starts before this report ends and ends after it starts.
-    params << Date.valueOf(endDate)
-    params << Date.valueOf(startDate)
+    params << Date.valueOf(endDate)   // vp.start_date <= report end (overlap: period must start before report ends)
+    params << Date.valueOf(startDate) // vp.end_date >= report start (overlap: period must end after report starts)
   }
 
   private static void appendIncludedVatCodes(
