@@ -85,7 +85,7 @@ final class ChartOfAccountsImportService {
 
     accounts.each { Account account ->
       GroovyRowResult existing = sql.firstRow(
-          'select account_number from account where company_id = ? and account_number = ?',
+          'select account_number, vat_code as vatCode from account where company_id = ? and account_number = ?',
           [companyId, account.accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
@@ -118,12 +118,15 @@ final class ChartOfAccountsImportService {
         ])
         created++
       } else {
-        // Re-imports refresh BAS-derived metadata while preserving user-maintained flags like active and vat_code.
+        String vatCode = existing.get('vatCode') == null ? account.vatCode : existing.get('vatCode') as String
+        // Re-imports refresh BAS-derived metadata and backfill missing standard VAT codes
+        // while preserving user-maintained flags like active and existing vat_code.
         sql.executeUpdate('''
             update account
                set account_name = ?,
                    account_class = ?,
                    normal_balance_side = ?,
+                   vat_code = ?,
                    manual_review_required = ?,
                    classification_note = ?,
                    account_subgroup = ?,
@@ -134,6 +137,7 @@ final class ChartOfAccountsImportService {
             account.accountName,
             account.accountClass,
             account.normalBalanceSide,
+            vatCode,
             account.manualReviewRequired,
             account.classificationNote,
             account.accountSubgroup,

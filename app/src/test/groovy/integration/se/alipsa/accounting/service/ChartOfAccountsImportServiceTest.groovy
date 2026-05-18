@@ -207,6 +207,18 @@ class ChartOfAccountsImportServiceTest {
     assertEquals(VatCode.OUTSIDE_SCOPE.name(), account.vatCode)
   }
 
+  @Test
+  void reimportBackfillsMissingStandardVatCode() {
+    Path workbook = createSyntheticWorkbook([['2640', 'Ingående moms']])
+    importService.importFromExcel(workbook)
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '2640', null)
+
+    importService.importFromExcel(workbook)
+
+    Account account = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2640')
+    assertEquals(VatCode.INPUT_25.name(), account.vatCode)
+  }
+
   private Path createSyntheticWorkbook(List<List<String>> accountRows) {
     Path path = tempDir.resolve('test_accounts.xlsx')
     org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()
