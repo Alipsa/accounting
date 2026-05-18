@@ -500,9 +500,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
           String no = I18n.instance.getString('chartOfAccountsPanel.details.no')
           return account.active ? yes : no
         case 6:
-          String yes2 = I18n.instance.getString('chartOfAccountsPanel.details.yes')
-          String no2 = I18n.instance.getString('chartOfAccountsPanel.details.no')
-          return account.manualReviewRequired ? yes2 : no2
+          return account.manualReviewRequired
+              ? I18n.instance.getString('chartOfAccountsPanel.details.yes')
+              : I18n.instance.getString('chartOfAccountsPanel.details.no')
         default:
           return ''
       }

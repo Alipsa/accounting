@@ -237,7 +237,7 @@ final class VatReportSupport {
       throw new IllegalArgumentException('appendIncludedVatCodes called with empty VAT code set.')
     }
     query.append(" and ${accountAlias}.vat_code in (${placeholders(vatCodes.size())})")
-    params.addAll(vatCodes.collect { VatCode vatCode -> vatCode.name() })
+    params.addAll(vatCodes.toSorted { VatCode a, VatCode b -> a.name() <=> b.name() }.collect { VatCode vatCode -> vatCode.name() })
   }
 
   private static void appendExcludedVatCodes(StringBuilder query, List<Object> params, Set<VatCode> vatCodes) {

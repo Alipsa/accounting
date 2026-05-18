@@ -129,7 +129,7 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
-    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> false }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> false } as VatPeriodPanel.BulkConfirmation
 
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')
@@ -177,7 +177,7 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
-    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
 
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')
@@ -209,7 +209,7 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
-    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
 
     JTable periodTable = findTable(panel, 'Period')
     JButton reportButton = findButton(panel, 'Rapportera vald period')
@@ -245,7 +245,7 @@ class VatPeriodPanelTest {
     VatPeriodPanel panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
-    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
 
     JTable periodTable = findTable(panel, 'Period')
     JButton transferButton = findButton(panel, 'Bokför momsöverföring')

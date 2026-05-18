@@ -225,15 +225,7 @@ final class VatService {
       if (!hasReported) {
         sql.executeUpdate('delete from vat_period where fiscal_year_id = ?', [fiscalYearId])
       } else {
-        List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
-        List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
-        List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
-        // Both descriptor lists are ordered by period_index/chronology; equality is intentionally order-sensitive here.
-        if (remainingExpected == currentOpen) {
-          return
-        }
-        sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
-        accountingPeriods = remainingPeriods
+        accountingPeriods = restructureOpenPeriods(sql, fiscalYearId, periodicity, accountingPeriods)
         if (accountingPeriods.isEmpty()) {
           return
         }
@@ -243,6 +235,21 @@ final class VatService {
     int nextPeriodIndex = resolveNextPeriodIndex(sql, fiscalYearId)
 
     createVatPeriodsForStructure(sql, fiscalYearId, periodicity, accountingPeriods, nextPeriodIndex)
+  }
+
+  // Returns an empty list when no new periods need to be created (structure already matches or no remaining periods).
+  // Both descriptor lists are ordered by period_index/chronology; equality is intentionally order-sensitive.
+  private static List<GroovyRowResult> restructureOpenPeriods(
+      Sql sql, long fiscalYearId, VatPeriodicity periodicity, List<GroovyRowResult> accountingPeriods
+  ) {
+    List<GroovyRowResult> remainingPeriods = removeCoveredAccountingPeriods(sql, fiscalYearId, accountingPeriods)
+    List<PeriodDescriptor> remainingExpected = buildExpectedDescriptors(periodicity, remainingPeriods)
+    List<PeriodDescriptor> currentOpen = loadExistingDescriptors(sql, fiscalYearId, OPEN)
+    if (remainingExpected == currentOpen) {
+      return []
+    }
+    sql.executeUpdate('delete from vat_period where fiscal_year_id = ? and status = ?', [fiscalYearId, OPEN])
+    remainingPeriods
   }
 
   // Relies on reportPeriod enforcing contiguous order: only the tail after the last reported end needs recreation.

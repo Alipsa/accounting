@@ -56,7 +56,13 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private boolean fiscalYearListenerInstalled = false
 
   @PackageScope
-  Closure<Boolean> bulkActionConfirmation = { String message, String title ->
+  interface BulkConfirmation {
+
+    boolean confirm(String message, String title)
+  }
+
+  @PackageScope
+  BulkConfirmation bulkActionConfirmation = { String message, String title ->
     JOptionPane.showConfirmDialog(
         this,
         message,
@@ -64,7 +70,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
         JOptionPane.YES_NO_OPTION,
         JOptionPane.WARNING_MESSAGE
     ) == JOptionPane.YES_OPTION
-  }
+  } as BulkConfirmation
 
   VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService, ActiveCompanyManager activeCompanyManager) {
     this.vatService = vatService
@@ -241,7 +247,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   private static String previewSummary(List<VatPeriod> selected, VatPeriod period) {
     if (selected.size() <= 1) {
-      return I18n.instance.format('vatPeriodPanel.summary.preview', period.periodName)
+      return period.periodName
     }
     I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selected.size())
   }
@@ -355,7 +361,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       return true
     }
     String periodNames = sortedPeriods.collect { VatPeriod period -> period.periodName }.join(', ')
-    bulkActionConfirmation.call(
+    bulkActionConfirmation.confirm(
         I18n.instance.format(messageKey, sortedPeriods.size(), periodNames),
         I18n.instance.getString(titleKey)
     )
