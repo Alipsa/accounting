@@ -868,6 +868,36 @@ class VatServiceTest {
     assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
   }
 
+  @Test
+  void sharedReverseChargeOutputFallsBackToOwnBucketWhenComputedTotalRoundsToZero() {
+    // base 0.01 → scale(0.01 * 0.25) = scale(0.0025) = 0.00 → totalComputedOutput == ZERO
+    // safety-net path: output VAT is kept on REVERSE_CHARGE_EU_25 instead of being split
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv minimal',
+        [
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 0.01G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 0.01G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    // Base lands on EU_ACQUISITION_GOODS; output stays on REVERSE_CHARGE_EU_25 via fallback
+    VatService.VatReportRow goodsRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.EU_ACQUISITION_GOODS }
+    VatService.VatReportRow reverseRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.REVERSE_CHARGE_EU_25 }
+
+    assertNotNull(goodsRow)
+    assertEquals(0.01G, goodsRow.baseAmount)
+    assertEquals(0.00G, goodsRow.outputVatAmount)
+
+    assertNotNull(reverseRow)
+    assertEquals(0.01G, reverseRow.outputVatAmount)
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),

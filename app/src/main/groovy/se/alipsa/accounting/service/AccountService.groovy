@@ -207,6 +207,9 @@ final class AccountService {
       VatCode.OUTSIDE_SCOPE
   ] as Set<VatCode>
 
+  // Returns true for deductible input-side VAT codes (INPUT_*, reverse-charge base codes, EXEMPT,
+  // OUTSIDE_SCOPE) — the codes valid on ASSET and EXPENSE accounts. Does not include output-side
+  // codes like REVERSE_CHARGE_EU_25, which despite its name goes on a LIABILITY account.
   @PackageScope
   static boolean isInputSideVatCode(VatCode vatCode) {
     vatCode in ASSET_VAT_CODES
