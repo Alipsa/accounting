@@ -327,7 +327,7 @@ final class VatReportSupport {
     Set<VatCode> expectedBaseCodes = sharedReverseChargeBaseCodes(line.vatCode)
     List<Map.Entry<VatCode, BigDecimal>> matchingBases = reverseBaseAmounts.entrySet().findAll { Map.Entry<VatCode, BigDecimal> entry ->
       (entry.value <=> BigDecimal.ZERO) != 0 && entry.key in expectedBaseCodes
-    }.toList()
+    }.toSorted { Map.Entry<VatCode, BigDecimal> a, Map.Entry<VatCode, BigDecimal> b -> a.key.name() <=> b.key.name() }
     if (matchingBases.isEmpty()) {
       if (line.signedAmount != BigDecimal.ZERO) {
         log.warning(
@@ -337,6 +337,10 @@ final class VatReportSupport {
       return []
     }
 
+    // All current EU reverse-charge codes share the same outputRate (0.25), so this sum
+    // is proportional to base amounts rather than rates. If a code with a different rate
+    // (e.g. REVERSE_CHARGE_EU_12) is added, the weights will correctly reflect the rate
+    // difference and the split will no longer be equal-by-base.
     BigDecimal totalComputedOutput = matchingBases.sum(BigDecimal.ZERO) { Map.Entry<VatCode, BigDecimal> entry ->
       scale(entry.value * entry.key.outputRate).abs()
     } as BigDecimal
@@ -372,11 +376,11 @@ final class VatReportSupport {
   }
 
   private static boolean isOutputVatAccount(VatCode vatCode, String accountClass) {
-    vatCode.outputRate > BigDecimal.ZERO && accountClass == 'LIABILITY'
+    vatCode.outputRate > BigDecimal.ZERO && accountClass == AccountService.ACCOUNT_CLASS_LIABILITY
   }
 
   private static boolean isInputVatAccount(VatCode vatCode, String accountClass) {
-    vatCode.inputRate > BigDecimal.ZERO && accountClass == 'ASSET'
+    vatCode.inputRate > BigDecimal.ZERO && accountClass == AccountService.ACCOUNT_CLASS_ASSET
   }
 
   private static VatCode parseVatCode(String value) {

@@ -98,14 +98,17 @@ final class VatService {
       }
       if (period.status == OPEN) {
         // VAT reporting order is enforced within each fiscal year; fiscal years are independent.
-        GroovyRowResult earlierOpen = sql.firstRow('''
+        // Checks status != REPORTED and status != LOCKED rather than status = OPEN so that any
+        // future status added to the state machine is automatically treated as "not yet done".
+        GroovyRowResult earlierUnreported = sql.firstRow('''
             select 1 as found from vat_period
              where fiscal_year_id = ?
                and period_index < ?
-               and status = ?
+               and status != ?
+               and status != ?
              limit 1
-        ''', [period.fiscalYearId, period.periodIndex, OPEN]) as GroovyRowResult
-        if (earlierOpen != null) {
+        ''', [period.fiscalYearId, period.periodIndex, REPORTED, LOCKED]) as GroovyRowResult
+        if (earlierUnreported != null) {
           throw new IllegalStateException(
               "Momsperiod ${period.periodName} kan inte rapporteras innan tidigare perioder har rapporterats."
           )

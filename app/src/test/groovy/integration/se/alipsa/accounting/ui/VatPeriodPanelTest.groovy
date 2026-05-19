@@ -233,6 +233,36 @@ class VatPeriodPanelTest {
     assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', 2)))
   }
 
+  @Test
+  void multiSelectReportingReportsSelectedPeriodsInOrder() {
+    bookVatFixtures()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      reportButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertEquals(VatService.REPORTED, onEdt { periodTable.getValueAt(0, 3) })
+    assertEquals(VatService.REPORTED, onEdt { periodTable.getValueAt(1, 3) })
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', 2)))
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),
