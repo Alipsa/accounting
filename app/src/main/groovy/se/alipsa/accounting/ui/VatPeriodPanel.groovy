@@ -284,7 +284,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selected.size())
   }
 
-  @SuppressWarnings('CatchRuntimeException')
   private void reportSelectedPeriod() {
     executeBulkPeriodAction(
         'vatPeriodPanel.error.selectPeriodReport',
@@ -296,7 +295,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     ) { Integer count, VatPeriod period -> reportSuccessMessage(count, period) }
   }
 
-  @SuppressWarnings('CatchRuntimeException')
   private void bookTransferForSelectedPeriod() {
     executeBulkPeriodAction(
         'vatPeriodPanel.error.selectPeriodTransfer',
