@@ -14,6 +14,9 @@ import java.awt.Color
 import java.awt.FlowLayout
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.function.BiFunction
+import java.util.function.Consumer
+import java.util.function.Function
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -283,73 +286,52 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
 
   @SuppressWarnings('CatchRuntimeException')
   private void reportSelectedPeriod() {
-    List<VatPeriod> periods = selectedPeriods()
-    if (periods.isEmpty()) {
-      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodReport'))
-      return
-    }
-    int successCount = 0
-    List<String> errors = []
-    List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
-    if (!confirmBulkAction(
-        sortedPeriods,
+    executeBulkPeriodAction(
+        'vatPeriodPanel.error.selectPeriodReport',
         'vatPeriodPanel.confirm.reportMultiple',
-        'vatPeriodPanel.confirm.reportMultiple.title'
-    )) {
-      return
-    }
-    for (VatPeriod period : sortedPeriods) {
-      try {
-        vatService.reportPeriod(period.id)
-        successCount++
-      } catch (IllegalArgumentException exception) {
-        errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
-        break
-      } catch (IllegalStateException exception) {
-        errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
-        break
-      } catch (RuntimeException exception) {
-        log.log(Level.WARNING, "Oväntat fel vid rapportering av period ${period.periodName}.", exception)
-        errors << I18n.instance.getString('vatPeriodPanel.error.unexpected')
-        break
-      }
-    }
-    reloadPeriods()
-    VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
-    try {
-      selectPeriod(periodToSelect.id)
-    } catch (RuntimeException exception) {
-      log.log(Level.WARNING, 'Oväntat fel vid val av momsperiod efter rapportering.', exception)
-    }
-    if (errors.isEmpty()) {
-      showInfo(reportSuccessMessage(successCount, periodToSelect))
-    } else if (successCount > 0) {
-      showError(partialFailureMessage(reportSuccessMessage(successCount, periodToSelect), errors))
-    } else {
-      showError(errors.join('\n'))
-    }
+        'vatPeriodPanel.confirm.reportMultiple.title',
+        { VatPeriod period -> vatService.reportPeriod(period.id) },
+        { VatPeriod period -> "Oväntat fel vid rapportering av period ${period.periodName}." },
+        'Oväntat fel vid val av momsperiod efter rapportering.'
+    ) { Integer count, VatPeriod period -> reportSuccessMessage(count, period) }
   }
 
   @SuppressWarnings('CatchRuntimeException')
   private void bookTransferForSelectedPeriod() {
+    executeBulkPeriodAction(
+        'vatPeriodPanel.error.selectPeriodTransfer',
+        'vatPeriodPanel.confirm.transferMultiple',
+        'vatPeriodPanel.confirm.transferMultiple.title',
+        { VatPeriod period -> vatService.bookTransfer(period.id) },
+        { VatPeriod period -> "Oväntat fel vid momsöverföring för period ${period.periodName}." },
+        'Oväntat fel vid val av momsperiod efter momsöverföring.'
+    ) { Integer count, VatPeriod period -> transferSuccessMessage(count, period) }
+  }
+
+  @SuppressWarnings('CatchRuntimeException')
+  private void executeBulkPeriodAction(
+      String emptyErrorKey,
+      String confirmKey,
+      String confirmTitleKey,
+      Consumer<VatPeriod> action,
+      Function<VatPeriod, String> periodLogMessage,
+      String selectLogMessage,
+      BiFunction<Integer, VatPeriod, String> successMessage
+  ) {
     List<VatPeriod> periods = selectedPeriods()
     if (periods.isEmpty()) {
-      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodTransfer'))
+      showError(I18n.instance.getString(emptyErrorKey))
       return
     }
     int successCount = 0
     List<String> errors = []
     List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
-    if (!confirmBulkAction(
-        sortedPeriods,
-        'vatPeriodPanel.confirm.transferMultiple',
-        'vatPeriodPanel.confirm.transferMultiple.title'
-    )) {
+    if (!confirmBulkAction(sortedPeriods, confirmKey, confirmTitleKey)) {
       return
     }
     for (VatPeriod period : sortedPeriods) {
       try {
-        vatService.bookTransfer(period.id)
+        action.accept(period)
         successCount++
       } catch (IllegalArgumentException exception) {
         errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
@@ -358,7 +340,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
         errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
         break
       } catch (RuntimeException exception) {
-        log.log(Level.WARNING, "Oväntat fel vid momsöverföring för period ${period.periodName}.", exception)
+        log.log(Level.WARNING, periodLogMessage.apply(period), exception)
         errors << I18n.instance.getString('vatPeriodPanel.error.unexpected')
         break
       }
@@ -368,12 +350,12 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     try {
       selectPeriod(periodToSelect.id)
     } catch (RuntimeException exception) {
-      log.log(Level.WARNING, 'Oväntat fel vid val av momsperiod efter momsöverföring.', exception)
+      log.log(Level.WARNING, selectLogMessage, exception)
     }
     if (errors.isEmpty()) {
-      showInfo(transferSuccessMessage(successCount, periodToSelect))
+      showInfo(successMessage.apply(successCount, periodToSelect))
     } else if (successCount > 0) {
-      showError(partialFailureMessage(transferSuccessMessage(successCount, periodToSelect), errors))
+      showError(partialFailureMessage(successMessage.apply(successCount, periodToSelect), errors))
     } else {
       showError(errors.join('\n'))
     }
@@ -408,7 +390,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       return true
     }
     String periodNames = sortedPeriods.collect { VatPeriod period -> period.periodName }.join(', ')
-    return bulkActionConfirmation.confirm(
+    bulkActionConfirmation.confirm(
         I18n.instance.format(messageKey, sortedPeriods.size(), periodNames),
         I18n.instance.getString(titleKey)
     )

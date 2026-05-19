@@ -118,6 +118,9 @@ final class ChartOfAccountsImportService {
         ])
         created++
       } else {
+        // null in the DB means the vatCode was never set, so backfill from BAS defaults.
+        // A user who deliberately clears the vatCode will have it restored on re-import —
+        // the schema cannot distinguish "never set" from "intentionally cleared".
         String vatCode = existing.get('vatCode') == null ? account.vatCode : existing.get('vatCode') as String
         // Re-imports refresh BAS-derived metadata and backfill missing standard VAT codes
         // while preserving user-maintained flags like active and existing vat_code.

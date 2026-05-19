@@ -9,12 +9,14 @@ import se.alipsa.accounting.domain.VatCode
 import java.math.RoundingMode
 import java.sql.Date
 import java.time.LocalDate
+import java.util.logging.Logger
 
 /**
  * Shared VAT aggregation rules used by both VAT periods and ad hoc report exports.
  */
 final class VatReportSupport {
 
+  private static final Logger log = Logger.getLogger(VatReportSupport.name)
   private static final int AMOUNT_SCALE = 2
   private static final Set<String> VAT_BALANCE_ACCOUNT_CLASSES = [
       AccountService.ACCOUNT_CLASS_ASSET,
@@ -24,6 +26,9 @@ final class VatReportSupport {
       AccountService.ACCOUNT_CLASS_INCOME,
       AccountService.ACCOUNT_CLASS_EXPENSE
   ] as Set<String>
+  // Intentionally wider than EU_REVERSE_CHARGE_BASE_CODES: REVERSE_CHARGE_DOMESTIC is included
+  // so the DB query loads all potential base codes in one pass. classifySharedReverseChargeOutput
+  // then discards domestic amounts because no current output code maps to them.
   private static final Set<VatCode> REVERSE_CHARGE_BASE_CODES = [
       VatCode.REVERSE_CHARGE_DOMESTIC,
       VatCode.EU_ACQUISITION_GOODS,
@@ -241,17 +246,24 @@ final class VatReportSupport {
     if (vatCodes.isEmpty()) {
       throw new IllegalArgumentException('appendIncludedVatCodes called with empty VAT code set.')
     }
-    assert sqlAlias ==~ /[a-z_]+/
+    if (!(sqlAlias ==~ /[a-z_]+/)) {
+      throw new IllegalArgumentException("Invalid SQL alias: ${sqlAlias}")
+    }
     query.append(" and ${sqlAlias}.vat_code in (${placeholders(vatCodes.size())})")
     params.addAll(sortedNames(vatCodes))
   }
 
   // Returns silently on an empty set because excluding nothing is a valid no-op.
-  private static void appendExcludedVatCodes(StringBuilder query, List<Object> params, Set<VatCode> vatCodes) {
+  private static void appendExcludedVatCodes(
+      StringBuilder query, List<Object> params, Set<VatCode> vatCodes, String sqlAlias = 'a'
+  ) {
     if (vatCodes.isEmpty()) {
       return
     }
-    query.append(" and a.vat_code not in (${placeholders(vatCodes.size())})")
+    if (!(sqlAlias ==~ /[a-z_]+/)) {
+      throw new IllegalArgumentException("Invalid SQL alias: ${sqlAlias}")
+    }
+    query.append(" and ${sqlAlias}.vat_code not in (${placeholders(vatCodes.size())})")
     params.addAll(sortedNames(vatCodes))
   }
 
@@ -317,6 +329,11 @@ final class VatReportSupport {
       (entry.value <=> BigDecimal.ZERO) != 0 && entry.key in expectedBaseCodes
     }.toList()
     if (matchingBases.isEmpty()) {
+      if (line.signedAmount != BigDecimal.ZERO) {
+        log.warning(
+            "Voucher ${line.voucherId}: ${line.vatCode} output ${line.signedAmount} has no matching EU acquisition base — dropped from VAT report"
+        )
+      }
       return []
     }
 

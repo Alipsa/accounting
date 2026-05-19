@@ -524,6 +524,61 @@ class VatServiceTest {
   }
 
   @Test
+  void ensurePeriodsForFiscalYearPreservesLockedAndReportedPeriodsWhenPeriodicityChanges() {
+    bookVatFixtures()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = monthlyPeriods[0]
+    VatPeriod february = monthlyPeriods[1]
+
+    vatService.reportPeriod(january.id)
+    vatService.bookTransfer(january.id)
+    vatService.reportPeriod(february.id)
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> restructured = vatService.listPeriods(fiscalYear.id)
+    // Jan LOCKED + Feb REPORTED survive; Mar becomes a partial Q1, Apr–Dec become Q2/Q3/Q4
+    assertEquals(6, restructured.size())
+
+    VatPeriod lockedJan = restructured.find { VatPeriod p -> p.id == january.id }
+    assertNotNull(lockedJan)
+    assertEquals(VatService.LOCKED, lockedJan.status)
+    assertEquals(LocalDate.of(2026, 1, 1), lockedJan.startDate)
+    assertEquals(LocalDate.of(2026, 1, 31), lockedJan.endDate)
+
+    VatPeriod reportedFeb = restructured.find { VatPeriod p -> p.id == february.id }
+    assertNotNull(reportedFeb)
+    assertEquals(VatService.REPORTED, reportedFeb.status)
+    assertEquals(LocalDate.of(2026, 2, 1), reportedFeb.startDate)
+    assertEquals(LocalDate.of(2026, 2, 28), reportedFeb.endDate)
+
+    List<VatPeriod> open = restructured.findAll { VatPeriod p -> p.status == VatService.OPEN }
+    assertEquals(4, open.size())
+    // Mar is a partial Q1 because Jan and Feb are already consumed by LOCKED/REPORTED periods
+    assertEquals(LocalDate.of(2026, 3, 1), open[0].startDate)
+    assertEquals(LocalDate.of(2026, 3, 31), open[0].endDate)
+    assertEquals(LocalDate.of(2026, 4, 1), open[1].startDate)
+    assertEquals(LocalDate.of(2026, 6, 30), open[1].endDate)
+    assertEquals(LocalDate.of(2026, 7, 1), open[2].startDate)
+    assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
+    assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
+    assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
+  }
+
+  @Test
   void ensurePeriodsForFiscalYearLeavesUnchangedPeriodicityUntouched() {
     List<VatPeriod> existing = vatService.listPeriods(fiscalYear.id)
     assertEquals(12, existing.size())
