@@ -3,9 +3,11 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
+import se.alipsa.accounting.domain.VatCode
 
 import java.math.RoundingMode
 
@@ -13,6 +15,21 @@ import java.math.RoundingMode
  * Queries and updates chart of accounts data and opening balances.
  */
 final class AccountService {
+
+  @PackageScope
+  static final String UNKNOWN_ACCOUNT_MESSAGE_PREFIX = 'Okänt kontonummer:'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_INCOME = 'INCOME'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_EXPENSE = 'EXPENSE'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_ASSET = 'ASSET'
+
+  @PackageScope
+  static final String ACCOUNT_CLASS_LIABILITY = 'LIABILITY'
 
   private final DatabaseService databaseService
 
@@ -134,9 +151,107 @@ final class AccountService {
              and account_number = ?
       ''', [active, companyId, normalized])
       if (updated != 1) {
-        throw new IllegalArgumentException("Unknown account number: ${normalized}")
+        throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }
     }
+  }
+
+  void setAccountVatCode(long companyId, String accountNumber, VatCode vatCode) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withTransaction { Sql sql ->
+      Account account = requireAccount(sql, companyId, normalized)
+      if (vatCode != null && !isVatCompatible(account, vatCode)) {
+        throw new IllegalArgumentException(
+            "Konto ${normalized} med kontoklass ${account.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
+        )
+      }
+      int updated = sql.executeUpdate('''
+          update account
+             set vat_code = ?,
+                 updated_at = current_timestamp
+           where company_id = ?
+             and account_number = ?
+      ''', [vatCode?.name(), companyId, normalized])
+      if (updated != 1) {
+        throw new IllegalStateException("Konto ${normalized} kunde inte uppdateras med momskod.")
+      }
+    }
+  }
+
+  private static final Set<String> VAT_COMPATIBLE_CLASSES = [
+      ACCOUNT_CLASS_INCOME,
+      ACCOUNT_CLASS_EXPENSE,
+      ACCOUNT_CLASS_ASSET,
+      ACCOUNT_CLASS_LIABILITY
+  ] as Set<String>
+
+  private static final Set<VatCode> INCOME_VAT_CODES = [
+      VatCode.OUTPUT_25,
+      VatCode.OUTPUT_12,
+      VatCode.OUTPUT_6,
+      VatCode.EU_SUPPLY_GOODS,
+      VatCode.EU_SUPPLY_SERVICES,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
+  private static final Set<VatCode> ASSET_VAT_CODES = [
+      VatCode.INPUT_25,
+      VatCode.INPUT_12,
+      VatCode.INPUT_6,
+      VatCode.REVERSE_CHARGE_DOMESTIC,
+      VatCode.EU_ACQUISITION_GOODS,
+      VatCode.EU_ACQUISITION_SERVICES,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
+  // Returns true for deductible input-side VAT codes (INPUT_*, reverse-charge base codes, EXEMPT,
+  // OUTSIDE_SCOPE) — the codes valid on ASSET and EXPENSE accounts. Does not include output-side
+  // codes like REVERSE_CHARGE_EU_25, which despite its name goes on a LIABILITY account.
+  @PackageScope
+  static boolean isInputSideVatCode(VatCode vatCode) {
+    vatCode in ASSET_VAT_CODES
+  }
+
+  // Expense accounts accept the same input-side VAT codes as asset accounts.
+  private static final Set<VatCode> EXPENSE_VAT_CODES = ASSET_VAT_CODES
+
+  private static final Set<VatCode> LIABILITY_VAT_CODES = [
+      VatCode.OUTPUT_25,
+      VatCode.OUTPUT_12,
+      VatCode.OUTPUT_6,
+      VatCode.REVERSE_CHARGE_EU_25,
+      VatCode.REVERSE_CHARGE_DOMESTIC,
+      VatCode.EXEMPT,
+      VatCode.OUTSIDE_SCOPE
+  ] as Set<VatCode>
+
+  static List<VatCode> compatibleVatCodes(Account account) {
+    VatCode.values().findAll { VatCode vatCode ->
+      isVatCompatible(account, vatCode)
+    }.toList()
+  }
+
+  static boolean isVatCompatibleClass(String accountClass) {
+    accountClass in VAT_COMPATIBLE_CLASSES
+  }
+
+  private static boolean isVatCompatible(Account account, VatCode vatCode) {
+    if (!isVatCompatibleClass(account.accountClass)) {
+      return false
+    }
+    if (account.accountClass == ACCOUNT_CLASS_INCOME) {
+      return vatCode in INCOME_VAT_CODES
+    }
+    if (account.accountClass == ACCOUNT_CLASS_EXPENSE) {
+      return vatCode in EXPENSE_VAT_CODES
+    }
+    if (account.accountClass == ACCOUNT_CLASS_ASSET) {
+      return vatCode in ASSET_VAT_CODES
+    }
+    account.accountClass == ACCOUNT_CLASS_LIABILITY && vatCode in LIABILITY_VAT_CODES
   }
 
   OpeningBalance getOpeningBalance(long fiscalYearId, String accountNumber) {
@@ -315,7 +430,19 @@ final class AccountService {
     }
   }
 
+  private static Account requireAccount(Sql sql, long companyId, String accountNumber) {
+    loadAccount(sql, companyId, accountNumber, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${accountNumber}")
+  }
+
   private static Account requireBalanceAccount(Sql sql, long companyId, String accountNumber) {
+    Account account = loadAccount(sql, companyId, accountNumber, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${accountNumber}")
+    if (!account.isBalanceAccount()) {
+      throw new IllegalArgumentException("Opening balances may only be stored on balance accounts: ${accountNumber}")
+    }
+    account
+  }
+
+  private static Account loadAccount(Sql sql, long companyId, String accountNumber, String missingMessage) {
     GroovyRowResult row = sql.firstRow('''
         select id,
                company_id as companyId,
@@ -333,13 +460,9 @@ final class AccountService {
            and account_number = ?
     ''', [companyId, accountNumber]) as GroovyRowResult
     if (row == null) {
-      throw new IllegalArgumentException("Unknown account number: ${accountNumber}")
+      throw new IllegalArgumentException(missingMessage)
     }
-    Account account = mapAccount(row)
-    if (!account.isBalanceAccount()) {
-      throw new IllegalArgumentException("Opening balances may only be stored on balance accounts: ${accountNumber}")
-    }
-    account
+    mapAccount(row)
   }
 
   private static Account mapAccount(GroovyRowResult row) {

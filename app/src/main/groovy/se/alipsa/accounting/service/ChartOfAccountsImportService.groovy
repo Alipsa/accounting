@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.Canonical
+import groovy.transform.PackageScope
 
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.Row
@@ -12,6 +13,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AccountSubgroup
+import se.alipsa.accounting.domain.VatCode
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,6 +32,28 @@ final class ChartOfAccountsImportService {
       'RANTEKOSTNADER', 'SKATT', 'NEDSKRIVNING', 'NEDSKRIVNINGAR',
       'AVSATTNING', 'LAMNADE', 'UTGIFT', 'UTGIFTER'
   ] as Set<String>
+
+  @PackageScope
+  static final Map<String, VatCode> STANDARD_VAT_CODES = [
+      '2610': VatCode.OUTPUT_25,
+      '2611': VatCode.OUTPUT_25,
+      '2614': VatCode.REVERSE_CHARGE_EU_25,
+      '2620': VatCode.OUTPUT_12,
+      '2621': VatCode.OUTPUT_12,
+      '2630': VatCode.OUTPUT_6,
+      '2631': VatCode.OUTPUT_6,
+      '2640': VatCode.INPUT_25,
+      '2641': VatCode.INPUT_25,
+      '2642': VatCode.INPUT_12,
+      '2643': VatCode.INPUT_6,
+      '2644': VatCode.REVERSE_CHARGE_DOMESTIC,
+      '2645': VatCode.EU_ACQUISITION_GOODS
+  ].asImmutable() as Map<String, VatCode>
+
+  @PackageScope
+  static final Set<String> STANDARD_INPUT_VAT_ACCOUNTS = STANDARD_VAT_CODES.findAll { Map.Entry<String, VatCode> entry ->
+    AccountService.isInputSideVatCode(entry.value)
+  }.keySet().asImmutable() as Set<String>
 
   private final DatabaseService databaseService
 
@@ -61,7 +85,7 @@ final class ChartOfAccountsImportService {
 
     accounts.each { Account account ->
       GroovyRowResult existing = sql.firstRow(
-          'select account_number from account where company_id = ? and account_number = ?',
+          'select account_number, vat_code as vatCode from account where company_id = ? and account_number = ?',
           [companyId, account.accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
@@ -94,12 +118,18 @@ final class ChartOfAccountsImportService {
         ])
         created++
       } else {
-        // Re-imports refresh BAS-derived metadata while preserving user-maintained flags like active and vat_code.
+        // null in the DB means the vatCode was never set, so backfill from BAS defaults.
+        // A user who deliberately clears the vatCode will have it restored on re-import —
+        // the schema cannot distinguish "never set" from "intentionally cleared".
+        String vatCode = existing.get('vatCode') == null ? account.vatCode : existing.get('vatCode') as String
+        // Re-imports refresh BAS-derived metadata and backfill missing standard VAT codes
+        // while preserving user-maintained flags like active and existing vat_code.
         sql.executeUpdate('''
             update account
                set account_name = ?,
                    account_class = ?,
                    normal_balance_side = ?,
+                   vat_code = ?,
                    manual_review_required = ?,
                    classification_note = ?,
                    account_subgroup = ?,
@@ -110,6 +140,7 @@ final class ChartOfAccountsImportService {
             account.accountName,
             account.accountClass,
             account.normalBalanceSide,
+            vatCode,
             account.manualReviewRequired,
             account.classificationNote,
             account.accountSubgroup,
@@ -163,17 +194,20 @@ final class ChartOfAccountsImportService {
 
     String accountName = normalizeAccountName(formatter.formatCellValue(row.getCell(nameColumn)))
     Classification classification = classifyAccount(accountNumber, accountName)
-    accounts[accountNumber] = new Account(
+    VatCode vatCode = resolveVatCode(accountNumber)
+    Account account = new Account(
         accountNumber: accountNumber,
         accountName: accountName,
         accountClass: classification.accountClass,
         normalBalanceSide: classification.normalBalanceSide,
-        vatCode: null,
+        vatCode: vatCode?.name(),
         active: true,
         manualReviewRequired: classification.manualReviewRequired,
         classificationNote: classification.note,
         accountSubgroup: classification.accountSubgroup
     )
+    validateResolvedVatCode(account, vatCode)
+    accounts[accountNumber] = account
   }
 
   private static String normalizeAccountNumber(String value) {
@@ -201,6 +235,9 @@ final class ChartOfAccountsImportService {
       case 2:
         if (subgroup <= 20) {
           return new Classification('EQUITY', 'CREDIT', false, null, accountSubgroup)
+        }
+        if (accountNumber in STANDARD_INPUT_VAT_ACCOUNTS) {
+          return new Classification('ASSET', 'DEBIT', false, null, accountSubgroup)
         }
         return new Classification('LIABILITY', 'CREDIT', false, null, accountSubgroup)
       case 3:
@@ -243,6 +280,23 @@ final class ChartOfAccountsImportService {
         'Kontot kräver manuell klassning eftersom BAS-gruppen innehåller både intäkter och kostnader.',
         accountSubgroup
     )
+  }
+
+  @PackageScope
+  static VatCode resolveVatCode(String accountNumber) {
+    STANDARD_VAT_CODES[accountNumber]
+  }
+
+  @PackageScope
+  static void validateResolvedVatCode(Account account, VatCode vatCode) {
+    if (vatCode == null) {
+      return
+    }
+    if (!AccountService.compatibleVatCodes(account).contains(vatCode)) {
+      throw new IllegalStateException(
+          "Importerad momskod ${vatCode.name()} är inte kompatibel med konto ${account.accountNumber} (${account.accountClass})."
+      )
+    }
   }
 
   private static String stripDiacritics(String value) {

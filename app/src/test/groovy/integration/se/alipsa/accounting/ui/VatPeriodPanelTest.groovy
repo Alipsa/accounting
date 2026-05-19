@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
+import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.service.AccountingPeriodService
@@ -33,6 +35,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JLabel
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
@@ -102,6 +105,47 @@ class VatPeriodPanelTest {
   }
 
   @Test
+  void multiSelectPreviewShowsWhichPeriodIsDisplayed() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+
+    JTable periodTable = findTable(panel, 'Period')
+    JTable reportTable = findTable(panel, 'Kod')
+    onEdt {
+      periodTable.setRowSelectionInterval(1, 3)
+    }
+
+    JLabel summaryLabel = findLabel(panel) { JLabel label ->
+      label.name == 'vatPeriodPanel.summaryLabel'
+    }
+    String summary = onEdt { summaryLabel.text }
+    assertTrue(summary.contains(I18n.instance.format('vatPeriodPanel.summary.previewMultiple', 3)))
+    assertEquals(0, onEdt { reportTable.rowCount })
+  }
+
+  @Test
+  void cancellingBulkConfirmationLeavesPeriodsUnchangedAndFeedbackEmpty() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> false } as VatPeriodPanel.BulkConfirmation
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      reportButton.doClick()
+    }
+
+    assertEquals('', onEdt { feedbackArea.text })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(0, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
+  }
+
+  @Test
   void reportAndTransferButtonsUpdateStatusAndFeedback() {
     bookVatFixtures()
 
@@ -126,6 +170,97 @@ class VatPeriodPanelTest {
     assertEquals('LOCKED', onEdt { periodTable.getValueAt(0, 3) })
     assertNotNull(onEdt { periodTable.getValueAt(0, 5) })
     assertTrue(onEdt { feedbackArea.text }.contains('Momsöverföring bokfördes'))
+  }
+
+  @Test
+  void multiSelectReportingStopsAfterFirstSequentialFailure() {
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(0, 3) })
+    String selectedPeriodName = onEdt { periodTable.getValueAt(1, 0) as String }
+    onEdt {
+      periodTable.setRowSelectionInterval(1, 3)
+      reportButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertFalse(feedback.isBlank())
+    assertTrue(feedback.contains(selectedPeriodName))
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(1, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(2, 3) })
+    assertEquals(VatService.OPEN, onEdt { periodTable.getValueAt(3, 3) })
+  }
+
+  @Test
+  void multiSelectTransferBooksSelectedPeriodsInOrder() {
+    bookVatFixtures()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = periods[0]
+    VatPeriod february = periods[1]
+    vatService.reportPeriod(january.id)
+    vatService.reportPeriod(february.id)
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton transferButton = findButton(panel, 'Bokför momsöverföring')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      transferButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertEquals(VatService.LOCKED, onEdt { periodTable.getValueAt(0, 3) })
+    assertEquals(VatService.LOCKED, onEdt { periodTable.getValueAt(1, 3) })
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', 2)))
+  }
+
+  @Test
+  void multiSelectReportingReportsSelectedPeriodsInOrder() {
+    bookVatFixtures()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
+
+    JTable periodTable = findTable(panel, 'Period')
+    JButton reportButton = findButton(panel, 'Rapportera vald period')
+    JTextArea feedbackArea = findFeedbackArea(panel)
+
+    onEdt {
+      periodTable.setRowSelectionInterval(0, 1)
+      reportButton.doClick()
+    }
+
+    String feedback = onEdt { feedbackArea.text }
+    assertEquals(VatService.REPORTED, onEdt { periodTable.getValueAt(0, 3) })
+    assertEquals(VatService.REPORTED, onEdt { periodTable.getValueAt(1, 3) })
+    assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', 2)))
   }
 
   private List<Voucher> bookVatFixtures() {
@@ -190,7 +325,7 @@ class VatPeriodPanelTest {
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '2645', 'Beräknad ingående moms', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
       insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
@@ -221,8 +356,8 @@ class VatPeriodPanelTest {
             classification_note,
             created_at,
             updated_at
-        ) values (1, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
-    ''', [accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
+        ) values (?, ?, ?, ?, ?, ?, true, false, null, current_timestamp, current_timestamp)
+    ''', [CompanyService.LEGACY_COMPANY_ID, accountNumber, accountName, accountClass, normalBalanceSide, vatCode])
   }
 
   private static JTable findTable(Container root, String firstColumnName) {
@@ -241,6 +376,10 @@ class VatPeriodPanelTest {
     findComponent(root, JTextArea) { JTextArea textArea ->
       !textArea.editable
     } as JTextArea
+  }
+
+  private static JLabel findLabel(Container root, Closure<Boolean> predicate) {
+    findComponent(root, JLabel, predicate) as JLabel
   }
 
   private static <T extends Component> T findComponent(Container root, Class<T> type, Closure<Boolean> predicate) {

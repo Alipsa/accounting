@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -83,6 +84,81 @@ class VatServiceTest {
   }
 
   @Test
+  void sharedReverseChargeOutputAccountIsAssignedToMatchingBaseBuckets() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv varor och tjänster',
+        [
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '4535', null, 'EU-tjänsteinköp', 200.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2645', null, 'Beräknad ingående moms varor', 25.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2647', null, 'Beräknad ingående moms tjänster', 50.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 75.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 300.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertEquals(2, report.rows.size())
+    assertVatRow(report, VatCode.EU_ACQUISITION_GOODS, 100.00G, 25.00G, 25.00G)
+    assertVatRow(report, VatCode.EU_ACQUISITION_SERVICES, 200.00G, 50.00G, 50.00G)
+    assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
+    assertEquals(75.00G, report.outputVatTotal)
+    assertEquals(75.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
+  void unmatchedSharedReverseChargeOutputDoesNotCreateOwnVatReportRow() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-moms utan basrad',
+        [
+            new VoucherLine(null, null, 0, null, '2440', null, 'Korrigering', 75.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 75.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertEquals(0, report.rows.size())
+    assertEquals(0.00G, report.outputVatTotal)
+    assertEquals(0.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
+  void domesticReverseChargeCodeSupportsExpenseAndVatBalanceAccounts() {
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 28),
+        'Byggtjänst omvänd moms',
+        [
+            new VoucherLine(null, null, 0, null, '4425', null, 'Inköp omvänd moms', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2648', null, 'Ingående omvänd moms', 250.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2617', null, 'Utgående omvänd moms', 0.00G, 250.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 1000.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertVatRow(report, VatCode.REVERSE_CHARGE_DOMESTIC, 1000.00G, 250.00G, 250.00G)
+    assertEquals(250.00G, report.outputVatTotal)
+    assertEquals(250.00G, report.inputVatTotal)
+    assertEquals(0.00G, report.netVatToPay)
+  }
+
+  @Test
   void vatReportComputesOutputVatWhenTaxLineIsMissing() {
     voucherService.createVoucher(
         fiscalYear.id,
@@ -159,6 +235,30 @@ class VatServiceTest {
   }
 
   @Test
+  void bookingTransferOutOfOrderIsRejected() {
+    bookVatFixtures()
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 2, 15),
+        'Försäljning februari',
+        saleLines(500.00G)
+    )
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = periods[0]
+    VatPeriod february = periods[1]
+    vatService.reportPeriod(january.id)
+    vatService.reportPeriod(february.id)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.bookTransfer(february.id)
+    }
+
+    assertTrue(exception.message.contains('kan inte låsas'))
+    assertTrue(exception.message.contains("period ${january.periodName}"))
+  }
+
+  @Test
   void lockedPeriodStillValidatesAgainstOriginalReportedHash() {
     bookVatFixtures()
     VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
@@ -222,6 +322,21 @@ class VatServiceTest {
 
     assertTrue(exception.message.contains('räkenskapsåret är låst'))
     assertTrue(exception.cause instanceof ClosedFiscalYearException)
+  }
+
+  @Test
+  void reportingOutOfOrderIsRejected() {
+    bookSaleVoucher()
+    List<VatPeriod> periods = vatService.listPeriods(fiscalYear.id)
+    assertTrue(periods.size() >= 3, 'Expected at least three VAT periods')
+    VatPeriod march = periods[2]
+    assertTrue(march.periodIndex > periods[1].periodIndex)
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      vatService.reportPeriod(march.id)
+    }
+
+    assertTrue(exception.message.contains('kan inte rapporteras innan tidigare perioder har rapporterats'))
   }
 
   @Test
@@ -362,6 +477,427 @@ class VatServiceTest {
     assertEquals('Q1 2028', periods[3].periodName)
   }
 
+  @Test
+  void ensurePeriodsForFiscalYearRestructuresOpenPeriodsWhenPeriodicityChanges() {
+    bookSaleVoucher()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, monthlyPeriods.size())
+
+    VatPeriod january = monthlyPeriods.first()
+    vatService.reportPeriod(january.id)
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> restructured = vatService.listPeriods(fiscalYear.id)
+
+    assertEquals(5, restructured.size())
+
+    VatPeriod preserved = restructured.find { VatPeriod p -> p.id == january.id }
+    assertNotNull(preserved)
+    assertEquals(VatService.REPORTED, preserved.status)
+    assertEquals(LocalDate.of(2026, 1, 1), preserved.startDate)
+    assertEquals(LocalDate.of(2026, 1, 31), preserved.endDate)
+
+    List<VatPeriod> open = restructured.findAll { VatPeriod p -> p.status == VatService.OPEN }
+    assertEquals(4, open.size())
+    assertEquals(LocalDate.of(2026, 2, 1), open[0].startDate)
+    assertEquals(LocalDate.of(2026, 3, 31), open[0].endDate)
+    assertEquals(LocalDate.of(2026, 4, 1), open[1].startDate)
+    assertEquals(LocalDate.of(2026, 6, 30), open[1].endDate)
+    assertEquals(LocalDate.of(2026, 7, 1), open[2].startDate)
+    assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
+    assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
+    assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearPreservesLockedAndReportedPeriodsWhenPeriodicityChanges() {
+    bookVatFixtures()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    VatPeriod january = monthlyPeriods[0]
+    VatPeriod february = monthlyPeriods[1]
+
+    vatService.reportPeriod(january.id)
+    vatService.bookTransfer(january.id)
+    vatService.reportPeriod(february.id)
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> restructured = vatService.listPeriods(fiscalYear.id)
+    // Jan LOCKED + Feb REPORTED survive; Mar becomes a partial Q1, Apr–Dec become Q2/Q3/Q4
+    assertEquals(6, restructured.size())
+
+    VatPeriod lockedJan = restructured.find { VatPeriod p -> p.id == january.id }
+    assertNotNull(lockedJan)
+    assertEquals(VatService.LOCKED, lockedJan.status)
+    assertEquals(LocalDate.of(2026, 1, 1), lockedJan.startDate)
+    assertEquals(LocalDate.of(2026, 1, 31), lockedJan.endDate)
+
+    VatPeriod reportedFeb = restructured.find { VatPeriod p -> p.id == february.id }
+    assertNotNull(reportedFeb)
+    assertEquals(VatService.REPORTED, reportedFeb.status)
+    assertEquals(LocalDate.of(2026, 2, 1), reportedFeb.startDate)
+    assertEquals(LocalDate.of(2026, 2, 28), reportedFeb.endDate)
+
+    List<VatPeriod> open = restructured.findAll { VatPeriod p -> p.status == VatService.OPEN }
+    assertEquals(4, open.size())
+    // Mar is a partial Q1 because Jan and Feb are already consumed by LOCKED/REPORTED periods
+    assertEquals(LocalDate.of(2026, 3, 1), open[0].startDate)
+    assertEquals(LocalDate.of(2026, 3, 31), open[0].endDate)
+    assertEquals(LocalDate.of(2026, 4, 1), open[1].startDate)
+    assertEquals(LocalDate.of(2026, 6, 30), open[1].endDate)
+    assertEquals(LocalDate.of(2026, 7, 1), open[2].startDate)
+    assertEquals(LocalDate.of(2026, 9, 30), open[2].endDate)
+    assertEquals(LocalDate.of(2026, 10, 1), open[3].startDate)
+    assertEquals(LocalDate.of(2026, 12, 31), open[3].endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesUnchangedPeriodicityUntouched() {
+    List<VatPeriod> existing = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, existing.size())
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(fiscalYear.id)
+    assertEquals(existing*.id, unchanged*.id)
+    assertEquals(existing*.startDate, unchanged*.startDate)
+    assertEquals(existing*.endDate, unchanged*.endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesFullyReportedPeriodsWhenPeriodicityChanges() {
+    bookSaleVoucher()
+    List<VatPeriod> monthlyPeriods = vatService.listPeriods(fiscalYear.id)
+    assertEquals(12, monthlyPeriods.size())
+    monthlyPeriods.each { VatPeriod period ->
+      vatService.reportPeriod(period.id)
+    }
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, fiscalYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(fiscalYear.id)
+    assertEquals(monthlyPeriods*.id, unchanged*.id)
+    assertTrue(unchanged.every { VatPeriod period -> period.status == VatService.REPORTED })
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearRestructuresAnnualAfterReportedFirstQuarter() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.ANNUAL
+        )
+    )
+    FiscalYear annualYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    // Synthetic domain state: shrink the annual period to Q1 only so ensurePeriodsForFiscalYear
+    // must handle a reported period whose dates don't match a whole fiscal year.
+    // This cannot arise through normal UI flows but ensures robustness.
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('''
+          update vat_period
+             set start_date = date '2027-01-01',
+                 end_date = date '2027-03-31',
+                 period_name = 'Q1 2027',
+                 status = ?
+           where fiscal_year_id = ?
+      ''', [VatService.REPORTED, annualYear.id])
+    }
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, annualYear.id)
+    }
+
+    List<VatPeriod> periods = vatService.listPeriods(annualYear.id)
+    assertEquals(4, periods.size())
+    assertEquals(VatService.REPORTED, periods[0].status)
+    assertEquals(LocalDate.of(2027, 1, 1), periods[0].startDate)
+    assertEquals(LocalDate.of(2027, 3, 31), periods[0].endDate)
+    assertTrue(periods.drop(1).every { VatPeriod period -> period.status == VatService.OPEN })
+    assertEquals(LocalDate.of(2027, 4, 1), periods[1].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), periods.last().endDate)
+  }
+
+  @Test
+  void sharedReverseChargeOutputIsAttributedForCapitalizedEuAcquisitionWithNoExpenseAccount() {
+    // No EXPENSE account carries EU_ACQUISITION_GOODS here: only 2645 (ASSET) does.
+    // Without the ASSET-class filter, loadReverseBaseAmountsByVoucher misses 2645, so matchingBases
+    // is empty and the whole 2614 output line is classified as REVERSE_CHARGE_EU_25.
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '1225', 'Maskiner', 'ASSET', 'DEBIT', null)
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv anläggningstillgång',
+        [
+            new VoucherLine(null, null, 0, null, '1225', null, 'Maskiner', 400.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2645', null, 'Beräknad ingående moms varor', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 100.00G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 400.00G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    assertEquals(1, report.rows.size())
+    assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
+    assertVatRow(report, VatCode.EU_ACQUISITION_GOODS, 0.00G, 100.00G, 100.00G)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearCreatesRemainingAnnualPeriodAfterReportedQuarters() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    List<VatPeriod> quarters = vatService.listPeriods(quarterlyYear.id)
+    assertEquals(4, quarters.size())
+    vatService.reportPeriod(quarters[0].id)
+
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.ANNUAL
+        )
+    )
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, quarterlyYear.id)
+    }
+
+    List<VatPeriod> restructured = vatService.listPeriods(quarterlyYear.id)
+    assertEquals(2, restructured.size())
+    assertEquals(VatService.REPORTED, restructured[0].status)
+    assertEquals(LocalDate.of(2027, 1, 1), restructured[0].startDate)
+    assertEquals(LocalDate.of(2027, 3, 31), restructured[0].endDate)
+    assertEquals(VatService.OPEN, restructured[1].status)
+    assertEquals(LocalDate.of(2027, 4, 1), restructured[1].startDate)
+    assertEquals(LocalDate.of(2027, 12, 31), restructured[1].endDate)
+  }
+
+  @Test
+  void reportPeriodIsIdempotentWhenAlreadyReported() {
+    bookSaleVoucher()
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+
+    VatPeriod firstResult = vatService.reportPeriod(january.id)
+    VatPeriod secondResult = vatService.reportPeriod(january.id)
+
+    assertEquals(VatService.REPORTED, secondResult.status)
+    assertEquals(firstResult.id, secondResult.id)
+    assertEquals(firstResult.reportHash, secondResult.reportHash)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+    assertEquals(1, auditEntries.count { AuditLogEntry entry -> entry.vatPeriodId == january.id })
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesUnchangedQuarterlyPeriodicityUntouched() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.QUARTERLY
+        )
+    )
+    FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    List<VatPeriod> existing = vatService.listPeriods(quarterlyYear.id)
+    assertEquals(4, existing.size())
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, quarterlyYear.id)
+      VatService.ensurePeriodsForFiscalYear(sql, quarterlyYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(quarterlyYear.id)
+    assertEquals(existing*.id, unchanged*.id)
+    assertEquals(existing*.startDate, unchanged*.startDate)
+    assertEquals(existing*.endDate, unchanged*.endDate)
+  }
+
+  @Test
+  void ensurePeriodsForFiscalYearLeavesUnchangedAnnualPeriodicityUntouched() {
+    companySettingsService.save(
+        new se.alipsa.accounting.domain.CompanySettings(
+            null,
+            'Enskild firma',
+            '850101-1234',
+            'SEK',
+            'sv-SE',
+            VatPeriodicity.ANNUAL
+        )
+    )
+    FiscalYear annualYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    List<VatPeriod> existing = vatService.listPeriods(annualYear.id)
+    assertEquals(1, existing.size())
+
+    databaseService.withTransaction { Sql sql ->
+      VatService.ensurePeriodsForFiscalYear(sql, annualYear.id)
+      VatService.ensurePeriodsForFiscalYear(sql, annualYear.id)
+    }
+
+    List<VatPeriod> unchanged = vatService.listPeriods(annualYear.id)
+    assertEquals(existing*.id, unchanged*.id)
+    assertEquals(existing*.startDate, unchanged*.startDate)
+    assertEquals(existing*.endDate, unchanged*.endDate)
+  }
+
+  @Test
+  void sharedReverseChargeOutputIsProportionallyAllocatedAcrossMixedEuAcquisitionTypes() {
+    // goods base 100, services base 100, output VAT 99.99
+    // naive division assigns 50.00 to each → total 100.00 (wrong)
+    // last-bucket absorption: goods=50.00, services=49.99, total=99.99 ✓
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv blandade',
+        [
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '4535', null, 'EU-tjänsteinköp', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 99.99G),
+            new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 100.01G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    VatService.VatReportRow goodsRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.EU_ACQUISITION_GOODS }
+    VatService.VatReportRow servicesRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.EU_ACQUISITION_SERVICES }
+
+    assertNotNull(goodsRow)
+    assertNotNull(servicesRow)
+    assertEquals(100.00G, goodsRow.baseAmount)
+    assertEquals(100.00G, servicesRow.baseAmount)
+    assertEquals(50.00G, goodsRow.outputVatAmount)
+    assertEquals(49.99G, servicesRow.outputVatAmount)
+    assertEquals(50.00G + 49.99G, goodsRow.outputVatAmount + servicesRow.outputVatAmount)
+    assertTrue(report.rows.every { VatService.VatReportRow row -> row.vatCode != VatCode.REVERSE_CHARGE_EU_25 })
+  }
+
+  @Test
+  void sharedReverseChargeOutputFallsBackToOwnBucketWhenComputedTotalRoundsToZero() {
+    // base 0.01 → scale(0.01 * 0.25) = scale(0.0025) = 0.00 → totalComputedOutput == ZERO
+    // safety-net path: output VAT is kept on REVERSE_CHARGE_EU_25 instead of being split
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 25),
+        'EU-förvärv minimal',
+        [
+            new VoucherLine(null, null, 0, null, '4515', null, 'EU-varuinköp', 0.01G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2614', null, 'Beräknad utgående moms', 0.00G, 0.01G)
+        ]
+    )
+
+    VatPeriod january = vatService.listPeriods(fiscalYear.id).first()
+    VatService.VatReport report = vatService.calculateReport(january.id)
+
+    // Base lands on EU_ACQUISITION_GOODS; output stays on REVERSE_CHARGE_EU_25 via fallback
+    VatService.VatReportRow goodsRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.EU_ACQUISITION_GOODS }
+    VatService.VatReportRow reverseRow = report.rows.find { VatService.VatReportRow r -> r.vatCode == VatCode.REVERSE_CHARGE_EU_25 }
+
+    assertNotNull(goodsRow)
+    assertEquals(0.01G, goodsRow.baseAmount)
+    assertEquals(0.00G, goodsRow.outputVatAmount)
+
+    assertNotNull(reverseRow)
+    assertEquals(0.01G, reverseRow.outputVatAmount)
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),
@@ -432,13 +968,18 @@ class VatServiceTest {
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, '2440', 'Leverantörsskulder', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
-      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2614', 'Beräknad utgående moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_EU_25.name())
+      insertAccount(sql, '2617', 'Utgående omvänd moms', 'LIABILITY', 'CREDIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '2641', 'Debiterad ingående moms', 'ASSET', 'DEBIT', VatCode.INPUT_25.name())
       insertAccount(sql, '2645', 'Beräknad ingående moms', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '2647', 'Beräknad ingående moms tjänster', 'ASSET', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
+      insertAccount(sql, '2648', 'Ingående omvänd moms', 'ASSET', 'DEBIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccount(sql, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT', VatCode.INPUT_25.name())
+      insertAccount(sql, '4425', 'Inköp med omvänd skattskyldighet', 'EXPENSE', 'DEBIT', VatCode.REVERSE_CHARGE_DOMESTIC.name())
       insertAccount(sql, '4515', 'Inköp av varor från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_GOODS.name())
+      insertAccount(sql, '4535', 'Inköp av tjänster från annat EU-land', 'EXPENSE', 'DEBIT', VatCode.EU_ACQUISITION_SERVICES.name())
     }
   }
 

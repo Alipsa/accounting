@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.service.FiscalYearService
@@ -12,11 +14,17 @@ import java.awt.Color
 import java.awt.FlowLayout
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.function.BiFunction
+import java.util.function.Consumer
+import java.util.function.Function
+import java.util.logging.Level
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
@@ -31,6 +39,8 @@ import javax.swing.table.AbstractTableModel
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
 final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
+
+  private static final Logger log = Logger.getLogger(VatPeriodPanel.name)
 
   private final VatService vatService
   private final FiscalYearService fiscalYearService
@@ -51,6 +61,24 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
+
+  @PackageScope
+  interface BulkConfirmation {
+
+    boolean confirm(String message, String title)
+  }
+
+  @PackageScope
+  // Mutable for tests that need to bypass JOptionPane confirmation.
+  BulkConfirmation bulkActionConfirmation = { String message, String title ->
+    JOptionPane.showConfirmDialog(
+        this,
+        message,
+        title,
+        JOptionPane.YES_NO_OPTION,
+        JOptionPane.WARNING_MESSAGE
+    ) == JOptionPane.YES_OPTION
+  } as BulkConfirmation
 
   VatPeriodPanel(VatService vatService, FiscalYearService fiscalYearService, ActiveCompanyManager activeCompanyManager) {
     this.vatService = vatService
@@ -88,13 +116,14 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void buildUi() {
+    summaryLabel.name = 'vatPeriodPanel.summaryLabel'
     setLayout(new BorderLayout(12, 12))
     setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16))
     add(buildToolbar(), BorderLayout.NORTH)
     add(buildTables(), BorderLayout.CENTER)
     add(buildFooter(), BorderLayout.SOUTH)
 
-    periodTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
+    periodTable.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
     reportTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
     periodTable.selectionModel.addListSelectionListener { ListSelectionEvent event ->
       if (!event.valueIsAdjusting) {
@@ -162,6 +191,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     feedbackArea
   }
 
+  @SuppressWarnings('CatchRuntimeException')
   private void reloadFiscalYears() {
     if (!activeCompanyManager.hasActiveCompany()) {
       fiscalYearComboBox.removeAllItems()
@@ -169,93 +199,208 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       reportTableModel.setRows([])
       return
     }
-    FiscalYear selected = selectedFiscalYear()
-    fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
-      fiscalYearComboBox.addItem(fiscalYear)
-    }
-    if (selected != null) {
-      selectFiscalYear(selected.id)
-    }
-    if (!fiscalYearListenerInstalled) {
-      fiscalYearComboBox.addActionListener {
-        reloadPeriods()
+    try {
+      FiscalYear selected = selectedFiscalYear()
+      fiscalYearComboBox.removeAllItems()
+      fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
+        fiscalYearComboBox.addItem(fiscalYear)
       }
-      fiscalYearListenerInstalled = true
+      if (selected != null) {
+        selectFiscalYear(selected.id)
+      }
+      if (!fiscalYearListenerInstalled) {
+        fiscalYearComboBox.addActionListener {
+          reloadPeriods()
+        }
+        fiscalYearListenerInstalled = true
+      }
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Kunde inte ladda räkenskapsår.', exception)
+      showError(I18n.instance.getString('vatPeriodPanel.error.unexpected'))
     }
   }
 
+  @SuppressWarnings('CatchRuntimeException')
   private void reloadPeriods() {
-    FiscalYear fiscalYear = selectedFiscalYear()
-    List<VatPeriod> periods = fiscalYear == null ? [] : vatService.listPeriods(fiscalYear.id)
-    periodTableModel.setRows(periods)
-    if (!periods.isEmpty()) {
-      periodTable.setRowSelectionInterval(0, 0)
-    } else {
+    try {
+      FiscalYear fiscalYear = selectedFiscalYear()
+      List<VatPeriod> periods = fiscalYear == null ? [] : vatService.listPeriods(fiscalYear.id)
+      periodTableModel.setRows(periods)
+      if (!periods.isEmpty()) {
+        periodTable.setRowSelectionInterval(0, 0)
+      } else {
+        reportTableModel.setRows([])
+        summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.noPeriods')
+        summaryLabel.toolTipText = null
+      }
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Kunde inte ladda momsperioder.', exception)
+      periodTableModel.setRows([])
       reportTableModel.setRows([])
-      summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.noPeriods')
+      summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
+      summaryLabel.toolTipText = null
+      showError(I18n.instance.getString('vatPeriodPanel.error.unexpected'))
     }
   }
 
+  @SuppressWarnings('CatchRuntimeException')
   private void reloadReportPreview() {
-    VatPeriod period = selectedPeriod()
+    List<VatPeriod> selected = selectedPeriods()
+    VatPeriod period = selected.isEmpty() ? null : selected.first()
     if (period == null) {
       reportTableModel.setRows([])
       summaryLabel.text = I18n.instance.getString('vatPeriodPanel.summary.initial')
+      summaryLabel.toolTipText = null
       return
     }
-    VatService.VatReport report = vatService.calculateReport(period.id)
-    reportTableModel.setRows(report.rows)
-    summaryLabel.text = I18n.instance.format('vatPeriodPanel.summary.base',
-        formatAmount(report.rows.sum(BigDecimal.ZERO) { VatService.VatReportRow row -> row.baseAmount } as BigDecimal)) +
-        "  ${I18n.instance.format('vatPeriodPanel.summary.output', formatAmount(report.outputVatTotal))}" +
-        "  ${I18n.instance.format('vatPeriodPanel.summary.input', formatAmount(report.inputVatTotal))}" +
-        "  ${I18n.instance.format('vatPeriodPanel.summary.net', formatAmount(report.netVatToPay))}"
+    if (selected.size() > 1) {
+      String previewText = previewSummary(selected, period)
+      reportTableModel.setRows([])
+      summaryLabel.text = previewText
+      summaryLabel.toolTipText = previewText
+      return
+    }
+    try {
+      VatService.VatReport report = vatService.calculateReport(period.id)
+      reportTableModel.setRows(report.rows)
+      String previewText = previewSummary(selected, period)
+      summaryLabel.text = previewText + '  ' + I18n.instance.format('vatPeriodPanel.summary.base',
+          formatAmount(report.rows.sum(BigDecimal.ZERO) { VatService.VatReportRow row -> row.baseAmount } as BigDecimal)) +
+          "  ${I18n.instance.format('vatPeriodPanel.summary.output', formatAmount(report.outputVatTotal))}" +
+          "  ${I18n.instance.format('vatPeriodPanel.summary.input', formatAmount(report.inputVatTotal))}" +
+          "  ${I18n.instance.format('vatPeriodPanel.summary.net', formatAmount(report.netVatToPay))}"
+      summaryLabel.toolTipText = previewText
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, "Kunde inte beräkna momsrapport för period ${period.periodName}.", exception)
+      reportTableModel.setRows([])
+      showError(I18n.instance.getString('vatPeriodPanel.error.unexpected'))
+    }
+  }
+
+  private static String previewSummary(List<VatPeriod> selected, VatPeriod period) {
+    if (selected.size() <= 1) {
+      return period.periodName
+    }
+    I18n.instance.format('vatPeriodPanel.summary.previewMultiple', selected.size())
   }
 
   private void reportSelectedPeriod() {
-    VatPeriod period = selectedPeriod()
-    if (period == null) {
-      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodReport'))
-      return
-    }
-    try {
-      VatPeriod reportedPeriod = vatService.reportPeriod(period.id)
-      reloadPeriods()
-      selectPeriod(reportedPeriod.id)
-      showInfo(I18n.instance.format('vatPeriodPanel.message.reported', reportedPeriod.periodName))
-    } catch (IllegalArgumentException exception) {
-      showError(exception.message)
-    } catch (IllegalStateException exception) {
-      showError(exception.message)
-    }
+    executeBulkPeriodAction(
+        'vatPeriodPanel.error.selectPeriodReport',
+        'vatPeriodPanel.confirm.reportMultiple',
+        'vatPeriodPanel.confirm.reportMultiple.title',
+        { VatPeriod period -> vatService.reportPeriod(period.id) },
+        { VatPeriod period -> "Oväntat fel vid rapportering av period ${period.periodName}." },
+        'Oväntat fel vid val av momsperiod efter rapportering.'
+    ) { Integer count, VatPeriod period -> reportSuccessMessage(count, period) }
   }
 
   private void bookTransferForSelectedPeriod() {
-    VatPeriod period = selectedPeriod()
-    if (period == null) {
-      showError(I18n.instance.getString('vatPeriodPanel.error.selectPeriodTransfer'))
+    executeBulkPeriodAction(
+        'vatPeriodPanel.error.selectPeriodTransfer',
+        'vatPeriodPanel.confirm.transferMultiple',
+        'vatPeriodPanel.confirm.transferMultiple.title',
+        { VatPeriod period -> vatService.bookTransfer(period.id) },
+        { VatPeriod period -> "Oväntat fel vid momsöverföring för period ${period.periodName}." },
+        'Oväntat fel vid val av momsperiod efter momsöverföring.'
+    ) { Integer count, VatPeriod period -> transferSuccessMessage(count, period) }
+  }
+
+  @SuppressWarnings('CatchRuntimeException')
+  private void executeBulkPeriodAction(
+      String emptyErrorKey,
+      String confirmKey,
+      String confirmTitleKey,
+      Consumer<VatPeriod> action,
+      Function<VatPeriod, String> periodLogMessage,
+      String selectLogMessage,
+      BiFunction<Integer, VatPeriod, String> successMessage
+  ) {
+    List<VatPeriod> periods = selectedPeriods()
+    if (periods.isEmpty()) {
+      showError(I18n.instance.getString(emptyErrorKey))
       return
     }
-    try {
-      vatService.bookTransfer(period.id)
-      reloadPeriods()
-      selectPeriod(period.id)
-      showInfo(I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName))
-    } catch (IllegalArgumentException exception) {
-      showError(exception.message)
-    } catch (IllegalStateException exception) {
-      showError(exception.message)
+    int successCount = 0
+    List<String> errors = []
+    List<VatPeriod> sortedPeriods = periods.toSorted { VatPeriod period -> period.periodIndex }
+    if (!confirmBulkAction(sortedPeriods, confirmKey, confirmTitleKey)) {
+      return
     }
+    for (VatPeriod period : sortedPeriods) {
+      try {
+        action.accept(period)
+        successCount++
+      } catch (IllegalArgumentException exception) {
+        errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
+        break
+      } catch (IllegalStateException exception) {
+        errors << (exception.message ?: I18n.instance.getString('vatPeriodPanel.error.unexpected'))
+        break
+      } catch (RuntimeException exception) {
+        log.log(Level.WARNING, periodLogMessage.apply(period), exception)
+        errors << I18n.instance.getString('vatPeriodPanel.error.unexpected')
+        break
+      }
+    }
+    reloadPeriods()
+    VatPeriod periodToSelect = selectedPeriodAfterProcessing(sortedPeriods, successCount)
+    try {
+      selectPeriod(periodToSelect.id)
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, selectLogMessage, exception)
+    }
+    if (errors.isEmpty()) {
+      showInfo(successMessage.apply(successCount, periodToSelect))
+    } else if (successCount > 0) {
+      showError(partialFailureMessage(successMessage.apply(successCount, periodToSelect), errors))
+    } else {
+      showError(errors.join('\n'))
+    }
+  }
+
+  private static String reportSuccessMessage(int successCount, VatPeriod period) {
+    successCount == 1
+        ? I18n.instance.format('vatPeriodPanel.message.reported', period.periodName)
+        : I18n.instance.format('vatPeriodPanel.message.reportedMultiple', successCount)
+  }
+
+  private static String transferSuccessMessage(int successCount, VatPeriod period) {
+    successCount == 1
+        ? I18n.instance.format('vatPeriodPanel.message.transferBooked', period.periodName)
+        : I18n.instance.format('vatPeriodPanel.message.transferBookedMultiple', successCount)
+  }
+
+  private static String partialFailureMessage(String successMessage, List<String> errors) {
+    I18n.instance.format('vatPeriodPanel.message.partialFailure', successMessage, errors.join('\n'))
+  }
+
+  private static VatPeriod selectedPeriodAfterProcessing(List<VatPeriod> sortedPeriods, int successCount) {
+    if (successCount <= 0) {
+      // Focus the first blocked period when nothing was processed successfully.
+      return sortedPeriods.first()
+    }
+    sortedPeriods[successCount - 1]
+  }
+
+  private boolean confirmBulkAction(List<VatPeriod> sortedPeriods, String messageKey, String titleKey) {
+    if (sortedPeriods.size() <= 1) {
+      return true
+    }
+    String periodNames = sortedPeriods.collect { VatPeriod period -> period.periodName }.join(', ')
+    bulkActionConfirmation.confirm(
+        I18n.instance.format(messageKey, sortedPeriods.size(), periodNames),
+        I18n.instance.getString(titleKey)
+    )
   }
 
   private FiscalYear selectedFiscalYear() {
     fiscalYearComboBox.selectedItem as FiscalYear
   }
 
-  private VatPeriod selectedPeriod() {
-    int row = periodTable.selectedRow
-    row < 0 ? null : periodTableModel.rowAt(row)
+  private List<VatPeriod> selectedPeriods() {
+    int[] rows = periodTable.selectedRows
+    rows.collect { int row -> periodTableModel.rowAt(row) }
   }
 
   private void selectFiscalYear(Long fiscalYearId) {
