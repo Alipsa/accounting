@@ -1,6 +1,21 @@
 # Alipsa Accounting, Release History
 
-## v1.3.0, In progress
+## v1.3.0, 2026-05-20
+### Minor Release
+
+This release improves VAT code handling and VAT period workflows, makes amount entry and reports locale-aware, and fixes SIE import edge cases for deleted or corrected voucher rows.
+
+### Highlights
+
+- **VAT codes in the chart of accounts** — The chart of accounts now shows each account's VAT code and lets users set or clear compatible VAT codes directly. BAS imports assign standard VAT codes for common VAT accounts, backfill missing standard codes on re-import, and classify input VAT accounts such as `264x` as debit-side asset accounts.
+- **More accurate VAT reporting** — VAT reporting now supports `REVERSE_CHARGE_EU_25` and handles EU reverse-charge output VAT per voucher so goods and services bases stay in the right VAT buckets. VAT transfer vouchers are excluded from VAT calculations more consistently when reports cover overlapping periods.
+- **Safer VAT period processing** — VAT periods must now be reported and locked in chronological order, preventing later periods from being closed before earlier ones. The VAT period table supports selecting multiple periods for reporting or VAT transfer booking, with confirmation and clear partial-failure messages.
+- **VAT period structure updates** — If a company's VAT periodicity changes, open VAT periods can be restructured without disturbing already reported or locked periods. This avoids stale monthly, quarterly, or annual period layouts after settings changes.
+- **Locale-aware amounts** — Voucher entry, VAT previews, balances, and generated reports now format amounts with the active company's locale. Amount fields accept the local decimal separator and normalize comma/dot input during editing.
+- **Voucher entry ergonomics** — Keyboard navigation in voucher rows is more predictable: account selection jumps to debit or credit based on the account's normal balance side, Tab/Enter advances through editable fields, and edited cell text is selected when entering by keyboard. The date picker accepts keyboard input.
+- **Account lookup fixes** — The account lookup popup now hides when focus leaves the editor, no longer disappears before exact account-number input can be selected, and auto-selects a single exact account number match.
+- **SIE import fixes** — SIE4 import now ignores `#BTRANS` and `#RTRANS` rows according to the SIE 4B model, skips vouchers that only contain deleted rows, and counts only importable `#TRANS` rows in previews. The import file chooser accepts uppercase `.SIE`, `.SI`, and `.SE` extensions.
+- **Startup and status polish** — The application remembers the last active company across restarts, and status-bar messages automatically return to Ready after a short delay.
 
 ## v1.2.1, 2026-05-03
 ### Patch Release

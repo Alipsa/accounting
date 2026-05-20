@@ -28,12 +28,12 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 
 ### Avgränsningar
 
-Följande funktioner ingår inte i v1.2.1:
+Följande funktioner ingår inte i v1.3.0:
 
 - Fakturering och lön
 - Bankintegration
 - Årsredovisningsflöden
-- Anläggningsregister (planerat till v1.3.0)
+- Anläggningsregister (planerat till v1.4.0)
 
 ## Förutsättningar
 
