@@ -17,6 +17,22 @@ This release improves VAT code handling and VAT period workflows, makes amount e
 - **SIE import fixes** — SIE4 import now ignores `#BTRANS` and `#RTRANS` rows according to the SIE 4B model, skips vouchers that only contain deleted rows, and counts only importable `#TRANS` rows in previews. The import file chooser accepts uppercase `.SIE`, `.SI`, and `.SE` extensions.
 - **Startup and status polish** — The application remembers the last active company across restarts, and status-bar messages automatically return to Ready after a short delay.
 
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.3.0-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.3.0-windows.zip` |
+| macOS                     | `alipsa-accounting-1.3.0-macos.zip`   |
+| Universal updater archive | `app-1.3.0.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.2.1, 2026-05-03
 ### Patch Release
 
