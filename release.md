@@ -1,5 +1,7 @@
 # Alipsa Accounting, Release History
 
+## v1.4.0, 2026-06-20
+
 ## v1.3.0, 2026-05-20
 ### Minor Release
 
