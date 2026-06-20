@@ -5,6 +5,8 @@ import java.beans.PropertyChangeSupport
 import java.text.MessageFormat
 import java.util.logging.Logger
 
+import javax.swing.JComponent
+
 /**
  * Manages locale and translatable string lookups with runtime switching support.
  */
@@ -54,8 +56,10 @@ final class I18n {
 
   void setLocale(Locale locale) {
     Locale oldLocale = currentLocale
+    ResourceBundle newBundle = loadBundle(locale)
+    JComponent.setDefaultLocale(locale)
     currentLocale = locale
-    bundle = loadBundle(locale)
+    bundle = newBundle
     changeSupport.firePropertyChange('locale', oldLocale, locale)
   }
 
