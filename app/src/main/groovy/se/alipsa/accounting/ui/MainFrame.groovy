@@ -426,15 +426,25 @@ final class MainFrame implements PropertyChangeListener {
     }
     companyProfileSummaryLabel.text = I18n.instance.format(
         'mainFrame.companySettings.summary',
-        active.companyName,
+        escapeHtml(active.companyName),
         I18n.instance.getString('mainFrame.companySettings.orgNumber'),
-        active.organizationNumber,
+        escapeHtml(active.organizationNumber),
         I18n.instance.getString('mainFrame.companySettings.currency'),
-        active.defaultCurrency,
-        active.localeTag,
+        escapeHtml(active.defaultCurrency),
+        escapeHtml(active.localeTag),
         I18n.instance.getString('mainFrame.companySettings.vatPeriod'),
-        active.vatPeriodicity?.toString()
+        escapeHtml(active.vatPeriodicity?.toString())
     )
+  }
+
+  private static String escapeHtml(String text) {
+    if (text == null) {
+      return ''
+    }
+    text
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
   }
 
   private JPanel buildApplicationPreferencesSection() {
