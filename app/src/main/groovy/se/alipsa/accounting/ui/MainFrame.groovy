@@ -279,6 +279,7 @@ final class MainFrame implements PropertyChangeListener {
     vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
     vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
     refreshCompanyProfileSummary()
+    updateNotificationButton.toolTipText = I18n.instance.getString('mainFrame.button.updateAvailable.tooltip')
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
     }
@@ -578,6 +579,7 @@ final class MainFrame implements PropertyChangeListener {
     updateNotificationButton.borderPainted = false
     updateNotificationButton.contentAreaFilled = false
     updateNotificationButton.foreground = new Color(22, 101, 52)
+    updateNotificationButton.toolTipText = I18n.instance.getString('mainFrame.button.updateAvailable.tooltip')
     updateNotificationButton.addActionListener { showUpdateDialog() }
 
     statusBar.add(leftPanel, BorderLayout.WEST)
