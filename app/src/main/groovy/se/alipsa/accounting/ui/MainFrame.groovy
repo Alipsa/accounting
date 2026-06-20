@@ -41,6 +41,7 @@ import se.alipsa.accounting.support.LoggingConfigurer
 
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Component
 import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.FlowLayout
@@ -53,6 +54,7 @@ import java.util.logging.Logger
 
 import javax.imageio.ImageIO
 import javax.swing.*
+import javax.swing.border.TitledBorder
 
 /**
  * Main desktop window with phase two navigation and setup actions.
@@ -180,6 +182,13 @@ final class MainFrame implements PropertyChangeListener {
   private JRadioButton themeSystemButton
   private JRadioButton themeLightButton
   private JRadioButton themeDarkButton
+  private JLabel companyProfileSummaryLabel
+  private JButton companyProfileEditButton
+  private JButton vatCodesLinkButton
+  private JButton vatPeriodsLinkButton
+  private TitledBorder companyProfileSectionBorder
+  private TitledBorder applicationPreferencesSectionBorder
+  private TitledBorder relatedConfigurationSectionBorder
   private JTabbedPane tabbedPane
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
@@ -232,6 +241,7 @@ final class MainFrame implements PropertyChangeListener {
   private void onCompanyChanged() {
     refreshTitle()
     reloadFiscalYearComboBox()
+    refreshCompanyProfileSummary()
     Company active = activeCompanyManager.activeCompany
     if (active != null) {
       userPreferencesService.setLastActiveCompanyId(active.id)
@@ -262,6 +272,13 @@ final class MainFrame implements PropertyChangeListener {
     themeLightButton.text = I18n.instance.getString('settings.theme.light')
     themeDarkButton.text = I18n.instance.getString('settings.theme.dark')
     updateLanguageButtonBorders()
+    companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
+    applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
+    relatedConfigurationSectionBorder.title = I18n.instance.getString('settings.section.relatedConfiguration')
+    companyProfileEditButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
+    vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
+    vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
+    refreshCompanyProfileSummary()
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
     }
@@ -352,10 +369,69 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private JPanel buildSettingsPanel() {
-    JPanel panel = new JPanel(new BorderLayout(0, 12))
+    JPanel panel = new JPanel()
+    panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     panel.border = BorderFactory.createEmptyBorder(24, 24, 24, 24)
 
-    JPanel topPanel = new JPanel(new BorderLayout(0, 12))
+    JPanel companyProfileSection = buildCompanyProfileSection()
+    JPanel applicationPreferencesSection = buildApplicationPreferencesSection()
+    JPanel relatedConfigurationSection = buildRelatedConfigurationSection()
+    companyProfileSection.alignmentX = Component.LEFT_ALIGNMENT
+    applicationPreferencesSection.alignmentX = Component.LEFT_ALIGNMENT
+    relatedConfigurationSection.alignmentX = Component.LEFT_ALIGNMENT
+
+    panel.add(companyProfileSection)
+    panel.add(Box.createVerticalStrut(12))
+    panel.add(applicationPreferencesSection)
+    panel.add(Box.createVerticalStrut(12))
+    panel.add(relatedConfigurationSection)
+    panel.add(Box.createVerticalGlue())
+
+    panel
+  }
+
+  private JPanel buildCompanyProfileSection() {
+    JPanel section = new JPanel(new BorderLayout(0, 8))
+    companyProfileSectionBorder = BorderFactory.createTitledBorder(I18n.instance.getString('settings.section.companyProfile'))
+    section.border = companyProfileSectionBorder
+
+    companyProfileSummaryLabel = new JLabel()
+    companyProfileEditButton = new JButton(I18n.instance.getString('mainFrame.button.editCompanySettings'))
+    companyProfileEditButton.addActionListener { showEditCompanyDialog() }
+    refreshCompanyProfileSummary()
+
+    JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    buttonRow.add(companyProfileEditButton)
+
+    section.add(companyProfileSummaryLabel, BorderLayout.CENTER)
+    section.add(buttonRow, BorderLayout.SOUTH)
+    section
+  }
+
+  private void refreshCompanyProfileSummary() {
+    Company active = activeCompanyManager.activeCompany
+    if (active == null) {
+      companyProfileSummaryLabel.text = I18n.instance.getString('mainFrame.companySettings.noProfile')
+      return
+    }
+    companyProfileSummaryLabel.text = I18n.instance.format(
+        'mainFrame.companySettings.summary',
+        active.companyName,
+        I18n.instance.getString('mainFrame.companySettings.orgNumber'),
+        active.organizationNumber,
+        I18n.instance.getString('mainFrame.companySettings.currency'),
+        active.defaultCurrency,
+        active.localeTag,
+        I18n.instance.getString('mainFrame.companySettings.vatPeriod'),
+        active.vatPeriodicity?.toString()
+    )
+  }
+
+  private JPanel buildApplicationPreferencesSection() {
+    JPanel section = new JPanel()
+    section.layout = new BoxLayout(section, BoxLayout.Y_AXIS)
+    applicationPreferencesSectionBorder = BorderFactory.createTitledBorder(I18n.instance.getString('settings.section.applicationPreferences'))
+    section.border = applicationPreferencesSectionBorder
 
     JPanel languageRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     languageLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.language'))
@@ -367,17 +443,26 @@ final class MainFrame implements PropertyChangeListener {
     languageRow.add(languageLabel)
     languageRow.add(englishButton)
     languageRow.add(swedishButton)
-    JPanel settingsRows = new JPanel()
-    settingsRows.layout = new BoxLayout(settingsRows, BoxLayout.Y_AXIS)
-    settingsRows.add(languageRow)
-    settingsRows.add(buildThemeRow())
-    settingsRows.add(buildUpdateRow())
 
-    topPanel.add(settingsRows, BorderLayout.NORTH)
+    section.add(languageRow)
+    section.add(buildThemeRow())
+    section.add(buildUpdateRow())
+    section
+  }
 
-    panel.add(topPanel, BorderLayout.NORTH)
+  private JPanel buildRelatedConfigurationSection() {
+    JPanel section = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    relatedConfigurationSectionBorder = BorderFactory.createTitledBorder(I18n.instance.getString('settings.section.relatedConfiguration'))
+    section.border = relatedConfigurationSectionBorder
 
-    panel
+    vatCodesLinkButton = new JButton(I18n.instance.getString('settings.crossLink.vatCodes'))
+    vatCodesLinkButton.addActionListener { tabbedPane.setSelectedIndex(4) }
+    vatPeriodsLinkButton = new JButton(I18n.instance.getString('settings.crossLink.vatPeriods'))
+    vatPeriodsLinkButton.addActionListener { tabbedPane.setSelectedIndex(2) }
+
+    section.add(vatCodesLinkButton)
+    section.add(vatPeriodsLinkButton)
+    section
   }
 
   private void switchLanguage(Locale locale) {
@@ -677,6 +762,7 @@ final class MainFrame implements PropertyChangeListener {
     CompanyDialog.showDialog(frame, companyService, active, { Company saved ->
       reloadCompanyComboBox()
       refreshTitle()
+      refreshCompanyProfileSummary()
       overviewPanel.reload()
     } as java.util.function.Consumer<Company>)
   }
