@@ -89,7 +89,6 @@ class VoucherLineCellEditor extends DefaultCellEditor {
 final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
-  private static final String DUPLICATE_BUTTON_GLYPH = '\u29C9'
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -223,7 +222,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     saveButton.addActionListener { saveVoucher() }
     panel.add(saveButton)
 
-    duplicateButton = new JButton(DUPLICATE_BUTTON_GLYPH)
+    duplicateButton = new JButton('\u29C9')
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     duplicateButton.addActionListener { duplicateVoucher() }
     panel.add(duplicateButton)
@@ -940,7 +939,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
-    duplicateButton.text = DUPLICATE_BUTTON_GLYPH
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
