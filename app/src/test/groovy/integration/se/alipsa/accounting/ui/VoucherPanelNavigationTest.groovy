@@ -169,6 +169,7 @@ final class VoucherPanelNavigationTest {
     Files.writeString(attachment, 'bilaga')
     attachmentService.addAttachment(source.id, attachment)
 
+    // Rebuild after creating the fixture so constructor navigation sees the saved voucher.
     panel = buildPanel()
     installPanelHooks()
     onEdt {
@@ -187,7 +188,7 @@ final class VoucherPanelNavigationTest {
     assertTrue(onEdt { auditLogTable.rowCount > 0 })
 
     onEdt {
-      clickButtonWithText(panel, I18n.instance.getString('voucherPanel.button.duplicate'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.duplicate'))
     }
 
     assertEquals(1, dateFocusRequests)
@@ -301,13 +302,6 @@ final class VoucherPanelNavigationTest {
   private static void clickButtonWithTooltip(Container root, String tooltip) {
     JButton button = findComponent(root, JButton) { JButton candidate ->
       candidate.toolTipText == tooltip
-    } as JButton
-    button.doClick()
-  }
-
-  private static void clickButtonWithText(Container root, String text) {
-    JButton button = findComponent(root, JButton) { JButton candidate ->
-      candidate.text == text
     } as JButton
     button.doClick()
   }
