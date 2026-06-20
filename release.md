@@ -1,6 +1,35 @@
 # Alipsa Accounting, Release History
 
 ## v1.4.0, 2026-06-20
+### Minor Release
+
+This release improves voucher reuse, reorganizes settings and company-profile navigation, fixes Swing locale synchronization, and updates the Gradle build toolchain.
+
+### Highlights
+
+- **Duplicate vouchers as new drafts** — Existing vouchers now have a compact duplicate action that creates a new unsaved draft from the original series, description, and voucher lines. The draft uses the normal default date, previews the next voucher number, leaves attachments and audit history behind, and focuses the date picker so the user can choose a new booking date before saving.
+- **Clearer settings organization** — The Settings tab is now grouped into Company profile, Application preferences, and Related configuration sections. Company profile editing uses the main company dialog, while quick links point users to VAT code assignment and VAT period reporting.
+- **Simplified company settings code path** — The duplicate company settings dialog, service, and domain model were removed so company profile changes go through one maintained flow.
+- **Workflow vs configuration guidance** — Main tabs now include tooltips that clarify which tabs are day-to-day workflows and which are configuration or system areas. The File menu labels were adjusted to match the new company profile terminology.
+- **Safer company profile rendering** — Company profile summaries now escape HTML-sensitive characters before rendering, preventing malformed display when company data contains characters such as `<`, `>`, or `&`.
+- **Runtime locale synchronization** — Changing application language now updates Swing's default component locale without changing the JVM default locale, so Swing widgets follow the selected UI language more consistently.
+- **Build tooling update** — The project now builds with Gradle 9.6.0 and Spotless Gradle plugin 8.7.0.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.4.0-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.4.0-windows.zip` |
+| macOS                     | `alipsa-accounting-1.4.0-macos.zip`   |
+| Universal updater archive | `app-1.4.0.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
 
 ## v1.3.0, 2026-05-20
 ### Minor Release
