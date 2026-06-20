@@ -4,7 +4,6 @@ import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
 import se.alipsa.accounting.domain.Company
-import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.VatPeriodicity
 
 import java.util.logging.Logger
@@ -156,29 +155,6 @@ final class CompanyService {
       }
       LOG.info("Deleted company id=${companyId}, name='${company.companyName}'")
     }
-  }
-
-  Company upsertLegacyCompany(CompanySettings settings) {
-    databaseService.withTransaction { Sql sql ->
-      upsertLegacyCompany(sql, settings)
-    }
-  }
-
-  Company upsertLegacyCompany(Sql sql, CompanySettings settings) {
-    if (settings == null) {
-      throw new IllegalArgumentException('Company settings are required.')
-    }
-    save(sql, new Company(
-        LEGACY_COMPANY_ID,
-        settings.companyName,
-        settings.organizationNumber,
-        settings.defaultCurrency,
-        settings.localeTag,
-        settings.vatPeriodicity ?: VatPeriodicity.MONTHLY,
-        true,
-        null,
-        null
-    ))
   }
 
   Company save(Sql sql, Company company) {

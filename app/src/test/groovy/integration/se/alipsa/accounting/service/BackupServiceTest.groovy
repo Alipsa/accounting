@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
-import se.alipsa.accounting.domain.CompanySettings
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.ReportSelection
@@ -72,7 +72,7 @@ class BackupServiceTest {
     restoredDatabase.initialize()
     restoredDatabase.withSql { Sql sql ->
       assertEquals(1, count(sql, 'company'))
-      assertEquals(1, count(sql, 'company_settings'))
+      assertEquals(0, count(sql, 'company_settings'))
       assertEquals(1, count(sql, 'voucher'))
       assertEquals(1, count(sql, 'attachment'))
       assertEquals(1, count(sql, 'report_archive'))
@@ -101,12 +101,12 @@ class BackupServiceTest {
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
-    CompanySettingsService companySettingsService = new CompanySettingsService(databaseService)
+    CompanyService companyService = new CompanyService(databaseService)
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     AttachmentService attachmentService = new AttachmentService(databaseService, auditLogService)
     ReportArchiveService reportArchiveService = new ReportArchiveService(databaseService)
 
-    companySettingsService.save(new CompanySettings(1L, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
+    companyService.save(new Company(CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null))
     def fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')

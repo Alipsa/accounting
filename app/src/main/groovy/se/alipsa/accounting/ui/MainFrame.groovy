@@ -6,7 +6,6 @@ import groovy.transform.CompileDynamic
 import com.formdev.flatlaf.util.UIScale
 
 import se.alipsa.accounting.domain.Company
-import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.AccountService
@@ -17,7 +16,6 @@ import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
-import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearDeletionService
 import se.alipsa.accounting.service.FiscalYearService
@@ -73,7 +71,6 @@ final class MainFrame implements PropertyChangeListener {
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
-  private final CompanySettingsService companySettingsService = new CompanySettingsService()
   private final UserPreferencesService userPreferencesService = new UserPreferencesService()
   private final AuditLogService auditLogService = new AuditLogService()
   private final AccountingPeriodService accountingPeriodService = new AccountingPeriodService()
@@ -162,7 +159,6 @@ final class MainFrame implements PropertyChangeListener {
   private JComboBox<FiscalYear> fiscalYearComboBox
   private JLabel fiscalYearLabel
   private JMenu fileMenu
-  private JMenuItem companySettingsMenuItem
   private JMenuItem newCompanyMenuItem
   private JMenuItem editCompanyMenuItem
   private JMenuItem sieExchangeMenuItem
@@ -273,7 +269,6 @@ final class MainFrame implements PropertyChangeListener {
 
   private void applyMenuLocale() {
     fileMenu.text = I18n.instance.getString('mainFrame.menu.file')
-    companySettingsMenuItem.text = I18n.instance.getString('mainFrame.menu.file.companySettings')
     newCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.newCompany')
     editCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.editCompany')
     sieExchangeMenuItem.text = I18n.instance.getString('mainFrame.menu.file.sieExchange')
@@ -333,7 +328,6 @@ final class MainFrame implements PropertyChangeListener {
         newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: this.&showNewCompanyDialog)
         editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: this.&showEditCompanyDialog)
         separator()
-        companySettingsMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.companySettings'), actionPerformed: this.&showCompanySettingsDialog)
         sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: this.&showSieExchangeDialog)
         separator()
         archiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.archiveCompany'), actionPerformed: this.&archiveCompanyRequested)
@@ -665,13 +659,6 @@ final class MainFrame implements PropertyChangeListener {
         JOptionPane.INFORMATION_MESSAGE,
         icon
     )
-  }
-
-  private void showCompanySettingsDialog() {
-    CompanySettingsDialog.showDialog(frame, companySettingsService, {
-      reloadCompanyComboBox()
-      setStatus(I18n.instance.getString('mainFrame.status.companySaved'))
-    } as Runnable)
   }
 
   private void showNewCompanyDialog() {

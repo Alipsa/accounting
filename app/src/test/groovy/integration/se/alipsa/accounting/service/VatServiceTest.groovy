@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriod
@@ -35,7 +36,7 @@ class VatServiceTest {
   private AuditLogService auditLogService
   private AccountingPeriodService accountingPeriodService
   private FiscalYearService fiscalYearService
-  private CompanySettingsService companySettingsService
+  private CompanyService companyService
   private VoucherService voucherService
   private VatService vatService
   private FiscalYear fiscalYear
@@ -50,7 +51,7 @@ class VatServiceTest {
     auditLogService = new AuditLogService(databaseService)
     accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
-    companySettingsService = new CompanySettingsService(databaseService)
+    companyService = new CompanyService(databaseService)
     voucherService = new VoucherService(databaseService, auditLogService)
     vatService = new VatService(databaseService, voucherService)
     fiscalYear = fiscalYearService.createFiscalYear(
@@ -341,14 +342,17 @@ class VatServiceTest {
 
   @Test
   void annualVatSettingCreatesOneVatPeriodForWholeFiscalYear() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.ANNUAL
+            VatPeriodicity.ANNUAL,
+            true,
+            null,
+            null
         )
     )
     FiscalYear annualYear = fiscalYearService.createFiscalYear(
@@ -368,14 +372,17 @@ class VatServiceTest {
 
   @Test
   void quarterlyVatSettingCreatesFourVatPeriodsForFiscalYear() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Konsultfirma',
             '930501-5678',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
     FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
@@ -404,14 +411,17 @@ class VatServiceTest {
 
   @Test
   void quarterlyVatForBrokenFiscalYearProducesCalendarQuarterPeriodsWithPartialEdges() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Brutet AB',
             '556677-8899',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
     FiscalYear brokenYear = fiscalYearService.createFiscalYear(
@@ -443,14 +453,17 @@ class VatServiceTest {
 
   @Test
   void quarterlyVatForQuarterAlignedBrokenFiscalYearProducesFourFullQuarters() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Kvartalslinjerat AB',
             '556600-1122',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
     FiscalYear alignedYear = fiscalYearService.createFiscalYear(
@@ -486,14 +499,17 @@ class VatServiceTest {
     VatPeriod january = monthlyPeriods.first()
     vatService.reportPeriod(january.id)
 
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
 
@@ -534,14 +550,17 @@ class VatServiceTest {
     vatService.bookTransfer(january.id)
     vatService.reportPeriod(february.id)
 
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
 
@@ -603,14 +622,17 @@ class VatServiceTest {
       vatService.reportPeriod(period.id)
     }
 
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
 
@@ -625,14 +647,17 @@ class VatServiceTest {
 
   @Test
   void ensurePeriodsForFiscalYearRestructuresAnnualAfterReportedFirstQuarter() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.ANNUAL
+            VatPeriodicity.ANNUAL,
+            true,
+            null,
+            null
         )
     )
     FiscalYear annualYear = fiscalYearService.createFiscalYear(
@@ -654,14 +679,17 @@ class VatServiceTest {
            where fiscal_year_id = ?
       ''', [VatService.REPORTED, annualYear.id])
     }
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
 
@@ -710,14 +738,17 @@ class VatServiceTest {
 
   @Test
   void ensurePeriodsForFiscalYearCreatesRemainingAnnualPeriodAfterReportedQuarters() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
     FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
@@ -730,14 +761,17 @@ class VatServiceTest {
     assertEquals(4, quarters.size())
     vatService.reportPeriod(quarters[0].id)
 
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.ANNUAL
+            VatPeriodicity.ANNUAL,
+            true,
+            null,
+            null
         )
     )
 
@@ -772,14 +806,17 @@ class VatServiceTest {
 
   @Test
   void ensurePeriodsForFiscalYearLeavesUnchangedQuarterlyPeriodicityUntouched() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.QUARTERLY
+            VatPeriodicity.QUARTERLY,
+            true,
+            null,
+            null
         )
     )
     FiscalYear quarterlyYear = fiscalYearService.createFiscalYear(
@@ -804,14 +841,17 @@ class VatServiceTest {
 
   @Test
   void ensurePeriodsForFiscalYearLeavesUnchangedAnnualPeriodicityUntouched() {
-    companySettingsService.save(
-        new se.alipsa.accounting.domain.CompanySettings(
-            null,
+    companyService.save(
+        new Company(
+            CompanyService.LEGACY_COMPANY_ID,
             'Enskild firma',
             '850101-1234',
             'SEK',
             'sv-SE',
-            VatPeriodicity.ANNUAL
+            VatPeriodicity.ANNUAL,
+            true,
+            null,
+            null
         )
     )
     FiscalYear annualYear = fiscalYearService.createFiscalYear(
