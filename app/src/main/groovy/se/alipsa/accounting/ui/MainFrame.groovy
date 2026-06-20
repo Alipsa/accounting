@@ -310,6 +310,14 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
     tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.system'))
     tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
+    tabbedPane.setToolTipTextAt(0, I18n.instance.getString('mainFrame.tab.overview.tooltip'))
+    tabbedPane.setToolTipTextAt(1, I18n.instance.getString('mainFrame.tab.vouchers.tooltip'))
+    tabbedPane.setToolTipTextAt(2, I18n.instance.getString('mainFrame.tab.vat.tooltip'))
+    tabbedPane.setToolTipTextAt(3, I18n.instance.getString('mainFrame.tab.reports.tooltip'))
+    tabbedPane.setToolTipTextAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts.tooltip'))
+    tabbedPane.setToolTipTextAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears.tooltip'))
+    tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.system.tooltip'))
+    tabbedPane.setToolTipTextAt(7, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
   }
 
   private JFrame buildFrame() {
@@ -331,6 +339,7 @@ final class MainFrame implements PropertyChangeListener {
     buildMainTabs().each { Map<String, Object> tab ->
       tabbedPane.addTab(tab.title as String, tab.component as JComponent)
     }
+    applyTabLocale()
     tabbedPane.addChangeListener { javax.swing.event.ChangeEvent ignored ->
       if (tabbedPane.selectedComponent == overviewPanel) {
         overviewPanel.reload()
