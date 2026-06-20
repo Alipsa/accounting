@@ -2,6 +2,7 @@ package unit.se.alipsa.accounting.domain
 
 import static org.junit.jupiter.api.Assertions.*
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -10,11 +11,21 @@ import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.I18n
 
+import javax.swing.JComponent
+
 final class EnumDisplayNameTest {
+
+  private Locale previousComponentLocale
 
   @BeforeEach
   void setUp() {
+    previousComponentLocale = JComponent.defaultLocale
     I18n.instance.setLocale(Locale.ENGLISH)
+  }
+
+  @AfterEach
+  void tearDown() {
+    JComponent.setDefaultLocale(previousComponentLocale)
   }
 
   @Test

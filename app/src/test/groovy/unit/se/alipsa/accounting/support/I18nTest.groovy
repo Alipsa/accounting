@@ -2,6 +2,7 @@ package unit.se.alipsa.accounting.support
 
 import static org.junit.jupiter.api.Assertions.*
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -10,14 +11,25 @@ import se.alipsa.accounting.support.I18n
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 
+import javax.swing.JComponent
+
 final class I18nTest {
 
   private I18n i18n
+  private Locale previousDefaultLocale
+  private Locale previousComponentLocale
 
   @BeforeEach
   void setUp() {
+    previousDefaultLocale = Locale.default
+    previousComponentLocale = JComponent.defaultLocale
     i18n = new I18n()
     i18n.setLocale(Locale.ENGLISH)
+  }
+
+  @AfterEach
+  void tearDown() {
+    JComponent.setDefaultLocale(previousComponentLocale)
   }
 
   @Test
@@ -65,6 +77,16 @@ final class I18nTest {
     assertTrue(fired)
     assertEquals(Locale.ENGLISH, receivedLocales[0])
     assertEquals(Locale.forLanguageTag('sv'), receivedLocales[1])
+  }
+
+  @Test
+  void setLocaleUpdatesSwingDefaultWithoutChangingJvmDefault() {
+    Locale swedish = Locale.forLanguageTag('sv')
+
+    i18n.setLocale(swedish)
+
+    assertEquals(previousDefaultLocale, Locale.default)
+    assertEquals(swedish, JComponent.defaultLocale)
   }
 
   @Test
