@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Company
-import se.alipsa.accounting.domain.CompanySettings
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriodicity
@@ -32,7 +31,6 @@ import se.alipsa.accounting.service.BackupSummary
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
-import se.alipsa.accounting.service.CompanySettingsService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.JournoReportService
@@ -80,7 +78,7 @@ class AcceptanceCriteriaTest {
     databaseService.initialize()
     AcceptanceServices services = createAcceptanceServices(databaseService)
 
-    services.companySettingsService.save(new CompanySettings(1L, 'Accept AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY))
+    services.companyService.save(new Company(CompanyService.LEGACY_COMPANY_ID, 'Accept AB', '556677-8899', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null))
     FiscalYear fiscalYear = services.fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     Path workbook = createBasWorkbook()
     new ChartOfAccountsImportService(databaseService).importFromExcel(workbook)
@@ -339,7 +337,6 @@ class AcceptanceCriteriaTest {
   }
 
   private static AcceptanceServices createAcceptanceServices(DatabaseService databaseService) {
-    CompanySettingsService companySettingsService = new CompanySettingsService(databaseService)
     CompanyService companyService = new CompanyService(databaseService)
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
@@ -351,7 +348,7 @@ class AcceptanceCriteriaTest {
     ReportDataService reportDataService = new ReportDataService(databaseService, fiscalYearService, accountingPeriodService)
     new AcceptanceServices(
         accountService: new AccountService(databaseService),
-        companySettingsService: companySettingsService,
+        companyService: companyService,
         accountingPeriodService: accountingPeriodService,
         fiscalYearService: fiscalYearService,
         attachmentService: attachmentService,
@@ -455,7 +452,7 @@ class AcceptanceCriteriaTest {
   private static final class AcceptanceServices {
 
     AccountService accountService
-    CompanySettingsService companySettingsService
+    CompanyService companyService
     AccountingPeriodService accountingPeriodService
     FiscalYearService fiscalYearService
     AttachmentService attachmentService
