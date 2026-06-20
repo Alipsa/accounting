@@ -100,6 +100,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   @PackageScope
   Closure cursorMover = { int row, int col -> moveCursorToCell(row, col) }
 
+  @PackageScope
+  Closure dateFocusRequester = { datePicker.requestFocusInWindow() }
+
   private final JLabel voucherNumberLabel = new JLabel('')
   private final DatePicker datePicker = createDatePicker()
   private final JTextField descriptionField = new JTextField(30)
@@ -112,6 +115,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JButton prevButton
   private JButton nextButton
   private JButton saveButton
+  private JButton duplicateButton
   private JButton correctionButton
   private JButton voidButton
   private JButton addAttachmentButton
@@ -217,6 +221,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     saveButton.addActionListener { saveVoucher() }
     panel.add(saveButton)
+
+    duplicateButton = new JButton(I18n.instance.getString('voucherPanel.button.duplicate'))
+    duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
+    duplicateButton.addActionListener { duplicateVoucher() }
+    panel.add(duplicateButton)
 
     correctionButton = new JButton('\u270E')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
@@ -709,6 +718,26 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
+  private void duplicateVoucher() {
+    if (currentVoucher == null) { return }
+    Voucher source = currentVoucher
+    String seriesCode = source.seriesCode ?: 'A'
+    List<VoucherLine> copiedLines = source.lines.collect { VoucherLine line ->
+      new VoucherLine(null, null, line.lineIndex, null, line.accountNumber, line.accountName, line.description, line.debitAmount ?: BigDecimal.ZERO, line.creditAmount ?: BigDecimal.ZERO)
+    }
+    currentIndex = -1
+    showBlankVoucher()
+    voucherNumberLabel.text = previewNextVoucherNumber(seriesCode)
+    jumpField.text = voucherNumberLabel.text
+    descriptionField.text = source.description ?: ''
+    seriesField.text = seriesCode
+    lineTableModel.setRows(copiedLines)
+    ensureAutoRow()
+    recalculateAllBalances()
+    showInfo(I18n.instance.getString('voucherPanel.message.duplicateCreated'))
+    dateFocusRequester.call()
+  }
+
   private void deleteOrCancelVoucher() {
     if (currentVoucher == null) {
       return
@@ -774,6 +803,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     descriptionField.enabled = !readOnly
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
+    duplicateButton.enabled = currentVoucher != null
     voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
         && currentVoucher.accountingDate != null
@@ -909,6 +939,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
+    duplicateButton.text = I18n.instance.getString('voucherPanel.button.duplicate')
+    duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
