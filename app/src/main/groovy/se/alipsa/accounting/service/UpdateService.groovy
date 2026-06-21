@@ -249,7 +249,7 @@ final class UpdateService {
     }
   }
 
-  private Path writeUpdaterScript(Path stagingDir, Path extractedDir, Path installDir, Path updaterLog) {
+  Path writeUpdaterScript(Path stagingDir, Path extractedDir, Path installDir, Path updaterLog) {
     String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
     boolean isWindows = osName.contains('win')
     Path launcher = launcherPath()
