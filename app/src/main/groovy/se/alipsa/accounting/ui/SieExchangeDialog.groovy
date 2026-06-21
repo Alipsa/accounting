@@ -359,10 +359,10 @@ final class SieExchangeDialog extends JDialog {
     if (companiesMatch(currentCompany, sieCompany)) {
       return companyId
     }
-    String sieName = sieCompany.name ?: '-'
-    String sieOrg = sieCompany.orgIdentifier ?: '-'
-    String dbName = currentCompany?.companyName ?: '-'
-    String dbOrg = currentCompany?.organizationNumber ?: '-'
+    String sieName = escapeHtml(sieCompany.name ?: '-')
+    String sieOrg = escapeHtml(sieCompany.orgIdentifier ?: '-')
+    String dbName = escapeHtml(currentCompany?.companyName ?: '-')
+    String dbOrg = escapeHtml(currentCompany?.organizationNumber ?: '-')
     boolean canCreateNew = sieCompany.name?.trim() && sieCompany.orgIdentifier?.trim()
     String message = "<html>" +
         I18n.instance.format('sieExchangeDialog.company.mismatchSieLine', sieName, sieOrg) + "<br>" +
@@ -392,6 +392,16 @@ final class SieExchangeDialog extends JDialog {
       return createCompanyFromSie(sieCompany)
     }
     CANCELLED
+  }
+
+  private static String escapeHtml(String text) {
+    if (text == null) {
+      return ''
+    }
+    text
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
   }
 
   private long createCompanyFromSie(SieCompany sieCompany) {
