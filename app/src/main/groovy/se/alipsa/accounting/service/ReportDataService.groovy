@@ -3,12 +3,10 @@ package se.alipsa.accounting.service
 import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccountClass
 import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccountClassFromAccountNumber
 import static se.alipsa.accounting.service.ReportAccountSupport.inferNormalBalanceSide
-import static se.alipsa.accounting.service.ReportAccountSupport.resolveSignedMovementNormalSide
 import static se.alipsa.accounting.service.ReportAccountSupport.shouldExcludeFromIncomeStatement
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
-import groovy.transform.Canonical
 
 import se.alipsa.accounting.domain.AccountSubgroup
 import se.alipsa.accounting.domain.AccountingPeriod
@@ -165,12 +163,12 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildGeneralLedgerReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
+      Map<String, BigDecimal> openingBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> priorBalances = effective.startDate.isAfter(effective.fiscalYear.startDate)
-          ? loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
+          ? ReportSqlLoader.loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
           : [:]
-      List<PostingLine> postingLines = loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
+      List<PostingLine> postingLines = ReportSqlLoader.loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
           .sort { PostingLine line ->
             [line.accountNumber, line.accountingDate, line.voucherNumber ?: '', line.voucherId, line.lineIndex]
           }
@@ -250,12 +248,12 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildTrialBalanceReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
+      Map<String, BigDecimal> openingBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
       Map<String, BigDecimal> priorBalances = effective.startDate.isAfter(effective.fiscalYear.startDate)
-          ? loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
+          ? ReportSqlLoader.loadSignedMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.startDate.minusDays(1))
           : [:]
-      Map<String, Totals> periodTotals = loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
+      Map<String, Totals> periodTotals = ReportSqlLoader.loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
       List<TrialBalanceRow> rows = accountInfos.keySet().sort().collect { String accountNumber ->
         AccountInfo info = accountInfos[accountNumber]
         Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
@@ -306,8 +304,8 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildIncomeStatementReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
-      Map<String, Totals> periodTotals = loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
+      Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
+      Map<String, Totals> periodTotals = ReportSqlLoader.loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
 
       Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildIncomeAccounts(accountInfos, periodTotals)
       Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
@@ -580,9 +578,9 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> openingBalances = loadOpeningBalances(sql, effective.selection.fiscalYearId)
-      Map<String, BigDecimal> movements = loadBalanceSheetMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
+      Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
+      Map<String, BigDecimal> openingBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, BigDecimal> movements = ReportSqlLoader.loadBalanceSheetMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
 
       Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
       List<String> skippedAccounts = []
@@ -724,7 +722,7 @@ final class ReportDataService {
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
     List<TransactionReportRow> rows = databaseService.withSql { Sql sql ->
-      loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
+      ReportSqlLoader.loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
           .sort { PostingLine line ->
             [line.accountingDate, line.voucherNumber ?: '', line.voucherId, line.lineIndex]
           }.collect { PostingLine line ->
@@ -871,169 +869,6 @@ final class ReportDataService {
     new EffectiveSelection(selection, fiscalYear, companyId, startDate, endDate, selectionLabel, locale)
   }
 
-  private static Map<String, AccountInfo> loadAccountInfos(Sql sql, long companyId) {
-    Map<String, AccountInfo> accounts = [:]
-    sql.rows('''
-        select id as accountId,
-               account_number as accountNumber,
-               account_name as accountName,
-               account_class as accountClass,
-               normal_balance_side as normalBalanceSide,
-               account_subgroup as accountSubgroup
-          from account
-         where company_id = ?
-         order by account_number
-    ''', [companyId]).each { GroovyRowResult row ->
-      accounts.put(row.get('accountNumber') as String, new AccountInfo(
-          ((Number) row.get('accountId')).longValue(),
-          row.get('accountName') as String,
-          row.get('accountClass') as String,
-          row.get('normalBalanceSide') as String,
-          row.get('accountSubgroup') as String
-      ))
-    }
-    accounts
-  }
-
-  private static Map<String, BigDecimal> loadOpeningBalances(Sql sql, long fiscalYearId) {
-    Map<String, BigDecimal> balances = [:]
-    sql.rows('''
-        select a.account_number as accountNumber,
-               ob.amount
-          from opening_balance ob
-          join account a on a.id = ob.account_id
-         where ob.fiscal_year_id = ?
-    ''', [fiscalYearId]).each { GroovyRowResult row ->
-      balances.put(row.get('accountNumber') as String, scale(new BigDecimal(row.get('amount').toString())))
-    }
-    balances
-  }
-
-  private static Map<String, BigDecimal> loadSignedMovements(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-    if (endDate.isBefore(startDate)) {
-      return [:]
-    }
-    Map<String, BigDecimal> movements = [:]
-    sql.rows('''
-        select a.account_number as accountNumber,
-               a.account_class as accountClass,
-               a.normal_balance_side as normalBalanceSide,
-               a.account_subgroup as accountSubgroup,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.id = vl.account_id
-         where v.fiscal_year_id = ?
-           and v.status in ('ACTIVE', 'CORRECTION')
-           and v.accounting_date between ? and ?
-         group by a.account_number, a.account_class, a.normal_balance_side, a.account_subgroup
-    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
-      movements.put(row.get('accountNumber') as String, signedAmount(
-          new BigDecimal(row.get('debitAmount').toString()),
-          new BigDecimal(row.get('creditAmount').toString()),
-          resolveSignedMovementNormalSide(
-              row.get('accountNumber') as String,
-              row.get('normalBalanceSide') as String,
-              row.get('accountClass') as String,
-              row.get('accountSubgroup') as String
-          )
-      ))
-    }
-    movements
-  }
-
-  private static Map<String, Totals> loadPeriodTotals(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-    Map<String, Totals> totals = [:]
-    sql.rows('''
-        select a.account_number as accountNumber,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.id = vl.account_id
-         where v.fiscal_year_id = ?
-           and v.status in ('ACTIVE', 'CORRECTION')
-           and v.accounting_date between ? and ?
-         group by vl.account_id, a.account_number
-    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
-      totals.put(row.get('accountNumber') as String, new Totals(
-          scale(new BigDecimal(row.get('debitAmount').toString())),
-          scale(new BigDecimal(row.get('creditAmount').toString()))
-      ))
-    }
-    totals
-  }
-
-  private static Map<String, BigDecimal> loadBalanceSheetMovements(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-    if (endDate.isBefore(startDate)) {
-      return [:]
-    }
-    Map<String, BigDecimal> movements = [:]
-    sql.rows('''
-        select a.account_number as accountNumber,
-               sum(vl.debit_amount) as debitAmount,
-               sum(vl.credit_amount) as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.id = vl.account_id
-         where v.fiscal_year_id = ?
-           and v.status in ('ACTIVE', 'CORRECTION')
-           and v.accounting_date between ? and ?
-           and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
-         group by a.account_number
-    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).each { GroovyRowResult row ->
-      movements.put(
-          row.get('accountNumber') as String,
-          scale(
-              new BigDecimal(row.get('debitAmount').toString()) -
-              new BigDecimal(row.get('creditAmount').toString())
-          )
-      )
-    }
-    movements
-  }
-
-  private static List<PostingLine> loadPostingLines(Sql sql, long fiscalYearId, LocalDate startDate, LocalDate endDate) {
-    sql.rows('''
-        select v.id as voucherId,
-               v.accounting_date as accountingDate,
-               v.voucher_number as voucherNumber,
-               v.description as voucherDescription,
-               v.status,
-               vl.line_index as lineIndex,
-               vl.account_number as accountNumber,
-               a.account_name as accountName,
-               a.account_class as accountClass,
-               a.normal_balance_side as normalBalanceSide,
-               vl.line_description as lineDescription,
-               vl.debit_amount as debitAmount,
-               vl.credit_amount as creditAmount
-          from voucher v
-          join voucher_line vl on vl.voucher_id = v.id
-          join account a on a.id = vl.account_id
-         where v.fiscal_year_id = ?
-           and v.status in ('ACTIVE', 'CORRECTION')
-           and v.accounting_date between ? and ?
-    ''', [fiscalYearId, Date.valueOf(startDate), Date.valueOf(endDate)]).collect { GroovyRowResult row ->
-      new PostingLine(
-          Long.valueOf(row.get('voucherId').toString()),
-          SqlValueMapper.toLocalDate(row.get('accountingDate')),
-          row.get('voucherNumber') as String,
-          row.get('voucherDescription') as String,
-          row.get('status') as String,
-          ((Number) row.get('lineIndex')).intValue(),
-          row.get('accountNumber') as String,
-          row.get('accountName') as String,
-          row.get('accountClass') as String,
-          row.get('normalBalanceSide') as String,
-          row.get('lineDescription') as String,
-          scale(new BigDecimal(row.get('debitAmount').toString())),
-          scale(new BigDecimal(row.get('creditAmount').toString()))
-      )
-    }
-  }
-
   private ReportResult createResult(
       EffectiveSelection effective,
       List<String> summaryLines,
@@ -1104,103 +939,5 @@ final class ReportDataService {
 
   private static List<String> stringRow(String... values) {
     values.toList()
-  }
-
-  private static final class EffectiveSelection {
-
-    final ReportSelection selection
-    final FiscalYear fiscalYear
-    final long companyId
-    final LocalDate startDate
-    final LocalDate endDate
-    final String selectionLabel
-    final Locale locale
-
-    private EffectiveSelection(
-        ReportSelection selection,
-        FiscalYear fiscalYear,
-        long companyId,
-        LocalDate startDate,
-        LocalDate endDate,
-        String selectionLabel,
-        Locale locale
-    ) {
-      this.selection = new ReportSelection(
-          selection.reportType,
-          selection.fiscalYearId,
-          selection.accountingPeriodId,
-          startDate,
-          endDate
-      )
-      this.fiscalYear = fiscalYear
-      this.companyId = companyId
-      this.startDate = startDate
-      this.endDate = endDate
-      this.selectionLabel = selectionLabel
-      this.locale = locale
-    }
-  }
-
-  @Canonical
-  private static final class PostingLine {
-
-    Long voucherId
-    LocalDate accountingDate
-    String voucherNumber
-    String voucherDescription
-    String status
-    int lineIndex
-    String accountNumber
-    String accountName
-    String accountClass
-    String normalBalanceSide
-    String lineDescription
-    BigDecimal debitAmount
-    BigDecimal creditAmount
-
-    BigDecimal signedAmount() {
-      ReportDataService.signedAmount(debitAmount, creditAmount, normalBalanceSide)
-    }
-  }
-
-  @Canonical
-  private static final class AccountInfo {
-
-    Long accountId
-    String accountName
-    String accountClass
-    String normalBalanceSide
-    String accountSubgroup
-  }
-
-  @Canonical
-  private static final class Totals {
-
-    static final Totals ZERO = new Totals(BigDecimal.ZERO.setScale(AMOUNT_SCALE), BigDecimal.ZERO.setScale(AMOUNT_SCALE))
-
-    BigDecimal debitAmount
-    BigDecimal creditAmount
-  }
-
-  @Canonical
-  private static final class AccountDetail {
-    String accountNumber
-    String accountName
-    BigDecimal amount
-  }
-
-  @Canonical
-  private static final class IncomeSectionBuildResult {
-    List<IncomeStatementRow> rows
-    BigDecimal total
-  }
-
-  private static final class VatBucket {
-
-    BigDecimal baseAmount = BigDecimal.ZERO.setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
-    BigDecimal postedOutputVat = BigDecimal.ZERO.setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
-    BigDecimal postedInputVat = BigDecimal.ZERO.setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
-    int outputPostingCount
-    int inputPostingCount
   }
 }

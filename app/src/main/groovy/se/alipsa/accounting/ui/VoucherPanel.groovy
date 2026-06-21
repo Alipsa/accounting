@@ -4,7 +4,6 @@ import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
-import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -57,30 +56,6 @@ import javax.swing.Timer
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
-
-class VoucherLineCellEditor extends DefaultCellEditor {
-
-  private boolean selectTextOnEdit = true
-
-  VoucherLineCellEditor(JTextField textField) {
-    super(textField)
-  }
-
-  @Override
-  boolean isCellEditable(EventObject event) {
-    selectTextOnEdit = !(event instanceof MouseEvent)
-    super.isCellEditable(event)
-  }
-
-  @Override
-  java.awt.Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
-    java.awt.Component comp = super.getTableCellEditorComponent(table, value, isSelected, row, column)
-    if (selectTextOnEdit && comp instanceof JTextField) {
-      ((JTextField) comp).selectAll()
-    }
-    comp
-  }
-}
 
 /**
  * Inline voucher editor panel with sequential navigation.
@@ -986,20 +961,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     value != null && !value.isBlank()
   }
 
-  private static String shortHash(String hash) {
-    hash == null || hash.length() <= 12 ? hash ?: '' : hash.substring(0, 12)
-  }
-
-  private static String formatFileSize(long bytes) {
-    if (bytes < 1024) {
-      return "${bytes} B"
-    }
-    if (bytes < 1024L * 1024L) {
-      return String.format(Locale.ROOT, '%.1f kB', bytes / 1024.0d)
-    }
-    String.format(Locale.ROOT, '%.1f MB', bytes / (1024.0d * 1024.0d))
-  }
-
   @PackageScope
   static final class LineEntry {
 
@@ -1235,103 +1196,4 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private static final class AttachmentTableModel extends AbstractTableModel {
-
-    private List<AttachmentMetadata> rows = []
-
-    void setRows(List<AttachmentMetadata> attachments) {
-      rows = new ArrayList<>(attachments)
-      fireTableDataChanged()
-    }
-
-    AttachmentMetadata rowAt(int rowIndex) {
-      rows[rowIndex]
-    }
-
-    @Override
-    int getRowCount() {
-      rows.size()
-    }
-
-    final int columnCount = 5
-
-    @Override
-    String getColumnName(int column) {
-      switch (column) {
-        case 0: return I18n.instance.getString('voucherEditor.table.attachment.fileName')
-        case 1: return I18n.instance.getString('voucherEditor.table.attachment.type')
-        case 2: return I18n.instance.getString('voucherEditor.table.attachment.size')
-        case 3: return I18n.instance.getString('voucherEditor.table.attachment.checksum')
-        case 4: return I18n.instance.getString('voucherEditor.table.attachment.saved')
-        default: return ''
-      }
-    }
-
-    @Override
-    Object getValueAt(int rowIndex, int columnIndex) {
-      AttachmentMetadata attachment = rows[rowIndex]
-      switch (columnIndex) {
-        case 0:
-          return attachment.originalFileName
-        case 1:
-          return attachment.contentType ?: ''
-        case 2:
-          return formatFileSize(attachment.fileSize)
-        case 3:
-          return shortHash(attachment.checksumSha256)
-        case 4:
-          return attachment.createdAt
-        default:
-          return ''
-      }
-    }
-  }
-
-  private static final class AuditLogTableModel extends AbstractTableModel {
-
-    private List<AuditLogEntry> rows = []
-
-    void setRows(List<AuditLogEntry> entries) {
-      rows = new ArrayList<>(entries)
-      fireTableDataChanged()
-    }
-
-    @Override
-    int getRowCount() {
-      rows.size()
-    }
-
-    final int columnCount = 5
-
-    @Override
-    String getColumnName(int column) {
-      switch (column) {
-        case 0: return I18n.instance.getString('voucherEditor.table.auditLog.time')
-        case 1: return I18n.instance.getString('voucherEditor.table.auditLog.event')
-        case 2: return I18n.instance.getString('voucherEditor.table.auditLog.summary')
-        case 3: return I18n.instance.getString('voucherEditor.table.auditLog.actor')
-        case 4: return I18n.instance.getString('voucherEditor.table.auditLog.hash')
-        default: return ''
-      }
-    }
-
-    @Override
-    Object getValueAt(int rowIndex, int columnIndex) {
-      AuditLogEntry entry = rows[rowIndex]
-      switch (columnIndex) {
-        case 0:
-          return entry.createdAt
-        case 1:
-          return entry.eventType
-        case 2:
-          return entry.summary
-        case 3:
-          return entry.actor
-        case 4:
-          return shortHash(entry.entryHash)
-        default:
-          return ''
-      }
-    }
-  }
 }

@@ -9,7 +9,7 @@ Detta dokument samlar upp förbättringar som ännu inte fått någon version ti
 
 ### Kodhälsa
 
-- Utred uppdelning av stora klasser som ligger nära eller över CodeNarc:s `ClassSize`-gräns: `VoucherPanel.groovy` (1250 rader), `SieImportExportService.groovy` (1275), `ReportDataService.groovy` (1206) och `AccountingMcpTools.groovy` (1203). Faktisk refaktorering ska planeras separat.
+- Följ planen i `req/large-class-refactoring-plan.md` för att dela upp `VoucherPanel.groovy`, `SieImportExportService.groovy`, `ReportDataService.groovy` och `AccountingMcpTools.groovy` utan att ändra publik funktionalitet.
 
 ### Förslag på angreppssätt
 
