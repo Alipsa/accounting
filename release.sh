@@ -45,6 +45,7 @@ fi
 echo "Project version: $VERSION (tag: $TAG)"
 
 current_branch=$(git rev-parse --abbrev-ref HEAD)
+current_sha=$(git rev-parse HEAD)
 if [ "$current_branch" != "main" ]; then
   echo "ERROR: release.sh must be run from the main branch. Current branch: $current_branch"
   exit 1
@@ -109,20 +110,35 @@ fi
 
 if [ "$BUILD" = true ]; then
   branch="$current_branch"
+  previous_runs_file=$(mktemp)
+  gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$branch" \
+    --limit 20 --json databaseId --jq '.[].databaseId' > "$previous_runs_file"
+
   echo "Triggering workflow on branch: $branch"
+  echo "Expected workflow commit: $current_sha"
   gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$branch"
 
   echo "Waiting for workflow run to appear..."
   run_id=""
   for attempt in $(seq 1 12); do
     sleep 5
-    run_id=$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$branch" \
-      --limit 1 --json databaseId,status --jq '.[0].databaseId')
+    run_id=$(
+      gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$branch" \
+        --limit 20 --json databaseId,headSha,status \
+        --jq ".[] | select(.headSha == \"$current_sha\") | .databaseId" |
+        while read -r candidate_run_id; do
+          if ! grep -qx "$candidate_run_id" "$previous_runs_file"; then
+            echo "$candidate_run_id"
+            break
+          fi
+        done
+    )
     if [ -n "$run_id" ]; then
       break
     fi
-    echo "  Attempt $attempt/12: run not yet visible..."
+    echo "  Attempt $attempt/12: new run for $current_sha not yet visible..."
   done
+  rm -f "$previous_runs_file"
 
   if [ -z "$run_id" ]; then
     echo "ERROR: Could not find workflow run after 60 seconds."
@@ -164,6 +180,45 @@ if [ "$BUILD" = true ]; then
   ls -lh "$DIST_DIR/"
 fi
 
+expected_assets=(
+  "alipsa-accounting-${VERSION}-linux.zip"
+  "alipsa-accounting-${VERSION}-windows.zip"
+  "alipsa-accounting-${VERSION}-macos.zip"
+  "app-${VERSION}.zip"
+)
+missing_assets=()
+for asset in "${expected_assets[@]}"; do
+  if [ ! -f "$DIST_DIR/$asset" ]; then
+    missing_assets+=("$asset")
+  fi
+done
+
+wrong_version_assets=()
+for file in "$DIST_DIR"/alipsa-accounting-*.zip "$DIST_DIR"/app-*.zip; do
+  [ -e "$file" ] || continue
+  name=$(basename "$file")
+  case " ${expected_assets[*]} " in
+    *" $name "*) ;;
+    *) wrong_version_assets+=("$name") ;;
+  esac
+done
+
+if [ "${#missing_assets[@]}" -gt 0 ] || [ "${#wrong_version_assets[@]}" -gt 0 ]; then
+  echo "ERROR: Artifacts in $DIST_DIR do not match project version $VERSION."
+  if [ "${#missing_assets[@]}" -gt 0 ]; then
+    echo "Missing expected artifacts:"
+    printf '  %s\n' "${missing_assets[@]}"
+  fi
+  if [ "${#wrong_version_assets[@]}" -gt 0 ]; then
+    echo "Unexpected artifact versions:"
+    printf '  %s\n' "${wrong_version_assets[@]}"
+  fi
+  echo ""
+  echo "Artifacts in $DIST_DIR:"
+  find "$DIST_DIR" -maxdepth 1 -type f -exec basename {} \; | sort | sed 's/^/  /'
+  exit 1
+fi
+
 if [ "$SIGN" = true ]; then
   echo ""
   echo "Signing artifacts with GPG..."
@@ -183,6 +238,10 @@ fi
 if [ "$RELEASE" = true ]; then
   echo ""
   echo "Creating GitHub release $TAG..."
+  if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+    echo "ERROR: GitHub release $TAG already exists. Delete it or use gh release upload --clobber intentionally."
+    exit 1
+  fi
   mapfile -t release_assets < <(find "$DIST_DIR" -maxdepth 1 -type f)
   gh release create "$TAG" \
     --repo "$REPO" \
