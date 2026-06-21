@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.service.UpdateService
+import se.alipsa.accounting.service.UpdateService.ApplyPhase
 import se.alipsa.accounting.service.UpdateService.UpdateInfo
 import se.alipsa.accounting.support.I18n
 
@@ -21,7 +22,6 @@ import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JProgressBar
 import javax.swing.JTextArea
-import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
 
 /**
@@ -143,34 +143,49 @@ final class UpdateDialog extends JDialog {
     downloadButton.enabled = false
     closeButton.enabled = false
     progressBar.visible = true
+    progressBar.indeterminate = false
     progressBar.value = 0
     statusLabel.text = I18n.instance.getString('updateDialog.status.downloading')
+    detailsArea.text = I18n.instance.getString('updateDialog.details.downloading')
     pack()
 
-    new SwingWorker<Path, Integer>() {
+    new SwingWorker<Void, UpdateProgress>() {
+      private boolean applyStarted
+
       @Override
-      protected Path doInBackground() {
-        updateService.downloadUpdate(updateInfo, { int percent ->
-          SwingUtilities.invokeLater { progressBar.value = percent }
+      protected Void doInBackground() {
+        Path downloadedZip = updateService.downloadUpdate(updateInfo, { int percent ->
+          publish(UpdateProgress.percent(percent))
         } as Closure<Void>)
+        publish(UpdateProgress.percent(100))
+        applyStarted = true
+        updateService.applyUpdateAndRestart(downloadedZip, { ApplyPhase phase ->
+          publish(UpdateProgress.phase(statusKey(phase), detailsKey(phase)))
+        } as Closure<Void>)
+        null
+      }
+
+      @Override
+      protected void process(List<UpdateProgress> chunks) {
+        chunks.each { UpdateProgress update ->
+          applyProgress(update)
+        }
       }
 
       @Override
       protected void done() {
         try {
-          Path downloadedZip = get()
-          statusLabel.text = I18n.instance.getString('updateDialog.status.applying')
-          progressBar.indeterminate = true
-          updateService.applyUpdateAndRestart(downloadedZip)
+          get()
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
           resetAfterError()
           showError(I18n.instance.getString('updateDialog.error.interrupted'))
         } catch (ExecutionException exception) {
           Throwable cause = exception.cause ?: exception
-          log.log(Level.WARNING, 'Update download failed.', cause)
+          log.log(Level.WARNING, applyStarted ? 'Update apply failed.' : 'Update download failed.', cause)
           resetAfterError()
-          showError(I18n.instance.format('updateDialog.error.downloadFailed',
+          String errorKey = applyStarted ? 'updateDialog.error.applyFailed' : 'updateDialog.error.downloadFailed'
+          showError(I18n.instance.format(errorKey,
               cause.message ?: cause.class.simpleName))
         } catch (Exception exception) {
           log.log(Level.WARNING, 'Update apply failed.', exception)
@@ -180,6 +195,50 @@ final class UpdateDialog extends JDialog {
         }
       }
     }.execute()
+  }
+
+  private void applyProgress(UpdateProgress update) {
+    if (update.progressPercent != null) {
+      progressBar.indeterminate = false
+      progressBar.value = update.progressPercent
+    }
+    if (update.statusKey != null) {
+      statusLabel.text = I18n.instance.getString(update.statusKey)
+      progressBar.indeterminate = true
+    }
+    if (update.detailsKey != null) {
+      detailsArea.text = I18n.instance.getString(update.detailsKey)
+      if (update.detailsKey == 'updateDialog.details.launching') {
+        detailsArea.text += '\n' + I18n.instance.format('updateDialog.details.updaterLog',
+            updateService.updateLogPath())
+      }
+    }
+  }
+
+  private static String statusKey(ApplyPhase phase) {
+    switch (phase) {
+      case ApplyPhase.EXTRACTING:
+        return 'updateDialog.status.extracting'
+      case ApplyPhase.STAGING:
+        return 'updateDialog.status.staging'
+      case ApplyPhase.LAUNCHING:
+        return 'updateDialog.status.launching'
+      default:
+        return 'updateDialog.status.applying'
+    }
+  }
+
+  private static String detailsKey(ApplyPhase phase) {
+    switch (phase) {
+      case ApplyPhase.EXTRACTING:
+        return 'updateDialog.details.extracting'
+      case ApplyPhase.STAGING:
+        return 'updateDialog.details.staging'
+      case ApplyPhase.LAUNCHING:
+        return 'updateDialog.details.launching'
+      default:
+        return 'updateDialog.details.applying'
+    }
   }
 
   private void resetAfterError() {
@@ -194,5 +253,25 @@ final class UpdateDialog extends JDialog {
     statusLabel.foreground = new Color(153, 27, 27)
     detailsArea.text = message
     pack()
+  }
+
+  private static final class UpdateProgress {
+    final Integer progressPercent
+    final String statusKey
+    final String detailsKey
+
+    private UpdateProgress(Integer progressPercent, String statusKey, String detailsKey) {
+      this.progressPercent = progressPercent
+      this.statusKey = statusKey
+      this.detailsKey = detailsKey
+    }
+
+    static UpdateProgress percent(int percent) {
+      new UpdateProgress(Math.max(0, Math.min(100, percent)), null, null)
+    }
+
+    static UpdateProgress phase(String statusKey, String detailsKey) {
+      new UpdateProgress(null, statusKey, detailsKey)
+    }
   }
 }

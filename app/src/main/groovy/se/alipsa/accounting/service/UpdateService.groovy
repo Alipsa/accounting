@@ -13,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.logging.Logger
 import java.util.regex.Matcher
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -24,6 +25,7 @@ import java.util.zip.ZipInputStream
  */
 final class UpdateService {
 
+  private static final Logger log = Logger.getLogger(UpdateService.name)
   private static final String REPO = 'Alipsa/accounting'
   private static final String LATEST_RELEASE_URL = "https://api.github.com/repos/${REPO}/releases/latest"
   private static final String DIST_ASSET_PREFIX = 'app-'
@@ -83,6 +85,7 @@ final class UpdateService {
       throw new IllegalStateException('No download URL available for the update.')
     }
 
+    log.info("Downloading update ${info.availableVersion} from ${info.downloadUrl}")
     Path stagingDir = stagingDirectory()
     Files.createDirectories(stagingDir)
     Path targetFile = stagingDir.resolve("app-${info.availableVersion}.zip")
@@ -115,9 +118,11 @@ final class UpdateService {
     }
 
     if (info.checksumUrl != null) {
+      log.info("Verifying checksum for ${targetFile}")
       verifyChecksum(targetFile, info.checksumUrl, client)
     }
 
+    log.info("Downloaded update archive to ${targetFile}")
     targetFile
   }
 
@@ -153,21 +158,36 @@ final class UpdateService {
   }
 
   void applyUpdateAndRestart(Path downloadedZip) {
+    applyUpdateAndRestart(downloadedZip, null)
+  }
+
+  void applyUpdateAndRestart(Path downloadedZip, Closure<Void> phaseCallback) {
+    log.info("Preparing to apply update from ${downloadedZip}")
     Path stagingDir = stagingDirectory()
     Path extractedDir = stagingDir.resolve('extracted')
+    notifyApplyPhase(phaseCallback, ApplyPhase.EXTRACTING)
+    log.info("Extracting update archive to ${extractedDir}")
     deleteDirectoryContents(extractedDir)
     Files.createDirectories(extractedDir)
 
     extractJars(downloadedZip, extractedDir)
 
+    notifyApplyPhase(phaseCallback, ApplyPhase.STAGING)
+    log.info('Staging updater script.')
     Path installDir = installationJarDirectory()
     if (installDir == null) {
       throw new IllegalStateException('Cannot determine installation JAR directory.')
     }
+    Path updaterLog = updateLogPath()
+    Files.createDirectories(updaterLog.parent)
 
-    Path updaterScript = writeUpdaterScript(stagingDir, extractedDir, installDir)
+    Path updaterScript = writeUpdaterScript(stagingDir, extractedDir, installDir, updaterLog)
+    log.info("Updater script written to ${updaterScript}; updater log will be ${updaterLog}")
+    notifyApplyPhase(phaseCallback, ApplyPhase.LAUNCHING)
+    log.info('Launching updater and exiting application.')
     LoggingConfigurer.shutdown()
     launchUpdaterAndExit(updaterScript)
+    throw new IllegalStateException('Updater was launched, but the application did not exit.')
   }
 
   Path installationJarDirectory() {
@@ -188,6 +208,10 @@ final class UpdateService {
       return null
     }
     launcherPath(jarDir, System.getProperty('os.name', '').toLowerCase(Locale.ROOT))
+  }
+
+  Path updateLogPath() {
+    AppPaths.logDirectory().resolve('updater.log')
   }
 
   static Path launcherPath(Path jarDir, String osName) {
@@ -225,7 +249,7 @@ final class UpdateService {
     }
   }
 
-  private Path writeUpdaterScript(Path stagingDir, Path extractedDir, Path installDir) {
+  private Path writeUpdaterScript(Path stagingDir, Path extractedDir, Path installDir, Path updaterLog) {
     String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
     boolean isWindows = osName.contains('win')
     Path launcher = launcherPath()
@@ -233,57 +257,125 @@ final class UpdateService {
     Path backupDir = installDir.resolve('.update-backup')
     String newMainJar = mainJarFileName(extractedDir) ?: ''
     String newVersion = versionFromMainJar(newMainJar) ?: ''
+    UpdaterScriptContext context = new UpdaterScriptContext(
+        stagingDir,
+        extractedDir,
+        installDir,
+        updaterLog,
+        backupDir,
+        launcherCommand,
+        newMainJar,
+        newVersion
+    )
 
     Path script
     if (isWindows) {
       script = stagingDir.resolve('updater.bat')
-      script.toFile().text = """\
-@echo off
-timeout /t 3 /nobreak >nul
-if exist "${backupDir}" rd /s /q "${backupDir}"
-mkdir "${backupDir}"
-for %%f in ("${installDir}\\*.jar") do move "%%f" "${backupDir}\\"
-for %%f in ("${extractedDir}\\*.jar") do copy /y "%%f" "${installDir}\\"
-if errorlevel 1 (
-  echo Update failed, restoring backup...
-  for %%f in ("${backupDir}\\*.jar") do move "%%f" "${installDir}\\"
-  rd /s /q "${backupDir}"
-  echo Update failed. Please try again.
-  pause
-  exit /b 1
-)
-${newMainJar.isEmpty() ? '' : windowsConfigUpdateCommand(installDir, newMainJar, newVersion)}
-rd /s /q "${backupDir}"
-rd /s /q "${extractedDir}"
-del "${stagingDir}\\*.zip"
-${launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${launcherCommand}"}
-del "%~f0"
-""".stripIndent()
+      script.toFile().text = windowsUpdaterScript(context)
     } else {
       script = stagingDir.resolve('updater.sh')
-      script.toFile().text = """\
-#!/usr/bin/env bash
-sleep 3
-rm -rf "${backupDir}"
-mkdir -p "${backupDir}"
-mv "${installDir}/"*.jar "${backupDir}/"
-if ! cp "${extractedDir}/"*.jar "${installDir}/"; then
-  echo "Update failed, restoring backup..."
-  mv "${backupDir}/"*.jar "${installDir}/"
-  rm -rf "${backupDir}"
-  echo "Update failed. Please try again."
-  exit 1
-fi
-${newMainJar.isEmpty() ? '' : unixConfigUpdateCommand(installDir, newMainJar, newVersion)}
-rm -rf "${backupDir}"
-rm -rf "${extractedDir}"
-rm -f "${stagingDir}/"*.zip
-${launcherCommand.isEmpty() ? 'echo "Update complete."' : "exec ${launcherCommand} &"}
-rm -f "\$0"
-""".stripIndent()
+      script.toFile().text = unixUpdaterScript(context)
       script.toFile().setExecutable(true)
     }
     script
+  }
+
+  private static String windowsUpdaterScript(UpdaterScriptContext context) {
+    """\
+@echo off
+set "LOG_FILE=${context.updaterLog}"
+call :main >> "%LOG_FILE%" 2>&1
+exit /b %ERRORLEVEL%
+
+:main
+echo [%DATE% %TIME%] Starting update.
+echo [%DATE% %TIME%] Install dir: ${context.installDir}
+echo [%DATE% %TIME%] Extracted dir: ${context.extractedDir}
+timeout /t 3 /nobreak >nul
+echo [%DATE% %TIME%] Preparing backup directory: ${context.backupDir}
+if exist "${context.backupDir}" rd /s /q "${context.backupDir}"
+mkdir "${context.backupDir}"
+if errorlevel 1 (
+  echo [%DATE% %TIME%] Failed to create backup directory.
+  exit /b 1
+)
+echo [%DATE% %TIME%] Backing up current JAR files.
+for %%f in ("${context.installDir}\\*.jar") do move "%%f" "${context.backupDir}\\"
+if errorlevel 1 (
+  echo [%DATE% %TIME%] Failed to back up current JAR files.
+  exit /b 1
+)
+echo [%DATE% %TIME%] Copying updated JAR files.
+for %%f in ("${context.extractedDir}\\*.jar") do copy /y "%%f" "${context.installDir}\\"
+if errorlevel 1 (
+  echo [%DATE% %TIME%] Update failed while copying files, restoring backup...
+  for %%f in ("${context.backupDir}\\*.jar") do move "%%f" "${context.installDir}\\"
+  rd /s /q "${context.backupDir}"
+  echo [%DATE% %TIME%] Update failed. Please try again.
+  pause
+  exit /b 1
+)
+echo [%DATE% %TIME%] Updating launcher configuration.
+${context.newMainJar.isEmpty() ? '' : windowsConfigUpdateCommand(context.installDir, context.newMainJar, context.newVersion)}
+echo [%DATE% %TIME%] Cleaning update staging files.
+rd /s /q "${context.backupDir}"
+rd /s /q "${context.extractedDir}"
+del "${context.stagingDir}\\*.zip"
+echo [%DATE% %TIME%] Launching application.
+${context.launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${context.launcherCommand}"}
+echo [%DATE% %TIME%] Update script finished.
+del "%~f0"
+""".stripIndent()
+  }
+
+  private static String unixUpdaterScript(UpdaterScriptContext context) {
+    """\
+#!/usr/bin/env bash
+LOG_FILE="${context.updaterLog}"
+exec >> "\$LOG_FILE" 2>&1
+
+timestamp() {
+  date -Is
+}
+
+log() {
+  echo "[\$(timestamp)] \$*"
+}
+
+fail() {
+  log "\$*"
+  exit 1
+}
+
+log "Starting update."
+log "Install dir: ${context.installDir}"
+log "Extracted dir: ${context.extractedDir}"
+sleep 3
+log "Preparing backup directory: ${context.backupDir}"
+rm -rf "${context.backupDir}"
+mkdir -p "${context.backupDir}" || fail "Failed to create backup directory."
+log "Backing up current JAR files."
+if ! mv "${context.installDir}/"*.jar "${context.backupDir}/"; then
+  fail "Failed to back up current JAR files."
+fi
+log "Copying updated JAR files."
+if ! cp "${context.extractedDir}/"*.jar "${context.installDir}/"; then
+  log "Update failed while copying files, restoring backup..."
+  mv "${context.backupDir}/"*.jar "${context.installDir}/"
+  rm -rf "${context.backupDir}"
+  fail "Update failed. Please try again."
+fi
+log "Updating launcher configuration."
+${context.newMainJar.isEmpty() ? '' : unixConfigUpdateCommand(context.installDir, context.newMainJar, context.newVersion)}
+log "Cleaning update staging files."
+rm -rf "${context.backupDir}"
+rm -rf "${context.extractedDir}"
+rm -f "${context.stagingDir}/"*.zip
+log "Launching application."
+${context.launcherCommand.isEmpty() ? 'echo "Update complete."' : "${context.launcherCommand} &"}
+log "Update script finished."
+rm -f "\$0"
+""".stripIndent()
   }
 
   private static String mainJarFileName(Path directory) {
@@ -382,6 +474,49 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPa
         }
         Files.deleteIfExists(path)
       }
+    }
+  }
+
+  private static void notifyApplyPhase(Closure<Void> callback, ApplyPhase phase) {
+    if (callback != null) {
+      callback.call(phase)
+    }
+  }
+
+  enum ApplyPhase {
+    EXTRACTING,
+    STAGING,
+    LAUNCHING
+  }
+
+  private static final class UpdaterScriptContext {
+
+    final Path stagingDir
+    final Path extractedDir
+    final Path installDir
+    final Path updaterLog
+    final Path backupDir
+    final String launcherCommand
+    final String newMainJar
+    final String newVersion
+
+    private UpdaterScriptContext(
+        Path stagingDir,
+        Path extractedDir,
+        Path installDir,
+        Path updaterLog,
+        Path backupDir,
+        String launcherCommand,
+        String newMainJar,
+        String newVersion) {
+      this.stagingDir = stagingDir
+      this.extractedDir = extractedDir
+      this.installDir = installDir
+      this.updaterLog = updaterLog
+      this.backupDir = backupDir
+      this.launcherCommand = launcherCommand
+      this.newMainJar = newMainJar
+      this.newVersion = newVersion
     }
   }
 

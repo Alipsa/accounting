@@ -137,6 +137,12 @@ def buildJpackageArgs = { String platform, String type, File destinationDir, Lis
     '--java-options',
     '-Dfile.encoding=UTF-8'
   ]
+  if (platform == 'linux') {
+    args += [
+      '--java-options',
+      '-Djdk.lang.Process.launchMechanism=VFORK'
+    ]
+  }
   if (type != 'app-image') {
     args += [
       '--license-file',
