@@ -1,5 +1,30 @@
 # Alipsa Accounting, Release History
 
+## v1.4.2, 2026-06-21
+### Patch Release
+
+This patch release fixes File and Help menu actions that could fail silently instead of opening their dialogs.
+
+### Highlights
+
+- **Menu actions fixed** — File and Help menu actions now open their dialogs again, including File → New company and Help → About. Menu callbacks now ignore Swing's action event argument before calling no-argument dialog methods.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.4.2-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.4.2-windows.zip` |
+| macOS                     | `alipsa-accounting-1.4.2-macos.zip`   |
+| Universal updater archive | `app-1.4.2.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.4.1, 2026-06-21
 ### Patch Release
 
