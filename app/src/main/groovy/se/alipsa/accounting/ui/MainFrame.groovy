@@ -352,16 +352,16 @@ final class MainFrame implements PropertyChangeListener {
   private void buildFileMenu(Object builder) {
     builder.with {
       fileMenu = menu(text: I18n.instance.getString('mainFrame.menu.file')) {
-        newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: this.&showNewCompanyDialog)
-        editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: this.&showEditCompanyDialog)
+        newCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.newCompany'), actionPerformed: { showNewCompanyDialog() })
+        editCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.editCompany'), actionPerformed: { showEditCompanyDialog() })
         separator()
-        sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: this.&showSieExchangeDialog)
+        sieExchangeMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.sieExchange'), actionPerformed: { showSieExchangeDialog() })
         separator()
-        archiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.archiveCompany'), actionPerformed: this.&archiveCompanyRequested)
-        unarchiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.unarchiveCompany'), actionPerformed: this.&showUnarchiveCompanyDialog)
-        deleteCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.deleteCompany'), actionPerformed: this.&deleteCompanyRequested)
+        archiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.archiveCompany'), actionPerformed: { archiveCompanyRequested() })
+        unarchiveCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.unarchiveCompany'), actionPerformed: { showUnarchiveCompanyDialog() })
+        deleteCompanyMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.deleteCompany'), actionPerformed: { deleteCompanyRequested() })
         separator()
-        exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: this.&exitRequested)
+        exitMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.file.exit'), actionPerformed: { exitRequested() })
       }
     }
   }
@@ -369,11 +369,11 @@ final class MainFrame implements PropertyChangeListener {
   private void buildHelpMenu(Object builder) {
     builder.with {
       helpMenu = menu(text: I18n.instance.getString('mainFrame.menu.help')) {
-        manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: this.&showUserManualDialog)
-        updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: this.&showUpdateDialog)
-        reportIssueMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.reportIssue'), actionPerformed: this.&openIssueTracker)
+        manualMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.manual'), actionPerformed: { showUserManualDialog() })
+        updateMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.checkForUpdates'), actionPerformed: { showUpdateDialog() })
+        reportIssueMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.reportIssue'), actionPerformed: { openIssueTracker() })
         separator()
-        aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: this.&showAboutDialog)
+        aboutMenuItem = menuItem(text: I18n.instance.getString('mainFrame.menu.help.about'), actionPerformed: { showAboutDialog() })
       }
     }
   }
