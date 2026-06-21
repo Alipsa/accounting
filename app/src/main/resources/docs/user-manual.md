@@ -82,5 +82,5 @@ Programmet kan hantera flera företag i samma installation. Varje företag har s
 
 ## Uppskjuten funktionalitet
 
-Följande förbättringar är planerade till v1.4.0:
+Följande förbättringar är planerade till v1.5.0:
 - Anläggningsregister för materiella och immateriella anläggningstillgångar.

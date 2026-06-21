@@ -1,5 +1,34 @@
 # Alipsa Accounting, Release History
 
+## v1.4.1, 2026-06-21
+### Patch Release
+
+This patch release improves in-app update diagnostics and Linux update reliability after cases where an update could reach 100% and then appear stuck without leaving a useful updater log.
+
+### Highlights
+
+- **Persistent updater log** — The detached updater script now writes progress and errors to `updater.log` in the normal per-user app log directory on Linux, Windows, and macOS. The log records backup, file replacement, launcher configuration update, cleanup, restart, and failure paths.
+- **Clearer update progress** — The update dialog now separates download, extraction, staging, and updater-launch phases, and shows the updater log path when handing off to the external updater script.
+- **Safer apply phase** — Update installation work now runs from the background worker instead of the Swing completion callback, so the UI should no longer sit in an ambiguous applying state while the updater handoff is being prepared.
+- **Linux subprocess workaround** — Linux launches now use `-Djdk.lang.Process.launchMechanism=VFORK`, addressing environments where the bundled runtime reports `posix_spawn failed, error: 13` when starting helper processes.
+- **Updater test coverage** — The generated Linux/macOS and Windows updater scripts are now covered by tests, including a fake Unix install update that verifies JAR replacement, launcher config updates, script cleanup, and `updater.log` content without requiring a real release.
+
+### Downloads
+
+| Platform                  | File                                  |
+|---------------------------|---------------------------------------|
+| Linux                     | `alipsa-accounting-1.4.1-linux.zip`   |
+| Windows                   | `alipsa-accounting-1.4.1-windows.zip` |
+| macOS                     | `alipsa-accounting-1.4.1-macos.zip`   |
+| Universal updater archive | `app-1.4.1.zip`                       |
+
+All artifacts are accompanied by SHA-256 checksum files and GPG signatures. Verify with:
+```
+gpg --verify <file>.asc <file>
+```
+
+Windows and macOS releases are not currently platform-code-signed/notarized, so those operating systems may still show their usual unsigned-application warnings.
+
 ## v1.4.0, 2026-06-20
 ### Minor Release
 

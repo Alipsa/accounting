@@ -33,7 +33,7 @@ Följande funktioner ingår inte i v1.3.0:
 - Fakturering och lön
 - Bankintegration
 - Årsredovisningsflöden
-- Anläggningsregister (planerat till v1.4.0)
+- Anläggningsregister (planerat till v1.5.0)
 
 ## Förutsättningar
 
