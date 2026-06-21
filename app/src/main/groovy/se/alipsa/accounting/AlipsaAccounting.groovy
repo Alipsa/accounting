@@ -28,11 +28,13 @@ final class AlipsaAccounting {
   private static final String VERSION_ARGUMENT = '--version'
   private static final String HOME_ARGUMENT_PREFIX = '--home='
   private static final String MODE_ARGUMENT_PREFIX = '--mode='
+  private static final String PROCESS_LAUNCH_MECHANISM_PROPERTY = 'jdk.lang.Process.launchMechanism'
 
   private AlipsaAccounting() {
   }
 
   static void main(String[] args) {
+    configureProcessLaunchMechanism()
     StartupOptions options = StartupOptions.parse(args ?: new String[0])
     if (options.applicationHomeOverride != null) {
       System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, options.applicationHomeOverride)
@@ -101,6 +103,16 @@ final class AlipsaAccounting {
     } finally {
       DatabaseService.instance.shutdown()
       LoggingConfigurer.shutdown()
+    }
+  }
+
+  private static void configureProcessLaunchMechanism() {
+    if (System.getProperty(PROCESS_LAUNCH_MECHANISM_PROPERTY) != null) {
+      return
+    }
+    String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+    if (osName.contains('linux')) {
+      System.setProperty(PROCESS_LAUNCH_MECHANISM_PROPERTY, 'VFORK')
     }
   }
 
