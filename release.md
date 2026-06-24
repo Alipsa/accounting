@@ -1,5 +1,8 @@
 # Alipsa Accounting, Release History
 
+## v1.4.3, in progress
+- Re-enable splash screen
+
 ## v1.4.2, 2026-06-21
 ### Patch Release
 

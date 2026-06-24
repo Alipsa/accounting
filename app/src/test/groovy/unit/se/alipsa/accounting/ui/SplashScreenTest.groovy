@@ -3,6 +3,9 @@ package unit.se.alipsa.accounting.ui
 import static org.junit.jupiter.api.Assertions.*
 
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.function.Executable
+
+import se.alipsa.accounting.ui.StartupSplash
 
 import java.awt.image.BufferedImage
 
@@ -24,5 +27,12 @@ final class SplashScreenTest {
       assertEquals(480, image.width, 'splash width must be 480 px')
       assertEquals(300, image.height, 'splash height must be 300 px')
     }
+  }
+
+  @Test
+  void disabledFallbackSplashCanBeClosed() {
+    assertDoesNotThrow({
+      StartupSplash.showIfPossible(false).close()
+    } as Executable)
   }
 }

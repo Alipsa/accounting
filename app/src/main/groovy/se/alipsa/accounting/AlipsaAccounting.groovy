@@ -9,6 +9,7 @@ import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 import se.alipsa.accounting.ui.MainFrame
+import se.alipsa.accounting.ui.StartupSplash
 import se.alipsa.accounting.ui.ThemeApplier
 
 import java.awt.GraphicsEnvironment
@@ -43,6 +44,7 @@ final class AlipsaAccounting {
       System.out.println(versionLine())
       return
     }
+    StartupSplash splash = StartupSplash.showIfPossible(options.interactive)
     I18n.instance.setLocale(Locale.getDefault())
     try {
       LoggingConfigurer.configure()
@@ -53,12 +55,14 @@ final class AlipsaAccounting {
         I18n.instance.setLocale(savedLanguage)
       }
       if (options.mode == RunMode.MCP) {
+        splash.close()
         runMcpMode()
         return
       }
       ThemeApplier.apply(userPreferencesService.getTheme())
       StartupVerificationReport startupReport = new StartupVerificationService().verify()
       if (options.verifyLaunchRequested) {
+        splash.close()
         failOnStartupErrors(startupReport)
         String version = AlipsaAccounting.package?.implementationVersion
         if (!version) {
@@ -75,13 +79,19 @@ final class AlipsaAccounting {
         return
       }
       if (!startupReport.ok || !startupReport.warnings.isEmpty()) {
+        splash.close()
         showStartupVerificationWarning(startupReport)
       }
       SwingUtilities.invokeLater {
-        MainFrame mainFrame = new MainFrame()
-        mainFrame.display()
+        try {
+          MainFrame mainFrame = new MainFrame()
+          mainFrame.display()
+        } finally {
+          splash.close()
+        }
       }
     } catch (Exception exception) {
+      splash.close()
       log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', exception)
       if (options.interactive) {
         showStartupError(exception)
