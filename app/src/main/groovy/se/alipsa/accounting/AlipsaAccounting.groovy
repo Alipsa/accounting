@@ -6,8 +6,10 @@ import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.DataLocationResolver
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
+import se.alipsa.accounting.ui.DataLocationDialog
 import se.alipsa.accounting.ui.MainFrame
 import se.alipsa.accounting.ui.StartupSplash
 import se.alipsa.accounting.ui.ThemeApplier
@@ -37,59 +39,16 @@ final class AlipsaAccounting {
   static void main(String[] args) {
     configureProcessLaunchMechanism()
     StartupOptions options = StartupOptions.parse(args ?: new String[0])
-    if (options.applicationHomeOverride != null) {
-      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, options.applicationHomeOverride)
-    }
     if (options.versionRequested) {
       System.out.println(versionLine())
       return
     }
+    UserPreferencesService userPreferencesService = new UserPreferencesService()
+    applyStartupLocale(userPreferencesService)
+    resolveApplicationHome(options, userPreferencesService)
     StartupSplash splash = StartupSplash.showIfPossible(options.interactive)
-    I18n.instance.setLocale(Locale.getDefault())
     try {
-      LoggingConfigurer.configure()
-      DatabaseService.instance.initialize()
-      UserPreferencesService userPreferencesService = new UserPreferencesService()
-      Locale savedLanguage = userPreferencesService.getLanguage()
-      if (savedLanguage != null) {
-        I18n.instance.setLocale(savedLanguage)
-      }
-      if (options.mode == RunMode.MCP) {
-        splash.close()
-        runMcpMode()
-        return
-      }
-      ThemeApplier.apply(userPreferencesService.getTheme())
-      StartupVerificationReport startupReport = new StartupVerificationService().verify()
-      if (options.verifyLaunchRequested) {
-        splash.close()
-        failOnStartupErrors(startupReport)
-        String version = AlipsaAccounting.package?.implementationVersion
-        if (!version) {
-          log.warning('JAR manifest saknar Implementation-Version — paketeringen kan vara felaktig.')
-        }
-        if (!startupReport.warnings.isEmpty()) {
-          log.warning("Launch verification completed with warnings: ${startupReport.warnings.join(' | ')}")
-        }
-        System.out.println("Launch verification OK: ${versionLine()} [home=${AppPaths.applicationHome()}]")
-        // Release the H2 and logging file handles so the caller (tests, packaging verification)
-        // can delete the verification home directory on Windows.
-        DatabaseService.instance.shutdown()
-        LoggingConfigurer.shutdown()
-        return
-      }
-      if (!startupReport.ok || !startupReport.warnings.isEmpty()) {
-        splash.close()
-        showStartupVerificationWarning(startupReport)
-      }
-      SwingUtilities.invokeLater {
-        try {
-          MainFrame mainFrame = new MainFrame()
-          mainFrame.display()
-        } finally {
-          splash.close()
-        }
-      }
+      runApplication(options, splash, userPreferencesService)
     } catch (Exception exception) {
       splash.close()
       log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', exception)
@@ -100,6 +59,158 @@ final class AlipsaAccounting {
       }
       throw exception
     }
+  }
+
+  /**
+   * Applies the saved UI language (falling back to the JVM default) before anything that might
+   * show a dialog - including data-location resolution - so those dialogs aren't stuck on the
+   * hardcoded English default. {@code UserPreferencesService} has no database dependency, so
+   * this is safe to read before {@code DatabaseService} is initialized.
+   */
+  private static void applyStartupLocale(UserPreferencesService userPreferencesService) {
+    Locale savedLanguage = userPreferencesService.getLanguage()
+    I18n.instance.setLocale(savedLanguage ?: Locale.getDefault())
+  }
+
+  private static void resolveApplicationHome(StartupOptions options, UserPreferencesService userPreferencesService) {
+    if (options.applicationHomeOverride != null) {
+      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, options.applicationHomeOverride)
+    } else {
+      resolveDataLocation(options.interactive, userPreferencesService)
+    }
+  }
+
+  private static void runApplication(StartupOptions options, StartupSplash splash, UserPreferencesService userPreferencesService) {
+    LoggingConfigurer.configure()
+    DatabaseService.instance.initialize()
+    if (options.mode == RunMode.MCP) {
+      splash.close()
+      runMcpMode()
+      return
+    }
+    ThemeApplier.apply(userPreferencesService.getTheme())
+    StartupVerificationReport startupReport = new StartupVerificationService().verify()
+    if (options.verifyLaunchRequested) {
+      splash.close()
+      handleVerifyLaunch(startupReport)
+      return
+    }
+    if (!startupReport.ok || !startupReport.warnings.isEmpty()) {
+      splash.close()
+      showStartupVerificationWarning(startupReport)
+    }
+    SwingUtilities.invokeLater {
+      try {
+        MainFrame mainFrame = new MainFrame()
+        mainFrame.display()
+      } finally {
+        splash.close()
+      }
+    }
+  }
+
+  private static void handleVerifyLaunch(StartupVerificationReport startupReport) {
+    failOnStartupErrors(startupReport)
+    String version = AlipsaAccounting.package?.implementationVersion
+    if (!version) {
+      log.warning('JAR manifest saknar Implementation-Version — paketeringen kan vara felaktig.')
+    }
+    if (!startupReport.warnings.isEmpty()) {
+      log.warning("Launch verification completed with warnings: ${startupReport.warnings.join(' | ')}")
+    }
+    System.out.println("Launch verification OK: ${versionLine()} [home=${AppPaths.applicationHome()}]")
+    // Release the H2 and logging file handles so the caller (tests, packaging verification)
+    // can delete the verification home directory on Windows.
+    DatabaseService.instance.shutdown()
+    LoggingConfigurer.shutdown()
+  }
+
+  /**
+   * Resolves the configured data location (if any) before {@code DatabaseService.instance}
+   * is initialized, applying any pending migration and setting the home override system
+   * property. Only skipped when {@code --home=} was passed explicitly, which always wins.
+   */
+  private static void resolveDataLocation(boolean interactive, UserPreferencesService preferences) {
+    while (true) {
+      DataLocationResolver.Outcome outcome = DataLocationResolver.resolve(preferences)
+      if (outcome.migrationFailed) {
+        reportMigrationFailure(outcome.migrationNote, interactive)
+      } else if (outcome.migrationNote) {
+        log.info(outcome.migrationNote)
+      }
+      if (outcome.reachable) {
+        if (outcome.location) {
+          System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, outcome.location)
+        }
+        return
+      }
+      if (!interactive || GraphicsEnvironment.headless) {
+        throw new IllegalStateException(
+            "Configured data location is not accessible: ${outcome.location} (${outcome.reachabilityError})".toString()
+        )
+      }
+      if (!offerToResolveUnreachableDataLocation(outcome, preferences)) {
+        System.exit(0)
+        return
+      }
+    }
+  }
+
+  /**
+   * Surfaces a failed pending migration to the user instead of letting it pass silently as a
+   * log line - the whole point of the feature is a two-machine shared location, so a failed
+   * move needs to be visible, not just logged.
+   */
+  private static void reportMigrationFailure(String message, boolean interactive) {
+    log.warning("Data location migration failed: ${message}".toString())
+    if (!interactive || GraphicsEnvironment.headless) {
+      return
+    }
+    runOnEventDispatchThread {
+      JOptionPane.showMessageDialog(
+          null,
+          I18n.instance.format('alipsaAccounting.dataLocation.migrationFailedMessage', message),
+          I18n.instance.getString('alipsaAccounting.dataLocation.migrationFailedTitle'),
+          JOptionPane.WARNING_MESSAGE
+      )
+    }
+  }
+
+  /**
+   * Shows a blocking Retry / Change location / Quit dialog for an unreachable configured
+   * location. Returns {@code true} if the caller should retry resolution, {@code false}
+   * if the user chose to quit.
+   */
+  private static boolean offerToResolveUnreachableDataLocation(
+      DataLocationResolver.Outcome outcome, UserPreferencesService preferences) {
+    String message = I18n.instance.format(
+        'alipsaAccounting.dataLocation.unreachableMessage', outcome.location, outcome.reachabilityError)
+    String title = I18n.instance.getString('alipsaAccounting.dataLocation.unreachableTitle')
+    String retry = I18n.instance.getString('alipsaAccounting.dataLocation.retry')
+    String change = I18n.instance.getString('alipsaAccounting.dataLocation.change')
+    String quit = I18n.instance.getString('alipsaAccounting.dataLocation.quit')
+    Object[] choices = [retry, change, quit] as Object[]
+
+    int[] selection = new int[1]
+    runOnEventDispatchThread {
+      selection[0] = JOptionPane.showOptionDialog(
+          null, message, title, JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, choices, retry)
+    }
+    if (selection[0] == 1) {
+      runOnEventDispatchThread {
+        DataLocationDialog.showDialog(null, preferences)
+      }
+      return true
+    }
+    selection[0] == 0
+  }
+
+  private static void runOnEventDispatchThread(Runnable action) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      action.run()
+      return
+    }
+    SwingUtilities.invokeAndWait(action)
   }
 
   private static void runMcpMode() {

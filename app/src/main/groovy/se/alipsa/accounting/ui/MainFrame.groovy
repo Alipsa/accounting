@@ -36,6 +36,7 @@ import se.alipsa.accounting.service.UserManualService
 import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
+import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 
@@ -179,6 +180,9 @@ final class MainFrame implements PropertyChangeListener {
   private JLabel languageLabel
   private JLabel themeLabel
   private JCheckBox automaticUpdateCheckBox
+  private JLabel dataLocationLabel
+  private JLabel dataLocationValueLabel
+  private JButton dataLocationChangeButton
   private JRadioButton themeSystemButton
   private JRadioButton themeLightButton
   private JRadioButton themeDarkButton
@@ -268,6 +272,8 @@ final class MainFrame implements PropertyChangeListener {
     languageLabel.text = I18n.instance.getString('companySettingsDialog.label.language')
     themeLabel.text = I18n.instance.getString('settings.label.theme')
     automaticUpdateCheckBox.text = I18n.instance.getString('settings.label.automaticUpdateCheck')
+    dataLocationLabel.text = I18n.instance.getString('settings.label.dataLocation')
+    dataLocationChangeButton.text = I18n.instance.getString('settings.button.changeDataLocation')
     themeSystemButton.text = I18n.instance.getString('settings.theme.system')
     themeLightButton.text = I18n.instance.getString('settings.theme.light')
     themeDarkButton.text = I18n.instance.getString('settings.theme.dark')
@@ -467,6 +473,7 @@ final class MainFrame implements PropertyChangeListener {
     section.add(languageRow)
     section.add(buildThemeRow())
     section.add(buildUpdateRow())
+    section.add(buildDataLocationRow())
     section
   }
 
@@ -519,6 +526,30 @@ final class MainFrame implements PropertyChangeListener {
     automaticUpdateCheckBox.addActionListener { toggleAutomaticUpdateCheck() }
     updateRow.add(automaticUpdateCheckBox)
     updateRow
+  }
+
+  private JPanel buildDataLocationRow() {
+    JPanel dataLocationRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    dataLocationLabel = new JLabel(I18n.instance.getString('settings.label.dataLocation'))
+    dataLocationValueLabel = new JLabel(currentDataLocationText())
+    dataLocationChangeButton = new JButton(I18n.instance.getString('settings.button.changeDataLocation'))
+    dataLocationChangeButton.addActionListener { changeDataLocation() }
+    dataLocationRow.add(dataLocationLabel)
+    dataLocationRow.add(dataLocationValueLabel)
+    dataLocationRow.add(dataLocationChangeButton)
+    dataLocationRow
+  }
+
+  private String currentDataLocationText() {
+    userPreferencesService.getDataLocation() ?: AppPaths.applicationHome().toString()
+  }
+
+  private void changeDataLocation() {
+    boolean changed = DataLocationDialog.showDialog(frame, userPreferencesService)
+    if (changed) {
+      dataLocationValueLabel.text = currentDataLocationText()
+      setStatus(I18n.instance.getString('settings.status.dataLocationChanged'))
+    }
   }
 
   private void switchTheme(ThemeMode mode) {
