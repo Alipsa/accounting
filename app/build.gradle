@@ -41,6 +41,15 @@ java {
 
 application {
   mainClass = 'se.alipsa.accounting.AlipsaAccounting'
+  applicationName = 'AlipsaAccounting'
+}
+
+tasks.named('distZip', Zip) {
+  archiveBaseName = 'app'
+}
+
+tasks.named('distTar', Tar) {
+  archiveBaseName = 'app'
 }
 
 distributions {

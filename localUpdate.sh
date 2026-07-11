@@ -5,10 +5,15 @@
 # Updates an existing Alipsa Accounting installation to the locally built
 # version without creating a formal release.
 #
+# The update is applied using the same platform-independent app-<version>.zip
+# distribution that the in-app updater uses:
+#   - jpackage installs: JAR files are replaced and .cfg files are rewritten.
+#   - Gradle distZip portable installs: bin/, lib/ and skill/ are replaced.
+#
 # Supported platforms:
-#   - Linux   (full support)
-#   - macOS   (updates the .app bundle)
-#   - Windows (not supported — release is installer-based)
+#   - Linux
+#   - macOS
+#   - Windows (Git Bash / MSYS2 / Cygwin)
 #
 # Usage:
 #   ./localUpdate.sh                # auto-discover and update
@@ -44,45 +49,6 @@ if [ "${PLATFORM}" = "unsupported" ]; then
   exit 1
 fi
 
-if [ "${PLATFORM}" = "windows" ]; then
-  echo "Error: localUpdate.sh does not support Windows." >&2
-  echo "The Windows release is an installer executable, not an app image archive." >&2
-  echo "Update by running the new installer, or implement a Windows app-image archive" >&2
-  echo "and point this script at it with --dir <path>." >&2
-  exit 1
-fi
-
-zip_release_dir() {
-  case "$1" in
-    linux)    echo release/linux ;;
-    macos)    echo release/macos-release ;;
-  esac
-}
-
-launcher_path_in() {
-  local parent="$1"
-  case "${PLATFORM}" in
-    linux)
-      echo "${parent}/${APP_NAME}/bin/${APP_NAME}"
-      ;;
-    macos)
-      echo "${parent}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
-      ;;
-  esac
-}
-
-is_valid_install() {
-  local dir="$1"
-  case "${PLATFORM}" in
-    linux)
-      [ -d "${dir}/${APP_NAME}/bin" ]
-      ;;
-    macos)
-      [ -d "${dir}/${APP_NAME}.app" ] && [ -f "$(launcher_path_in "${dir}")" ]
-      ;;
-  esac
-}
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --no-build)
@@ -98,7 +64,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help|-h)
-      sed -n '2,21p' "$0"
+      sed -n '2,25p' "$0"
       exit 0
       ;;
     *)
@@ -108,6 +74,157 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+# Returns the platform-specific lib directory for app-*.jar, or empty string.
+find_lib_dir() {
+  local install_dir="$1"
+  local candidates=()
+
+  case "${PLATFORM}" in
+    linux)
+      candidates=(
+        "${install_dir}/${APP_NAME}/lib/app"
+        "${install_dir}/${APP_NAME}/lib"
+        "${install_dir}/lib/app"
+        "${install_dir}/lib"
+      )
+      ;;
+    macos)
+      candidates=(
+        "${install_dir}/${APP_NAME}.app/Contents/app"
+        "${install_dir}/${APP_NAME}.app/Contents/lib"
+      )
+      ;;
+    windows)
+      candidates=(
+        "${install_dir}/${APP_NAME}/app"
+        "${install_dir}/${APP_NAME}/lib"
+        "${install_dir}/app"
+        "${install_dir}/lib"
+      )
+      ;;
+  esac
+
+  for cand in "${candidates[@]}"; do
+    if [ -d "${cand}" ] && [ -n "$(find "${cand}" -maxdepth 1 -type f -name 'app-*.jar' -print -quit 2>/dev/null || true)" ]; then
+      echo "${cand}"
+      return
+    fi
+  done
+}
+
+# Returns a plausible launcher path for the given lib dir, or empty string.
+launcher_path_for_lib_dir() {
+  local lib_dir="$1"
+  local parent
+  parent=$(dirname "${lib_dir}")
+
+  case "${lib_dir}" in
+    */lib/app)
+      # Linux jpackage app image: <app>/lib/app -> <app>/bin/<APP_NAME>
+      echo "$(dirname "${parent}")/bin/${APP_NAME}"
+      ;;
+    */Contents/app)
+      # macOS jpackage app bundle: <app>.app/Contents/app -> <app>.app/Contents/MacOS/<APP_NAME>
+      echo "${parent}/MacOS/${APP_NAME}"
+      ;;
+    */app)
+      # Windows jpackage install: <install>/app -> <install>/<APP_NAME>.exe
+      echo "${parent}/${APP_NAME}.exe"
+      ;;
+    */lib)
+      # Gradle distZip portable install: <install>/lib -> <install>/bin/<APP_NAME>
+      if [ "${PLATFORM}" = "windows" ]; then
+        echo "${parent}/bin/${APP_NAME}.bat"
+      else
+        echo "${parent}/bin/${APP_NAME}"
+      fi
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+# Returns the actual application root directory for the given lib dir.
+install_root_for_lib_dir() {
+  local lib_dir="$1"
+  local parent
+  parent=$(dirname "${lib_dir}")
+
+  case "${lib_dir}" in
+    */lib/app|*/Contents/app)
+      dirname "${parent}"
+      ;;
+    */app|*/lib)
+      echo "${parent}"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+is_valid_install() {
+  local dir="$1"
+  case "${PLATFORM}" in
+    linux)
+      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}" ] ||
+      [ -f "${dir}/${APP_NAME}/lib/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/bin/${APP_NAME}" ] ||
+      [ -f "${dir}/lib/app/${APP_NAME}.cfg" ]
+      ;;
+    macos)
+      [ -d "${dir}/${APP_NAME}.app" ] && {
+        [ -f "${dir}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}" ] ||
+        [ -f "${dir}/${APP_NAME}.app/Contents/app/${APP_NAME}.cfg" ]
+      }
+      ;;
+    windows)
+      [ -f "${dir}/${APP_NAME}.exe" ] ||
+      [ -f "${dir}/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/bin/${APP_NAME}.bat" ] ||
+      [ -f "${dir}/${APP_NAME}/${APP_NAME}.exe" ] ||
+      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}.bat" ]
+      ;;
+  esac
+}
+
+is_portable_lib_dir() {
+  # A plain .../lib directory (not jpackage's .../lib/app) is a Gradle distZip portable install.
+  [[ "$1" == */lib && "$1" != */lib/app ]]
+}
+
+build_classpath_block() {
+  local main_jar="$1"
+  local lib_dir="$2"
+  local jar_name
+
+  echo "app.classpath=\\\$APPDIR/${main_jar}"
+  for jar in "${lib_dir}"/*.jar; do
+    jar_name=$(basename "${jar}")
+    [ "${jar_name}" = "${main_jar}" ] && continue
+    echo "app.classpath=\\\$APPDIR/${jar_name}"
+  done
+}
+
+update_portable_install() {
+  local install_root="$1"
+  local extracted_dir="$2"
+
+  echo "  Replacing portable distribution files..."
+  for entry in bin lib skill; do
+    if [ -e "${install_root}/${entry}" ]; then
+      rm -rf "${install_root}/${entry}"
+    fi
+  done
+  for entry in bin lib skill; do
+    if [ -d "${extracted_dir}/${entry}" ]; then
+      mv "${extracted_dir}/${entry}" "${install_root}/"
+    fi
+  done
+}
 
 # Returns the parent directory of an existing app image, or empty string.
 find_existing_install() {
@@ -149,6 +266,10 @@ find_via_shortcut() {
     macos)
       find_via_macos_app_bundle
       ;;
+    windows)
+      # No reliable cross-shell shortcut parsing; rely on common locations.
+      echo ""
+      ;;
   esac
 }
 
@@ -164,7 +285,7 @@ find_via_linux_desktop_file() {
     return
   fi
 
-  # Exec path is expected to be <parent>/AlipsaAccounting/bin/AlipsaAccounting
+  # Exec path is expected to end in .../AlipsaAccounting/bin/AlipsaAccounting
   local parent_dir
   parent_dir="$(dirname "$(dirname "$(dirname "${exec_path}")")")"
 
@@ -179,7 +300,7 @@ find_via_macos_app_bundle() {
     "${HOME}/Applications"
   )
   for parent in "${candidates[@]}"; do
-    if is_valid_install "${parent}"; then
+    if [ -d "${parent}/${APP_NAME}.app" ] && is_valid_install "${parent}"; then
       echo "${parent}"
       return
     fi
@@ -206,6 +327,12 @@ find_via_common_locations() {
         "${HOME}/programs/${PACKAGE_NAME}"
       )
       ;;
+    windows)
+      locations=(
+        "${LOCALAPPDATA:-${HOME}/AppData/Local}"
+        "${ProgramFiles:-/c/Program Files}"
+      )
+      ;;
   esac
 
   for candidate in "${locations[@]}"; do
@@ -228,6 +355,9 @@ print_not_found_error() {
       echo "  /Applications/${APP_NAME}.app" >&2
       echo "  ${HOME}/Applications/${APP_NAME}.app" >&2
       ;;
+    windows)
+      echo "  (Start Menu shortcut lookup not supported from Git Bash)" >&2
+      ;;
   esac
   echo "" >&2
   echo "Searched common locations:" >&2
@@ -245,16 +375,20 @@ print_not_found_error() {
       echo "  /opt/${PACKAGE_NAME}" >&2
       echo "  ${HOME}/programs/${PACKAGE_NAME}" >&2
       ;;
+    windows)
+      echo "  %LOCALAPPDATA%" >&2
+      echo "  %ProgramFiles%" >&2
+      ;;
   esac
   echo "" >&2
-  echo "Re-run with the installation parent directory:" >&2
+  echo "Re-run with the installation directory:" >&2
   echo "  $0 --dir <path>" >&2
 }
 
 if [ "${BUILD}" = true ]; then
-  echo "Building current platform release..."
+  echo "Building distribution zip..."
   cd "${SCRIPT_DIR}"
-  ./gradlew :app:packageCurrentPlatformRelease
+  ./gradlew :app:distZip
 fi
 
 VERSION=$(cd "${SCRIPT_DIR}" && ./gradlew :app:properties -q 2>/dev/null | grep "^version:" | awk '{print $2}')
@@ -263,9 +397,9 @@ if [ -z "${VERSION}" ]; then
   exit 1
 fi
 
-ZIP_FILE="${SCRIPT_DIR}/app/build/$(zip_release_dir "${PLATFORM}")/${PACKAGE_NAME}-${VERSION}-${PLATFORM}.zip"
+ZIP_FILE="${SCRIPT_DIR}/app/build/distributions/app-${VERSION}.zip"
 if [ ! -f "${ZIP_FILE}" ]; then
-  echo "Error: release package not found: ${ZIP_FILE}" >&2
+  echo "Error: distribution zip not found: ${ZIP_FILE}" >&2
   echo "Run $0 without --no-build to build it first." >&2
   exit 1
 fi
@@ -276,46 +410,86 @@ if [ -z "${INSTALL_DIR}" ]; then
   exit 1
 fi
 
-echo "Updating ${APP_NAME} ${VERSION} under ${INSTALL_DIR}..."
-
-# Remove old app image/bundle and bundled scripts.
-case "${PLATFORM}" in
-  linux)
-    for entry in "${APP_NAME}" install.sh uninstall.sh skill; do
-      if [ -e "${INSTALL_DIR}/${entry}" ]; then
-        rm -rf "${INSTALL_DIR}/${entry}"
-      fi
-    done
-    ;;
-  macos)
-    if [ -e "${INSTALL_DIR}/${APP_NAME}.app" ]; then
-      rm -rf "${INSTALL_DIR}/${APP_NAME}.app"
-    fi
-    ;;
-esac
-
-echo "  Extracting ${ZIP_FILE}..."
-unzip -oq "${ZIP_FILE}" -d "${INSTALL_DIR}"
-
-LAUNCHER=$(launcher_path_in "${INSTALL_DIR}")
-if [ ! -f "${LAUNCHER}" ]; then
-  echo "Error: launcher not found: ${LAUNCHER}" >&2
+LIB_DIR=$(find_lib_dir "${INSTALL_DIR}")
+if [ -z "${LIB_DIR}" ]; then
+  echo "Error: could not locate the JAR directory in ${INSTALL_DIR}." >&2
   exit 1
 fi
-chmod +x "${LAUNCHER}"
 
-# On Linux, run the bundled install.sh to refresh the desktop entry.
-if [ "${PLATFORM}" = "linux" ]; then
-  INSTALL_SCRIPT="${INSTALL_DIR}/install.sh"
-  if [ -x "${INSTALL_SCRIPT}" ]; then
-    echo "  Registering desktop entry..."
-    (cd "${INSTALL_DIR}" && ./install.sh)
-  fi
+INSTALL_ROOT=$(install_root_for_lib_dir "${LIB_DIR}")
+if [ -z "${INSTALL_ROOT}" ]; then
+  INSTALL_ROOT="${INSTALL_DIR}"
 fi
+
+echo "Updating ${APP_NAME} ${VERSION} under ${INSTALL_ROOT}..."
+
+STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/alipsa-update-XXXXXX")
+APP_DIR_NAME="app-${VERSION}"
+BACKUP_DIR="${LIB_DIR}/.update-backup"
+
+cleanup_staging() {
+  rm -rf "${STAGING_DIR}"
+}
+trap cleanup_staging EXIT
+
+echo "  Extracting ${ZIP_FILE}..."
+unzip -oq "${ZIP_FILE}" -d "${STAGING_DIR}"
+
+NEW_MAIN_JAR=$(find "${STAGING_DIR}/${APP_DIR_NAME}/lib" -type f -name 'app-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit 2>/dev/null || true)
+if [ -z "${NEW_MAIN_JAR}" ]; then
+  echo "Error: could not find the new main JAR in ${ZIP_FILE}." >&2
+  exit 1
+fi
+NEW_MAIN_JAR=$(basename "${NEW_MAIN_JAR}")
+
+if is_portable_lib_dir "${LIB_DIR}"; then
+  update_portable_install "${INSTALL_ROOT}" "${STAGING_DIR}/${APP_DIR_NAME}"
+else
+  echo "  Backing up current JARs..."
+  rm -rf "${BACKUP_DIR}"
+  mkdir -p "${BACKUP_DIR}"
+  mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
+
+  echo "  Copying updated JARs..."
+  if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
+    echo "Error: failed to copy updated JARs; restoring backup." >&2
+    mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
+    rm -rf "${BACKUP_DIR}"
+    exit 1
+  fi
+
+  echo "  Updating launcher configuration..."
+  CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
+  export CLASSPATH_BLOCK
+  for cfg in "${LIB_DIR}"/*.cfg; do
+    [ -f "${cfg}" ] || continue
+    awk -v version="${VERSION}" '
+      /^app\.classpath=/ { next }
+      /^java-options=-Djpackage\.app-version=/ {
+        sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
+        print
+        next
+      }
+      /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
+      { print }
+    ' "${cfg}" > "${cfg}.tmp"
+    mv "${cfg}.tmp" "${cfg}"
+  done
+
+  echo "  Cleaning up..."
+  rm -rf "${BACKUP_DIR}"
+fi
+
+LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
 
 echo ""
 echo "Updated ${APP_NAME} ${VERSION}."
-echo "  App dir:  ${INSTALL_DIR}"
-echo "  Launcher: ${LAUNCHER}"
-echo ""
-echo "Start from the applications menu or run: ${LAUNCHER}"
+echo "  App dir:  ${INSTALL_ROOT}"
+if [ -n "${LAUNCHER}" ]; then
+  echo "  Launcher: ${LAUNCHER}"
+  echo ""
+  echo "Start the app from the applications menu or run: ${LAUNCHER}"
+else
+  echo ""
+  echo "Start the app from the applications menu."
+fi
