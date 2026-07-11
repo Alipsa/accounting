@@ -17,7 +17,19 @@ final class UserPreferencesService {
   private static final String PENDING_MIGRATION_TARGET_KEY = 'data.pendingMigrationTarget'
   private static final String PENDING_MIGRATION_MOVE_KEY = 'data.pendingMigrationMove'
 
-  private final Preferences preferences = Preferences.userNodeForPackage(UserPreferencesService)
+  private final Preferences preferences
+
+  UserPreferencesService() {
+    this(Preferences.userNodeForPackage(UserPreferencesService))
+  }
+
+  /**
+   * Visible for tests, so they can use an isolated node instead of the real, machine-global
+   * preferences store shared with the packaged application.
+   */
+  UserPreferencesService(Preferences preferences) {
+    this.preferences = preferences
+  }
 
   Locale getLanguage() {
     String tag = preferences.get(LANGUAGE_KEY, null)

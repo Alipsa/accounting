@@ -77,6 +77,18 @@ final class DataLocationMigrator {
     if (!validation.valid) {
       return MigrationResult.failure(validation.reason)
     }
+    Path normalizedSource = source.toAbsolutePath().normalize()
+    Path normalizedTarget = target.toAbsolutePath().normalize()
+    if (normalizedTarget == normalizedSource || normalizedTarget.startsWith(normalizedSource)) {
+      return MigrationResult.failure(
+          "${target} is the same as, or nested inside, the source location ${source}.".toString()
+      )
+    }
+    if (looksLikeExistingData(target)) {
+      return MigrationResult.failure(
+          "${target} already contains Accounting data. Choose \"this location already has my data\" instead, or pick an empty location.".toString()
+      )
+    }
     boolean targetPreexisted = Files.exists(target)
     try {
       Files.createDirectories(target)

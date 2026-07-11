@@ -16,18 +16,22 @@ import se.alipsa.accounting.support.DataLocationResolver
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.prefs.Preferences
 
 class DataLocationResolverTest {
 
   @TempDir
   Path tempDir
 
-  private final UserPreferencesService preferences = new UserPreferencesService()
+  // Isolated node instead of the real, machine-global preferences store: running these tests
+  // must never clobber a developer's actually-configured data location.
+  private final Preferences node = Preferences.userRoot().node(
+      "se/alipsa/accounting/service/test/${UUID.randomUUID()}".toString())
+  private final UserPreferencesService preferences = new UserPreferencesService(node)
 
   @AfterEach
   void cleanup() {
-    preferences.clearDataLocation()
-    preferences.clearPendingMigration()
+    node.removeNode()
   }
 
   @Test

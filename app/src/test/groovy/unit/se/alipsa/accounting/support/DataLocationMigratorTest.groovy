@@ -153,4 +153,43 @@ class DataLocationMigratorTest {
     assertFalse(result.success)
     assertFalse(Files.exists(target))
   }
+
+  @Test
+  void migrateFailsWhenTargetIsSameAsSource() {
+    Path source = Files.createDirectories(tempDir.resolve('same-dir'))
+    Files.createDirectories(AppPaths.dataDirectory(source))
+    Files.write(AppPaths.dataDirectory(source).resolve('accounting.mv.db'), 'db-bytes'.bytes)
+
+    DataLocationMigrator.MigrationResult result = DataLocationMigrator.migrate(source, source)
+
+    assertFalse(result.success)
+  }
+
+  @Test
+  void migrateFailsWhenTargetIsNestedInsideSource() {
+    Path source = Files.createDirectories(tempDir.resolve('parent-dir'))
+    Files.createDirectories(AppPaths.dataDirectory(source))
+    Files.write(AppPaths.dataDirectory(source).resolve('accounting.mv.db'), 'db-bytes'.bytes)
+    Path target = source.resolve('nested-target')
+
+    DataLocationMigrator.MigrationResult result = DataLocationMigrator.migrate(source, target)
+
+    assertFalse(result.success)
+    assertFalse(Files.exists(target))
+  }
+
+  @Test
+  void migrateFailsWithoutOverwritingWhenTargetAlreadyHasAccountingData() {
+    Path source = Files.createDirectories(tempDir.resolve('source-with-data'))
+    Files.createDirectories(AppPaths.dataDirectory(source))
+    Files.write(AppPaths.dataDirectory(source).resolve('accounting.mv.db'), 'source-db-bytes'.bytes)
+    Path target = Files.createDirectories(tempDir.resolve('already-populated-target'))
+    Files.createDirectories(AppPaths.dataDirectory(target))
+    Files.write(AppPaths.dataDirectory(target).resolve('accounting.mv.db'), 'target-db-bytes'.bytes)
+
+    DataLocationMigrator.MigrationResult result = DataLocationMigrator.migrate(source, target)
+
+    assertFalse(result.success)
+    assertEquals('target-db-bytes', new String(Files.readAllBytes(AppPaths.dataDirectory(target).resolve('accounting.mv.db'))))
+  }
 }

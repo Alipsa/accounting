@@ -10,14 +10,19 @@ import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.service.UserPreferencesService
 
+import java.util.prefs.Preferences
+
 class UserPreferencesDataLocationTest {
 
-  private final UserPreferencesService service = new UserPreferencesService()
+  // Isolated node instead of the real, machine-global preferences store: running these tests
+  // must never clobber a developer's actually-configured data location.
+  private final Preferences node = Preferences.userRoot().node(
+      "se/alipsa/accounting/service/test/${UUID.randomUUID()}".toString())
+  private final UserPreferencesService service = new UserPreferencesService(node)
 
   @AfterEach
   void cleanup() {
-    service.clearDataLocation()
-    service.clearPendingMigration()
+    node.removeNode()
   }
 
   @Test

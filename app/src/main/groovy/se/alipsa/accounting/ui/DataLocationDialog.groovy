@@ -133,9 +133,15 @@ final class DataLocationDialog extends JDialog {
       return
     }
     Path target = Paths.get(text)
-    DataLocationMigrator.ValidationResult validation = DataLocationMigrator.validateTarget(target)
+    boolean pointOnly = pointOnlyButton.isSelected()
+    DataLocationMigrator.ValidationResult validation = pointOnly ?
+        DataLocationMigrator.validateExistingLocation(target) : DataLocationMigrator.validateTarget(target)
     if (!validation.valid) {
       showError(validation.reason)
+      return
+    }
+    if (pointOnly && !DataLocationMigrator.looksLikeExistingData(target)) {
+      showError(I18n.instance.getString('dataLocationDialog.error.noExistingData'))
       return
     }
 
