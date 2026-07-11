@@ -44,6 +44,14 @@ application {
   applicationName = 'AlipsaAccounting'
 }
 
+tasks.named('distZip', Zip) {
+  archiveBaseName = 'app'
+}
+
+tasks.named('distTar', Tar) {
+  archiveBaseName = 'app'
+}
+
 distributions {
   main {
     contents {

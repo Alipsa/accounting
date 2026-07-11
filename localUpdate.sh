@@ -6,8 +6,9 @@
 # version without creating a formal release.
 #
 # The update is applied using the same platform-independent app-<version>.zip
-# distribution that the in-app updater uses: the JAR files in the existing
-# installation are replaced and the jpackage .cfg files are rewritten.
+# distribution that the in-app updater uses:
+#   - jpackage installs: JAR files are replaced and .cfg files are rewritten.
+#   - Gradle distZip portable installs: bin/, lib/ and skill/ are replaced.
 #
 # Supported platforms:
 #   - Linux
@@ -74,27 +75,50 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Returns the directory that contains app-*.jar, or empty string.
+# Returns the platform-specific lib directory for app-*.jar, or empty string.
 find_lib_dir() {
   local install_dir="$1"
-  local jar_path
-  jar_path=$(find "${install_dir}" -type f -name 'app-*.jar' ! -path '*/.update-backup/*' -print -quit 2>/dev/null || true)
-  if [ -n "${jar_path}" ]; then
-    dirname "${jar_path}"
-  fi
+  local candidates=()
+
+  case "${PLATFORM}" in
+    linux)
+      candidates=(
+        "${install_dir}/${APP_NAME}/lib/app"
+        "${install_dir}/${APP_NAME}/lib"
+      )
+      ;;
+    macos)
+      candidates=(
+        "${install_dir}/${APP_NAME}.app/Contents/app"
+        "${install_dir}/${APP_NAME}.app/Contents/lib"
+      )
+      ;;
+    windows)
+      candidates=(
+        "${install_dir}/app"
+        "${install_dir}/lib"
+      )
+      ;;
+  esac
+
+  for cand in "${candidates[@]}"; do
+    if [ -d "${cand}" ] && [ -n "$(find "${cand}" -maxdepth 1 -type f -name 'app-*.jar' -print -quit 2>/dev/null || true)" ]; then
+      echo "${cand}"
+      return
+    fi
+  done
 }
 
 # Returns a plausible launcher path for the given lib dir, or empty string.
 launcher_path_for_lib_dir() {
   local lib_dir="$1"
-  local parent grandparent
+  local parent
   parent=$(dirname "${lib_dir}")
-  grandparent=$(dirname "${parent}")
 
   case "${lib_dir}" in
     */lib/app)
       # Linux jpackage app image: <app>/lib/app -> <app>/bin/<APP_NAME>
-      echo "${grandparent}/bin/${APP_NAME}"
+      echo "$(dirname "${parent}")/bin/${APP_NAME}"
       ;;
     */Contents/app)
       # macOS jpackage app bundle: <app>.app/Contents/app -> <app>.app/Contents/MacOS/<APP_NAME>
@@ -102,11 +126,15 @@ launcher_path_for_lib_dir() {
       ;;
     */app)
       # Windows jpackage install: <install>/app -> <install>/<APP_NAME>.exe
-      echo "${grandparent}/${APP_NAME}.exe"
+      echo "${parent}/${APP_NAME}.exe"
       ;;
     */lib)
-      # Gradle distZip portable install: <install>/lib -> <install>/bin/<APP_NAME>.bat
-      echo "${grandparent}/bin/${APP_NAME}.bat"
+      # Gradle distZip portable install: <install>/lib -> <install>/bin/<APP_NAME>
+      if [ "${PLATFORM}" = "windows" ]; then
+        echo "${parent}/bin/${APP_NAME}.bat"
+      else
+        echo "${parent}/bin/${APP_NAME}"
+      fi
       ;;
     *)
       echo ""
@@ -116,7 +144,44 @@ launcher_path_for_lib_dir() {
 
 is_valid_install() {
   local dir="$1"
-  [ -n "$(find_lib_dir "${dir}")" ]
+  case "${PLATFORM}" in
+    linux)
+      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}" ] || [ -f "${dir}/${APP_NAME}/lib/app/${APP_NAME}.cfg" ]
+      ;;
+    macos)
+      [ -d "${dir}/${APP_NAME}.app" ] && {
+        [ -f "${dir}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}" ] ||
+        [ -f "${dir}/${APP_NAME}.app/Contents/app/${APP_NAME}.cfg" ]
+      }
+      ;;
+    windows)
+      [ -f "${dir}/${APP_NAME}.exe" ] ||
+      [ -f "${dir}/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/bin/${APP_NAME}.bat" ]
+      ;;
+  esac
+}
+
+is_portable_lib_dir() {
+  # A plain .../lib directory (not jpackage's .../lib/app) is a Gradle distZip portable install.
+  [[ "$1" == */lib && "$1" != */lib/app ]]
+}
+
+update_portable_install() {
+  local install_root="$1"
+  local extracted_dir="$2"
+
+  echo "  Replacing portable distribution files..."
+  for entry in bin lib skill; do
+    if [ -e "${install_root}/${entry}" ]; then
+      rm -rf "${install_root}/${entry}"
+    fi
+  done
+  for entry in bin lib skill; do
+    if [ -d "${extracted_dir}/${entry}" ]; then
+      mv "${extracted_dir}/${entry}" "${install_root}/"
+    fi
+  done
 }
 
 # Returns the parent directory of an existing app image, or empty string.
@@ -193,7 +258,7 @@ find_via_macos_app_bundle() {
     "${HOME}/Applications"
   )
   for parent in "${candidates[@]}"; do
-    if is_valid_install "${parent}"; then
+    if [ -d "${parent}/${APP_NAME}.app" ] && is_valid_install "${parent}"; then
       echo "${parent}"
       return
     fi
@@ -330,31 +395,35 @@ if [ -z "${NEW_MAIN_JAR}" ]; then
 fi
 NEW_MAIN_JAR=$(basename "${NEW_MAIN_JAR}")
 
-echo "  Backing up current JARs..."
-rm -rf "${BACKUP_DIR}"
-mkdir -p "${BACKUP_DIR}"
-mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
-
-echo "  Copying updated JARs..."
-if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
-  echo "Error: failed to copy updated JARs; restoring backup." >&2
-  mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
+if is_portable_lib_dir "${LIB_DIR}"; then
+  update_portable_install "${INSTALL_DIR}" "${STAGING_DIR}/${APP_DIR_NAME}"
+else
+  echo "  Backing up current JARs..."
   rm -rf "${BACKUP_DIR}"
-  exit 1
+  mkdir -p "${BACKUP_DIR}"
+  mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
+
+  echo "  Copying updated JARs..."
+  if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
+    echo "Error: failed to copy updated JARs; restoring backup." >&2
+    mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
+    rm -rf "${BACKUP_DIR}"
+    exit 1
+  fi
+
+  echo "  Updating launcher configuration..."
+  for cfg in "${LIB_DIR}"/*.cfg; do
+    [ -f "${cfg}" ] || continue
+    sed -i.bak \
+        -e "s#^app\\.classpath=\\\$APPDIR/app-[^/]*\\.jar#app.classpath=\\\$APPDIR/${NEW_MAIN_JAR}#" \
+        -e "s#^java-options=-Djpackage\\.app-version=.*#java-options=-Djpackage.app-version=${VERSION}#" \
+        "${cfg}"
+    rm -f "${cfg}.bak"
+  done
+
+  echo "  Cleaning up..."
+  rm -rf "${BACKUP_DIR}"
 fi
-
-echo "  Updating launcher configuration..."
-for cfg in "${LIB_DIR}"/*.cfg; do
-  [ -f "${cfg}" ] || continue
-  sed -i.bak \
-      -e "s#^app\\.classpath=\\\$APPDIR/app-[^/]*\\.jar#app.classpath=\\\$APPDIR/${NEW_MAIN_JAR}#" \
-      -e "s#^java-options=-Djpackage\\.app-version=.*#java-options=-Djpackage.app-version=${VERSION}#" \
-      "${cfg}"
-  rm -f "${cfg}.bak"
-done
-
-echo "  Cleaning up..."
-rm -rf "${BACKUP_DIR}"
 
 LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
 
