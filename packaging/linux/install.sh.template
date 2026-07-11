@@ -29,6 +29,16 @@ if [ ! -f "${ICON}" ]; then
   ICON="${SCRIPT_DIR}/@APP_NAME@.png"
 fi
 
+# Quotes a desktop-entry value so paths containing spaces are parsed correctly.
+# Per the Desktop Entry Specification, " and \ inside the value must be escaped
+# with a backslash, and the whole value is wrapped in double quotes.
+quote_desktop_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  echo "\"${value}\""
+}
+
 APPLICATIONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
 mkdir -p "${APPLICATIONS_DIR}"
 
@@ -39,8 +49,8 @@ Version=1.0
 Type=Application
 Name=@DISPLAY_NAME@
 Comment=@DESCRIPTION@
-Exec=${LAUNCHER}
-Icon=${ICON}
+Exec=$(quote_desktop_value "${LAUNCHER}")
+Icon=$(quote_desktop_value "${ICON}")
 Terminal=false
 Categories=Office;Finance;
 StartupWMClass=@APP_NAME@

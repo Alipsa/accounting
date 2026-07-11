@@ -159,7 +159,7 @@ find_via_linux_desktop_file() {
   fi
 
   local exec_path
-  exec_path=$(grep "^Exec=" "${desktop_file}" | head -n 1 | sed 's/^Exec=//')
+  exec_path=$(grep "^Exec=" "${desktop_file}" | head -n 1 | sed -e 's/^Exec=//' -e 's/^"//' -e 's/"$//')
   if [ -z "${exec_path}" ]; then
     return
   fi
