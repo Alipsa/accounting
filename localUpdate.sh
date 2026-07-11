@@ -196,6 +196,19 @@ is_portable_lib_dir() {
   [[ "$1" == */lib && "$1" != */lib/app ]]
 }
 
+build_classpath_block() {
+  local main_jar="$1"
+  local lib_dir="$2"
+  local jar_name
+
+  echo "app.classpath=\\\$APPDIR/${main_jar}"
+  for jar in "${lib_dir}"/*.jar; do
+    jar_name=$(basename "${jar}")
+    [ "${jar_name}" = "${main_jar}" ] && continue
+    echo "app.classpath=\\\$APPDIR/${jar_name}"
+  done
+}
+
 update_portable_install() {
   local install_root="$1"
   local extracted_dir="$2"
@@ -446,13 +459,21 @@ else
   fi
 
   echo "  Updating launcher configuration..."
+  CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
+  export CLASSPATH_BLOCK
   for cfg in "${LIB_DIR}"/*.cfg; do
     [ -f "${cfg}" ] || continue
-    sed -i.bak \
-        -e "s#^app\\.classpath=\\\$APPDIR/app-[^/]*\\.jar#app.classpath=\\\$APPDIR/${NEW_MAIN_JAR}#" \
-        -e "s#^java-options=-Djpackage\\.app-version=.*#java-options=-Djpackage.app-version=${VERSION}#" \
-        "${cfg}"
-    rm -f "${cfg}.bak"
+    awk -v version="${VERSION}" '
+      /^app\.classpath=/ { next }
+      /^java-options=-Djpackage\.app-version=/ {
+        sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
+        print
+        next
+      }
+      /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
+      { print }
+    ' "${cfg}" > "${cfg}.tmp"
+    mv "${cfg}.tmp" "${cfg}"
   done
 
   echo "  Cleaning up..."
