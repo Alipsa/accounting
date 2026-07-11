@@ -1,12 +1,12 @@
 [versions]
-groovy = "5.0.6"
+groovy = "5.0.7"
 h2 = "2.4.240"
 sie-parser = "2.1.0"
 poi = "5.5.1"
 journo = "0.7.3"
-flatlaf = "3.7.1"
+flatlaf = "3.7.2"
 swing-widgets = "1.1.1"
-junit = "6.1.0"
+junit = "6.1.1"
 groovier-junit = "0.3.2"
 
 [libraries]
