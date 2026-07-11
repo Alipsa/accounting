@@ -25,7 +25,10 @@ final class AppPaths {
     if (override) {
       return Paths.get(override).toAbsolutePath().normalize()
     }
+    osDefaultApplicationHome()
+  }
 
+  private static Path osDefaultApplicationHome() {
     String osName = System.getProperty('os.name', 'unknown').toLowerCase(Locale.ROOT)
     String userHome = System.getProperty('user.home')
     if (osName.contains('win')) {
@@ -107,6 +110,11 @@ final class AppPaths {
   }
 
   static void ensureDirectoryStructure(Path applicationHome) {
+    // Only tighten permissions on the OS-default, single-user local install location. A
+    // custom location (a shared/mounted drive the user configured for multi-machine use, or
+    // a --home= override) must not be forced to owner-only, or the whole point of sharing it
+    // is defeated - and on some network filesystems this can lock other machines out entirely.
+    boolean isDefaultLocation = isOsDefaultApplicationHome(applicationHome)
     [
         applicationHome,
         dataDirectory(applicationHome),
@@ -118,8 +126,14 @@ final class AppPaths {
         docsDirectory(applicationHome)
     ].each { Path path ->
       Files.createDirectories(path)
-      tightenPermissions(path)
+      if (isDefaultLocation) {
+        tightenPermissions(path)
+      }
     }
+  }
+
+  private static boolean isOsDefaultApplicationHome(Path applicationHome) {
+    applicationHome.toAbsolutePath().normalize() == osDefaultApplicationHome().toAbsolutePath().normalize()
   }
 
   private static void tightenPermissions(Path path) {

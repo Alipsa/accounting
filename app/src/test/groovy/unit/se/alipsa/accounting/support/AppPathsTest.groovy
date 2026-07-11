@@ -1,14 +1,19 @@
 package se.alipsa.accounting.support
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assumptions.assumeTrue
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import java.nio.file.FileSystems
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 
 // This test mutates global system properties (os.name, user.home) to verify
 // platform-specific path defaults. Tests must run single-threaded to avoid
@@ -75,6 +80,61 @@ class AppPathsTest {
     assertEquals(home.resolve('reports'), AppPaths.reportsDirectory())
     assertEquals(home.resolve('backups'), AppPaths.backupsDirectory())
     assertEquals(home.resolve('docs'), AppPaths.docsDirectory())
+  }
+
+  @Test
+  void ensureDirectoryStructurePreservesPermissionsForCustomHome() {
+    assumePosixPermissionsSupported()
+    Path customHome = tempDir.resolve('shared-home')
+    List<Path> directories = [
+        customHome,
+        AppPaths.dataDirectory(customHome),
+        AppPaths.logDirectory(customHome),
+        AppPaths.attachmentsDirectory(customHome),
+        AppPaths.reportsDirectory(customHome),
+        AppPaths.sieExportsDirectory(customHome),
+        AppPaths.backupsDirectory(customHome),
+        AppPaths.docsDirectory(customHome)
+    ]
+    Set<PosixFilePermission> sharedPermissions = PosixFilePermissions.fromString('rwxrwx---')
+    directories.each { Path directory ->
+      Files.createDirectories(directory)
+      Files.setPosixFilePermissions(directory, sharedPermissions)
+    }
+
+    AppPaths.ensureDirectoryStructure(customHome)
+
+    directories.each { Path directory ->
+      assertEquals(sharedPermissions, Files.getPosixFilePermissions(directory))
+    }
+  }
+
+  @Test
+  void ensureDirectoryStructureTightensPermissionsForDefaultHome() {
+    assumePosixPermissionsSupported()
+    System.setProperty('os.name', 'Linux')
+    System.setProperty('user.home', tempDir.toString())
+    Path defaultHome = Paths.get(tempDir.toString(), '.local', 'share', 'alipsa-accounting')
+
+    AppPaths.ensureDirectoryStructure(defaultHome)
+
+    Set<PosixFilePermission> ownerOnly = PosixFilePermissions.fromString('rwx------')
+    [
+        defaultHome,
+        AppPaths.dataDirectory(defaultHome),
+        AppPaths.logDirectory(defaultHome),
+        AppPaths.attachmentsDirectory(defaultHome),
+        AppPaths.reportsDirectory(defaultHome),
+        AppPaths.sieExportsDirectory(defaultHome),
+        AppPaths.backupsDirectory(defaultHome),
+        AppPaths.docsDirectory(defaultHome)
+    ].each { Path directory ->
+      assertEquals(ownerOnly, Files.getPosixFilePermissions(directory))
+    }
+  }
+
+  private static void assumePosixPermissionsSupported() {
+    assumeTrue(FileSystems.default.supportedFileAttributeViews().contains('posix'))
   }
 
   private static void restoreProperty(String name, String value) {
