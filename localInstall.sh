@@ -77,11 +77,15 @@ case "$(uname -s)" in
     ;;
 esac
 
-if [ "${PLATFORM}" != "linux" ]; then
-  echo "Warning: localInstall.sh is currently optimized for Linux. Continuing anyway..." >&2
-fi
+zip_release_dir() {
+  case "$1" in
+    linux)    echo release/linux ;;
+    macos)    echo release/macos-release ;;
+    windows)  echo release/windows-release ;;
+  esac
+}
 
-ZIP_FILE="${SCRIPT_DIR}/app/build/release/${PLATFORM}/${PACKAGE_NAME}-${VERSION}-${PLATFORM}.zip"
+ZIP_FILE="${SCRIPT_DIR}/app/build/$(zip_release_dir "${PLATFORM}")/${PACKAGE_NAME}-${VERSION}-${PLATFORM}.zip"
 if [ ! -f "${ZIP_FILE}" ]; then
   echo "Error: release package not found: ${ZIP_FILE}" >&2
   echo "Run $0 without --no-build to build it first." >&2
