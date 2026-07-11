@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import com.formdev.flatlaf.util.SystemFileChooser
+
 import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.DataLocationMigrator
@@ -15,7 +17,6 @@ import javax.swing.BorderFactory
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JDialog
-import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JOptionPane
 import javax.swing.JPanel
@@ -110,12 +111,12 @@ final class DataLocationDialog extends JDialog {
   }
 
   private void browse() {
-    JFileChooser chooser = new JFileChooser()
-    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY)
+    SystemFileChooser chooser = new SystemFileChooser()
+    chooser.setFileSelectionMode(SystemFileChooser.DIRECTORIES_ONLY)
     if (pathField.text?.trim()) {
       chooser.setCurrentDirectory(new File(pathField.text.trim()))
     }
-    if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+    if (chooser.showOpenDialog(this) == SystemFileChooser.APPROVE_OPTION) {
       Path selected = chooser.getSelectedFile().toPath()
       pathField.text = selected.toString()
       if (DataLocationMigrator.looksLikeExistingData(selected)) {
