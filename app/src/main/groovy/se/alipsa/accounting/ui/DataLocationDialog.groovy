@@ -159,6 +159,9 @@ final class DataLocationDialog extends JDialog {
     if (moveDataButton.isSelected()) {
       preferences.setPendingMigration(target.toString(), true)
     } else {
+      // A direct point-only choice supersedes any earlier queued move; otherwise a stale
+      // pending migration would hijack the source path on next startup.
+      preferences.clearPendingMigration()
       preferences.setDataLocation(target.toString())
     }
     changed = true

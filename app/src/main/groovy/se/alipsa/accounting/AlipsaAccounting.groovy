@@ -43,11 +43,12 @@ final class AlipsaAccounting {
       System.out.println(versionLine())
       return
     }
-    resolveApplicationHome(options)
+    UserPreferencesService userPreferencesService = new UserPreferencesService()
+    applyStartupLocale(userPreferencesService)
+    resolveApplicationHome(options, userPreferencesService)
     StartupSplash splash = StartupSplash.showIfPossible(options.interactive)
-    I18n.instance.setLocale(Locale.getDefault())
     try {
-      runApplication(options, splash)
+      runApplication(options, splash, userPreferencesService)
     } catch (Exception exception) {
       splash.close()
       log.log(Level.SEVERE, 'Failed to start Alipsa Accounting.', exception)
@@ -60,22 +61,28 @@ final class AlipsaAccounting {
     }
   }
 
-  private static void resolveApplicationHome(StartupOptions options) {
+  /**
+   * Applies the saved UI language (falling back to the JVM default) before anything that might
+   * show a dialog - including data-location resolution - so those dialogs aren't stuck on the
+   * hardcoded English default. {@code UserPreferencesService} has no database dependency, so
+   * this is safe to read before {@code DatabaseService} is initialized.
+   */
+  private static void applyStartupLocale(UserPreferencesService userPreferencesService) {
+    Locale savedLanguage = userPreferencesService.getLanguage()
+    I18n.instance.setLocale(savedLanguage ?: Locale.getDefault())
+  }
+
+  private static void resolveApplicationHome(StartupOptions options, UserPreferencesService userPreferencesService) {
     if (options.applicationHomeOverride != null) {
       System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, options.applicationHomeOverride)
     } else {
-      resolveDataLocation(options.interactive)
+      resolveDataLocation(options.interactive, userPreferencesService)
     }
   }
 
-  private static void runApplication(StartupOptions options, StartupSplash splash) {
+  private static void runApplication(StartupOptions options, StartupSplash splash, UserPreferencesService userPreferencesService) {
     LoggingConfigurer.configure()
     DatabaseService.instance.initialize()
-    UserPreferencesService userPreferencesService = new UserPreferencesService()
-    Locale savedLanguage = userPreferencesService.getLanguage()
-    if (savedLanguage != null) {
-      I18n.instance.setLocale(savedLanguage)
-    }
     if (options.mode == RunMode.MCP) {
       splash.close()
       runMcpMode()
@@ -123,8 +130,7 @@ final class AlipsaAccounting {
    * is initialized, applying any pending migration and setting the home override system
    * property. Only skipped when {@code --home=} was passed explicitly, which always wins.
    */
-  private static void resolveDataLocation(boolean interactive) {
-    UserPreferencesService preferences = new UserPreferencesService()
+  private static void resolveDataLocation(boolean interactive, UserPreferencesService preferences) {
     while (true) {
       DataLocationResolver.Outcome outcome = DataLocationResolver.resolve(preferences)
       if (outcome.migrationFailed) {

@@ -3,11 +3,11 @@
 ## v1.4.3, in progress
 - Re-enable splash screen
 - Configurable data location — The database and app-data folder (attachments, reports, backups, SIE exports, logs) can now be pointed at a custom, persisted location from Settings, so the same user can run the app from multiple machines against a shared or mounted drive. Includes a guided move of existing data to the new location, and the app fails loudly with a clear message instead of silently falling back to a different database if the configured location becomes unreachable.
-- Updated dependencies: 
+- Updated dependencies:
   - Groovy 5.0.6 -> 5.0.7
   - JUnit 6.1.0 -> 6.1.1
   - FlatLaf 3.7.1 -> 3.7.2
-  - Spotless Gradle plugin 8.7.0 -> 8.8.0, 
+  - Spotless Gradle plugin 8.7.0 -> 8.8.0
   - Gradle 9.6.0 -> 9.6.1
 
 ## v1.4.2, 2026-06-21
