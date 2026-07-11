@@ -19,12 +19,12 @@
 # Default install directory:
 #   Linux   : ~/.local/lib/alipsa-accounting
 #   macOS   : ~/Applications
-#   Windows : %LOCALAPPDATA%\AlipsaAccounting
+#   Windows : %LOCALAPPDATA%
 #
 # The release zip is extracted into that directory, producing:
 #   Linux : <dir>/AlipsaAccounting/   (jpackage app image)
 #   macOS : <dir>/AlipsaAccounting.app/
-#   Windows: <dir>/AlipsaAccounting/  (bin/, lib/, skill/)
+#   Windows : <dir>/AlipsaAccounting/  (bin/, lib/, skill/)
 #
 
 set -euo pipefail
@@ -61,7 +61,7 @@ default_install_dir() {
   case "${PLATFORM}" in
     linux) echo "${HOME}/.local/lib/${PACKAGE_NAME}" ;;
     macos) echo "${HOME}/Applications" ;;
-    windows) echo "${LOCALAPPDATA:-${HOME}/AppData/Local}/${APP_NAME}" ;;
+    windows) echo "${LOCALAPPDATA:-${HOME}/AppData/Local}" ;;
   esac
 }
 
@@ -178,12 +178,13 @@ install_windows() {
     exit 1
   fi
 
-  echo "Installing ${APP_NAME} ${VERSION} under ${INSTALL_DIR}..."
+  local app_root="${INSTALL_DIR}/${APP_NAME}"
+  echo "Installing ${APP_NAME} ${VERSION} under ${app_root}..."
 
-  if [ -d "${INSTALL_DIR}" ]; then
-    rm -rf "${INSTALL_DIR}"
+  if [ -d "${app_root}" ]; then
+    rm -rf "${app_root}"
   fi
-  mkdir -p "${INSTALL_DIR}"
+  mkdir -p "${app_root}"
 
   local staging_dir
   staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/alipsa-install-XXXXXX")
@@ -199,9 +200,9 @@ install_windows() {
   fi
 
   echo "  Moving files into place..."
-  mv "${extracted_dir}/"* "${INSTALL_DIR}/"
+  mv "${extracted_dir}/"* "${app_root}/"
 
-  LAUNCHER="${INSTALL_DIR}/bin/${APP_NAME}.bat"
+  LAUNCHER="${app_root}/bin/${APP_NAME}.bat"
   if [ ! -f "${LAUNCHER}" ]; then
     echo "Error: launcher not found: ${LAUNCHER}" >&2
     exit 1

@@ -95,6 +95,8 @@ find_lib_dir() {
       ;;
     windows)
       candidates=(
+        "${install_dir}/${APP_NAME}/app"
+        "${install_dir}/${APP_NAME}/lib"
         "${install_dir}/app"
         "${install_dir}/lib"
       )
@@ -142,6 +144,25 @@ launcher_path_for_lib_dir() {
   esac
 }
 
+# Returns the actual application root directory for the given lib dir.
+install_root_for_lib_dir() {
+  local lib_dir="$1"
+  local parent
+  parent=$(dirname "${lib_dir}")
+
+  case "${lib_dir}" in
+    */lib/app|*/Contents/app)
+      dirname "${parent}"
+      ;;
+    */app|*/lib)
+      echo "${parent}"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
 is_valid_install() {
   local dir="$1"
   case "${PLATFORM}" in
@@ -157,7 +178,10 @@ is_valid_install() {
     windows)
       [ -f "${dir}/${APP_NAME}.exe" ] ||
       [ -f "${dir}/app/${APP_NAME}.cfg" ] ||
-      [ -f "${dir}/bin/${APP_NAME}.bat" ]
+      [ -f "${dir}/bin/${APP_NAME}.bat" ] ||
+      [ -f "${dir}/${APP_NAME}/${APP_NAME}.exe" ] ||
+      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}.bat" ]
       ;;
   esac
 }
@@ -287,8 +311,8 @@ find_via_common_locations() {
       ;;
     windows)
       locations=(
-        "${LOCALAPPDATA:-${HOME}/AppData/Local}/${APP_NAME}"
-        "${ProgramFiles:-/c/Program Files}/${APP_NAME}"
+        "${LOCALAPPDATA:-${HOME}/AppData/Local}"
+        "${ProgramFiles:-/c/Program Files}"
       )
       ;;
   esac
@@ -334,8 +358,8 @@ print_not_found_error() {
       echo "  ${HOME}/programs/${PACKAGE_NAME}" >&2
       ;;
     windows)
-      echo "  %LOCALAPPDATA%\\${APP_NAME}" >&2
-      echo "  %ProgramFiles%\\${APP_NAME}" >&2
+      echo "  %LOCALAPPDATA%" >&2
+      echo "  %ProgramFiles%" >&2
       ;;
   esac
   echo "" >&2
@@ -374,7 +398,12 @@ if [ -z "${LIB_DIR}" ]; then
   exit 1
 fi
 
-echo "Updating ${APP_NAME} ${VERSION} under ${INSTALL_DIR}..."
+INSTALL_ROOT=$(install_root_for_lib_dir "${LIB_DIR}")
+if [ -z "${INSTALL_ROOT}" ]; then
+  INSTALL_ROOT="${INSTALL_DIR}"
+fi
+
+echo "Updating ${APP_NAME} ${VERSION} under ${INSTALL_ROOT}..."
 
 STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/alipsa-update-XXXXXX")
 APP_DIR_NAME="app-${VERSION}"
@@ -396,7 +425,7 @@ fi
 NEW_MAIN_JAR=$(basename "${NEW_MAIN_JAR}")
 
 if is_portable_lib_dir "${LIB_DIR}"; then
-  update_portable_install "${INSTALL_DIR}" "${STAGING_DIR}/${APP_DIR_NAME}"
+  update_portable_install "${INSTALL_ROOT}" "${STAGING_DIR}/${APP_DIR_NAME}"
 else
   echo "  Backing up current JARs..."
   rm -rf "${BACKUP_DIR}"
@@ -429,7 +458,7 @@ LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
 
 echo ""
 echo "Updated ${APP_NAME} ${VERSION}."
-echo "  App dir:  ${INSTALL_DIR}"
+echo "  App dir:  ${INSTALL_ROOT}"
 if [ -n "${LAUNCHER}" ]; then
   echo "  Launcher: ${LAUNCHER}"
   echo ""
