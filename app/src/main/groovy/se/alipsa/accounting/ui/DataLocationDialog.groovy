@@ -156,14 +156,12 @@ final class DataLocationDialog extends JDialog {
       return
     }
 
-    if (moveDataButton.isSelected()) {
-      preferences.setPendingMigration(target.toString(), true)
-    } else {
-      // A direct point-only choice supersedes any earlier queued move; otherwise a stale
-      // pending migration would hijack the source path on next startup.
-      preferences.clearPendingMigration()
-      preferences.setDataLocation(target.toString())
-    }
+    // Both modes are queued as a pending change rather than written to data.location
+    // immediately: the running app still uses the old location until restart, so
+    // data.location must keep reflecting whatever is actually active until
+    // DataLocationResolver applies the pending change at the next startup. Writing it
+    // early would corrupt the source of a later "move" queued before restarting.
+    preferences.setPendingMigration(target.toString(), moveDataButton.isSelected())
     changed = true
 
     JOptionPane.showMessageDialog(

@@ -142,4 +142,32 @@ class DataLocationResolverTest {
     assertNull(preferences.getPendingMigrationTarget())
     assertFalse(Files.exists(newHome))
   }
+
+  @Test
+  void queuingAMoveAfterAnUnappliedPointOnlyChoiceUsesTheTrueActiveSourceNotThePointOnlyPath() {
+    // The real, actually-active location the running app is still using this session.
+    Path realActiveHome = Files.createDirectories(tempDir.resolve('real-active-home'))
+    Path realDataDir = Files.createDirectories(AppPaths.dataDirectory(realActiveHome))
+    Files.write(realDataDir.resolve('accounting.mv.db'), 'real-data'.bytes)
+    preferences.setDataLocation(realActiveHome.toString())
+
+    // DataLocationDialog queues a point-only change to B without touching data.location
+    // (the running app hasn't switched yet - only a restart applies it).
+    Path pointOnlyTargetB = Files.createDirectories(tempDir.resolve('point-only-target-b'))
+    preferences.setPendingMigration(pointOnlyTargetB.toString(), false)
+
+    // Before restarting, the user reopens the dialog and queues a move to C instead,
+    // overwriting the still-unapplied pending choice.
+    Path moveTargetC = tempDir.resolve('move-target-c')
+    preferences.setPendingMigration(moveTargetC.toString(), true)
+
+    DataLocationResolver.Outcome outcome = DataLocationResolver.resolve(preferences)
+
+    assertTrue(outcome.reachable, outcome.migrationNote)
+    assertEquals(moveTargetC.toString(), outcome.location)
+    assertEquals(
+        'real-data',
+        new String(Files.readAllBytes(AppPaths.dataDirectory(moveTargetC).resolve('accounting.mv.db')))
+    )
+  }
 }
