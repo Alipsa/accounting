@@ -41,6 +41,7 @@ java {
 
 application {
   mainClass = 'se.alipsa.accounting.AlipsaAccounting'
+  applicationName = 'AlipsaAccounting'
 }
 
 distributions {
