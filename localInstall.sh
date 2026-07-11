@@ -137,7 +137,7 @@ case "${PLATFORM}" in
 esac
 
 echo "  Extracting ${ZIP_FILE}..."
-unzip -q "${ZIP_FILE}" -d "${INSTALL_DIR}"
+unzip -oq "${ZIP_FILE}" -d "${INSTALL_DIR}"
 
 case "${PLATFORM}" in
   linux)

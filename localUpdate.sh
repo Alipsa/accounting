@@ -295,7 +295,7 @@ case "${PLATFORM}" in
 esac
 
 echo "  Extracting ${ZIP_FILE}..."
-unzip -q "${ZIP_FILE}" -d "${INSTALL_DIR}"
+unzip -oq "${ZIP_FILE}" -d "${INSTALL_DIR}"
 
 LAUNCHER=$(launcher_path_in "${INSTALL_DIR}")
 if [ ! -f "${LAUNCHER}" ]; then
