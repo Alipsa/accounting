@@ -6,19 +6,23 @@
 # without creating a formal GitHub release. Intended for developers who want to
 # run the locally built version as their daily driver.
 #
+# Supported platforms:
+#   - Linux   (full support, including desktop entry registration)
+#   - macOS   (installs the .app bundle)
+#   - Windows (not supported — release is installer-based)
+#
 # Usage:
 #   ./localInstall.sh                # build and install to default location
 #   ./localInstall.sh --no-build     # skip build, install latest local package
 #   ./localInstall.sh --dir <path>   # parent directory for the installation
 #
 # Default install directory:
-#   ~/.local/lib/alipsa-accounting
+#   Linux : ~/.local/lib/alipsa-accounting
+#   macOS : ~/Applications
 #
 # The release zip is extracted into that directory, producing:
-#   <dir>/AlipsaAccounting/   (app image)
-#   <dir>/install.sh          (desktop entry registration)
-#   <dir>/uninstall.sh        (removal helper)
-#   <dir>/skill/              (MCP skill documentation)
+#   Linux : <dir>/AlipsaAccounting/   (app image)
+#   macOS : <dir>/AlipsaAccounting.app/
 #
 
 set -euo pipefail
@@ -27,7 +31,43 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="AlipsaAccounting"
 PACKAGE_NAME="alipsa-accounting"
 BUILD=true
-INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/lib/${PACKAGE_NAME}}"
+INSTALL_DIR=""
+
+detect_platform() {
+  case "$(uname -s)" in
+    Linux*)   echo linux ;;
+    Darwin*)  echo macos ;;
+    CYGWIN*|MINGW*|MSYS*) echo windows ;;
+    *)        echo unsupported ;;
+  esac
+}
+
+PLATFORM=$(detect_platform)
+if [ "${PLATFORM}" = "unsupported" ]; then
+  echo "Error: unsupported platform: $(uname -s)" >&2
+  exit 1
+fi
+
+if [ "${PLATFORM}" = "windows" ]; then
+  echo "Error: localInstall.sh does not support Windows." >&2
+  echo "The Windows release is an installer executable. Use the formal release" >&2
+  echo "installer or run the installer produced by ./gradlew :app:packageCurrentPlatformRelease." >&2
+  exit 1
+fi
+
+zip_release_dir() {
+  case "$1" in
+    linux)    echo release/linux ;;
+    macos)    echo release/macos-release ;;
+  esac
+}
+
+default_install_dir() {
+  case "${PLATFORM}" in
+    linux) echo "${HOME}/.local/lib/${PACKAGE_NAME}" ;;
+    macos) echo "${HOME}/Applications" ;;
+  esac
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -44,7 +84,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help|-h)
-      sed -n '2,22p' "$0"
+      sed -n '2,26p' "$0"
       exit 0
       ;;
     *)
@@ -54,6 +94,8 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+INSTALL_DIR="${INSTALL_DIR:-$(default_install_dir)}"
 
 if [ "${BUILD}" = true ]; then
   echo "Building current platform release..."
@@ -67,24 +109,6 @@ if [ -z "${VERSION}" ]; then
   exit 1
 fi
 
-case "$(uname -s)" in
-  Linux*)   PLATFORM=linux ;;
-  Darwin*)  PLATFORM=macos ;;
-  CYGWIN*|MINGW*|MSYS*) PLATFORM=windows ;;
-  *)
-    echo "Error: unsupported platform: $(uname -s)" >&2
-    exit 1
-    ;;
-esac
-
-zip_release_dir() {
-  case "$1" in
-    linux)    echo release/linux ;;
-    macos)    echo release/macos-release ;;
-    windows)  echo release/windows-release ;;
-  esac
-}
-
 ZIP_FILE="${SCRIPT_DIR}/app/build/$(zip_release_dir "${PLATFORM}")/${PACKAGE_NAME}-${VERSION}-${PLATFORM}.zip"
 if [ ! -f "${ZIP_FILE}" ]; then
   echo "Error: release package not found: ${ZIP_FILE}" >&2
@@ -96,39 +120,53 @@ echo "Installing ${APP_NAME} ${VERSION} under ${INSTALL_DIR}..."
 
 mkdir -p "${INSTALL_DIR}"
 
-# Clean up the app image and scripts from a previous install, but leave any
-# sibling files/directories that the user may have added manually.
-for entry in "${APP_NAME}" install.sh uninstall.sh skill; do
-  if [ -e "${INSTALL_DIR}/${entry}" ]; then
-    rm -rf "${INSTALL_DIR}/${entry}"
-  fi
-done
+# Clean up a previous install of the same bundle.
+case "${PLATFORM}" in
+  linux)
+    for entry in "${APP_NAME}" install.sh uninstall.sh skill; do
+      if [ -e "${INSTALL_DIR}/${entry}" ]; then
+        rm -rf "${INSTALL_DIR}/${entry}"
+      fi
+    done
+    ;;
+  macos)
+    if [ -e "${INSTALL_DIR}/${APP_NAME}.app" ]; then
+      rm -rf "${INSTALL_DIR}/${APP_NAME}.app"
+    fi
+    ;;
+esac
 
 echo "  Extracting ${ZIP_FILE}..."
 unzip -q "${ZIP_FILE}" -d "${INSTALL_DIR}"
 
-APP_DIR="${INSTALL_DIR}/${APP_NAME}"
-LAUNCHER="${APP_DIR}/bin/${APP_NAME}"
-if [ ! -f "${LAUNCHER}" ]; then
-  echo "Error: launcher not found: ${LAUNCHER}" >&2
-  exit 1
-fi
-chmod +x "${LAUNCHER}"
+case "${PLATFORM}" in
+  linux)
+    LAUNCHER="${INSTALL_DIR}/${APP_NAME}/bin/${APP_NAME}"
+    if [ ! -f "${LAUNCHER}" ]; then
+      echo "Error: launcher not found: ${LAUNCHER}" >&2
+      exit 1
+    fi
+    chmod +x "${LAUNCHER}"
 
-# Run the bundled install script to register the desktop entry on Linux.
-if [ "${PLATFORM}" = "linux" ]; then
-  INSTALL_SCRIPT="${INSTALL_DIR}/install.sh"
-  if [ -x "${INSTALL_SCRIPT}" ]; then
-    echo "  Registering desktop entry..."
-    (cd "${INSTALL_DIR}" && ./install.sh)
-  else
-    echo "Warning: install.sh not found or not executable; skipping desktop entry registration." >&2
-  fi
-fi
+    INSTALL_SCRIPT="${INSTALL_DIR}/install.sh"
+    if [ -x "${INSTALL_SCRIPT}" ]; then
+      echo "  Registering desktop entry..."
+      (cd "${INSTALL_DIR}" && ./install.sh)
+    fi
+    ;;
+  macos)
+    APP_BUNDLE="${INSTALL_DIR}/${APP_NAME}.app"
+    LAUNCHER="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+    if [ ! -d "${APP_BUNDLE}" ] || [ ! -f "${LAUNCHER}" ]; then
+      echo "Error: app bundle not found: ${APP_BUNDLE}" >&2
+      exit 1
+    fi
+    chmod +x "${LAUNCHER}"
+    ;;
+esac
 
 echo ""
 echo "Installed ${APP_NAME} ${VERSION}."
-echo "  App dir:  ${APP_DIR}"
 echo "  Launcher: ${LAUNCHER}"
 echo ""
-echo "Start from the applications menu or run: ${LAUNCHER}"
+echo "Start the app from the applications menu or run: ${LAUNCHER}"
