@@ -85,6 +85,8 @@ find_lib_dir() {
       candidates=(
         "${install_dir}/${APP_NAME}/lib/app"
         "${install_dir}/${APP_NAME}/lib"
+        "${install_dir}/lib/app"
+        "${install_dir}/lib"
       )
       ;;
     macos)
@@ -167,7 +169,10 @@ is_valid_install() {
   local dir="$1"
   case "${PLATFORM}" in
     linux)
-      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}" ] || [ -f "${dir}/${APP_NAME}/lib/app/${APP_NAME}.cfg" ]
+      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}" ] ||
+      [ -f "${dir}/${APP_NAME}/lib/app/${APP_NAME}.cfg" ] ||
+      [ -f "${dir}/bin/${APP_NAME}" ] ||
+      [ -f "${dir}/lib/app/${APP_NAME}.cfg" ]
       ;;
     macos)
       [ -d "${dir}/${APP_NAME}.app" ] && {
