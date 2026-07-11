@@ -1,5 +1,8 @@
 package se.alipsa.accounting.ui
 
+import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
+
 import se.alipsa.accounting.service.BackupResult
 import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.RestoreResult
@@ -20,14 +23,12 @@ import java.util.concurrent.ExecutionException
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
-import javax.swing.JFileChooser
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
-import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
  * Shows diagnostics, system documentation and backup/restore actions.
@@ -212,11 +213,11 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
   }
 
   private void createBackup() {
-    JFileChooser chooser = new JFileChooser()
+    SystemFileChooser chooser = new SystemFileChooser()
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
     chooser.selectedFile = new File('alipsa-accounting-backup.zip')
-    if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+    if (chooser.showSaveDialog(this) != SystemFileChooser.APPROVE_OPTION) {
       return
     }
     Path target = chooser.selectedFile.toPath()
@@ -245,10 +246,10 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
   }
 
   private void restoreBackup() {
-    JFileChooser chooser = new JFileChooser()
+    SystemFileChooser chooser = new SystemFileChooser()
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
-    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+    if (chooser.showOpenDialog(this) != SystemFileChooser.APPROVE_OPTION) {
       return
     }
     Path backupPath = chooser.selectedFile.toPath()

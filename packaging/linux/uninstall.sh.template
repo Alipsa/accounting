@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${SCRIPT_DIR}/@APP_NAME@"
 APPLICATIONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
 DESKTOP_FILE="${APPLICATIONS_DIR}/@APP_NAME@.desktop"
+ICON_FILE="${XDG_DATA_HOME:-${HOME}/.local/share}/icons/hicolor/512x512/apps/@PACKAGE_NAME@.png"
 DATA_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/alipsa-accounting"
 
 confirm() {
@@ -33,6 +34,13 @@ if [ -f "${DESKTOP_FILE}" ]; then
   fi
 else
   echo "Ingen genväg att ta bort (${DESKTOP_FILE} finns inte)."
+fi
+
+if [ -f "${ICON_FILE}" ]; then
+  rm -f "${ICON_FILE}"
+  echo "Ikon borttagen: ${ICON_FILE}"
+else
+  echo "Ingen ikon att ta bort (${ICON_FILE} finns inte)."
 fi
 
 if [ -d "${INSTALL_DIR}" ]; then

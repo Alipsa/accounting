@@ -1,6 +1,8 @@
 package se.alipsa.accounting.ui
 
 import alipsa.sieparser.SieCompany
+import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
@@ -32,7 +34,6 @@ import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JDialog
-import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JOptionPane
 import javax.swing.JPanel
@@ -42,7 +43,6 @@ import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.ListSelectionModel
 import javax.swing.SwingWorker
-import javax.swing.filechooser.FileNameExtensionFilter
 import javax.swing.table.AbstractTableModel
 
 /**
@@ -186,9 +186,9 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void importRequested() {
-    JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
+    SystemFileChooser chooser = new SystemFileChooser(defaultExchangeDirectory())
     chooser.fileFilter = sieImportFileFilter()
-    if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+    if (chooser.showOpenDialog(this) != SystemFileChooser.APPROVE_OPTION) {
       return
     }
     Path selectedPath = chooser.selectedFile.toPath()
@@ -530,11 +530,11 @@ final class SieExchangeDialog extends JDialog {
       showError(I18n.instance.getString('sieExchangeDialog.error.selectFiscalYear'), null)
       return
     }
-    JFileChooser chooser = new JFileChooser(defaultExchangeDirectory())
+    SystemFileChooser chooser = new SystemFileChooser(defaultExchangeDirectory())
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('sieExchangeDialog.fileFilter.sieExport'), 'sie')
     chooser.selectedFile = new File("${sanitizeFilePart(fiscalYear.name ?: fiscalYear.startDate.toString())}.sie")
-    if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+    if (chooser.showSaveDialog(this) != SystemFileChooser.APPROVE_OPTION) {
       return
     }
     Path targetPath = ensureSieExtension(chooser.selectedFile.toPath())

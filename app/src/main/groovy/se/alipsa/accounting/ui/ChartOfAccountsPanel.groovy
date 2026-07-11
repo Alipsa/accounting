@@ -1,5 +1,8 @@
 package se.alipsa.accounting.ui
 
+import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
+
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.service.AccountService
@@ -23,7 +26,6 @@ import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
-import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JOptionPane
 import javax.swing.JPanel
@@ -34,7 +36,6 @@ import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
 import javax.swing.event.ListSelectionEvent
-import javax.swing.filechooser.FileNameExtensionFilter
 import javax.swing.table.AbstractTableModel
 
 /**
@@ -292,11 +293,11 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void importChartOfAccounts() {
-    JFileChooser chooser = new JFileChooser(defaultWorkbookDirectory())
+    SystemFileChooser chooser = new SystemFileChooser(defaultWorkbookDirectory())
     chooser.fileFilter = new FileNameExtensionFilter(
         I18n.instance.getString('chartOfAccountsPanel.fileFilter.excel'), 'xlsx')
     int result = chooser.showOpenDialog(this)
-    if (result != JFileChooser.APPROVE_OPTION) {
+    if (result != SystemFileChooser.APPROVE_OPTION) {
       return
     }
 

@@ -3,6 +3,9 @@
 ## v1.4.3, in progress
 - Re-enable splash screen
 - Configurable data location — The database and app-data folder (attachments, reports, backups, SIE exports, logs) can now be pointed at a custom, persisted location from Settings, so the same user can run the app from multiple machines against a shared or mounted drive. Includes a guided move of existing data to the new location, and the app fails loudly with a clear message instead of silently falling back to a different database if the configured location becomes unreachable.
+- Native file dialogs on Linux — All file choosers (SIE import/export, data location, chart-of-accounts import, backup/restore, and voucher attachments) now use FlatLaf's `SystemFileChooser`, which delegates to the native GTK file dialog on Linux. This makes GVfs-mounted remote locations, such as SFTP shares shown in Nemo, visible and selectable inside the app.
+- Local install script — Added `localInstall.sh` for developers who want to build and install/update the app locally without creating a formal release. It builds the current platform package, extracts it to `~/.local/lib/alipsa-accounting`, and registers a desktop entry on Linux.
+- Local update script — Added `localUpdate.sh` that updates an existing installation by auto-discovering it from desktop shortcuts or common install locations on Linux and macOS. Supports `--dir <path>` to skip discovery. Windows is not supported because the Windows release is installer-based.
 - Updated dependencies:
   - Groovy 5.0.6 -> 5.0.7
   - JUnit 6.1.0 -> 6.1.1

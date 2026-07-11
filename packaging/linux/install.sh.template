@@ -29,6 +29,22 @@ if [ ! -f "${ICON}" ]; then
   ICON="${SCRIPT_DIR}/@APP_NAME@.png"
 fi
 
+# Quotes a desktop-entry value so paths containing spaces are parsed correctly.
+# Per the Desktop Entry Specification, " and \ inside the value must be escaped
+# with a backslash, and the whole value is wrapped in double quotes.
+quote_desktop_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  echo "\"${value}\""
+}
+
+# Install the icon into the hicolor theme so the desktop entry can reference it
+# by name instead of by path. Icon values cannot be quoted like Exec values.
+ICONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/icons/hicolor/512x512/apps"
+mkdir -p "${ICONS_DIR}"
+cp "${ICON}" "${ICONS_DIR}/@PACKAGE_NAME@.png"
+
 APPLICATIONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
 mkdir -p "${APPLICATIONS_DIR}"
 
@@ -39,8 +55,8 @@ Version=1.0
 Type=Application
 Name=@DISPLAY_NAME@
 Comment=@DESCRIPTION@
-Exec=${LAUNCHER}
-Icon=${ICON}
+Exec=$(quote_desktop_value "${LAUNCHER}")
+Icon=@PACKAGE_NAME@
 Terminal=false
 Categories=Office;Finance;
 StartupWMClass=@APP_NAME@

@@ -2,6 +2,8 @@ package se.alipsa.accounting.ui
 
 import groovy.transform.PackageScope
 
+import com.formdev.flatlaf.util.SystemFileChooser
+
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.FiscalYear
@@ -38,7 +40,6 @@ import javax.swing.AbstractAction
 import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
 import javax.swing.JButton
-import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JMenuItem
 import javax.swing.JPanel
@@ -822,9 +823,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       showError(I18n.instance.getString('voucherPanel.error.saveBeforeAttachment'))
       return
     }
-    JFileChooser chooser = new JFileChooser()
+    SystemFileChooser chooser = new SystemFileChooser()
     int result = chooser.showOpenDialog(this)
-    if (result != JFileChooser.APPROVE_OPTION || chooser.selectedFile == null) {
+    if (result != SystemFileChooser.APPROVE_OPTION || chooser.selectedFile == null) {
       return
     }
     try {
