@@ -109,24 +109,35 @@ td.number {
   margin-top: 6px;
 }
 
+.balance-sheet-report {
+  margin-top: 6px;
+}
+
+.balance-sheet-report .report-heading,
 .income-statement-report .report-heading {
   margin: 0 0 4px 0;
   font-size: 18pt;
 }
 
+.balance-sheet-report .report-period,
 .income-statement-report .report-period {
   margin: 0 0 14px 0;
   color: #334155;
 }
 
+.balance-sheet-report .statement-table,
 .income-statement-report .statement-table {
   margin-top: 0;
+  font-size: 9.5pt;
 }
 
+.balance-sheet-report .statement-table thead,
 .income-statement-report .statement-table thead {
   background: #f1f5f9;
 }
 
+.balance-sheet-report .statement-table th,
+.balance-sheet-report .statement-table td,
 .income-statement-report .statement-table th,
 .income-statement-report .statement-table td {
   border-left: none;
@@ -135,9 +146,33 @@ td.number {
   padding: 4px 0;
 }
 
+.balance-sheet-report .statement-table thead th,
 .income-statement-report .statement-table thead th {
   border-bottom: 1px solid #94a3b8;
   padding: 6px 0;
+}
+
+.balance-sheet-report .statement-row.detail td.label {
+  padding-left: 12px;
+}
+
+.balance-sheet-report .statement-row.subgroup-total td {
+  padding-top: 5px;
+  font-weight: 700;
+}
+
+.balance-sheet-report .statement-row.section-total td {
+  padding-top: 10px;
+  padding-bottom: 4px;
+  font-weight: 700;
+}
+
+.balance-sheet-report .statement-row.grand-total td {
+  padding-top: 12px;
+  padding-bottom: 5px;
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .income-statement-report .statement-row.section-header td {

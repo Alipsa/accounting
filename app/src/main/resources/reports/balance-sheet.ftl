@@ -1,23 +1,28 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
-  <h2>${title}</h2>
-  <p>${selectionLabel}</p>
-  <table>
-    <thead>
-      <tr>
-        <#list tableHeaders as header>
-          <th>${header}</th>
-        </#list>
-      </tr>
-    </thead>
-    <tbody>
-      <#list tableRows as row>
-        <#assign isSummary = typedRows[row?index].summaryRow>
-        <tr<#if isSummary> style="font-weight: bold; border-top: 1px solid #333;"</#if>>
-          <td>${row[0]}</td>
-          <td style="text-align: right;">${row[1]}</td>
+  <section class="balance-sheet-report">
+    <h2 class="report-heading">${title}</h2>
+    <p class="report-period">${selectionLabel}</p>
+    <table class="statement-table balance-sheet-table">
+      <thead>
+        <tr>
+          <#list tableHeaders as header>
+            <th<#if header?index != 0> class="number"</#if>>${header}</th>
+          </#list>
         </tr>
-      </#list>
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        <#list tableRows as row>
+          <#assign typedRow = typedRows[row?index]>
+          <#assign rowClass = typedRow.rowType.name()?lower_case?replace("_", "-")>
+          <tr class="statement-row ${rowClass}">
+            <td class="label">${row[0]}</td>
+            <td class="number">${row[1]}</td>
+            <td class="number">${row[2]}</td>
+            <td class="number">${row[3]}</td>
+          </tr>
+        </#list>
+      </tbody>
+    </table>
+  </section>
 </@layout.page>

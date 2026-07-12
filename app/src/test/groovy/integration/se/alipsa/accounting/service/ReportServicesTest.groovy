@@ -573,6 +573,12 @@ class ReportServicesTest {
 
     // 4 account details + 4 subgroup subtotals + 2 section totals + 2 computed totals = 12
     assertEquals(12, report.tableRows.size())
+    assertEquals(['Post', 'Ingående balans', 'Denna period', 'Utgående saldo'], report.tableHeaders)
+    assertTrue(report.tableRows.every { List<String> row -> row.size() == 4 })
+    String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
+    assertTrue(html.contains('balance-sheet-report'))
+    assertTrue(html.contains('Ingående balans'))
+    assertTrue(html.contains('Denna period'))
 
     // Check that summary lines contain total figures
     assertTrue(report.summaryLines.any { String line -> line.contains('Summa tillgångar') })

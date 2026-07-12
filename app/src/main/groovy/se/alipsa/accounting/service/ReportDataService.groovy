@@ -13,6 +13,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetRowType
 import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.IncomeStatementRow
@@ -579,46 +580,40 @@ final class ReportDataService {
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
       Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> openingBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
-      Map<String, BigDecimal> movements = ReportSqlLoader.loadBalanceSheetMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
+      Map<String, BigDecimal> fiscalOpeningBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, BigDecimal> prePeriodMovements = ReportSqlLoader.loadBalanceSheetMovements(
+          sql,
+          effective.selection.fiscalYearId,
+          effective.fiscalYear.startDate,
+          effective.startDate.minusDays(1)
+      )
+      Map<String, BigDecimal> openingBalances = buildClosingBalances(accountInfos, fiscalOpeningBalances, prePeriodMovements)
+      Map<String, BigDecimal> periodMovements = ReportSqlLoader.loadBalanceSheetMovements(
+          sql,
+          effective.selection.fiscalYearId,
+          effective.startDate,
+          effective.endDate
+      )
 
-      Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
+      Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, periodMovements)
       List<String> skippedAccounts = []
-      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildSubgroupAccounts(accountInfos, closingBalances, skippedAccounts)
-      Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
-        [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
-      } as Map<AccountSubgroup, BigDecimal>
+      Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts = buildBalanceSheetSubgroupAccounts(
+          accountInfos,
+          openingBalances,
+          periodMovements,
+          closingBalances,
+          skippedAccounts
+      )
+      Map<AccountSubgroup, BalanceSheetDetail> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<BalanceSheetDetail> details ->
+        [(sg): sumBalanceSheetDetails(details, null, null)]
+      } as Map<AccountSubgroup, BalanceSheetDetail>
 
-      List<BalanceSheetRow> rows = []
-      Map<BalanceSheetSection, BigDecimal> sectionTotals = [:]
+      BalanceSheetBuildResult buildResult = buildBalanceSheetRows(subgroupAccounts, subgroupTotals)
+      List<BalanceSheetRow> rows = buildResult.rows
+      Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals = buildResult.sectionTotals
 
-      BalanceSheetSection.values().each { BalanceSheetSection section ->
-        if (section.computed) {
-          BigDecimal computedAmount = computeBalanceSheetTotal(section, sectionTotals)
-          sectionTotals[section] = computedAmount
-          rows << new BalanceSheetRow(section.name(), null, null, scale(computedAmount), section.displayName, true)
-        } else {
-          BigDecimal sectionSum = BigDecimal.ZERO
-          section.subgroups.each { AccountSubgroup subgroup ->
-            List<AccountDetail> accounts = subgroupAccounts[subgroup] ?: []
-            BigDecimal sgTotal = subgroupTotals[subgroup] ?: BigDecimal.ZERO
-            accounts.each { AccountDetail detail ->
-              rows << new BalanceSheetRow(section.name(), detail.accountNumber, detail.accountName, scale(detail.amount), null, false)
-            }
-            if (accounts.size() > 0 && sgTotal != BigDecimal.ZERO) {
-              rows << new BalanceSheetRow(section.name(), null, null, scale(sgTotal), subgroup.displayName, true)
-            }
-            sectionSum = sectionSum + sgTotal
-          }
-          sectionTotals[section] = sectionSum
-          if (sectionSum != BigDecimal.ZERO) {
-            rows << new BalanceSheetRow(section.name(), null, null, scale(sectionSum), section.displayName, true)
-          }
-        }
-      }
-
-      BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS] ?: BigDecimal.ZERO
-      BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
+      BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS]?.closingBalance ?: BigDecimal.ZERO
+      BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES]?.closingBalance ?: BigDecimal.ZERO
 
       List<String> summaryLines = [
           "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmountLocale(scale(assetTotal), effective.locale)}".toString(),
@@ -631,17 +626,93 @@ final class ReportDataService {
       createResult(
           effective,
           summaryLines,
-          [I18n.instance.getString('balanceSheetSection.column.item'), I18n.instance.getString('balanceSheetSection.column.amount')],
+          [
+              I18n.instance.getString('balanceSheetSection.column.item'),
+              I18n.instance.getString('balanceSheetSection.column.opening'),
+              I18n.instance.getString('balanceSheetSection.column.period'),
+              I18n.instance.getString('balanceSheetSection.column.closing')
+          ],
           rows.collect { BalanceSheetRow row ->
             String label = row.accountNumber
                 ? "${row.accountNumber} ${row.accountName}"
                 : (row.subgroupDisplayName ?: row.section)
-            stringRow(label, formatAmountLocale(row.amount, effective.locale))
+            stringRow(
+                label,
+                formatAmountLocale(row.openingBalance, effective.locale),
+                formatAmountLocale(row.periodMovement, effective.locale),
+                formatAmountLocale(row.closingBalance, effective.locale)
+            )
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, assetTotal: scale(assetTotal), equityAndLiabilitiesTotal: scale(equityAndLiabilitiesTotal)]
       )
     } as ReportResult
+  }
+
+  private BalanceSheetBuildResult buildBalanceSheetRows(
+      Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts,
+      Map<AccountSubgroup, BalanceSheetDetail> subgroupTotals
+  ) {
+    List<BalanceSheetRow> rows = []
+    Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals = [:]
+
+    BalanceSheetSection.values().each { BalanceSheetSection section ->
+      if (section.computed) {
+        BalanceSheetDetail computedTotal = computeBalanceSheetTotal(section, sectionTotals)
+        sectionTotals[section] = computedTotal
+        rows << balanceSheetSummaryRow(section, computedTotal, section.displayName, BalanceSheetRowType.GRAND_TOTAL)
+        return
+      }
+      List<BalanceSheetDetail> sectionDetails = []
+      section.subgroups.each { AccountSubgroup subgroup ->
+        List<BalanceSheetDetail> accounts = subgroupAccounts[subgroup] ?: []
+        BalanceSheetDetail subgroupTotal = subgroupTotals[subgroup] ?: zeroBalanceSheetDetail(null, subgroup.displayName)
+        rows.addAll(accounts.collect { BalanceSheetDetail detail -> balanceSheetDetailRow(section, detail) })
+        if (accounts.size() > 0 && hasBalanceSheetAmount(subgroupTotal)) {
+          rows << balanceSheetSummaryRow(section, subgroupTotal, subgroup.displayName, BalanceSheetRowType.SUBGROUP_TOTAL)
+        }
+        sectionDetails.addAll(accounts)
+      }
+      BalanceSheetDetail sectionTotal = sumBalanceSheetDetails(sectionDetails, null, section.displayName)
+      sectionTotals[section] = sectionTotal
+      if (hasBalanceSheetAmount(sectionTotal)) {
+        rows << balanceSheetSummaryRow(section, sectionTotal, section.displayName, BalanceSheetRowType.SECTION_TOTAL)
+      }
+    }
+    new BalanceSheetBuildResult(rows, sectionTotals)
+  }
+
+  private static BalanceSheetRow balanceSheetDetailRow(BalanceSheetSection section, BalanceSheetDetail detail) {
+    new BalanceSheetRow(
+        section.name(),
+        detail.accountNumber,
+        detail.accountName,
+        scale(detail.openingBalance),
+        scale(detail.periodMovement),
+        scale(detail.closingBalance),
+        null,
+        false,
+        BalanceSheetRowType.DETAIL
+    )
+  }
+
+  private static BalanceSheetRow balanceSheetSummaryRow(
+      BalanceSheetSection section,
+      BalanceSheetDetail detail,
+      String label,
+      BalanceSheetRowType rowType
+  ) {
+    new BalanceSheetRow(
+        section.name(),
+        null,
+        null,
+        scale(detail.openingBalance),
+        scale(detail.periodMovement),
+        scale(detail.closingBalance),
+        label,
+        true,
+        rowType
+    )
   }
 
   private Map<String, BigDecimal> buildClosingBalances(
@@ -662,14 +733,23 @@ final class ReportDataService {
     closingBalances
   }
 
-  private Map<AccountSubgroup, List<AccountDetail>> buildSubgroupAccounts(
+  private Map<AccountSubgroup, List<BalanceSheetDetail>> buildBalanceSheetSubgroupAccounts(
       Map<String, AccountInfo> accountInfos,
+      Map<String, BigDecimal> openingBalances,
+      Map<String, BigDecimal> periodMovements,
       Map<String, BigDecimal> closingBalances,
       List<String> skippedAccounts
   ) {
-    Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
-    closingBalances.keySet().sort().each { String accountNumber ->
+    Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts = [:]
+    Set<String> accountNumbers = ([] as Set<String>)
+    accountNumbers.addAll(openingBalances.keySet())
+    accountNumbers.addAll(periodMovements.keySet())
+    accountNumbers.addAll(closingBalances.keySet())
+    accountNumbers.sort().each { String accountNumber ->
       AccountInfo info = accountInfos[accountNumber]
+      if (info == null || !(info.accountClass in ['ASSET', 'LIABILITY', 'EQUITY'])) {
+        return
+      }
       AccountSubgroup subgroup = info.accountSubgroup
           ? AccountSubgroup.fromDatabaseValue(info.accountSubgroup)
           : AccountSubgroup.fromAccountNumber(accountNumber)
@@ -679,9 +759,18 @@ final class ReportDataService {
         return
       }
       subgroup = resolveBalanceSheetSubgroup(subgroup, info.accountClass)
-      BigDecimal amount = closingBalances[accountNumber]
-      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
-      list.add(new AccountDetail(accountNumber, info.accountName, amount))
+      BalanceSheetDetail detail = new BalanceSheetDetail(
+          accountNumber,
+          info.accountName,
+          scale(openingBalances[accountNumber] ?: BigDecimal.ZERO),
+          scale(periodMovements[accountNumber] ?: BigDecimal.ZERO),
+          scale(closingBalances[accountNumber] ?: BigDecimal.ZERO)
+      )
+      if (detail.openingBalance == BigDecimal.ZERO && detail.periodMovement == BigDecimal.ZERO && detail.closingBalance == BigDecimal.ZERO) {
+        return
+      }
+      List<BalanceSheetDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(detail)
     }
     subgroupAccounts
   }
@@ -701,23 +790,51 @@ final class ReportDataService {
     subgroup
   }
 
-  private static BigDecimal computeBalanceSheetTotal(
+  private static BalanceSheetDetail computeBalanceSheetTotal(
       BalanceSheetSection section,
-      Map<BalanceSheetSection, BigDecimal> sectionTotals
+      Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals
   ) {
     switch (section) {
       case BalanceSheetSection.TOTAL_ASSETS:
-        return (sectionTotals[BalanceSheetSection.FIXED_ASSETS] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.CURRENT_ASSETS] ?: BigDecimal.ZERO)
+        return sumBalanceSheetDetails([
+            sectionTotals[BalanceSheetSection.FIXED_ASSETS],
+            sectionTotals[BalanceSheetSection.CURRENT_ASSETS]
+        ].findAll(), null, section.displayName)
       case BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES:
-        return (sectionTotals[BalanceSheetSection.EQUITY] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.UNTAXED_RESERVES] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.PROVISIONS] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.LONG_TERM_LIABILITIES] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.CURRENT_LIABILITIES] ?: BigDecimal.ZERO)
+        return sumBalanceSheetDetails([
+            sectionTotals[BalanceSheetSection.EQUITY],
+            sectionTotals[BalanceSheetSection.UNTAXED_RESERVES],
+            sectionTotals[BalanceSheetSection.PROVISIONS],
+            sectionTotals[BalanceSheetSection.LONG_TERM_LIABILITIES],
+            sectionTotals[BalanceSheetSection.CURRENT_LIABILITIES]
+        ].findAll(), null, section.displayName)
       default:
         throw new IllegalStateException("Okänd beräknad sektion: ${section}")
     }
+  }
+
+  private static BalanceSheetDetail sumBalanceSheetDetails(
+      List<BalanceSheetDetail> details,
+      String accountNumber,
+      String accountName
+  ) {
+    new BalanceSheetDetail(
+        accountNumber,
+        accountName,
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.openingBalance } as BigDecimal),
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.periodMovement } as BigDecimal),
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.closingBalance } as BigDecimal)
+    )
+  }
+
+  private static BalanceSheetDetail zeroBalanceSheetDetail(String accountNumber, String accountName) {
+    new BalanceSheetDetail(accountNumber, accountName, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
+  }
+
+  private static boolean hasBalanceSheetAmount(BalanceSheetDetail detail) {
+    detail.openingBalance != BigDecimal.ZERO ||
+        detail.periodMovement != BigDecimal.ZERO ||
+        detail.closingBalance != BigDecimal.ZERO
   }
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {

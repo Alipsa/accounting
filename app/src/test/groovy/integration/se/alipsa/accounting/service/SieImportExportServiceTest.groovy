@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
-import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
@@ -408,7 +407,7 @@ class SieImportExportServiceTest {
     assertEquals(expectedBalance['1910'], actualBalance['1910'])
     assertEquals(expectedBalance['1920'], actualBalance['1920'])
     assertEquals(expectedBalance['1925'], actualBalance['1925'])
-    assertNull(actualBalance['1940'])
+    assertEquals(expectedBalance['1940'], actualBalance['1940'])
     assertEquals(expectedBalance['Summa fordringar'], actualBalance['Övriga kortfristiga fordringar'])
     assertEquals(expectedBalance['Summa kassa och bank'], actualBalance['Kassa och bank'])
     assertEquals(expectedBalance['Summa omsättningstillgångar'], actualBalance['Omsättningstillgångar'])

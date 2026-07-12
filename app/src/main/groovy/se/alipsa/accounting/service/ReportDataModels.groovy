@@ -3,6 +3,8 @@ package se.alipsa.accounting.service
 import groovy.transform.Canonical
 
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.ReportSelection
 
@@ -100,6 +102,21 @@ final class AccountDetail {
   String accountNumber
   String accountName
   BigDecimal amount
+}
+
+@Canonical
+final class BalanceSheetDetail {
+  String accountNumber
+  String accountName
+  BigDecimal openingBalance
+  BigDecimal periodMovement
+  BigDecimal closingBalance
+}
+
+@Canonical
+final class BalanceSheetBuildResult {
+  List<BalanceSheetRow> rows
+  Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals
 }
 
 @Canonical
