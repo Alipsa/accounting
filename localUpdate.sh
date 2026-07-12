@@ -267,8 +267,7 @@ find_via_shortcut() {
       find_via_macos_app_bundle
       ;;
     windows)
-      # No reliable cross-shell shortcut parsing; rely on common locations.
-      echo ""
+      find_via_windows_shortcut
       ;;
   esac
 }
@@ -305,6 +304,148 @@ find_via_macos_app_bundle() {
       return
     fi
   done
+}
+
+windows_path_to_unix() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "${path}" 2>/dev/null || echo "${path}"
+  else
+    echo "${path}"
+  fi
+}
+
+find_via_windows_shortcut() {
+  local candidate
+  candidate=$(find_via_windows_shortcut_file)
+  if [ -n "${candidate}" ]; then
+    echo "${candidate}"
+    return
+  fi
+
+  if [ "${ALIPSA_UPDATE_USE_POWERSHELL:-false}" = "true" ]; then
+    find_via_windows_shortcut_powershell
+  fi
+}
+
+find_via_windows_shortcut_file() {
+  local root shortcut target candidate
+  while IFS= read -r root; do
+    while IFS= read -r shortcut; do
+      target=$(windows_shortcut_target_from_file "${shortcut}")
+      candidate=$(install_dir_for_windows_launcher "${target}")
+      if [ -n "${candidate}" ]; then
+        echo "${candidate}"
+        return
+      fi
+    done < <(find "${root}" -type f -iname "${APP_NAME}*.lnk" -print 2>/dev/null)
+  done < <(windows_shortcut_roots)
+}
+
+windows_shortcut_roots() {
+  local candidates=(
+    "${HOME}/Desktop"
+  )
+
+  [ -n "${USERPROFILE:-}" ] && candidates+=("${USERPROFILE}/Desktop")
+  [ -n "${PUBLIC:-}" ] && candidates+=("${PUBLIC}/Desktop")
+  [ -n "${APPDATA:-}" ] && candidates+=("${APPDATA}/Microsoft/Windows/Start Menu")
+  [ -n "${ProgramData:-}" ] && candidates+=("${ProgramData}/Microsoft/Windows/Start Menu")
+
+  local root unix_root
+  for root in "${candidates[@]}"; do
+    [ -n "${root}" ] || continue
+    unix_root=$(windows_path_to_unix "${root}")
+    if [ -d "${unix_root}" ]; then
+      echo "${unix_root}"
+    fi
+  done
+}
+
+windows_shortcut_target_from_file() {
+  local shortcut="$1"
+  if ! command -v strings >/dev/null 2>&1; then
+    return
+  fi
+
+  {
+    strings -el "${shortcut}" 2>/dev/null || true
+    strings -a "${shortcut}" 2>/dev/null || true
+  } | awk -v app="${APP_NAME}" '
+    index($0, app ".exe") || index($0, app ".bat") {
+      if (match($0, /[A-Za-z]:\\[^"]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+        print substr($0, RSTART, RLENGTH)
+        exit
+      }
+      if (match($0, /\/[A-Za-z]\/[^"]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+        print substr($0, RSTART, RLENGTH)
+        exit
+      }
+    }
+  '
+}
+
+install_dir_for_windows_launcher() {
+  local target="$1"
+  [ -n "${target}" ] || return
+
+  local target_path install_dir
+  target_path=$(windows_path_to_unix "${target}")
+  install_dir=$(dirname "${target_path}")
+  if is_valid_install "${install_dir}"; then
+    echo "${install_dir}"
+    return
+  fi
+
+  install_dir=$(dirname "${install_dir}")
+  if is_valid_install "${install_dir}"; then
+    echo "${install_dir}"
+  fi
+}
+
+find_via_windows_shortcut_powershell() {
+  local powershell
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell=powershell.exe
+  elif command -v pwsh.exe >/dev/null 2>&1; then
+    powershell=pwsh.exe
+  else
+    return
+  fi
+
+  local shortcut_targets
+  shortcut_targets=$("${powershell}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
+\$ErrorActionPreference = 'SilentlyContinue'
+\$appName = '${APP_NAME}'
+\$targetNames = @(\"${APP_NAME}.exe\", \"${APP_NAME}.bat\")
+\$roots = @(
+  [Environment]::GetFolderPath('Desktop'),
+  [Environment]::GetFolderPath('CommonDesktopDirectory'),
+  [Environment]::GetFolderPath('StartMenu'),
+  [Environment]::GetFolderPath('CommonStartMenu'),
+  [Environment]::GetFolderPath('Programs'),
+  [Environment]::GetFolderPath('CommonPrograms')
+) | Where-Object { \$_ -and (Test-Path -LiteralPath \$_) } | Select-Object -Unique
+\$shell = New-Object -ComObject WScript.Shell
+foreach (\$root in \$roots) {
+  foreach (\$shortcut in Get-ChildItem -LiteralPath \$root -Filter \"\$appName*.lnk\" -Recurse -File) {
+    \$target = \$shell.CreateShortcut(\$shortcut.FullName).TargetPath
+    if (\$target -and (\$targetNames -contains [IO.Path]::GetFileName(\$target))) {
+      \$target
+    }
+  }
+}
+" 2>/dev/null | tr -d '\r' || true)
+
+  local target candidate
+  while IFS= read -r target; do
+    [ -n "${target}" ] || continue
+    candidate=$(install_dir_for_windows_launcher "${target}")
+    if [ -n "${candidate}" ]; then
+      echo "${candidate}"
+      return
+    fi
+  done <<< "${shortcut_targets}"
 }
 
 find_via_common_locations() {
@@ -356,7 +497,7 @@ print_not_found_error() {
       echo "  ${HOME}/Applications/${APP_NAME}.app" >&2
       ;;
     windows)
-      echo "  (Start Menu shortcut lookup not supported from Git Bash)" >&2
+      echo "  Desktop and Start Menu ${APP_NAME}*.lnk shortcuts" >&2
       ;;
   esac
   echo "" >&2
