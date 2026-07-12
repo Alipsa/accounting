@@ -1203,7 +1203,8 @@ final class ReportDataService {
         tableHeaders  : headers,
         tableRows     : tableRows,
         htmlLang      : I18n.instance.getString('report.common.htmlLang'),
-        orgNumberLabel: I18n.instance.getString('report.common.orgNumber')
+        orgNumberLabel: I18n.instance.getString('report.common.orgNumber'),
+        pageLabel     : I18n.instance.getString('report.common.page')
     ] + (extraModel ?: [:])
     new ReportResult(
         effective.selection.reportType,
