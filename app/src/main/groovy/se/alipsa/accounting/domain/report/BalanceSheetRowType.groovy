@@ -5,6 +5,7 @@ package se.alipsa.accounting.domain.report
  */
 enum BalanceSheetRowType {
 
+  SECTION_HEADER,
   DETAIL,
   SUBGROUP_TOTAL,
   SECTION_TOTAL,

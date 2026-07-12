@@ -246,6 +246,18 @@ td.number {
   font-weight: 700;
 }
 
+.balance-sheet-report .statement-row.section-header {
+  page-break-after: avoid;
+}
+
+.balance-sheet-report .statement-row.section-header td {
+  padding-top: 14px;
+  padding-bottom: 3px;
+  font-size: 11pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .income-statement-report .statement-table thead tr.group-row th {
   border-bottom: none;
   padding-top: 5px;

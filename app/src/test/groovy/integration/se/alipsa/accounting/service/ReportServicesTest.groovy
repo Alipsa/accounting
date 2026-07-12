@@ -573,11 +573,13 @@ class ReportServicesTest {
         LocalDate.of(2026, 1, 31)
     ))
 
-    // 4 account details + 4 subgroup subtotals + 2 section totals + 2 computed totals = 12
-    assertEquals(12, report.tableRows.size())
+    // 4 account details + 4 subgroup subtotals + 2 section headers + 2 section totals + 2 computed totals = 14
+    assertEquals(14, report.tableRows.size())
     assertEquals(['Post', 'Ingående balans', 'Denna period', 'Utgående saldo'], report.tableHeaders)
     assertTrue(report.tableRows.every { List<String> row -> row.size() == 4 })
+    assertTrue(report.tableRows.any { List<String> row -> row == ['OMSÄTTNINGSTILLGÅNGAR', '', '', ''] })
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Totalt omsättningstillgångar' })
+    assertTrue(report.tableRows.any { List<String> row -> row == ['KORTFRISTIGA SKULDER', '', '', ''] })
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Totalt kortfristiga skulder' })
     String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
     assertTrue(html.contains('balance-sheet-report'))

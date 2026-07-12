@@ -842,9 +842,9 @@ final class ReportDataService {
                 : (row.subgroupDisplayName ?: row.section)
             stringRow(
                 label,
-                formatAmountLocale(row.openingBalance, effective.locale),
-                formatAmountLocale(row.periodMovement, effective.locale),
-                formatAmountLocale(row.closingBalance, effective.locale)
+                formatNullableAmount(row.openingBalance, effective.locale),
+                formatNullableAmount(row.periodMovement, effective.locale),
+                formatNullableAmount(row.closingBalance, effective.locale)
             )
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
@@ -867,19 +867,22 @@ final class ReportDataService {
         rows << balanceSheetSummaryRow(section, computedTotal, section.displayName, BalanceSheetRowType.GRAND_TOTAL)
         return
       }
+      List<BalanceSheetRow> sectionRows = []
       List<BalanceSheetDetail> sectionDetails = []
       section.subgroups.each { AccountSubgroup subgroup ->
         List<BalanceSheetDetail> accounts = subgroupAccounts[subgroup] ?: []
         BalanceSheetDetail subgroupTotal = subgroupTotals[subgroup] ?: zeroBalanceSheetDetail(null, subgroup.displayName)
-        rows.addAll(accounts.collect { BalanceSheetDetail detail -> balanceSheetDetailRow(section, detail) })
+        sectionRows.addAll(accounts.collect { BalanceSheetDetail detail -> balanceSheetDetailRow(section, detail) })
         if (accounts.size() > 0 && hasBalanceSheetAmount(subgroupTotal)) {
-          rows << balanceSheetSummaryRow(section, subgroupTotal, subgroup.displayName, BalanceSheetRowType.SUBGROUP_TOTAL)
+          sectionRows << balanceSheetSummaryRow(section, subgroupTotal, subgroup.displayName, BalanceSheetRowType.SUBGROUP_TOTAL)
         }
         sectionDetails.addAll(accounts)
       }
       BalanceSheetDetail sectionTotal = sumBalanceSheetDetails(sectionDetails, null, section.displayName)
       sectionTotals[section] = sectionTotal
       if (hasBalanceSheetAmount(sectionTotal)) {
+        rows << balanceSheetSectionHeaderRow(section)
+        rows.addAll(sectionRows)
         rows << balanceSheetSummaryRow(section, sectionTotal, balanceSheetSectionTotalLabel(section), BalanceSheetRowType.SECTION_TOTAL)
       }
     }
@@ -888,6 +891,20 @@ final class ReportDataService {
 
   private static String balanceSheetSectionTotalLabel(BalanceSheetSection section) {
     summaryLabel(I18n.instance.getString('balanceSheetSection.summary.prefix'), section.displayName)
+  }
+
+  private static BalanceSheetRow balanceSheetSectionHeaderRow(BalanceSheetSection section) {
+    new BalanceSheetRow(
+        section.name(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        section.displayName.toUpperCase(I18n.instance.locale),
+        false,
+        BalanceSheetRowType.SECTION_HEADER
+    )
   }
 
   private static BalanceSheetRow balanceSheetDetailRow(BalanceSheetSection section, BalanceSheetDetail detail) {
