@@ -21,7 +21,7 @@
           <th class="group-heading" colspan="2">${tableHeaders[1]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[3]}</th>
           <#if hasComparison>
-            <th class="group-heading" colspan="2">${tableHeaders[5]}</th>
+            <th class="group-heading" colspan="2">${tableHeaders[5]}<#if comparisonFiscalYear.name?has_content> ${comparisonFiscalYear.name}</#if></th>
           </#if>
         </tr>
         <tr class="subheader-row">

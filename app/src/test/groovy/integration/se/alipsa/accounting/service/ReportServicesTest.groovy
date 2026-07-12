@@ -149,6 +149,38 @@ class ReportServicesTest {
   }
 
   @Test
+  void incomeStatementPdfComparisonHeadingIncludesFiscalYearName() {
+    FiscalYear previousFiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2025',
+        LocalDate.of(2025, 1, 1),
+        LocalDate.of(2025, 12, 31)
+    )
+    voucherService.createVoucher(
+        previousFiscalYear.id,
+        'A',
+        LocalDate.of(2025, 1, 10),
+        'Försäljning föregående år',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
+        ]
+    )
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
+    assertTrue(html.contains('Ack föreg år 2025'))
+  }
+
+  @Test
   void reExportingTheSameSelectionProducesDistinctArchiveEntries() {
     ReportSelection selection = new ReportSelection(
         ReportType.VOUCHER_LIST,
