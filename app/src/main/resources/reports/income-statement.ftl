@@ -3,6 +3,10 @@
   <section class="income-statement-report">
     <h2 class="report-heading">${title}</h2>
     <#assign hasComparison = comparisonFiscalYear??>
+    <#assign columnCount = 5>
+    <#if hasComparison>
+      <#assign columnCount = 7>
+    </#if>
     <table class="statement-table<#if !hasComparison> no-comparison</#if>">
       <colgroup>
         <col class="label-col">
@@ -41,20 +45,24 @@
           <#assign typedRow = typedRows[row?index]>
           <#assign rowType = typedRow.rowType.name()?lower_case?replace("_", "-")>
           <tr class="statement-row ${rowType}">
-            <td class="label">
-              <#if typedRow.accountNumber?? && typedRow.accountNumber?has_content>
-                <span class="account-number">${typedRow.accountNumber}</span><span class="account-name">${typedRow.accountName}</span>
-              <#else>
-                ${row[0]}
+            <#if rowType == "section-header" || rowType == "group-header">
+              <td class="label" colspan="${columnCount}">${row[0]}</td>
+            <#else>
+              <td class="label">
+                <#if typedRow.accountNumber?? && typedRow.accountNumber?has_content>
+                  <span class="account-number">${typedRow.accountNumber}</span><span class="account-name">${typedRow.accountName}</span>
+                <#else>
+                  ${row[0]}
+                </#if>
+              </td>
+              <td class="number group-start">${row[1]!}</td>
+              <td class="number percent">${row[2]!}</td>
+              <td class="number group-start">${row[3]!}</td>
+              <td class="number percent">${row[4]!}</td>
+              <#if hasComparison>
+                <td class="number group-start">${row[5]!}</td>
+                <td class="number percent">${row[6]!}</td>
               </#if>
-            </td>
-            <td class="number group-start">${row[1]!}</td>
-            <td class="number percent">${row[2]!}</td>
-            <td class="number group-start">${row[3]!}</td>
-            <td class="number percent">${row[4]!}</td>
-            <#if hasComparison>
-              <td class="number group-start">${row[5]!}</td>
-              <td class="number percent">${row[6]!}</td>
             </#if>
           </tr>
         </#list>
