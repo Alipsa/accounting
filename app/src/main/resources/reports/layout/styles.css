@@ -172,6 +172,20 @@ td.number {
   font-size: 9.5pt;
 }
 
+.balance-sheet-report .statement-table {
+  table-layout: fixed;
+}
+
+.balance-sheet-report .statement-table col.label-col {
+  width: 46%;
+}
+
+.balance-sheet-report .statement-table col.amount-col,
+.balance-sheet-report .statement-table col.movement-col,
+.balance-sheet-report .statement-table col.closing-col {
+  width: 18%;
+}
+
 .income-statement-report .statement-table {
   font-size: 8.5pt;
   table-layout: fixed;
@@ -216,6 +230,10 @@ td.number {
 .income-statement-report .statement-table thead th {
   border-bottom: 1px solid #94a3b8;
   padding: 6px 0;
+}
+
+.balance-sheet-report .statement-table .closing {
+  font-weight: 700;
 }
 
 .income-statement-report .statement-table thead tr.group-row th {

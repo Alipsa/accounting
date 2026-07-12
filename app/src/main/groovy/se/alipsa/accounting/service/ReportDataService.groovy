@@ -880,10 +880,14 @@ final class ReportDataService {
       BalanceSheetDetail sectionTotal = sumBalanceSheetDetails(sectionDetails, null, section.displayName)
       sectionTotals[section] = sectionTotal
       if (hasBalanceSheetAmount(sectionTotal)) {
-        rows << balanceSheetSummaryRow(section, sectionTotal, section.displayName, BalanceSheetRowType.SECTION_TOTAL)
+        rows << balanceSheetSummaryRow(section, sectionTotal, balanceSheetSectionTotalLabel(section), BalanceSheetRowType.SECTION_TOTAL)
       }
     }
     new BalanceSheetBuildResult(rows, sectionTotals)
+  }
+
+  private static String balanceSheetSectionTotalLabel(BalanceSheetSection section) {
+    summaryLabel(I18n.instance.getString('balanceSheetSection.summary.prefix'), section.displayName)
   }
 
   private static BalanceSheetRow balanceSheetDetailRow(BalanceSheetSection section, BalanceSheetDetail detail) {

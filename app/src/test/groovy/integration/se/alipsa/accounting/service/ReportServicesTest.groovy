@@ -577,6 +577,8 @@ class ReportServicesTest {
     assertEquals(12, report.tableRows.size())
     assertEquals(['Post', 'Ingående balans', 'Denna period', 'Utgående saldo'], report.tableHeaders)
     assertTrue(report.tableRows.every { List<String> row -> row.size() == 4 })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Totalt omsättningstillgångar' })
+    assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Totalt kortfristiga skulder' })
     String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
     assertTrue(html.contains('balance-sheet-report'))
     assertTrue(html.contains('Ingående balans'))

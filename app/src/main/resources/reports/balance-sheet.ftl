@@ -3,11 +3,18 @@
   <section class="balance-sheet-report">
     <h2 class="report-heading">${title}</h2>
     <table class="statement-table balance-sheet-table">
+      <colgroup>
+        <col class="label-col">
+        <col class="amount-col">
+        <col class="movement-col">
+        <col class="closing-col">
+      </colgroup>
       <thead>
         <tr>
-          <#list tableHeaders as header>
-            <th<#if header?index != 0> class="number"</#if>>${header}</th>
-          </#list>
+          <th>${tableHeaders[0]}</th>
+          <th class="number">${tableHeaders[1]}</th>
+          <th class="number">${tableHeaders[2]}</th>
+          <th class="number closing">${tableHeaders[3]}</th>
         </tr>
       </thead>
       <tbody>
@@ -18,7 +25,7 @@
             <td class="label">${row[0]}</td>
             <td class="number">${row[1]}</td>
             <td class="number">${row[2]}</td>
-            <td class="number">${row[3]}</td>
+            <td class="number closing">${row[3]}</td>
           </tr>
         </#list>
       </tbody>
