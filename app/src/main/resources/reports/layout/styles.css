@@ -131,6 +131,24 @@ td.number {
   font-size: 9.5pt;
 }
 
+.income-statement-report .statement-table {
+  font-size: 8.5pt;
+}
+
+.income-statement-report .statement-table td.label {
+  width: 34%;
+}
+
+.income-statement-report .statement-table td.number,
+.income-statement-report .statement-table th.number {
+  width: 11%;
+}
+
+.income-statement-report .statement-table td.percent,
+.income-statement-report .statement-table th.percent {
+  width: 7%;
+}
+
 .balance-sheet-report .statement-table thead,
 .income-statement-report .statement-table thead {
   background: #f1f5f9;

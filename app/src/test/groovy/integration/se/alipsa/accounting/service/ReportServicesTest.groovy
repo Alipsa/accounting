@@ -211,7 +211,7 @@ class ReportServicesTest {
     String csv = new String(reportArchiveService.readArchive(archive.id), StandardCharsets.UTF_8)
 
     assertEquals('CSV', archive.reportFormat)
-    assertTrue(csv.contains('Post;Utgående saldo'))
+    assertTrue(csv.contains('Post;Denna period;OMS%;Utgående saldo;OMS%;Ack föreg år;JMF%'))
     assertTrue(csv ==~ /(?s).*3010 Försäljning;1[\u00A0\u202F ]000,00.*/)
     assertTrue(csv ==~ /(?s).*SUMMA RÖRELSEINTÄKTER;1[\u00A0\u202F ]000,00.*/)
     assertTrue(csv.contains('ÅRETS RESULTAT;800,00'))
@@ -235,7 +235,8 @@ class ReportServicesTest {
       assertEquals(ReportType.INCOME_STATEMENT.displayName, sheet.getRow(0).getCell(0).stringCellValue)
       assertEquals('Default company', sheet.getRow(1).getCell(0).stringCellValue)
       assertEquals('Post', sheet.getRow(4).getCell(0).stringCellValue)
-      assertEquals('Utgående saldo', sheet.getRow(4).getCell(1).stringCellValue)
+      assertEquals('Denna period', sheet.getRow(4).getCell(1).stringCellValue)
+      assertEquals('Utgående saldo', sheet.getRow(4).getCell(3).stringCellValue)
       assertEquals('RÖRELSEINTÄKTER', sheet.getRow(5).getCell(0).stringCellValue)
 
       // Verify that at least one amount cell is written as NUMERIC (not STRING)
@@ -468,7 +469,8 @@ class ReportServicesTest {
     // Check that summary lines contain result figures
     assertTrue(report.summaryLines.any { String line -> line.contains('Rörelseresultat') })
     assertTrue(report.summaryLines.any { String line -> line.contains('Årets resultat') })
-    assertEquals('Utgående saldo', report.tableHeaders[1])
+    assertEquals(['Post', 'Denna period', 'OMS%', 'Utgående saldo', 'OMS%', 'Ack föreg år', 'JMF%'], report.tableHeaders)
+    assertTrue(report.tableRows.every { List<String> row -> row.size() == 7 })
 
     List<IncomeStatementRow> typedRows = report.templateModel.get('typedRows') as List<IncomeStatementRow>
     assertEquals(IncomeStatementRowType.SECTION_HEADER, typedRows.first().rowType)

@@ -6,6 +6,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.report.BalanceSheetRow
 import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.IncomeStatementSection
 import se.alipsa.accounting.domain.report.ReportSelection
 
 import java.math.RoundingMode
@@ -105,6 +106,15 @@ final class AccountDetail {
 }
 
 @Canonical
+final class IncomeStatementDetail {
+  String accountNumber
+  String accountName
+  BigDecimal periodAmount
+  BigDecimal yearToDateAmount
+  BigDecimal previousYearToDateAmount
+}
+
+@Canonical
 final class BalanceSheetDetail {
   String accountNumber
   String accountName
@@ -122,7 +132,14 @@ final class BalanceSheetBuildResult {
 @Canonical
 final class IncomeSectionBuildResult {
   List<IncomeStatementRow> rows
-  BigDecimal total
+  IncomeStatementDetail total
+}
+
+@Canonical
+final class IncomeStatementBuildResult {
+  List<IncomeStatementRow> rows
+  Map<IncomeStatementSection, IncomeStatementDetail> sectionTotals
+  FiscalYear comparisonFiscalYear
 }
 
 final class VatBucket {
