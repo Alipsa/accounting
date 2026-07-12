@@ -221,6 +221,18 @@ td.number {
   width: 16%;
 }
 
+.income-statement-report .statement-table.no-comparison col.label-col {
+  width: 42%;
+}
+
+.income-statement-report .statement-table.no-comparison col.amount-col {
+  width: 18%;
+}
+
+.income-statement-report .statement-table.no-comparison col.percent-col {
+  width: 11%;
+}
+
 .balance-sheet-report .statement-table thead,
 .income-statement-report .statement-table thead {
   background: #f1f5f9;

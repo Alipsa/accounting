@@ -2,22 +2,27 @@
 <@layout.page title=title>
   <section class="income-statement-report">
     <h2 class="report-heading">${title}</h2>
-    <table class="statement-table">
+    <#assign hasComparison = comparisonFiscalYear??>
+    <table class="statement-table<#if !hasComparison> no-comparison</#if>">
       <colgroup>
         <col class="label-col">
         <col class="amount-col">
         <col class="percent-col">
         <col class="amount-col">
         <col class="percent-col">
-        <col class="prior-amount-col">
-        <col class="comparison-col">
+        <#if hasComparison>
+          <col class="prior-amount-col">
+          <col class="comparison-col">
+        </#if>
       </colgroup>
       <thead>
         <tr class="group-row">
           <th class="label">${tableHeaders[0]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[1]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[3]}</th>
-          <th class="group-heading" colspan="2">${tableHeaders[5]}</th>
+          <#if hasComparison>
+            <th class="group-heading" colspan="2">${tableHeaders[5]}</th>
+          </#if>
         </tr>
         <tr class="subheader-row">
           <th class="label"></th>
@@ -25,8 +30,10 @@
           <th class="number percent">${tableHeaders[2]}</th>
           <th class="number">${amountColumnLabel}</th>
           <th class="number percent">${tableHeaders[4]}</th>
-          <th class="number">${amountColumnLabel}</th>
-          <th class="number percent">${tableHeaders[6]}</th>
+          <#if hasComparison>
+            <th class="number">${amountColumnLabel}</th>
+            <th class="number percent">${tableHeaders[6]}</th>
+          </#if>
         </tr>
       </thead>
       <tbody>
@@ -39,8 +46,10 @@
             <td class="number percent">${row[2]!}</td>
             <td class="number">${row[3]!}</td>
             <td class="number percent">${row[4]!}</td>
-            <td class="number">${row[5]!}</td>
-            <td class="number percent">${row[6]!}</td>
+            <#if hasComparison>
+              <td class="number">${row[5]!}</td>
+              <td class="number percent">${row[6]!}</td>
+            </#if>
           </tr>
         </#list>
       </tbody>
