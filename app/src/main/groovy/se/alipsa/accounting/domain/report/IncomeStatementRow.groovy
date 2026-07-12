@@ -17,6 +17,8 @@ final class IncomeStatementRow {
   BigDecimal previousYearToDateAmount
   BigDecimal previousComparison
   IncomeStatementRowType rowType
+  String accountNumber
+  String accountName
 
   BigDecimal getAmount() {
     yearToDateAmount

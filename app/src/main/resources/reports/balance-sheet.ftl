@@ -22,7 +22,13 @@
           <#assign typedRow = typedRows[row?index]>
           <#assign rowClass = typedRow.rowType.name()?lower_case?replace("_", "-")>
           <tr class="statement-row ${rowClass}">
-            <td class="label">${row[0]}</td>
+            <td class="label">
+              <#if typedRow.accountNumber?? && typedRow.accountNumber?has_content>
+                <span class="account-number">${typedRow.accountNumber}</span><span class="account-name">${typedRow.accountName}</span>
+              <#else>
+                ${row[0]}
+              </#if>
+            </td>
             <td class="number group-start">${row[1]}</td>
             <td class="number group-start">${row[2]}</td>
             <td class="number closing group-start">${row[3]}</td>

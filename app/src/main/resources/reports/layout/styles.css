@@ -366,6 +366,13 @@ td.number {
   padding-left: 12px;
 }
 
+.balance-sheet-report .statement-row.detail .account-number,
+.income-statement-report .statement-row.detail .account-number {
+  display: inline-block;
+  width: 32px;
+  color: #475569;
+}
+
 .income-statement-report .statement-row.subtotal td {
   background-color: #f8fafc;
   padding-top: 5px;

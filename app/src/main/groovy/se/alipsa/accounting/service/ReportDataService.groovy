@@ -555,7 +555,9 @@ final class ReportDataService {
         null,
         detail == null ? null : detail.previousYearToDateAmount == null ? null : scale(detail.previousYearToDateAmount),
         null,
-        rowType
+        rowType,
+        detail?.accountNumber,
+        detail?.accountName
     )
   }
 
