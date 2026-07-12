@@ -174,20 +174,27 @@ td.number {
 
 .income-statement-report .statement-table {
   font-size: 8.5pt;
+  table-layout: fixed;
 }
 
-.income-statement-report .statement-table td.label {
+.income-statement-report .statement-table col.label-col {
   width: 34%;
 }
 
-.income-statement-report .statement-table td.number,
-.income-statement-report .statement-table th.number {
+.income-statement-report .statement-table col.amount-col {
   width: 11%;
 }
 
-.income-statement-report .statement-table td.percent,
-.income-statement-report .statement-table th.percent {
+.income-statement-report .statement-table col.percent-col {
   width: 7%;
+}
+
+.income-statement-report .statement-table col.prior-amount-col {
+  width: 14%;
+}
+
+.income-statement-report .statement-table col.comparison-col {
+  width: 16%;
 }
 
 .balance-sheet-report .statement-table thead,
@@ -209,6 +216,27 @@ td.number {
 .income-statement-report .statement-table thead th {
   border-bottom: 1px solid #94a3b8;
   padding: 6px 0;
+}
+
+.income-statement-report .statement-table thead tr.group-row th {
+  border-bottom: none;
+  padding-top: 5px;
+  padding-bottom: 2px;
+  color: #334155;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.income-statement-report .statement-table thead tr.group-row th.group-heading {
+  text-align: center;
+}
+
+.income-statement-report .statement-table thead tr.subheader-row th {
+  padding-top: 2px;
+  padding-bottom: 5px;
+  color: #475569;
+  font-size: 7.5pt;
+  font-weight: 600;
 }
 
 .balance-sheet-report .statement-row.detail td.label {

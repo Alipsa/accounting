@@ -3,11 +3,29 @@
   <section class="income-statement-report">
     <h2 class="report-heading">${title}</h2>
     <table class="statement-table">
+      <colgroup>
+        <col class="label-col">
+        <col class="amount-col">
+        <col class="percent-col">
+        <col class="amount-col">
+        <col class="percent-col">
+        <col class="prior-amount-col">
+        <col class="comparison-col">
+      </colgroup>
       <thead>
-        <tr>
-          <#list tableHeaders as header>
-            <th<#if header?index != 0> class="number"</#if>>${header}</th>
-          </#list>
+        <tr class="group-row">
+          <th class="label" rowspan="2">${tableHeaders[0]}</th>
+          <th class="group-heading" colspan="2">${tableHeaders[1]}</th>
+          <th class="group-heading" colspan="2">${tableHeaders[3]}</th>
+          <th class="group-heading" colspan="2">${tableHeaders[5]}</th>
+        </tr>
+        <tr class="subheader-row">
+          <th class="number">${amountColumnLabel}</th>
+          <th class="number percent">${tableHeaders[2]}</th>
+          <th class="number">${amountColumnLabel}</th>
+          <th class="number percent">${tableHeaders[4]}</th>
+          <th class="number">${amountColumnLabel}</th>
+          <th class="number percent">${tableHeaders[6]}</th>
         </tr>
       </thead>
       <tbody>

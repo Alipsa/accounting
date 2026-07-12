@@ -317,7 +317,12 @@ final class ReportDataService {
           incomeStatementHeaders(),
           incomeStatementTableRows(buildResult.rows, effective.locale),
           buildResult.rows.collect { IncomeStatementRow ignored -> null as Long } as List<Long>,
-          [typedRows: buildResult.rows, result: scale(netResult), comparisonFiscalYear: buildResult.comparisonFiscalYear]
+          [
+              typedRows: buildResult.rows,
+              result: scale(netResult),
+              comparisonFiscalYear: buildResult.comparisonFiscalYear,
+              amountColumnLabel: I18n.instance.getString('incomeStatementSection.column.amount')
+          ]
       )
     } as ReportResult
   }
