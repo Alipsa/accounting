@@ -264,6 +264,12 @@ td.number {
   padding-left: 4px;
 }
 
+.income-statement-report .statement-table th.group-start,
+.income-statement-report .statement-table td.group-start {
+  border-left: 1px solid #cbd5e1;
+  padding-left: 6px;
+}
+
 .balance-sheet-report .statement-table .closing {
   font-weight: 700;
 }

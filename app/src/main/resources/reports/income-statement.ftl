@@ -18,20 +18,20 @@
       <thead>
         <tr class="group-row">
           <th class="label">${tableHeaders[0]}</th>
-          <th class="group-heading" colspan="2">${tableHeaders[1]}</th>
-          <th class="group-heading" colspan="2">${tableHeaders[3]}</th>
+          <th class="group-heading group-start" colspan="2">${tableHeaders[1]}</th>
+          <th class="group-heading group-start" colspan="2">${tableHeaders[3]}</th>
           <#if hasComparison>
-            <th class="group-heading" colspan="2">${tableHeaders[5]}<#if comparisonFiscalYear.name?has_content> ${comparisonFiscalYear.name}</#if></th>
+            <th class="group-heading group-start" colspan="2">${tableHeaders[5]}<#if comparisonFiscalYear.name?has_content> ${comparisonFiscalYear.name}</#if></th>
           </#if>
         </tr>
         <tr class="subheader-row">
           <th class="label"></th>
-          <th class="number">${amountColumnLabel}</th>
+          <th class="number group-start">${amountColumnLabel}</th>
           <th class="number percent">${tableHeaders[2]}</th>
-          <th class="number">${amountColumnLabel}</th>
+          <th class="number group-start">${amountColumnLabel}</th>
           <th class="number percent">${tableHeaders[4]}</th>
           <#if hasComparison>
-            <th class="number">${amountColumnLabel}</th>
+            <th class="number group-start">${amountColumnLabel}</th>
             <th class="number percent">${tableHeaders[6]}</th>
           </#if>
         </tr>
@@ -42,12 +42,12 @@
           <#assign rowType = typedRow.rowType.name()?lower_case?replace("_", "-")>
           <tr class="statement-row ${rowType}">
             <td class="label">${row[0]}</td>
-            <td class="number">${row[1]!}</td>
+            <td class="number group-start">${row[1]!}</td>
             <td class="number percent">${row[2]!}</td>
-            <td class="number">${row[3]!}</td>
+            <td class="number group-start">${row[3]!}</td>
             <td class="number percent">${row[4]!}</td>
             <#if hasComparison>
-              <td class="number">${row[5]!}</td>
+              <td class="number group-start">${row[5]!}</td>
               <td class="number percent">${row[6]!}</td>
             </#if>
           </tr>
