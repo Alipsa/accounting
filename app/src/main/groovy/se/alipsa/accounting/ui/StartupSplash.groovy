@@ -1,13 +1,11 @@
 package se.alipsa.accounting.ui
 
-import java.awt.Color
 import java.awt.GraphicsEnvironment
 import java.awt.MediaTracker
 import java.awt.SplashScreen
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicReference
 
-import javax.swing.BorderFactory
 import javax.swing.ImageIcon
 import javax.swing.JLabel
 import javax.swing.JWindow
@@ -90,7 +88,6 @@ final class StartupSplash implements AutoCloseable {
       return null
     }
     JLabel imageLabel = new JLabel(icon)
-    imageLabel.border = BorderFactory.createLineBorder(new Color(180, 180, 180))
 
     JWindow splashWindow = new JWindow()
     splashWindow.focusableWindowState = false

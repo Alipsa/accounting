@@ -59,7 +59,8 @@ Exec=$(quote_desktop_value "${LAUNCHER}")
 Icon=@PACKAGE_NAME@
 Terminal=false
 Categories=Office;Finance;
-StartupWMClass=@APP_NAME@
+StartupNotify=true
+StartupWMClass=@LINUX_WM_CLASS@
 DESKTOP_EOF
 
 chmod 755 "${DESKTOP_FILE}"
@@ -70,6 +71,10 @@ fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${APPLICATIONS_DIR}" >/dev/null 2>&1 || true
+fi
+
+if command -v xdg-desktop-menu >/dev/null 2>&1; then
+  xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
 fi
 
 echo "Installerat."

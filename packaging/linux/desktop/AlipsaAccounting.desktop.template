@@ -7,4 +7,5 @@ Exec=@INSTALL_DIR@/bin/@APP_NAME@
 Icon=@PACKAGE_NAME@
 Terminal=false
 Categories=Office;Finance;
-StartupWMClass=@APP_NAME@
+StartupNotify=true
+StartupWMClass=@LINUX_WM_CLASS@

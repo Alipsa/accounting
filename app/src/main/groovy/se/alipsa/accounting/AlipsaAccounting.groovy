@@ -31,13 +31,16 @@ final class AlipsaAccounting {
   private static final String VERSION_ARGUMENT = '--version'
   private static final String HOME_ARGUMENT_PREFIX = '--home='
   private static final String MODE_ARGUMENT_PREFIX = '--mode='
+  private static final String APP_WINDOW_CLASS = 'se-alipsa-accounting-AlipsaAccounting'
   private static final String PROCESS_LAUNCH_MECHANISM_PROPERTY = 'jdk.lang.Process.launchMechanism'
+  private static final String LINUX_WINDOW_CLASS_PROPERTY = 'sun.awt.X11.XWMClass'
 
   private AlipsaAccounting() {
   }
 
   static void main(String[] args) {
     configureProcessLaunchMechanism()
+    configureLinuxWindowClass()
     StartupOptions options = StartupOptions.parse(args ?: new String[0])
     if (options.versionRequested) {
       System.out.println(versionLine())
@@ -234,6 +237,16 @@ final class AlipsaAccounting {
     String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
     if (osName.contains('linux')) {
       System.setProperty(PROCESS_LAUNCH_MECHANISM_PROPERTY, 'VFORK')
+    }
+  }
+
+  private static void configureLinuxWindowClass() {
+    if (System.getProperty(LINUX_WINDOW_CLASS_PROPERTY) != null) {
+      return
+    }
+    String osName = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+    if (osName.contains('linux')) {
+      System.setProperty(LINUX_WINDOW_CLASS_PROPERTY, APP_WINDOW_CLASS)
     }
   }
 

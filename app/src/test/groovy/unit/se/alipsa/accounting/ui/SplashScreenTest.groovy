@@ -24,8 +24,8 @@ final class SplashScreenTest {
     getClass().getResourceAsStream('/splash.png').withStream { InputStream stream ->
       assertNotNull(stream, 'splash.png must be readable from the classpath')
       BufferedImage image = ImageIO.read(stream)
-      assertEquals(480, image.width, 'splash width must be 480 px')
-      assertEquals(300, image.height, 'splash height must be 300 px')
+      assertEquals(512, image.width, 'splash width must match the logo width')
+      assertEquals(568, image.height, 'splash height must include the logo and text band')
     }
   }
 

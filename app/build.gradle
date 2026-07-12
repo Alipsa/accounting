@@ -67,6 +67,7 @@ def releaseConfig = [
   displayName   : 'Alipsa Accounting',
   vendor        : 'Alipsa',
   packageName   : 'alipsa-accounting',
+  linuxWmClass  : 'se-alipsa-accounting-AlipsaAccounting',
   version       : project.version.toString(),
   description   : 'Desktop accounting for small Swedish businesses.',
   copyright     : 'Copyright 2026 Alipsa',
@@ -149,7 +150,9 @@ def buildJpackageArgs = { String platform, String type, File destinationDir, Lis
   if (platform == 'linux') {
     args += [
       '--java-options',
-      '-Djdk.lang.Process.launchMechanism=VFORK'
+      '-Djdk.lang.Process.launchMechanism=VFORK',
+      '--java-options',
+      "-Dsun.awt.X11.XWMClass=${releaseConfig.linuxWmClass}"
     ]
   }
   if (type != 'app-image') {
@@ -225,7 +228,7 @@ tasks.register('generateSplashImage') {
   group = 'build'
   description = 'Generates splash.png from the application logo using Java2D'
   File splashOutput = layout.projectDirectory.file('src/main/resources/splash.png').asFile
-  File logoInput = layout.projectDirectory.file('src/main/resources/icons/logo128.png').asFile
+  File logoInput = layout.projectDirectory.file('src/main/resources/icons/logo512.png').asFile
   inputs.file(logoInput)
   outputs.file(splashOutput)
   doLast {
@@ -237,8 +240,9 @@ tasks.register('generateSplashImage') {
 
     java.awt.image.BufferedImage logo = javax.imageio.ImageIO.read(logoInput)
 
-    int width = 480
-    int height = 300
+    int width = logo.width
+    int textBandHeight = 56
+    int height = logo.height + textBandHeight
     java.awt.image.BufferedImage canvas = new java.awt.image.BufferedImage(
         width, height, java.awt.image.BufferedImage.TYPE_INT_ARGB)
     java.awt.Graphics2D g = canvas.createGraphics()
@@ -251,16 +255,14 @@ tasks.register('generateSplashImage') {
       g.color = java.awt.Color.WHITE
       g.fillRect(0, 0, width, height)
 
-      int logoX = (width - logo.width).intdiv(2)
-      int logoY = 50
-      g.drawImage(logo, logoX, logoY, null)
+      g.drawImage(logo, 0, 0, null)
 
       g.color = new java.awt.Color(60, 60, 60)
-      g.font = new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 18)
-      String text = 'Startar Alipsa Accounting...'
+      g.font = new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 22)
+      String text = 'Starting Alipsa Accounting'
       java.awt.FontMetrics fm = g.getFontMetrics()
       int textX = (width - fm.stringWidth(text)).intdiv(2)
-      int textY = logoY + logo.height + 50
+      int textY = logo.height + ((textBandHeight - fm.height).intdiv(2)) + fm.ascent
       g.drawString(text, textX, textY)
     } finally {
       g.dispose()
@@ -270,6 +272,10 @@ tasks.register('generateSplashImage') {
     javax.imageio.ImageIO.write(canvas, 'PNG', splashOutput)
     println "Generated: ${splashOutput.absolutePath} (${width}x${height})"
   }
+}
+
+tasks.named('processResources') {
+  dependsOn 'generateSplashImage'
 }
 
 tasks.register('generateLinuxDesktopEntry') {
@@ -284,6 +290,7 @@ tasks.register('generateLinuxDesktopEntry') {
         .replace('@DESCRIPTION@', releaseConfig.description)
         .replace('@APP_NAME@', releaseConfig.appName)
         .replace('@PACKAGE_NAME@', releaseConfig.packageName)
+        .replace('@LINUX_WM_CLASS@', releaseConfig.linuxWmClass)
         .replace('@INSTALL_DIR@', "/opt/${releaseConfig.appName}")
   }
 }
@@ -304,6 +311,7 @@ tasks.register('generateLinuxInstallScripts') {
           .replace('@DESCRIPTION@', releaseConfig.description)
           .replace('@APP_NAME@', releaseConfig.appName)
           .replace('@PACKAGE_NAME@', releaseConfig.packageName)
+          .replace('@LINUX_WM_CLASS@', releaseConfig.linuxWmClass)
     }
   }
 }

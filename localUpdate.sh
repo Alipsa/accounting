@@ -31,6 +31,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="AlipsaAccounting"
 PACKAGE_NAME="alipsa-accounting"
+LINUX_WM_CLASS="se-alipsa-accounting-AlipsaAccounting"
 BUILD=true
 INSTALL_DIR="${INSTALL_DIR:-}"
 
@@ -207,11 +208,11 @@ build_classpath_block() {
   local lib_dir="$2"
   local jar_name
 
-  echo "app.classpath=\\\$APPDIR/${main_jar}"
+  echo "app.classpath=\$APPDIR/${main_jar}"
   for jar in "${lib_dir}"/*.jar; do
     jar_name=$(basename "${jar}")
     [ "${jar_name}" = "${main_jar}" ] && continue
-    echo "app.classpath=\\\$APPDIR/${jar_name}"
+    echo "app.classpath=\$APPDIR/${jar_name}"
   done
 }
 
@@ -230,6 +231,32 @@ update_portable_install() {
       mv "${extracted_dir}/${entry}" "${install_root}/"
     fi
   done
+}
+
+update_linux_desktop_entry() {
+  [ "${PLATFORM}" = "linux" ] || return
+
+  local desktop_file="${XDG_DATA_HOME:-${HOME}/.local/share}/applications/${APP_NAME}.desktop"
+  [ -f "${desktop_file}" ] || return
+
+  if grep -q '^StartupWMClass=' "${desktop_file}"; then
+    sed -i.bak "s#^StartupWMClass=.*#StartupWMClass=${LINUX_WM_CLASS}#" "${desktop_file}"
+  else
+    printf '\nStartupWMClass=%s\n' "${LINUX_WM_CLASS}" >> "${desktop_file}"
+  fi
+  if grep -q '^StartupNotify=' "${desktop_file}"; then
+    sed -i.bak "s#^StartupNotify=.*#StartupNotify=true#" "${desktop_file}"
+  else
+    printf 'StartupNotify=true\n' >> "${desktop_file}"
+  fi
+  rm -f "${desktop_file}.bak"
+
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$(dirname "${desktop_file}")" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-desktop-menu >/dev/null 2>&1; then
+    xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
+  fi
 }
 
 # Returns the parent directory of an existing app image, or empty string.
@@ -674,14 +701,28 @@ else
 
   echo "  Updating launcher configuration..."
   CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
+  WINDOW_CLASS_OPTION=""
+  if [ "${PLATFORM}" = "linux" ]; then
+    WINDOW_CLASS_OPTION="java-options=-Dsun.awt.X11.XWMClass=${LINUX_WM_CLASS}"
+  fi
   export CLASSPATH_BLOCK
+  export WINDOW_CLASS_OPTION
   for cfg in "${LIB_DIR}"/*.cfg; do
     [ -f "${cfg}" ] || continue
     awk -v version="${VERSION}" '
       /^app\.classpath=/ { next }
+      ENVIRON["WINDOW_CLASS_OPTION"] != "" && $0 == ENVIRON["WINDOW_CLASS_OPTION"] { next }
+      ENVIRON["WINDOW_CLASS_OPTION"] != "" && /^java-options=-Dsun\.awt\.X11\.XWMClass=/ { next }
       /^java-options=-Djpackage\.app-version=/ {
         sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
         print
+        next
+      }
+      /^\[JavaOptions\]$/ {
+        print
+        if (ENVIRON["WINDOW_CLASS_OPTION"] != "") {
+          print ENVIRON["WINDOW_CLASS_OPTION"]
+        }
         next
       }
       /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
@@ -695,6 +736,7 @@ else
 fi
 
 LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
+update_linux_desktop_entry
 
 echo ""
 echo "Updated ${APP_NAME} ${VERSION}."
