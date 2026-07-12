@@ -305,17 +305,20 @@ td.number {
 }
 
 .balance-sheet-report .statement-row.subgroup-total td {
+  background-color: #f8fafc;
   padding-top: 5px;
   font-weight: 700;
 }
 
 .balance-sheet-report .statement-row.section-total td {
+  background-color: #f1f5f9;
   padding-top: 10px;
   padding-bottom: 4px;
   font-weight: 700;
 }
 
 .balance-sheet-report .statement-row.grand-total td {
+  background-color: #e2e8f0;
   padding-top: 12px;
   padding-bottom: 5px;
   font-size: 12pt;
@@ -351,18 +354,21 @@ td.number {
 }
 
 .income-statement-report .statement-row.subtotal td {
+  background-color: #f8fafc;
   padding-top: 5px;
   font-weight: 700;
 }
 
 .income-statement-report .statement-row.section-total td,
 .income-statement-report .statement-row.result-line td {
+  background-color: #f1f5f9;
   padding-top: 10px;
   padding-bottom: 4px;
   font-weight: 700;
 }
 
 .income-statement-report .statement-row.grand-total td {
+  background-color: #e2e8f0;
   padding-top: 12px;
   padding-bottom: 5px;
   font-size: 10pt;
