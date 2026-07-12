@@ -12,9 +12,9 @@
       <thead>
         <tr>
           <th>${tableHeaders[0]}</th>
-          <th class="number">${tableHeaders[1]}</th>
-          <th class="number">${tableHeaders[2]}</th>
-          <th class="number closing">${tableHeaders[3]}</th>
+          <th class="number group-start">${tableHeaders[1]}</th>
+          <th class="number group-start">${tableHeaders[2]}</th>
+          <th class="number closing group-start">${tableHeaders[3]}</th>
         </tr>
       </thead>
       <tbody>
@@ -23,9 +23,9 @@
           <#assign rowClass = typedRow.rowType.name()?lower_case?replace("_", "-")>
           <tr class="statement-row ${rowClass}">
             <td class="label">${row[0]}</td>
-            <td class="number">${row[1]}</td>
-            <td class="number">${row[2]}</td>
-            <td class="number closing">${row[3]}</td>
+            <td class="number group-start">${row[1]}</td>
+            <td class="number group-start">${row[2]}</td>
+            <td class="number closing group-start">${row[3]}</td>
           </tr>
         </#list>
       </tbody>
