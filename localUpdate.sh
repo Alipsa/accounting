@@ -34,6 +34,12 @@ PACKAGE_NAME="alipsa-accounting"
 BUILD=true
 INSTALL_DIR="${INSTALL_DIR:-}"
 
+debug_log() {
+  if [ "${ALIPSA_UPDATE_DEBUG:-false}" = "true" ]; then
+    echo "DEBUG: $*" >&2
+  fi
+}
+
 detect_platform() {
   case "$(uname -s)" in
     Linux*)   echo linux ;;
@@ -332,7 +338,9 @@ find_via_windows_shortcut_file() {
   local root shortcut target candidate
   while IFS= read -r root; do
     while IFS= read -r shortcut; do
+      debug_log "Found shortcut: ${shortcut}"
       target=$(windows_shortcut_target_from_file "${shortcut}")
+      debug_log "Extracted shortcut target: ${target:-<none>}"
       candidate=$(install_dir_for_windows_launcher "${target}")
       if [ -n "${candidate}" ]; then
         echo "${candidate}"
@@ -345,19 +353,31 @@ find_via_windows_shortcut_file() {
 windows_shortcut_roots() {
   local candidates=(
     "${HOME}/Desktop"
+    "${HOME}/OneDrive/Desktop"
+    "${HOME}/OneDrive/Skrivbord"
   )
 
   [ -n "${USERPROFILE:-}" ] && candidates+=("${USERPROFILE}/Desktop")
+  [ -n "${USERPROFILE:-}" ] && candidates+=("${USERPROFILE}/OneDrive/Desktop")
+  [ -n "${USERPROFILE:-}" ] && candidates+=("${USERPROFILE}/OneDrive/Skrivbord")
   [ -n "${PUBLIC:-}" ] && candidates+=("${PUBLIC}/Desktop")
   [ -n "${APPDATA:-}" ] && candidates+=("${APPDATA}/Microsoft/Windows/Start Menu")
   [ -n "${ProgramData:-}" ] && candidates+=("${ProgramData}/Microsoft/Windows/Start Menu")
+  [ -n "${PROGRAMDATA:-}" ] && candidates+=("${PROGRAMDATA}/Microsoft/Windows/Start Menu")
+  [ -n "${OneDrive:-}" ] && candidates+=("${OneDrive}/Desktop")
+  [ -n "${OneDrive:-}" ] && candidates+=("${OneDrive}/Skrivbord")
+  [ -n "${OneDriveConsumer:-}" ] && candidates+=("${OneDriveConsumer}/Desktop")
+  [ -n "${OneDriveConsumer:-}" ] && candidates+=("${OneDriveConsumer}/Skrivbord")
 
   local root unix_root
   for root in "${candidates[@]}"; do
     [ -n "${root}" ] || continue
     unix_root=$(windows_path_to_unix "${root}")
     if [ -d "${unix_root}" ]; then
+      debug_log "Windows shortcut root: ${unix_root}"
       echo "${unix_root}"
+    else
+      debug_log "Windows shortcut root missing: ${unix_root}"
     fi
   done
 }
@@ -365,9 +385,11 @@ windows_shortcut_roots() {
 windows_shortcut_target_from_file() {
   local shortcut="$1"
   if ! command -v strings >/dev/null 2>&1; then
+    debug_log "Cannot inspect ${shortcut}: strings command not found"
     return
   fi
 
+  debug_log "Inspecting shortcut: ${shortcut}"
   {
     strings -el "${shortcut}" 2>/dev/null || true
     strings -a "${shortcut}" 2>/dev/null || true
@@ -391,16 +413,45 @@ install_dir_for_windows_launcher() {
 
   local target_path install_dir
   target_path=$(windows_path_to_unix "${target}")
+  debug_log "Shortcut target candidate: ${target_path}"
   install_dir=$(dirname "${target_path}")
   if is_valid_install "${install_dir}"; then
+    debug_log "Valid install from launcher directory: ${install_dir}"
     echo "${install_dir}"
     return
   fi
 
   install_dir=$(dirname "${install_dir}")
   if is_valid_install "${install_dir}"; then
+    debug_log "Valid install from launcher parent directory: ${install_dir}"
     echo "${install_dir}"
   fi
+}
+
+windows_program_locations() {
+  local locations=()
+
+  [ -n "${LOCALAPPDATA:-}" ] && locations+=("${LOCALAPPDATA}")
+  [ -n "${ProgramFiles:-}" ] && locations+=("${ProgramFiles}")
+  [ -n "${PROGRAMFILES:-}" ] && locations+=("${PROGRAMFILES}")
+  [ -n "${ProgramW6432:-}" ] && locations+=("${ProgramW6432}")
+  [ -n "${PROGRAMW6432:-}" ] && locations+=("${PROGRAMW6432}")
+
+  local drive unix_location
+  for drive in /[a-z]; do
+    [ -d "${drive}" ] || continue
+    locations+=(
+      "${drive}/programs"
+      "${drive}/Programs"
+      "${drive}/Program Files"
+      "${drive}/Program Files (x86)"
+    )
+  done
+
+  for location in "${locations[@]}"; do
+    unix_location=$(windows_path_to_unix "${location}")
+    echo "${unix_location}"
+  done
 }
 
 find_via_windows_shortcut_powershell() {
@@ -469,14 +520,12 @@ find_via_common_locations() {
       )
       ;;
     windows)
-      locations=(
-        "${LOCALAPPDATA:-${HOME}/AppData/Local}"
-        "${ProgramFiles:-/c/Program Files}"
-      )
+      mapfile -t locations < <(windows_program_locations)
       ;;
   esac
 
   for candidate in "${locations[@]}"; do
+    debug_log "Checking common location: ${candidate}"
     if is_valid_install "${candidate}"; then
       echo "${candidate}"
       return
@@ -519,6 +568,8 @@ print_not_found_error() {
     windows)
       echo "  %LOCALAPPDATA%" >&2
       echo "  %ProgramFiles%" >&2
+      echo "  /<drive>/programs" >&2
+      echo "  /<drive>/Program Files" >&2
       ;;
   esac
   echo "" >&2
