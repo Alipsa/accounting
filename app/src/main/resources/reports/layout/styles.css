@@ -226,6 +226,11 @@ td.number {
   background: #f1f5f9;
 }
 
+.balance-sheet-report .statement-table thead th,
+.income-statement-report .statement-table thead th {
+  background: #f1f5f9;
+}
+
 .balance-sheet-report .statement-table th,
 .balance-sheet-report .statement-table td,
 .income-statement-report .statement-table th,
@@ -269,6 +274,10 @@ td.number {
 
 .income-statement-report .statement-table thead tr.group-row th.group-heading {
   text-align: center;
+}
+
+.income-statement-report .statement-table thead th.label {
+  vertical-align: middle;
 }
 
 .income-statement-report .statement-table thead tr.subheader-row th {
@@ -344,7 +353,11 @@ td.number {
 .income-statement-report .statement-row.grand-total td {
   padding-top: 12px;
   padding-bottom: 5px;
-  font-size: 12pt;
+  font-size: 10pt;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.income-statement-report .statement-row.grand-total td.label {
+  font-size: 11pt;
 }

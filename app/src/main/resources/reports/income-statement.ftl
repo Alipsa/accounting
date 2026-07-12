@@ -14,12 +14,13 @@
       </colgroup>
       <thead>
         <tr class="group-row">
-          <th class="label" rowspan="2">${tableHeaders[0]}</th>
+          <th class="label">${tableHeaders[0]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[1]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[3]}</th>
           <th class="group-heading" colspan="2">${tableHeaders[5]}</th>
         </tr>
         <tr class="subheader-row">
+          <th class="label"></th>
           <th class="number">${amountColumnLabel}</th>
           <th class="number percent">${tableHeaders[2]}</th>
           <th class="number">${amountColumnLabel}</th>
