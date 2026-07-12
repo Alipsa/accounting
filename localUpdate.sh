@@ -339,13 +339,14 @@ find_via_windows_shortcut_file() {
   while IFS= read -r root; do
     while IFS= read -r shortcut; do
       debug_log "Found shortcut: ${shortcut}"
-      target=$(windows_shortcut_target_from_file "${shortcut}")
-      debug_log "Extracted shortcut target: ${target:-<none>}"
-      candidate=$(install_dir_for_windows_launcher "${target}")
-      if [ -n "${candidate}" ]; then
-        echo "${candidate}"
-        return
-      fi
+      while IFS= read -r target; do
+        debug_log "Extracted shortcut target: ${target:-<none>}"
+        candidate=$(install_dir_for_windows_launcher "${target}")
+        if [ -n "${candidate}" ]; then
+          echo "${candidate}"
+          return
+        fi
+      done < <(windows_shortcut_targets_from_file "${shortcut}")
     done < <(find "${root}" -type f -iname "${APP_NAME}*.lnk" -print 2>/dev/null)
   done < <(windows_shortcut_roots)
 }
@@ -382,7 +383,7 @@ windows_shortcut_roots() {
   done
 }
 
-windows_shortcut_target_from_file() {
+windows_shortcut_targets_from_file() {
   local shortcut="$1"
 
   debug_log "Inspecting shortcut: ${shortcut}"
@@ -392,18 +393,18 @@ windows_shortcut_target_from_file() {
       strings -a "${shortcut}" 2>/dev/null || true
     fi
     tr -d '\000' < "${shortcut}" 2>/dev/null || true
-  } | awk -v app="${APP_NAME}" '
+  } | LC_ALL=C awk -v app="${APP_NAME}" '
     index($0, app ".exe") || index($0, app ".bat") {
-      if (match($0, /[A-Za-z]:\\[^"]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+      while (match($0, /[A-Za-z]:\\[A-Za-z0-9_.(){}$&+@!#%=~^, -][^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
         print substr($0, RSTART, RLENGTH)
-        exit
+        $0 = substr($0, RSTART + RLENGTH)
       }
-      if (match($0, /\/[A-Za-z]\/[^"]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+      while (match($0, /\/[A-Za-z]\/[^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
         print substr($0, RSTART, RLENGTH)
-        exit
+        $0 = substr($0, RSTART + RLENGTH)
       }
     }
-  '
+  ' | awk '!seen[$0]++'
 }
 
 install_dir_for_windows_launcher() {
