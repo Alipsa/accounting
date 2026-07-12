@@ -259,6 +259,11 @@ td.number {
   padding: 6px 0;
 }
 
+.balance-sheet-report .statement-table td.number,
+.income-statement-report .statement-table td.number {
+  padding-left: 4px;
+}
+
 .balance-sheet-report .statement-table .closing {
   font-weight: 700;
 }
