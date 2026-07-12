@@ -9,12 +9,14 @@
   </style>
 </head>
 <body>
-  <header>
-    <h1>${companyName}</h1>
-    <p class="meta">${selectionLabel}</p>
-    <#if organizationNumber?has_content>
-      <p class="meta">${orgNumberLabel!'Org. no.:'} ${organizationNumber}</p>
-    </#if>
+  <header class="report-masthead">
+    <div class="masthead-title">${companyName}</div>
+    <div class="masthead-meta">
+      <div>${selectionLabel}</div>
+      <#if organizationNumber?has_content>
+        <div>${orgNumberLabel!'Org. no.:'} ${organizationNumber}</div>
+      </#if>
+    </div>
   </header>
   <main>
     <#nested>

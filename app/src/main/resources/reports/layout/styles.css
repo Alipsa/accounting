@@ -1,19 +1,40 @@
 body {
   font-family: "DejaVu Sans", sans-serif;
   color: #1f2937;
-  font-size: 11pt;
+  font-size: 10pt;
   line-height: 1.4;
 }
 
-header {
-  border-bottom: 2px solid #0f766e;
-  margin-bottom: 18px;
-  padding-bottom: 8px;
+header.report-masthead {
+  display: table;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 14px;
+  padding: 7px 9px;
+  border: 1px solid #94a3b8;
+  border-top: 3px solid #334155;
+  background: #f8fafc;
 }
 
-h1 {
-  margin: 0 0 4px 0;
-  font-size: 18pt;
+.masthead-title {
+  display: table-cell;
+  width: 55%;
+  vertical-align: middle;
+  font-size: 12pt;
+  font-weight: 700;
+  color: #111827;
+}
+
+.masthead-meta {
+  display: table-cell;
+  vertical-align: middle;
+  text-align: right;
+  font-size: 8.5pt;
+  color: #475569;
+}
+
+.masthead-meta div {
+  margin: 1px 0;
 }
 
 h2 {
@@ -116,7 +137,7 @@ td.number {
 .balance-sheet-report .report-heading,
 .income-statement-report .report-heading {
   margin: 0 0 4px 0;
-  font-size: 18pt;
+  font-size: 15pt;
 }
 
 .balance-sheet-report .report-period,

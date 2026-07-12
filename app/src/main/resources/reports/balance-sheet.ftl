@@ -2,7 +2,6 @@
 <@layout.page title=title>
   <section class="balance-sheet-report">
     <h2 class="report-heading">${title}</h2>
-    <p class="report-period">${selectionLabel}</p>
     <table class="statement-table balance-sheet-table">
       <thead>
         <tr>
