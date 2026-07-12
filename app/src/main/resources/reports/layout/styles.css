@@ -262,6 +262,12 @@ td.number {
 .balance-sheet-report .statement-table td.number,
 .income-statement-report .statement-table td.number {
   padding-left: 4px;
+  padding-right: 3px;
+}
+
+.balance-sheet-report .statement-table th.number,
+.income-statement-report .statement-table th.number {
+  padding-right: 3px;
 }
 
 .balance-sheet-report .statement-table th.group-start,
