@@ -384,15 +384,14 @@ windows_shortcut_roots() {
 
 windows_shortcut_target_from_file() {
   local shortcut="$1"
-  if ! command -v strings >/dev/null 2>&1; then
-    debug_log "Cannot inspect ${shortcut}: strings command not found"
-    return
-  fi
 
   debug_log "Inspecting shortcut: ${shortcut}"
   {
-    strings -el "${shortcut}" 2>/dev/null || true
-    strings -a "${shortcut}" 2>/dev/null || true
+    if command -v strings >/dev/null 2>&1; then
+      strings -el "${shortcut}" 2>/dev/null || true
+      strings -a "${shortcut}" 2>/dev/null || true
+    fi
+    tr -d '\000' < "${shortcut}" 2>/dev/null || true
   } | awk -v app="${APP_NAME}" '
     index($0, app ".exe") || index($0, app ".bat") {
       if (match($0, /[A-Za-z]:\\[^"]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
@@ -428,6 +427,28 @@ install_dir_for_windows_launcher() {
   fi
 }
 
+windows_drive_roots() {
+  local roots=()
+  local letter root
+
+  case "${PWD}" in
+    /[a-zA-Z]/*)
+      roots+=("/${PWD:1:1}")
+      ;;
+  esac
+
+  if [ -n "${HOMEDRIVE:-}" ]; then
+    root=$(windows_path_to_unix "${HOMEDRIVE}\\")
+    roots+=("${root}")
+  fi
+
+  for letter in c d e f g h i j k l m n o p q r s t u v w x y z; do
+    roots+=("/${letter}")
+  done
+
+  printf '%s\n' "${roots[@]}" | awk '!seen[$0]++'
+}
+
 windows_program_locations() {
   local locations=()
 
@@ -438,7 +459,7 @@ windows_program_locations() {
   [ -n "${PROGRAMW6432:-}" ] && locations+=("${PROGRAMW6432}")
 
   local drive unix_location
-  for drive in /[a-z]; do
+  while IFS= read -r drive; do
     [ -d "${drive}" ] || continue
     locations+=(
       "${drive}/programs"
@@ -446,12 +467,12 @@ windows_program_locations() {
       "${drive}/Program Files"
       "${drive}/Program Files (x86)"
     )
-  done
+  done < <(windows_drive_roots)
 
   for location in "${locations[@]}"; do
     unix_location=$(windows_path_to_unix "${location}")
     echo "${unix_location}"
-  done
+  done | awk '!seen[$0]++'
 }
 
 find_via_windows_shortcut_powershell() {
