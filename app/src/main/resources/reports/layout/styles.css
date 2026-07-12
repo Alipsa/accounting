@@ -123,7 +123,16 @@ table {
 }
 
 thead {
+  display: table-header-group;
   background: #e6fffb;
+}
+
+tfoot {
+  display: table-footer-group;
+}
+
+tr {
+  page-break-inside: avoid;
 }
 
 th,
@@ -168,6 +177,7 @@ td.number {
 
 .balance-sheet-report .statement-table,
 .income-statement-report .statement-table {
+  -fs-table-paginate: paginate;
   margin-top: 0;
   font-size: 9.5pt;
 }
@@ -289,10 +299,18 @@ td.number {
   letter-spacing: 0.03em;
 }
 
+.income-statement-report .statement-row.section-header {
+  page-break-after: avoid;
+}
+
 .income-statement-report .statement-row.group-header td {
   padding-top: 9px;
   padding-bottom: 2px;
   font-weight: 700;
+}
+
+.income-statement-report .statement-row.group-header {
+  page-break-after: avoid;
 }
 
 .income-statement-report .statement-row.detail td.label {
