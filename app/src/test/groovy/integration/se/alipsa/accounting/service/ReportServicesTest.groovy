@@ -577,6 +577,8 @@ class ReportServicesTest {
     assertTrue(report.tableRows.any { List<String> row -> row[0] == '8910 Skatt på årets resultat' })
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'Resultat före skatt' && row[1] == '750,00' })
     assertTrue(report.tableRows.any { List<String> row -> row[0] == 'ÅRETS RESULTAT' && row[1] == '600,00' })
+    assertEquals(1, report.tableRows.count { List<String> row -> row[0] == 'Summa bokslutsdispositioner' })
+    assertEquals(1, report.tableRows.count { List<String> row -> row[0] == 'Summa skatt på årets resultat' })
     assertEquals(600.00G, report.templateModel.result)
   }
 

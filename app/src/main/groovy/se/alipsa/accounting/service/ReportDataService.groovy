@@ -389,12 +389,10 @@ final class ReportDataService {
               IncomeStatementRowType.SECTION_HEADER
           )
           rows.addAll(sectionBuild.rows)
-          rows << incomeStatementRow(
-              section.name(),
-              sectionTotalLabel(section, summaryPrefix),
-              sectionBuild.total,
-              IncomeStatementRowType.SECTION_TOTAL
-          )
+          String totalLabel = sectionTotalLabel(section, summaryPrefix)
+          if (sectionBuild.rows.last().displayLabel != totalLabel) {
+            rows << incomeStatementRow(section.name(), totalLabel, sectionBuild.total, IncomeStatementRowType.SECTION_TOTAL)
+          }
         }
       }
     }
