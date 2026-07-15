@@ -611,10 +611,10 @@ final class ReportDataService {
   }
 
   private static BigDecimal comparisonPercent(BigDecimal amount, BigDecimal previousAmount) {
-    if (amount == null || previousAmount == null || previousAmount == BigDecimal.ZERO) {
+    if (amount == null || previousAmount == null) {
       return null
     }
-    scale((amount - previousAmount) * 100G / previousAmount.abs())
+    previousAmount == BigDecimal.ZERO ? BigDecimal.ZERO : scale(amount * 100G / previousAmount)
   }
 
   private static FiscalYear findPreviousFiscalYear(Sql sql, EffectiveSelection effective) {

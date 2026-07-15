@@ -178,6 +178,9 @@ class ReportServicesTest {
 
     String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
     assertTrue(html.contains('Ack föreg år 2025'))
+    assertTrue(report.tableRows.any { List<String> row ->
+      row[0] == '3010 Försäljning' && row[5] == '800,00' && row[6] == '125,00'
+    })
   }
 
   @Test
