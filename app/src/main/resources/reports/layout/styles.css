@@ -183,6 +183,7 @@ td.number {
 }
 
 .balance-sheet-report .statement-table {
+  font-size: 9pt;
   table-layout: fixed;
 }
 
@@ -235,12 +236,12 @@ td.number {
 
 .balance-sheet-report .statement-table thead,
 .income-statement-report .statement-table thead {
-  background: #f1f5f9;
+  background: #f8fafc;
 }
 
 .balance-sheet-report .statement-table thead th,
 .income-statement-report .statement-table thead th {
-  background: #f1f5f9;
+  background: #f8fafc;
 }
 
 .balance-sheet-report .statement-table th,
@@ -264,6 +265,10 @@ td.number {
   padding: 6px 0;
 }
 
+.balance-sheet-report .statement-table thead th {
+  padding: 5px 0;
+}
+
 .income-statement-report .statement-table thead th {
   padding: 4px 0;
 }
@@ -283,7 +288,7 @@ td.number {
 .balance-sheet-report .statement-table td.group-start,
 .income-statement-report .statement-table th.group-start,
 .income-statement-report .statement-table td.group-start {
-  border-left: 1px solid #cbd5e1;
+  border-left: 1px solid #d5dee9;
   padding-left: 6px;
 }
 
@@ -301,9 +306,9 @@ td.number {
 }
 
 .balance-sheet-report .statement-row.section-header td {
-  padding-top: 14px;
-  padding-bottom: 3px;
-  font-size: 11pt;
+  padding-top: 10px;
+  padding-bottom: 2px;
+  font-size: 10.5pt;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -334,27 +339,27 @@ td.number {
 }
 
 .balance-sheet-report .statement-row.detail td.label {
-  padding-left: 12px;
+  padding-left: 10px;
 }
 
 .balance-sheet-report .statement-row.subgroup-total td {
-  background-color: #f8fafc;
-  padding-top: 5px;
+  background-color: #fbfcfe;
+  padding-top: 3px;
   font-weight: 700;
 }
 
 .balance-sheet-report .statement-row.section-total td {
-  background-color: #f1f5f9;
-  padding-top: 10px;
-  padding-bottom: 4px;
+  background-color: #f8fafc;
+  padding-top: 6px;
+  padding-bottom: 3px;
   font-weight: 700;
 }
 
 .balance-sheet-report .statement-row.grand-total td {
-  background-color: #e2e8f0;
-  padding-top: 12px;
-  padding-bottom: 5px;
-  font-size: 12pt;
+  background-color: #edf2f7;
+  padding-top: 7px;
+  padding-bottom: 4px;
+  font-size: 10.5pt;
   font-weight: 700;
   text-transform: uppercase;
 }
