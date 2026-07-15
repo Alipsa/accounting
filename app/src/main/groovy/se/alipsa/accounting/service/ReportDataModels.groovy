@@ -3,7 +3,10 @@ package se.alipsa.accounting.service
 import groovy.transform.Canonical
 
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.IncomeStatementSection
 import se.alipsa.accounting.domain.report.ReportSelection
 
 import java.math.RoundingMode
@@ -96,16 +99,40 @@ final class Totals {
 }
 
 @Canonical
-final class AccountDetail {
+final class IncomeStatementDetail {
   String accountNumber
   String accountName
-  BigDecimal amount
+  BigDecimal periodAmount
+  BigDecimal yearToDateAmount
+  BigDecimal previousYearToDateAmount
+}
+
+@Canonical
+final class BalanceSheetDetail {
+  String accountNumber
+  String accountName
+  BigDecimal openingBalance
+  BigDecimal periodMovement
+  BigDecimal closingBalance
+}
+
+@Canonical
+final class BalanceSheetBuildResult {
+  List<BalanceSheetRow> rows
+  Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals
 }
 
 @Canonical
 final class IncomeSectionBuildResult {
   List<IncomeStatementRow> rows
-  BigDecimal total
+  IncomeStatementDetail total
+}
+
+@Canonical
+final class IncomeStatementBuildResult {
+  List<IncomeStatementRow> rows
+  Map<IncomeStatementSection, IncomeStatementDetail> sectionTotals
+  FiscalYear comparisonFiscalYear
 }
 
 final class VatBucket {

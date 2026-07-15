@@ -11,7 +11,14 @@ final class BalanceSheetRow {
   String section
   String accountNumber
   String accountName
-  BigDecimal amount
+  BigDecimal openingBalance
+  BigDecimal periodMovement
+  BigDecimal closingBalance
   String subgroupDisplayName
   boolean summaryRow
+  BalanceSheetRowType rowType
+
+  BigDecimal getAmount() {
+    closingBalance
+  }
 }

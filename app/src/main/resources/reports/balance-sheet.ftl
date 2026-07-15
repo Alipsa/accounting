@@ -1,23 +1,44 @@
 <#import "layout/base.ftl" as layout>
 <@layout.page title=title>
-  <h2>${title}</h2>
-  <p>${selectionLabel}</p>
-  <table>
-    <thead>
-      <tr>
-        <#list tableHeaders as header>
-          <th>${header}</th>
-        </#list>
-      </tr>
-    </thead>
-    <tbody>
-      <#list tableRows as row>
-        <#assign isSummary = typedRows[row?index].summaryRow>
-        <tr<#if isSummary> style="font-weight: bold; border-top: 1px solid #333;"</#if>>
-          <td>${row[0]}</td>
-          <td style="text-align: right;">${row[1]}</td>
+  <section class="balance-sheet-report">
+    <h2 class="report-heading">${title}</h2>
+    <table class="statement-table balance-sheet-table">
+      <colgroup>
+        <col class="label-col">
+        <col class="amount-col">
+        <col class="movement-col">
+        <col class="closing-col">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>${tableHeaders[0]}</th>
+          <th class="number group-start">${tableHeaders[1]}</th>
+          <th class="number group-start">${tableHeaders[2]}</th>
+          <th class="number closing group-start">${tableHeaders[3]}</th>
         </tr>
-      </#list>
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        <#list tableRows as row>
+          <#assign typedRow = typedRows[row?index]>
+          <#assign rowClass = typedRow.rowType.name()?lower_case?replace("_", "-")>
+          <tr class="statement-row ${rowClass}">
+            <#if rowClass == "section-header">
+              <td class="label" colspan="4">${row[0]}</td>
+            <#else>
+              <td class="label">
+                <#if typedRow.accountNumber?? && typedRow.accountNumber?has_content>
+                  <span class="account-number">${typedRow.accountNumber}</span><span class="account-name">${typedRow.accountName}</span>
+                <#else>
+                  ${row[0]}
+                </#if>
+              </td>
+              <td class="number group-start">${row[1]}</td>
+              <td class="number group-start">${row[2]}</td>
+              <td class="number closing group-start">${row[3]}</td>
+            </#if>
+          </tr>
+        </#list>
+      </tbody>
+    </table>
+  </section>
 </@layout.page>

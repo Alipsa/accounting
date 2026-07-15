@@ -2,12 +2,42 @@
 <@layout.page title=title>
   <section class="income-statement-report">
     <h2 class="report-heading">${title}</h2>
-    <table class="statement-table">
+    <#assign hasComparison = comparisonFiscalYear??>
+    <#assign columnCount = 5>
+    <#if hasComparison>
+      <#assign columnCount = 7>
+    </#if>
+    <table class="statement-table<#if !hasComparison> no-comparison</#if>">
+      <colgroup>
+        <col class="label-col">
+        <col class="amount-col">
+        <col class="percent-col">
+        <col class="amount-col">
+        <col class="percent-col">
+        <#if hasComparison>
+          <col class="prior-amount-col">
+          <col class="comparison-col">
+        </#if>
+      </colgroup>
       <thead>
-        <tr>
-          <#list tableHeaders as header>
-            <th<#if header?index == 1> class="number"</#if>>${header}</th>
-          </#list>
+        <tr class="group-row">
+          <th class="label">${tableHeaders[0]}</th>
+          <th class="group-heading group-start" colspan="2">${tableHeaders[1]}</th>
+          <th class="group-heading group-start" colspan="2">${tableHeaders[3]}</th>
+          <#if hasComparison>
+            <th class="group-heading group-start" colspan="2">${tableHeaders[5]}<#if comparisonFiscalYear.name?has_content> ${comparisonFiscalYear.name}</#if></th>
+          </#if>
+        </tr>
+        <tr class="subheader-row">
+          <th class="label"></th>
+          <th class="number group-start">${amountColumnLabel}</th>
+          <th class="number percent">${tableHeaders[2]}</th>
+          <th class="number group-start">${amountColumnLabel}</th>
+          <th class="number percent">${tableHeaders[4]}</th>
+          <#if hasComparison>
+            <th class="number group-start">${amountColumnLabel}</th>
+            <th class="number percent">${tableHeaders[6]}</th>
+          </#if>
         </tr>
       </thead>
       <tbody>
@@ -15,8 +45,25 @@
           <#assign typedRow = typedRows[row?index]>
           <#assign rowType = typedRow.rowType.name()?lower_case?replace("_", "-")>
           <tr class="statement-row ${rowType}">
-            <td class="label">${row[0]}</td>
-            <td class="number">${row[1]!}</td>
+            <#if rowType == "section-header" || rowType == "group-header">
+              <td class="label" colspan="${columnCount}">${row[0]}</td>
+            <#else>
+              <td class="label">
+                <#if typedRow.accountNumber?? && typedRow.accountNumber?has_content>
+                  <span class="account-number">${typedRow.accountNumber}</span><span class="account-name">${typedRow.accountName}</span>
+                <#else>
+                  ${row[0]}
+                </#if>
+              </td>
+              <td class="number group-start">${row[1]!}</td>
+              <td class="number percent">${row[2]!}</td>
+              <td class="number group-start">${row[3]!}</td>
+              <td class="number percent">${row[4]!}</td>
+              <#if hasComparison>
+                <td class="number group-start">${row[5]!}</td>
+                <td class="number percent">${row[6]!}</td>
+              </#if>
+            </#if>
           </tr>
         </#list>
       </tbody>

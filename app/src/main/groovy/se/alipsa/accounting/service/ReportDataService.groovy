@@ -13,6 +13,7 @@ import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetRowType
 import se.alipsa.accounting.domain.report.BalanceSheetSection
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.IncomeStatementRow
@@ -30,7 +31,10 @@ import se.alipsa.accounting.support.I18n
 
 import java.math.RoundingMode
 import java.sql.Date
+import java.sql.Timestamp
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.logging.Logger
 
 /**
@@ -304,73 +308,150 @@ final class ReportDataService {
   @SuppressWarnings('AbcMetric')
   private ReportResult buildIncomeStatementReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
-      Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
-      Map<String, Totals> periodTotals = ReportSqlLoader.loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
-
-      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildIncomeAccounts(accountInfos, periodTotals)
-      Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
-        [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
-      } as Map<AccountSubgroup, BigDecimal>
-
-      String summaryPrefix = I18n.instance.getString('incomeStatementSection.summary.prefix')
-      List<IncomeStatementRow> rows = []
-      Map<IncomeStatementSection, BigDecimal> sectionTotals = [:]
-
-      IncomeStatementSection.values().each { IncomeStatementSection section ->
-        if (section.computed) {
-          BigDecimal computedAmount = computeSectionResult(section, sectionTotals)
-          sectionTotals[section] = computedAmount
-          rows << new IncomeStatementRow(
-              section.name(),
-              computedSectionLabel(section),
-              scale(computedAmount),
-              section == IncomeStatementSection.NET_RESULT ? IncomeStatementRowType.GRAND_TOTAL : IncomeStatementRowType.RESULT_LINE
-          )
-        } else {
-          IncomeSectionBuildResult sectionBuild = buildIncomeSectionRows(section, subgroupAccounts, subgroupTotals, summaryPrefix)
-          sectionTotals[section] = sectionBuild.total
-          if (!sectionBuild.rows.isEmpty()) {
-            rows << new IncomeStatementRow(
-                section.name(),
-                sectionHeaderLabel(section),
-                null,
-                IncomeStatementRowType.SECTION_HEADER
-            )
-            rows.addAll(sectionBuild.rows)
-            rows << new IncomeStatementRow(
-                section.name(),
-                sectionTotalLabel(section, summaryPrefix),
-                scale(sectionBuild.total),
-                IncomeStatementRowType.SECTION_TOTAL
-            )
-          }
-        }
-      }
-
-      BigDecimal netResult = sectionTotals[IncomeStatementSection.NET_RESULT] ?: BigDecimal.ZERO
+      IncomeStatementBuildResult buildResult = buildIncomeStatementRows(sql, effective)
+      BigDecimal netResult = buildResult.sectionTotals[IncomeStatementSection.NET_RESULT]?.yearToDateAmount ?: BigDecimal.ZERO
 
       createResult(
           effective,
+          incomeStatementSummaryLines(buildResult.sectionTotals, effective.locale),
+          incomeStatementHeaders(),
+          incomeStatementTableRows(buildResult.rows, effective.locale),
+          buildResult.rows.collect { IncomeStatementRow ignored -> null as Long } as List<Long>,
           [
-              "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO), effective.locale)}".toString(),
-              "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmountLocale(scale(sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO), effective.locale)}".toString(),
-              "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmountLocale(scale(netResult), effective.locale)}".toString()
-          ],
-          [I18n.instance.getString('incomeStatementSection.column.item'), i18nOrFallback('incomeStatementSection.column.closingBalance', I18n.instance.getString('incomeStatementSection.column.amount'))],
-          rows.collect { IncomeStatementRow row ->
-            stringRow(row.displayLabel, row.amount == null ? '' : formatAmountLocale(row.amount, effective.locale))
-          },
-          rows.collect { IncomeStatementRow ignored -> null as Long } as List<Long>,
-          [typedRows: rows, result: scale(netResult)]
+              typedRows: buildResult.rows,
+              result: scale(netResult),
+              comparisonFiscalYear: buildResult.comparisonFiscalYear,
+              amountColumnLabel: I18n.instance.getString('incomeStatementSection.column.amount')
+          ]
       )
     } as ReportResult
   }
 
-  private Map<AccountSubgroup, List<AccountDetail>> buildIncomeAccounts(
-      Map<String, AccountInfo> accountInfos,
-      Map<String, Totals> periodTotals
+  private IncomeStatementBuildResult buildIncomeStatementRows(Sql sql, EffectiveSelection effective) {
+    Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
+    Map<String, Totals> periodTotals = ReportSqlLoader.loadPeriodTotals(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
+    Map<String, Totals> yearToDateTotals = ReportSqlLoader.loadPeriodTotals(
+        sql,
+        effective.selection.fiscalYearId,
+        effective.fiscalYear.startDate,
+        effective.endDate
+    )
+    FiscalYear comparisonYear = findPreviousFiscalYear(sql, effective)
+    Map<String, Totals> previousYearToDateTotals = comparisonYear == null
+        ? [:]
+        : ReportSqlLoader.loadPeriodTotals(
+            sql,
+            comparisonYear.id,
+            comparisonYear.startDate,
+            comparisonEndDate(effective, comparisonYear)
+        )
+    Map<AccountSubgroup, List<IncomeStatementDetail>> subgroupAccounts = buildIncomeAccounts(
+        accountInfos,
+        periodTotals,
+        yearToDateTotals,
+        previousYearToDateTotals,
+        comparisonYear != null
+    )
+    Map<AccountSubgroup, IncomeStatementDetail> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<IncomeStatementDetail> details ->
+      [(sg): sumIncomeStatementDetails(details, null, null)]
+    } as Map<AccountSubgroup, IncomeStatementDetail>
+
+    IncomeStatementBuildResult buildResult = buildIncomeStatementRows(subgroupAccounts, subgroupTotals)
+    buildResult.comparisonFiscalYear = comparisonYear
+    buildResult
+  }
+
+  private IncomeStatementBuildResult buildIncomeStatementRows(
+      Map<AccountSubgroup, List<IncomeStatementDetail>> subgroupAccounts,
+      Map<AccountSubgroup, IncomeStatementDetail> subgroupTotals
   ) {
-    Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
+    String summaryPrefix = I18n.instance.getString('incomeStatementSection.summary.prefix')
+    List<IncomeStatementRow> rows = []
+    Map<IncomeStatementSection, IncomeStatementDetail> sectionTotals = [:]
+
+    IncomeStatementSection.values().each { IncomeStatementSection section ->
+      if (section.computed) {
+        IncomeStatementDetail computedAmount = computeSectionResult(section, sectionTotals)
+        sectionTotals[section] = computedAmount
+        rows << incomeStatementRow(
+            section.name(),
+            computedSectionLabel(section),
+            computedAmount,
+            section == IncomeStatementSection.NET_RESULT ? IncomeStatementRowType.GRAND_TOTAL : IncomeStatementRowType.RESULT_LINE
+        )
+      } else {
+        IncomeSectionBuildResult sectionBuild = buildIncomeSectionRows(section, subgroupAccounts, subgroupTotals, summaryPrefix)
+        sectionTotals[section] = sectionBuild.total
+        if (!sectionBuild.rows.isEmpty()) {
+          rows << incomeStatementRow(
+              section.name(),
+              sectionHeaderLabel(section),
+              null,
+              IncomeStatementRowType.SECTION_HEADER
+          )
+          rows.addAll(sectionBuild.rows)
+          String totalLabel = sectionTotalLabel(section, summaryPrefix)
+          if (sectionBuild.rows.last().displayLabel != totalLabel) {
+            rows << incomeStatementRow(section.name(), totalLabel, sectionBuild.total, IncomeStatementRowType.SECTION_TOTAL)
+          }
+        }
+      }
+    }
+
+    BigDecimal periodRevenue = sectionTotals[IncomeStatementSection.OPERATING_INCOME]?.periodAmount ?: BigDecimal.ZERO
+    BigDecimal yearToDateRevenue = sectionTotals[IncomeStatementSection.OPERATING_INCOME]?.yearToDateAmount ?: BigDecimal.ZERO
+    enrichIncomeStatementPercentages(rows, periodRevenue, yearToDateRevenue)
+    new IncomeStatementBuildResult(rows, sectionTotals, null)
+  }
+
+  private static List<String> incomeStatementSummaryLines(
+      Map<IncomeStatementSection, IncomeStatementDetail> sectionTotals,
+      Locale locale
+  ) {
+    BigDecimal operatingResult = sectionTotals[IncomeStatementSection.OPERATING_RESULT]?.yearToDateAmount ?: BigDecimal.ZERO
+    BigDecimal resultAfterFinancial = sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL]?.yearToDateAmount ?: BigDecimal.ZERO
+    BigDecimal netResult = sectionTotals[IncomeStatementSection.NET_RESULT]?.yearToDateAmount ?: BigDecimal.ZERO
+    [
+        "${IncomeStatementSection.OPERATING_RESULT.displayName}: ${formatAmountLocale(scale(operatingResult), locale)}".toString(),
+        "${IncomeStatementSection.RESULT_AFTER_FINANCIAL.displayName}: ${formatAmountLocale(scale(resultAfterFinancial), locale)}".toString(),
+        "${IncomeStatementSection.NET_RESULT.displayName}: ${formatAmountLocale(scale(netResult), locale)}".toString()
+    ]
+  }
+
+  private static List<String> incomeStatementHeaders() {
+    [
+        I18n.instance.getString('incomeStatementSection.column.item'),
+        I18n.instance.getString('incomeStatementSection.column.period'),
+        I18n.instance.getString('incomeStatementSection.column.revenueShare'),
+        i18nOrFallback('incomeStatementSection.column.closingBalance', I18n.instance.getString('incomeStatementSection.column.amount')),
+        I18n.instance.getString('incomeStatementSection.column.revenueShare'),
+        I18n.instance.getString('incomeStatementSection.column.previousYear'),
+        I18n.instance.getString('incomeStatementSection.column.comparison')
+    ]
+  }
+
+  private static List<List<String>> incomeStatementTableRows(List<IncomeStatementRow> rows, Locale locale) {
+    rows.collect { IncomeStatementRow row ->
+      stringRow(
+          row.displayLabel,
+          formatNullableAmount(row.periodAmount, locale),
+          formatNullableAmount(row.periodRevenueShare, locale),
+          formatNullableAmount(row.yearToDateAmount, locale),
+          formatNullableAmount(row.yearToDateRevenueShare, locale),
+          formatNullableAmount(row.previousYearToDateAmount, locale),
+          formatNullableAmount(row.previousComparison, locale)
+      )
+    }
+  }
+
+  private Map<AccountSubgroup, List<IncomeStatementDetail>> buildIncomeAccounts(
+      Map<String, AccountInfo> accountInfos,
+      Map<String, Totals> periodTotals,
+      Map<String, Totals> yearToDateTotals,
+      Map<String, Totals> previousYearToDateTotals,
+      boolean hasComparisonYear
+  ) {
+    Map<AccountSubgroup, List<IncomeStatementDetail>> subgroupAccounts = [:]
     accountInfos.keySet().sort().each { String accountNumber ->
       AccountInfo info = accountInfos[accountNumber]
       AccountSubgroup subgroup = info.accountSubgroup
@@ -388,71 +469,189 @@ final class ReportDataService {
         return
       }
       String incomeNormalBalanceSide = resolveIncomeNormalBalanceSide(accountNumber, info, incomeAccountClass)
-      Totals totals = periodTotals[accountNumber] ?: Totals.ZERO
-      BigDecimal amount = signedAmount(totals.debitAmount, totals.creditAmount, incomeNormalBalanceSide)
-      if (incomeAccountClass == 'EXPENSE') {
-        amount = amount.negate()
-      }
-      if (amount == BigDecimal.ZERO) {
+      IncomeStatementDetail detail = new IncomeStatementDetail(
+          accountNumber,
+          info.accountName,
+          incomeAmount(periodTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass),
+          incomeAmount(yearToDateTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass),
+          hasComparisonYear
+              ? incomeAmount(previousYearToDateTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass)
+              : null
+      )
+      if (!hasIncomeAmount(detail)) {
         return
       }
-      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
-      list.add(new AccountDetail(accountNumber, info.accountName, amount))
+      List<IncomeStatementDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(detail)
     }
     subgroupAccounts
   }
 
   private IncomeSectionBuildResult buildIncomeSectionRows(
       IncomeStatementSection section,
-      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts,
-      Map<AccountSubgroup, BigDecimal> subgroupTotals,
+      Map<AccountSubgroup, List<IncomeStatementDetail>> subgroupAccounts,
+      Map<AccountSubgroup, IncomeStatementDetail> subgroupTotals,
       String summaryPrefix
   ) {
     List<IncomeStatementRow> sectionRows = []
-    BigDecimal sectionSum = BigDecimal.ZERO
+    List<IncomeStatementDetail> sectionDetails = []
     section.subgroups.each { AccountSubgroup subgroup ->
-      List<AccountDetail> accounts = subgroupAccounts[subgroup] ?: []
+      List<IncomeStatementDetail> accounts = subgroupAccounts[subgroup] ?: []
       if (accounts.isEmpty()) {
         return
       }
-      BigDecimal subgroupTotal = subgroupTotals[subgroup] ?: BigDecimal.ZERO
+      IncomeStatementDetail subgroupTotal = subgroupTotals[subgroup] ?: zeroIncomeStatementDetail()
       sectionRows.addAll(buildIncomeSubgroupRows(section, subgroup, accounts, subgroupTotal, summaryPrefix))
-      sectionSum = sectionSum + subgroupTotal
+      sectionDetails.addAll(accounts)
     }
-    new IncomeSectionBuildResult(sectionRows, sectionSum)
+    new IncomeSectionBuildResult(sectionRows, sumIncomeStatementDetails(sectionDetails, null, section.displayName))
   }
 
   private List<IncomeStatementRow> buildIncomeSubgroupRows(
       IncomeStatementSection section,
       AccountSubgroup subgroup,
-      List<AccountDetail> accounts,
-      BigDecimal subgroupTotal,
+      List<IncomeStatementDetail> accounts,
+      IncomeStatementDetail subgroupTotal,
       String summaryPrefix
   ) {
     List<IncomeStatementRow> subgroupRows = []
     if (shouldAddIncomeGroupHeader(section, accounts)) {
-      subgroupRows << new IncomeStatementRow(
+      subgroupRows << incomeStatementRow(
           section.name(),
           incomeSubgroupHeadingLabel(subgroup),
           null,
           IncomeStatementRowType.GROUP_HEADER
       )
     }
-    accounts.each { AccountDetail detail ->
-      subgroupRows << new IncomeStatementRow(
+    accounts.each { IncomeStatementDetail detail ->
+      subgroupRows << incomeStatementRow(
           section.name(),
           "${detail.accountNumber} ${detail.accountName}".toString(),
-          scale(detail.amount),
+          detail,
           IncomeStatementRowType.DETAIL
       )
     }
-    subgroupRows << new IncomeStatementRow(
+    subgroupRows << incomeStatementRow(
         section.name(),
         summaryLabel(summaryPrefix, incomeSubgroupSummaryLabel(subgroup)),
-        scale(subgroupTotal),
+        subgroupTotal,
         IncomeStatementRowType.SUBTOTAL
     )
     subgroupRows
+  }
+
+  private static IncomeStatementRow incomeStatementRow(
+      String section,
+      String label,
+      IncomeStatementDetail detail,
+      IncomeStatementRowType rowType
+  ) {
+    new IncomeStatementRow(
+        section,
+        label,
+        detail == null ? null : scale(detail.periodAmount),
+        null,
+        detail == null ? null : scale(detail.yearToDateAmount),
+        null,
+        detail == null ? null : detail.previousYearToDateAmount == null ? null : scale(detail.previousYearToDateAmount),
+        null,
+        rowType,
+        detail?.accountNumber,
+        detail?.accountName
+    )
+  }
+
+  private static BigDecimal incomeAmount(Totals totals, String normalBalanceSide, String incomeAccountClass) {
+    BigDecimal amount = signedAmount(totals.debitAmount, totals.creditAmount, normalBalanceSide)
+    incomeAccountClass == 'EXPENSE' ? scale(amount.negate()) : scale(amount)
+  }
+
+  private static IncomeStatementDetail sumIncomeStatementDetails(
+      List<IncomeStatementDetail> details,
+      String accountNumber,
+      String accountName
+  ) {
+    boolean hasPrevious = details.any { IncomeStatementDetail detail -> detail.previousYearToDateAmount != null }
+    new IncomeStatementDetail(
+        accountNumber,
+        accountName,
+        scale(details.sum(BigDecimal.ZERO) { IncomeStatementDetail detail -> detail.periodAmount } as BigDecimal),
+        scale(details.sum(BigDecimal.ZERO) { IncomeStatementDetail detail -> detail.yearToDateAmount } as BigDecimal),
+        hasPrevious
+            ? scale(details.sum(BigDecimal.ZERO) { IncomeStatementDetail detail -> detail.previousYearToDateAmount ?: BigDecimal.ZERO } as BigDecimal)
+            : null
+    )
+  }
+
+  private static IncomeStatementDetail zeroIncomeStatementDetail() {
+    new IncomeStatementDetail(null, null, BigDecimal.ZERO, BigDecimal.ZERO, null)
+  }
+
+  private static boolean hasIncomeAmount(IncomeStatementDetail detail) {
+    detail.periodAmount != BigDecimal.ZERO ||
+        detail.yearToDateAmount != BigDecimal.ZERO ||
+        (detail.previousYearToDateAmount != null && detail.previousYearToDateAmount != BigDecimal.ZERO)
+  }
+
+  private static void enrichIncomeStatementPercentages(
+      List<IncomeStatementRow> rows,
+      BigDecimal periodRevenue,
+      BigDecimal yearToDateRevenue
+  ) {
+    rows.each { IncomeStatementRow row ->
+      row.periodRevenueShare = percentOf(row.periodAmount, periodRevenue)
+      row.yearToDateRevenueShare = percentOf(row.yearToDateAmount, yearToDateRevenue)
+      row.previousComparison = comparisonPercent(row.yearToDateAmount, row.previousYearToDateAmount)
+    }
+  }
+
+  private static BigDecimal percentOf(BigDecimal amount, BigDecimal base) {
+    if (amount == null || base == null || base == BigDecimal.ZERO) {
+      return null
+    }
+    scale(amount * 100G / base)
+  }
+
+  private static BigDecimal comparisonPercent(BigDecimal amount, BigDecimal previousAmount) {
+    if (amount == null || previousAmount == null) {
+      return null
+    }
+    previousAmount == BigDecimal.ZERO ? null : scale(amount * 100G / previousAmount)
+  }
+
+  private static FiscalYear findPreviousFiscalYear(Sql sql, EffectiveSelection effective) {
+    GroovyRowResult row = sql.firstRow('''
+        select id,
+               name,
+               start_date as startDate,
+               end_date as endDate,
+               closed,
+               closed_at as closedAt
+          from fiscal_year
+         where company_id = ?
+           and end_date < ?
+         order by end_date desc
+         limit 1
+    ''', [effective.companyId, Date.valueOf(effective.fiscalYear.startDate)]) as GroovyRowResult
+    row == null ? null : mapFiscalYear(row)
+  }
+
+  private static LocalDate comparisonEndDate(EffectiveSelection effective, FiscalYear comparisonYear) {
+    long daysFromCurrentYearStart = ChronoUnit.DAYS.between(effective.fiscalYear.startDate, effective.endDate)
+    LocalDate endDate = comparisonYear.startDate.plusDays(daysFromCurrentYearStart)
+    endDate.isAfter(comparisonYear.endDate) ? comparisonYear.endDate : endDate
+  }
+
+  private static FiscalYear mapFiscalYear(GroovyRowResult row) {
+    Object closedAt = row.get('closedAt')
+    new FiscalYear(
+        Long.valueOf(row.get('id').toString()),
+        row.get('name') as String,
+        SqlValueMapper.toLocalDate(row.get('startDate')),
+        SqlValueMapper.toLocalDate(row.get('endDate')),
+        Boolean.valueOf(row.get('closed').toString()),
+        closedAt instanceof Timestamp ? ((Timestamp) closedAt).toLocalDateTime() : closedAt as LocalDateTime
+    )
   }
 
   private String resolveIncomeAccountClass(String accountNumber, AccountInfo info, AccountSubgroup subgroup) {
@@ -535,7 +734,7 @@ final class ReportDataService {
     section == IncomeStatementSection.NET_RESULT ? section.displayName.toUpperCase(I18n.instance.locale) : section.displayName
   }
 
-  private static boolean shouldAddIncomeGroupHeader(IncomeStatementSection section, List<AccountDetail> accounts) {
+  private static boolean shouldAddIncomeGroupHeader(IncomeStatementSection section, List<IncomeStatementDetail> accounts) {
     section in [IncomeStatementSection.OPERATING_INCOME, IncomeStatementSection.OPERATING_EXPENSES] && accounts.size() > 1
   }
 
@@ -551,25 +750,33 @@ final class ReportDataService {
     I18n.instance.hasString(key) ? I18n.instance.getString(key) : fallback
   }
 
-  private static BigDecimal computeSectionResult(
+  private static IncomeStatementDetail computeSectionResult(
       IncomeStatementSection section,
-      Map<IncomeStatementSection, BigDecimal> sectionTotals
+      Map<IncomeStatementSection, IncomeStatementDetail> sectionTotals
   ) {
     switch (section) {
       case IncomeStatementSection.OPERATING_RESULT:
-        return (sectionTotals[IncomeStatementSection.OPERATING_INCOME] ?: BigDecimal.ZERO) +
-            (sectionTotals[IncomeStatementSection.OPERATING_EXPENSES] ?: BigDecimal.ZERO)
+        return sumIncomeStatementDetails([
+            sectionTotals[IncomeStatementSection.OPERATING_INCOME],
+            sectionTotals[IncomeStatementSection.OPERATING_EXPENSES]
+        ].findAll(), null, section.displayName)
       case IncomeStatementSection.RESULT_AFTER_FINANCIAL:
-        return (sectionTotals[IncomeStatementSection.OPERATING_RESULT] ?: BigDecimal.ZERO) +
-            (sectionTotals[IncomeStatementSection.FINANCIAL_ITEMS] ?: BigDecimal.ZERO)
+        return sumIncomeStatementDetails([
+            sectionTotals[IncomeStatementSection.OPERATING_RESULT],
+            sectionTotals[IncomeStatementSection.FINANCIAL_ITEMS]
+        ].findAll(), null, section.displayName)
       case IncomeStatementSection.RESULT_AFTER_EXTRAORDINARY:
-        return sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: BigDecimal.ZERO
+        return sectionTotals[IncomeStatementSection.RESULT_AFTER_FINANCIAL] ?: zeroIncomeStatementDetail()
       case IncomeStatementSection.PROFIT_BEFORE_TAX:
-        return (sectionTotals[IncomeStatementSection.RESULT_AFTER_EXTRAORDINARY] ?: BigDecimal.ZERO) +
-            (sectionTotals[IncomeStatementSection.APPROPRIATIONS] ?: BigDecimal.ZERO)
+        return sumIncomeStatementDetails([
+            sectionTotals[IncomeStatementSection.RESULT_AFTER_EXTRAORDINARY],
+            sectionTotals[IncomeStatementSection.APPROPRIATIONS]
+        ].findAll(), null, section.displayName)
       case IncomeStatementSection.NET_RESULT:
-        return (sectionTotals[IncomeStatementSection.PROFIT_BEFORE_TAX] ?: BigDecimal.ZERO) +
-            (sectionTotals[IncomeStatementSection.TAX] ?: BigDecimal.ZERO)
+        return sumIncomeStatementDetails([
+            sectionTotals[IncomeStatementSection.PROFIT_BEFORE_TAX],
+            sectionTotals[IncomeStatementSection.TAX]
+        ].findAll(), null, section.displayName)
       default:
         throw new IllegalStateException("Okänd beräknad sektion: ${section}")
     }
@@ -579,46 +786,40 @@ final class ReportDataService {
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
       Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> openingBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
-      Map<String, BigDecimal> movements = ReportSqlLoader.loadBalanceSheetMovements(sql, effective.selection.fiscalYearId, effective.fiscalYear.startDate, effective.endDate)
+      Map<String, BigDecimal> fiscalOpeningBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, BigDecimal> prePeriodMovements = ReportSqlLoader.loadBalanceSheetMovements(
+          sql,
+          effective.selection.fiscalYearId,
+          effective.fiscalYear.startDate,
+          effective.startDate.minusDays(1)
+      )
+      Map<String, BigDecimal> openingBalances = buildClosingBalances(accountInfos, fiscalOpeningBalances, prePeriodMovements)
+      Map<String, BigDecimal> periodMovements = ReportSqlLoader.loadBalanceSheetMovements(
+          sql,
+          effective.selection.fiscalYearId,
+          effective.startDate,
+          effective.endDate
+      )
 
-      Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, movements)
+      Map<String, BigDecimal> closingBalances = buildClosingBalances(accountInfos, openingBalances, periodMovements)
       List<String> skippedAccounts = []
-      Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = buildSubgroupAccounts(accountInfos, closingBalances, skippedAccounts)
-      Map<AccountSubgroup, BigDecimal> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<AccountDetail> details ->
-        [(sg): details.sum(BigDecimal.ZERO) { AccountDetail d -> d.amount } as BigDecimal]
-      } as Map<AccountSubgroup, BigDecimal>
+      Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts = buildBalanceSheetSubgroupAccounts(
+          accountInfos,
+          openingBalances,
+          periodMovements,
+          closingBalances,
+          skippedAccounts
+      )
+      Map<AccountSubgroup, BalanceSheetDetail> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<BalanceSheetDetail> details ->
+        [(sg): sumBalanceSheetDetails(details, null, null)]
+      } as Map<AccountSubgroup, BalanceSheetDetail>
 
-      List<BalanceSheetRow> rows = []
-      Map<BalanceSheetSection, BigDecimal> sectionTotals = [:]
+      BalanceSheetBuildResult buildResult = buildBalanceSheetRows(subgroupAccounts, subgroupTotals)
+      List<BalanceSheetRow> rows = buildResult.rows
+      Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals = buildResult.sectionTotals
 
-      BalanceSheetSection.values().each { BalanceSheetSection section ->
-        if (section.computed) {
-          BigDecimal computedAmount = computeBalanceSheetTotal(section, sectionTotals)
-          sectionTotals[section] = computedAmount
-          rows << new BalanceSheetRow(section.name(), null, null, scale(computedAmount), section.displayName, true)
-        } else {
-          BigDecimal sectionSum = BigDecimal.ZERO
-          section.subgroups.each { AccountSubgroup subgroup ->
-            List<AccountDetail> accounts = subgroupAccounts[subgroup] ?: []
-            BigDecimal sgTotal = subgroupTotals[subgroup] ?: BigDecimal.ZERO
-            accounts.each { AccountDetail detail ->
-              rows << new BalanceSheetRow(section.name(), detail.accountNumber, detail.accountName, scale(detail.amount), null, false)
-            }
-            if (accounts.size() > 0 && sgTotal != BigDecimal.ZERO) {
-              rows << new BalanceSheetRow(section.name(), null, null, scale(sgTotal), subgroup.displayName, true)
-            }
-            sectionSum = sectionSum + sgTotal
-          }
-          sectionTotals[section] = sectionSum
-          if (sectionSum != BigDecimal.ZERO) {
-            rows << new BalanceSheetRow(section.name(), null, null, scale(sectionSum), section.displayName, true)
-          }
-        }
-      }
-
-      BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS] ?: BigDecimal.ZERO
-      BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES] ?: BigDecimal.ZERO
+      BigDecimal assetTotal = sectionTotals[BalanceSheetSection.TOTAL_ASSETS]?.closingBalance ?: BigDecimal.ZERO
+      BigDecimal equityAndLiabilitiesTotal = sectionTotals[BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES]?.closingBalance ?: BigDecimal.ZERO
 
       List<String> summaryLines = [
           "${BalanceSheetSection.TOTAL_ASSETS.displayName}: ${formatAmountLocale(scale(assetTotal), effective.locale)}".toString(),
@@ -631,17 +832,114 @@ final class ReportDataService {
       createResult(
           effective,
           summaryLines,
-          [I18n.instance.getString('balanceSheetSection.column.item'), I18n.instance.getString('balanceSheetSection.column.amount')],
+          [
+              I18n.instance.getString('balanceSheetSection.column.item'),
+              I18n.instance.getString('balanceSheetSection.column.opening'),
+              I18n.instance.getString('balanceSheetSection.column.period'),
+              I18n.instance.getString('balanceSheetSection.column.closing')
+          ],
           rows.collect { BalanceSheetRow row ->
             String label = row.accountNumber
                 ? "${row.accountNumber} ${row.accountName}"
                 : (row.subgroupDisplayName ?: row.section)
-            stringRow(label, formatAmountLocale(row.amount, effective.locale))
+            stringRow(
+                label,
+                formatNullableAmount(row.openingBalance, effective.locale),
+                formatNullableAmount(row.periodMovement, effective.locale),
+                formatNullableAmount(row.closingBalance, effective.locale)
+            )
           },
           rows.collect { BalanceSheetRow ignored -> null as Long } as List<Long>,
           [typedRows: rows, assetTotal: scale(assetTotal), equityAndLiabilitiesTotal: scale(equityAndLiabilitiesTotal)]
       )
     } as ReportResult
+  }
+
+  private BalanceSheetBuildResult buildBalanceSheetRows(
+      Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts,
+      Map<AccountSubgroup, BalanceSheetDetail> subgroupTotals
+  ) {
+    List<BalanceSheetRow> rows = []
+    Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals = [:]
+
+    BalanceSheetSection.values().each { BalanceSheetSection section ->
+      if (section.computed) {
+        BalanceSheetDetail computedTotal = computeBalanceSheetTotal(section, sectionTotals)
+        sectionTotals[section] = computedTotal
+        rows << balanceSheetSummaryRow(section, computedTotal, section.displayName, BalanceSheetRowType.GRAND_TOTAL)
+        return
+      }
+      List<BalanceSheetRow> sectionRows = []
+      List<BalanceSheetDetail> sectionDetails = []
+      section.subgroups.each { AccountSubgroup subgroup ->
+        List<BalanceSheetDetail> accounts = subgroupAccounts[subgroup] ?: []
+        BalanceSheetDetail subgroupTotal = subgroupTotals[subgroup] ?: zeroBalanceSheetDetail(null, subgroup.displayName)
+        sectionRows.addAll(accounts.collect { BalanceSheetDetail detail -> balanceSheetDetailRow(section, detail) })
+        if (accounts.size() > 0 && hasBalanceSheetAmount(subgroupTotal)) {
+          sectionRows << balanceSheetSummaryRow(section, subgroupTotal, subgroup.displayName, BalanceSheetRowType.SUBGROUP_TOTAL)
+        }
+        sectionDetails.addAll(accounts)
+      }
+      BalanceSheetDetail sectionTotal = sumBalanceSheetDetails(sectionDetails, null, section.displayName)
+      sectionTotals[section] = sectionTotal
+      if (hasBalanceSheetAmount(sectionTotal)) {
+        rows << balanceSheetSectionHeaderRow(section)
+        rows.addAll(sectionRows)
+        rows << balanceSheetSummaryRow(section, sectionTotal, balanceSheetSectionTotalLabel(section), BalanceSheetRowType.SECTION_TOTAL)
+      }
+    }
+    new BalanceSheetBuildResult(rows, sectionTotals)
+  }
+
+  private static String balanceSheetSectionTotalLabel(BalanceSheetSection section) {
+    summaryLabel(I18n.instance.getString('balanceSheetSection.summary.prefix'), section.displayName)
+  }
+
+  private static BalanceSheetRow balanceSheetSectionHeaderRow(BalanceSheetSection section) {
+    new BalanceSheetRow(
+        section.name(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        section.displayName.toUpperCase(I18n.instance.locale),
+        false,
+        BalanceSheetRowType.SECTION_HEADER
+    )
+  }
+
+  private static BalanceSheetRow balanceSheetDetailRow(BalanceSheetSection section, BalanceSheetDetail detail) {
+    new BalanceSheetRow(
+        section.name(),
+        detail.accountNumber,
+        detail.accountName,
+        scale(detail.openingBalance),
+        scale(detail.periodMovement),
+        scale(detail.closingBalance),
+        null,
+        false,
+        BalanceSheetRowType.DETAIL
+    )
+  }
+
+  private static BalanceSheetRow balanceSheetSummaryRow(
+      BalanceSheetSection section,
+      BalanceSheetDetail detail,
+      String label,
+      BalanceSheetRowType rowType
+  ) {
+    new BalanceSheetRow(
+        section.name(),
+        null,
+        null,
+        scale(detail.openingBalance),
+        scale(detail.periodMovement),
+        scale(detail.closingBalance),
+        label,
+        true,
+        rowType
+    )
   }
 
   private Map<String, BigDecimal> buildClosingBalances(
@@ -662,14 +960,23 @@ final class ReportDataService {
     closingBalances
   }
 
-  private Map<AccountSubgroup, List<AccountDetail>> buildSubgroupAccounts(
+  private Map<AccountSubgroup, List<BalanceSheetDetail>> buildBalanceSheetSubgroupAccounts(
       Map<String, AccountInfo> accountInfos,
+      Map<String, BigDecimal> openingBalances,
+      Map<String, BigDecimal> periodMovements,
       Map<String, BigDecimal> closingBalances,
       List<String> skippedAccounts
   ) {
-    Map<AccountSubgroup, List<AccountDetail>> subgroupAccounts = [:]
-    closingBalances.keySet().sort().each { String accountNumber ->
+    Map<AccountSubgroup, List<BalanceSheetDetail>> subgroupAccounts = [:]
+    Set<String> accountNumbers = ([] as Set<String>)
+    accountNumbers.addAll(openingBalances.keySet())
+    accountNumbers.addAll(periodMovements.keySet())
+    accountNumbers.addAll(closingBalances.keySet())
+    accountNumbers.sort().each { String accountNumber ->
       AccountInfo info = accountInfos[accountNumber]
+      if (info == null || !(info.accountClass in ['ASSET', 'LIABILITY', 'EQUITY'])) {
+        return
+      }
       AccountSubgroup subgroup = info.accountSubgroup
           ? AccountSubgroup.fromDatabaseValue(info.accountSubgroup)
           : AccountSubgroup.fromAccountNumber(accountNumber)
@@ -679,9 +986,18 @@ final class ReportDataService {
         return
       }
       subgroup = resolveBalanceSheetSubgroup(subgroup, info.accountClass)
-      BigDecimal amount = closingBalances[accountNumber]
-      List<AccountDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
-      list.add(new AccountDetail(accountNumber, info.accountName, amount))
+      BalanceSheetDetail detail = new BalanceSheetDetail(
+          accountNumber,
+          info.accountName,
+          scale(openingBalances[accountNumber] ?: BigDecimal.ZERO),
+          scale(periodMovements[accountNumber] ?: BigDecimal.ZERO),
+          scale(closingBalances[accountNumber] ?: BigDecimal.ZERO)
+      )
+      if (detail.openingBalance == BigDecimal.ZERO && detail.periodMovement == BigDecimal.ZERO && detail.closingBalance == BigDecimal.ZERO) {
+        return
+      }
+      List<BalanceSheetDetail> list = subgroupAccounts.computeIfAbsent(subgroup) { [] }
+      list.add(detail)
     }
     subgroupAccounts
   }
@@ -701,23 +1017,51 @@ final class ReportDataService {
     subgroup
   }
 
-  private static BigDecimal computeBalanceSheetTotal(
+  private static BalanceSheetDetail computeBalanceSheetTotal(
       BalanceSheetSection section,
-      Map<BalanceSheetSection, BigDecimal> sectionTotals
+      Map<BalanceSheetSection, BalanceSheetDetail> sectionTotals
   ) {
     switch (section) {
       case BalanceSheetSection.TOTAL_ASSETS:
-        return (sectionTotals[BalanceSheetSection.FIXED_ASSETS] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.CURRENT_ASSETS] ?: BigDecimal.ZERO)
+        return sumBalanceSheetDetails([
+            sectionTotals[BalanceSheetSection.FIXED_ASSETS],
+            sectionTotals[BalanceSheetSection.CURRENT_ASSETS]
+        ].findAll(), null, section.displayName)
       case BalanceSheetSection.TOTAL_EQUITY_AND_LIABILITIES:
-        return (sectionTotals[BalanceSheetSection.EQUITY] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.UNTAXED_RESERVES] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.PROVISIONS] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.LONG_TERM_LIABILITIES] ?: BigDecimal.ZERO) +
-            (sectionTotals[BalanceSheetSection.CURRENT_LIABILITIES] ?: BigDecimal.ZERO)
+        return sumBalanceSheetDetails([
+            sectionTotals[BalanceSheetSection.EQUITY],
+            sectionTotals[BalanceSheetSection.UNTAXED_RESERVES],
+            sectionTotals[BalanceSheetSection.PROVISIONS],
+            sectionTotals[BalanceSheetSection.LONG_TERM_LIABILITIES],
+            sectionTotals[BalanceSheetSection.CURRENT_LIABILITIES]
+        ].findAll(), null, section.displayName)
       default:
         throw new IllegalStateException("Okänd beräknad sektion: ${section}")
     }
+  }
+
+  private static BalanceSheetDetail sumBalanceSheetDetails(
+      List<BalanceSheetDetail> details,
+      String accountNumber,
+      String accountName
+  ) {
+    new BalanceSheetDetail(
+        accountNumber,
+        accountName,
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.openingBalance } as BigDecimal),
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.periodMovement } as BigDecimal),
+        scale(details.sum(BigDecimal.ZERO) { BalanceSheetDetail detail -> detail.closingBalance } as BigDecimal)
+    )
+  }
+
+  private static BalanceSheetDetail zeroBalanceSheetDetail(String accountNumber, String accountName) {
+    new BalanceSheetDetail(accountNumber, accountName, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
+  }
+
+  private static boolean hasBalanceSheetAmount(BalanceSheetDetail detail) {
+    detail.openingBalance != BigDecimal.ZERO ||
+        detail.periodMovement != BigDecimal.ZERO ||
+        detail.closingBalance != BigDecimal.ZERO
   }
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
@@ -887,7 +1231,8 @@ final class ReportDataService {
         tableHeaders  : headers,
         tableRows     : tableRows,
         htmlLang      : I18n.instance.getString('report.common.htmlLang'),
-        orgNumberLabel: I18n.instance.getString('report.common.orgNumber')
+        orgNumberLabel: I18n.instance.getString('report.common.orgNumber'),
+        pageLabel     : I18n.instance.getString('report.common.page')
     ] + (extraModel ?: [:])
     new ReportResult(
         effective.selection.reportType,
@@ -935,6 +1280,10 @@ final class ReportDataService {
 
   private static String formatAmountLocale(BigDecimal amount, Locale locale) {
     AmountFormatter.format(amount, locale)
+  }
+
+  private static String formatNullableAmount(BigDecimal amount, Locale locale) {
+    amount == null ? '' : formatAmountLocale(amount, locale)
   }
 
   private static List<String> stringRow(String... values) {

@@ -258,7 +258,7 @@ final class ReportExportService {
     headers.eachWithIndex { String header, int columnIndex ->
       Cell cell = headerRow.createCell(columnIndex)
       cell.setCellValue(header ?: '')
-      cell.cellStyle = columnIndex == 1 ? styles.headerNumberStyle : styles.headerStyle
+      cell.cellStyle = columnIndex == 0 ? styles.headerStyle : styles.headerNumberStyle
     }
     rowIndex + 1
   }
@@ -279,19 +279,46 @@ final class ReportExportService {
       labelCell.setCellValue(rowValues[0] ?: '')
       labelCell.cellStyle = textStyleForIncomeRow(typedRow.rowType, styles)
 
-      Cell amountCell = row.createCell(1)
-      if (typedRow.amount == null) {
-        amountCell.setCellValue(rowValues.size() > 1 ? (rowValues[1] ?: '') : '')
-      } else {
-        amountCell.setCellValue(typedRow.amount.doubleValue())
+      (1..<rowValues.size()).each { int columnIndex ->
+        Cell amountCell = row.createCell(columnIndex)
+        BigDecimal numericValue = incomeNumericValue(typedRow, columnIndex)
+        if (numericValue == null) {
+          amountCell.setCellValue(rowValues[columnIndex] ?: '')
+        } else {
+          amountCell.setCellValue(numericValue.doubleValue())
+        }
+        amountCell.cellStyle = numberStyleForIncomeRow(typedRow.rowType, styles)
       }
-      amountCell.cellStyle = numberStyleForIncomeRow(typedRow.rowType, styles)
+    }
+  }
+
+  private static BigDecimal incomeNumericValue(IncomeStatementRow row, int columnIndex) {
+    switch (columnIndex) {
+      case 1:
+        return row.periodAmount
+      case 2:
+        return row.periodRevenueShare
+      case 3:
+        return row.yearToDateAmount
+      case 4:
+        return row.yearToDateRevenueShare
+      case 5:
+        return row.previousYearToDateAmount
+      case 6:
+        return row.previousComparison
+      default:
+        return null
     }
   }
 
   private static void applyIncomeStatementColumnWidths(Sheet sheet) {
     sheet.setColumnWidth(0, 38 * 256)
     sheet.setColumnWidth(1, 15 * 256)
+    sheet.setColumnWidth(2, 10 * 256)
+    sheet.setColumnWidth(3, 15 * 256)
+    sheet.setColumnWidth(4, 10 * 256)
+    sheet.setColumnWidth(5, 15 * 256)
+    sheet.setColumnWidth(6, 10 * 256)
   }
 
   private static short heightForIncomeRow(IncomeStatementRowType rowType) {

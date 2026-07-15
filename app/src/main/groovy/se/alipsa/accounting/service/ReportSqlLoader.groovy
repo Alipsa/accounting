@@ -152,6 +152,7 @@ final class ReportSqlLoader {
                a.account_name as accountName,
                a.account_class as accountClass,
                a.normal_balance_side as normalBalanceSide,
+               a.account_subgroup as accountSubgroup,
                vl.line_description as lineDescription,
                vl.debit_amount as debitAmount,
                vl.credit_amount as creditAmount
@@ -172,7 +173,12 @@ final class ReportSqlLoader {
           row.get('accountNumber') as String,
           row.get('accountName') as String,
           row.get('accountClass') as String,
-          row.get('normalBalanceSide') as String,
+          resolveSignedMovementNormalSide(
+              row.get('accountNumber') as String,
+              row.get('normalBalanceSide') as String,
+              row.get('accountClass') as String,
+              row.get('accountSubgroup') as String
+          ),
           row.get('lineDescription') as String,
           scale(new BigDecimal(row.get('debitAmount').toString())),
           scale(new BigDecimal(row.get('creditAmount').toString()))

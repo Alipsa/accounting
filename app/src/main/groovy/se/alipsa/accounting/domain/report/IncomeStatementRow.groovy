@@ -10,6 +10,17 @@ final class IncomeStatementRow {
 
   String section
   String displayLabel
-  BigDecimal amount
+  BigDecimal periodAmount
+  BigDecimal periodRevenueShare
+  BigDecimal yearToDateAmount
+  BigDecimal yearToDateRevenueShare
+  BigDecimal previousYearToDateAmount
+  BigDecimal previousComparison
   IncomeStatementRowType rowType
+  String accountNumber
+  String accountName
+
+  BigDecimal getAmount() {
+    yearToDateAmount
+  }
 }
