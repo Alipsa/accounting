@@ -122,6 +122,15 @@ table {
   margin-top: 8px;
 }
 
+.report-table {
+  table-layout: fixed;
+  font-size: 8.5pt;
+}
+
+.dense-report-table {
+  font-size: 7.2pt;
+}
+
 thead {
   display: table-header-group;
   background: #e6fffb;
@@ -142,6 +151,16 @@ td {
   vertical-align: top;
 }
 
+.report-table th,
+.report-table td {
+  padding: 4px 6px;
+}
+
+.dense-report-table th,
+.dense-report-table td {
+  padding: 3px 4px;
+}
+
 th {
   text-align: left;
 }
@@ -153,6 +172,124 @@ th.number {
 td.number {
   text-align: right;
   white-space: nowrap;
+}
+
+.report-table .number {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.report-table .date,
+.report-table .code {
+  white-space: nowrap;
+}
+
+.voucher-list-table .date-col {
+  width: 11%;
+}
+
+.voucher-list-table .voucher-col {
+  width: 12%;
+}
+
+.voucher-list-table .series-col {
+  width: 7%;
+}
+
+.voucher-list-table .text-col {
+  width: 34%;
+}
+
+.voucher-list-table .status-col {
+  width: 10%;
+}
+
+.voucher-list-table .amount-col {
+  width: 13%;
+}
+
+.general-ledger-table .account-col {
+  width: 7%;
+}
+
+.general-ledger-table .name-col {
+  width: 20%;
+}
+
+.general-ledger-table .date-col {
+  width: 9%;
+}
+
+.general-ledger-table .voucher-col {
+  width: 9%;
+}
+
+.general-ledger-table .text-col {
+  width: 20%;
+}
+
+.general-ledger-table .amount-col {
+  width: 11%;
+}
+
+.general-ledger-table .balance-col {
+  width: 13%;
+}
+
+.transaction-report-table .date-col {
+  width: 10%;
+}
+
+.transaction-report-table .voucher-col {
+  width: 8%;
+}
+
+.transaction-report-table .account-col {
+  width: 7%;
+}
+
+.transaction-report-table .account-name-col {
+  width: 19%;
+}
+
+.transaction-report-table .voucher-text-col {
+  width: 16%;
+}
+
+.transaction-report-table .line-text-col {
+  width: 15%;
+}
+
+.transaction-report-table .amount-col {
+  width: 9%;
+}
+
+.transaction-report-table .status-col {
+  width: 7%;
+}
+
+.trial-balance-table .account-col {
+  width: 8%;
+}
+
+.trial-balance-table .name-col {
+  width: 39%;
+}
+
+.trial-balance-table .amount-col {
+  width: 13.25%;
+}
+
+.vat-report-table .code-col {
+  width: 17%;
+}
+
+.vat-report-table .label-col {
+  width: 29%;
+}
+
+.vat-report-table .amount-col {
+  width: 18%;
 }
 
 .income-statement-report {

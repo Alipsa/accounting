@@ -184,6 +184,29 @@ class ReportServicesTest {
   }
 
   @Test
+  void densePdfReportTemplatesUseFixedColumnTables() {
+    [
+        (ReportType.VOUCHER_LIST)       : 'voucher-list-table',
+        (ReportType.GENERAL_LEDGER)     : 'general-ledger-table',
+        (ReportType.TRIAL_BALANCE)      : 'trial-balance-table',
+        (ReportType.TRANSACTION_REPORT) : 'transaction-report-table',
+        (ReportType.VAT_REPORT)         : 'vat-report-table'
+    ].each { ReportType reportType, String tableClass ->
+      ReportResult report = reportDataService.generate(new ReportSelection(
+          reportType,
+          fiscalYear.id,
+          null,
+          LocalDate.of(2026, 1, 1),
+          LocalDate.of(2026, 1, 31)
+      ))
+      String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
+
+      assertTrue(html.contains(tableClass))
+      assertTrue(html.contains('class="number"'))
+    }
+  }
+
+  @Test
   void reExportingTheSameSelectionProducesDistinctArchiveEntries() {
     ReportSelection selection = new ReportSelection(
         ReportType.VOUCHER_LIST,
@@ -371,6 +394,26 @@ class ReportServicesTest {
 
     assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '', '', 'Ingående balans', '0,00', '0,00', '1\u00A0350,00']))
     assertTrue(report.tableRows.contains(['1510', 'Kundfordringar', '2026-02-10', 'A-3', 'Kundfordran', '125,00', '0,00', '1\u00A0475,00']))
+  }
+
+  @Test
+  void generalLedgerInfersNormalBalanceSideWhenMissing() {
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '1930', 'Företagskonto', null, null, null, null)
+    }
+    voucherService.createVoucher(fiscalYear.id, 'A', LocalDate.of(2026, 1, 20), 'Insättning',
+        [new VoucherLine(null, null, 0, null, '1930', 'Företagskonto', null, 500.00G, 0.00G),
+         new VoucherLine(null, null, 0, null, '1510', 'Kundfordringar', null, 0.00G, 500.00G)])
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.GENERAL_LEDGER,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+
+    assertTrue(report.tableRows.contains(['1930', 'Företagskonto', '2026-01-20', 'A-3', 'Insättning', '500,00', '0,00', '500,00']))
   }
 
   @Test

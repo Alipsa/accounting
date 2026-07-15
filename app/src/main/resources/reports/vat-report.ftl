@@ -15,20 +15,31 @@
       <span class="metric-value">${netTotal}</span>
     </div>
   </div>
-  <table>
+  <table class="report-table vat-report-table">
+    <colgroup>
+      <col class="code-col">
+      <col class="label-col">
+      <col class="amount-col">
+      <col class="amount-col">
+      <col class="amount-col">
+    </colgroup>
     <thead>
       <tr>
-        <#list tableHeaders as header>
-          <th>${header}</th>
-        </#list>
+        <th class="code">${tableHeaders[0]}</th>
+        <th>${tableHeaders[1]}</th>
+        <th class="number">${tableHeaders[2]}</th>
+        <th class="number">${tableHeaders[3]}</th>
+        <th class="number">${tableHeaders[4]}</th>
       </tr>
     </thead>
     <tbody>
       <#list tableRows as row>
         <tr>
-          <#list row as cell>
-            <td>${cell}</td>
-          </#list>
+          <td class="code">${row[0]}</td>
+          <td>${row[1]}</td>
+          <td class="number">${row[2]}</td>
+          <td class="number">${row[3]}</td>
+          <td class="number">${row[4]}</td>
         </tr>
       </#list>
     </tbody>
