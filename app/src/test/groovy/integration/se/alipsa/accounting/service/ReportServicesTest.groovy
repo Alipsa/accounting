@@ -18,6 +18,8 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetRowType
 import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.IncomeStatementRowType
 import se.alipsa.accounting.domain.report.ReportArchive
@@ -204,6 +206,95 @@ class ReportServicesTest {
       assertTrue(html.contains(tableClass))
       assertTrue(html.contains('class="number"'))
     }
+  }
+
+  @Test
+  void statementPdfTemplatesPreserveSectionColspansAndAccountMetadata() {
+    ReportResult incomeReport = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String incomeHtml = journoReportService.renderHtml(incomeReport).replace('\r\n', '\n').replace('\r', '\n')
+    List<IncomeStatementRow> incomeRows = incomeReport.templateModel.get('typedRows') as List<IncomeStatementRow>
+
+    assertTrue(incomeHtml.contains('class="statement-table no-comparison"'))
+    assertTrue(incomeHtml.contains('<td class="label" colspan="5">RÖRELSEINTÄKTER</td>'))
+    assertTrue(incomeHtml.contains('<span class="account-number">3010</span><span class="account-name">Försäljning</span>'))
+    assertTrue(incomeRows.any { IncomeStatementRow row ->
+      row.rowType == IncomeStatementRowType.DETAIL &&
+          row.accountNumber == '3010' &&
+          row.accountName == 'Försäljning'
+    })
+
+    ReportResult balanceReport = reportDataService.generate(new ReportSelection(
+        ReportType.BALANCE_SHEET,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String balanceHtml = journoReportService.renderHtml(balanceReport).replace('\r\n', '\n').replace('\r', '\n')
+    List<BalanceSheetRow> balanceRows = balanceReport.templateModel.get('typedRows') as List<BalanceSheetRow>
+
+    assertTrue(balanceHtml.contains('<td class="label" colspan="4">OMSÄTTNINGSTILLGÅNGAR</td>'))
+    assertTrue(balanceHtml.contains('<span class="account-number">1510</span><span class="account-name">Kundfordringar</span>'))
+    assertTrue(balanceRows.any { BalanceSheetRow row ->
+      row.rowType == BalanceSheetRowType.DETAIL &&
+          row.accountNumber == '1510' &&
+          row.accountName == 'Kundfordringar'
+    })
+  }
+
+  @Test
+  void incomeStatementPdfTemplateUsesComparisonColumnsOnlyWithComparisonYear() {
+    ReportResult withoutComparison = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String withoutComparisonHtml = journoReportService.renderHtml(withoutComparison).replace('\r\n', '\n').replace('\r', '\n')
+
+    assertFalse(withoutComparisonHtml.contains('<col class="prior-amount-col">'))
+    assertFalse(withoutComparisonHtml.contains('<col class="comparison-col">'))
+    assertTrue(withoutComparisonHtml.contains('colspan="5">RÖRELSEINTÄKTER</td>'))
+
+    FiscalYear previousFiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2025',
+        LocalDate.of(2025, 1, 1),
+        LocalDate.of(2025, 12, 31)
+    )
+    voucherService.createVoucher(
+        previousFiscalYear.id,
+        'A',
+        LocalDate.of(2025, 1, 10),
+        'Försäljning föregående år',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 800.00G),
+            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 200.00G)
+        ]
+    )
+
+    ReportResult withComparison = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String withComparisonHtml = journoReportService.renderHtml(withComparison).replace('\r\n', '\n').replace('\r', '\n')
+
+    assertTrue(withComparisonHtml.contains('<col class="prior-amount-col">'))
+    assertTrue(withComparisonHtml.contains('<col class="comparison-col">'))
+    assertTrue(withComparisonHtml.contains('Ack föreg år 2025'))
+    assertTrue(withComparisonHtml.contains('colspan="7">RÖRELSEINTÄKTER</td>'))
+    assertEquals(previousFiscalYear.id, (withComparison.templateModel.comparisonFiscalYear as FiscalYear).id)
   }
 
   @Test
