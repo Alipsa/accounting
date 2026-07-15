@@ -99,13 +99,6 @@ final class Totals {
 }
 
 @Canonical
-final class AccountDetail {
-  String accountNumber
-  String accountName
-  BigDecimal amount
-}
-
-@Canonical
 final class IncomeStatementDetail {
   String accountNumber
   String accountName

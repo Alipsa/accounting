@@ -349,7 +349,8 @@ final class ReportDataService {
         accountInfos,
         periodTotals,
         yearToDateTotals,
-        previousYearToDateTotals
+        previousYearToDateTotals,
+        comparisonYear != null
     )
     Map<AccountSubgroup, IncomeStatementDetail> subgroupTotals = subgroupAccounts.collectEntries { AccountSubgroup sg, List<IncomeStatementDetail> details ->
       [(sg): sumIncomeStatementDetails(details, null, null)]
@@ -447,7 +448,8 @@ final class ReportDataService {
       Map<String, AccountInfo> accountInfos,
       Map<String, Totals> periodTotals,
       Map<String, Totals> yearToDateTotals,
-      Map<String, Totals> previousYearToDateTotals
+      Map<String, Totals> previousYearToDateTotals,
+      boolean hasComparisonYear
   ) {
     Map<AccountSubgroup, List<IncomeStatementDetail>> subgroupAccounts = [:]
     accountInfos.keySet().sort().each { String accountNumber ->
@@ -472,7 +474,7 @@ final class ReportDataService {
           info.accountName,
           incomeAmount(periodTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass),
           incomeAmount(yearToDateTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass),
-          previousYearToDateTotals
+          hasComparisonYear
               ? incomeAmount(previousYearToDateTotals[accountNumber] ?: Totals.ZERO, incomeNormalBalanceSide, incomeAccountClass)
               : null
       )
@@ -614,7 +616,7 @@ final class ReportDataService {
     if (amount == null || previousAmount == null) {
       return null
     }
-    previousAmount == BigDecimal.ZERO ? BigDecimal.ZERO : scale(amount * 100G / previousAmount)
+    previousAmount == BigDecimal.ZERO ? null : scale(amount * 100G / previousAmount)
   }
 
   private static FiscalYear findPreviousFiscalYear(Sql sql, EffectiveSelection effective) {

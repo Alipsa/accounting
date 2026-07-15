@@ -186,6 +186,35 @@ class ReportServicesTest {
   }
 
   @Test
+  void incomeStatementKeepsZeroPriorYearAmountsWhenComparisonYearHasNoPostings() {
+    fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2025',
+        LocalDate.of(2025, 1, 1),
+        LocalDate.of(2025, 12, 31)
+    )
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.INCOME_STATEMENT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String html = journoReportService.renderHtml(report).replace('\r\n', '\n').replace('\r', '\n')
+
+    assertTrue(html.contains('Ack föreg år 2025'))
+    assertTrue(html.contains('<col class="prior-amount-col">'))
+    assertTrue(html.contains('<col class="comparison-col">'))
+    assertTrue(report.tableRows.any { List<String> row ->
+      row[0] == '3010 Försäljning' && row[5] == '0,00' && row[6] == ''
+    })
+    assertTrue(report.tableRows.any { List<String> row ->
+      row[0] == 'ÅRETS RESULTAT' && row[5] == '0,00' && row[6] == ''
+    })
+  }
+
+  @Test
   void densePdfReportTemplatesUseFixedColumnTables() {
     [
         (ReportType.VOUCHER_LIST)       : 'voucher-list-table',
