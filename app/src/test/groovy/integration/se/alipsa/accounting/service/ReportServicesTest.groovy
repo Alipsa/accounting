@@ -434,6 +434,69 @@ class ReportServicesTest {
   }
 
   @Test
+  void balanceSheetExcelExportUsesStatementHierarchyAndNumericBalances() {
+    ReportSelection selection = new ReportSelection(
+        ReportType.BALANCE_SHEET,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    )
+
+    ReportArchive archive = reportExportService.exportExcel(selection)
+    byte[] workbookBytes = reportArchiveService.readArchive(archive.id)
+
+    WorkbookFactory.create(new ByteArrayInputStream(workbookBytes)).withCloseable { workbook ->
+      def sheet = workbook.getSheetAt(0)
+      assertEquals(ReportType.BALANCE_SHEET.displayName, sheet.getRow(0).getCell(0).stringCellValue)
+      assertEquals('Default company', sheet.getRow(1).getCell(0).stringCellValue)
+      assertEquals('Post', sheet.getRow(4).getCell(0).stringCellValue)
+      assertEquals('Ingående balans', sheet.getRow(4).getCell(1).stringCellValue)
+      assertEquals('Denna period', sheet.getRow(4).getCell(2).stringCellValue)
+      assertEquals('Utgående saldo', sheet.getRow(4).getCell(3).stringCellValue)
+      assertEquals('OMSÄTTNINGSTILLGÅNGAR', sheet.getRow(5).getCell(0).stringCellValue)
+      assertTrue((0..<sheet.numMergedRegions).any { int index ->
+        def region = sheet.getMergedRegion(index)
+        region.firstRow == 5 && region.lastRow == 5 && region.firstColumn == 0 && region.lastColumn == 3
+      })
+
+      def receivablesRow = (5..sheet.lastRowNum).collect { int rowIndex -> sheet.getRow(rowIndex) }
+          .find { row -> row?.getCell(0)?.stringCellValue == '1510 Kundfordringar' }
+      assertEquals(CellType.NUMERIC, receivablesRow.getCell(1).cellType)
+      assertEquals(CellType.NUMERIC, receivablesRow.getCell(2).cellType)
+      assertEquals(CellType.NUMERIC, receivablesRow.getCell(3).cellType)
+      assertEquals(0.00D, receivablesRow.getCell(1).numericCellValue, 0.001D)
+      assertEquals(1250.00D, receivablesRow.getCell(2).numericCellValue, 0.001D)
+      assertEquals(1250.00D, receivablesRow.getCell(3).numericCellValue, 0.001D)
+      assertTrue(workbook.getFontAt(receivablesRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+    }
+  }
+
+  @Test
+  void balanceSheetExcelExportRequiresTypedRows() {
+    ReportResult report = new ReportResult(
+        ReportType.BALANCE_SHEET,
+        ReportType.BALANCE_SHEET.displayName,
+        '',
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31),
+        [],
+        ['Post', 'Ingående balans', 'Denna period', 'Utgående saldo'],
+        [],
+        [],
+        [:]
+    )
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      reportExportService.renderExcel(report)
+    }
+
+    assertTrue(exception.message.contains('balansrapportens Excel-export'))
+  }
+
+  @Test
   void allReportsCanBeExportedAsExcel() {
     ReportType.values().each { ReportType type ->
       ReportSelection selection = new ReportSelection(
@@ -454,8 +517,8 @@ class ReportServicesTest {
       WorkbookFactory.create(new ByteArrayInputStream(workbookBytes)).withCloseable { workbook ->
         assertTrue(workbook.numberOfSheets >= 1)
         String firstCell = workbook.getSheetAt(0).getRow(0).getCell(0).stringCellValue
-        String expectedFirstCell = type == ReportType.INCOME_STATEMENT
-            ? ReportType.INCOME_STATEMENT.displayName
+        String expectedFirstCell = type in [ReportType.INCOME_STATEMENT, ReportType.BALANCE_SHEET]
+            ? type.displayName
             : reportDataService.generate(selection).tableHeaders[0]
         assertEquals(expectedFirstCell, firstCell)
       }
