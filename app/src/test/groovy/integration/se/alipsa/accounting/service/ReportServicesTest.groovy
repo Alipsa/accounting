@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 import groovy.sql.Sql
 
 import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.Row
+import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -469,6 +471,22 @@ class ReportServicesTest {
       assertEquals(1250.00D, receivablesRow.getCell(2).numericCellValue, 0.001D)
       assertEquals(1250.00D, receivablesRow.getCell(3).numericCellValue, 0.001D)
       assertTrue(workbook.getFontAt(receivablesRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+
+      def subgroupTotalRow = findSheetRow(sheet, 'Kundfordringar')
+      assertEquals(CellType.NUMERIC, subgroupTotalRow.getCell(3).cellType)
+      assertTrue(workbook.getFontAt(subgroupTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+
+      def sectionTotalRow = findSheetRow(sheet, 'Totalt omsättningstillgångar')
+      assertEquals(CellType.NUMERIC, sectionTotalRow.getCell(3).cellType)
+      assertTrue(workbook.getFontAt(sectionTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+
+      def grandTotalRow = findSheetRow(sheet, 'Summa tillgångar')
+      short openingFontHeight = workbook.getFontAt(grandTotalRow.getCell(1).cellStyle.fontIndexAsInt).fontHeightInPoints
+      short periodFontHeight = workbook.getFontAt(grandTotalRow.getCell(2).cellStyle.fontIndexAsInt).fontHeightInPoints
+      short closingFontHeight = workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndexAsInt).fontHeightInPoints
+      assertEquals(openingFontHeight, periodFontHeight)
+      assertEquals(openingFontHeight, closingFontHeight)
+      assertTrue(workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
     }
   }
 
@@ -894,6 +912,16 @@ class ReportServicesTest {
             new VoucherLine(null, null, 0, null, '2440', null, 'Leverantörsskuld', 0.00G, 250.00G)
         ]
     )
+  }
+
+  private static Row findSheetRow(Sheet sheet, String firstCellValue) {
+    for (int rowIndex = 0; rowIndex <= sheet.lastRowNum; rowIndex++) {
+      Row row = sheet.getRow(rowIndex)
+      if (row?.getCell(0)?.stringCellValue == firstCellValue) {
+        return row
+      }
+    }
+    throw new AssertionError("Could not find Excel row with first cell '${firstCellValue}'.")
   }
 
   private void insertTestAccounts() {

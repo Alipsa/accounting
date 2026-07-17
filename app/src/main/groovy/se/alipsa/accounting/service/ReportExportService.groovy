@@ -451,7 +451,10 @@ final class ReportExportService {
   }
 
   private static CellStyle numberStyleForBalanceRow(String rowTypeName, int columnIndex, StatementStyles styles) {
-    columnIndex == 3 ? styles.boldNumberStyle : numberStyleForStatementRow(rowTypeName, styles)
+    if (columnIndex != 3) {
+      return numberStyleForStatementRow(rowTypeName, styles)
+    }
+    rowTypeName == 'DETAIL' ? styles.boldNumberStyle : numberStyleForStatementRow(rowTypeName, styles)
   }
 
   private static CellStyle numberStyleForStatementRow(String rowTypeName, StatementStyles styles) {

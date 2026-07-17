@@ -54,6 +54,6 @@ Align Excel exports with the redesigned PDF report layouts, especially for state
    - Run `git diff --check`.
    - Run `./gradlew build`.
 
-9. Update PR #87
+9. Update PR #88
    - Commit the Excel alignment work.
-   - Push it to `improve-report-design`.
+   - Push it to `agent/update-excel-export`.
