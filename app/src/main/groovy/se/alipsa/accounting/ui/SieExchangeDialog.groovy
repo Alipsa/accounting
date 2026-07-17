@@ -58,8 +58,8 @@ final class SieExchangeDialog extends JDialog {
   private final SieImportExportService sieImportExportService
   private final FiscalYearService fiscalYearService
   private final CompanyService companyService
-  private final long companyId
   private final Consumer<Long> onImportSuccess
+  private long companyId
 
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
   private final JTextArea summaryArea = new JTextArea(5, 50)
@@ -440,6 +440,9 @@ final class SieExchangeDialog extends JDialog {
         try {
           SieImportResult result = get()
           if (importingToNewCompany) {
+            companyId = targetCompanyId
+            reloadFiscalYears()
+            reloadJobs()
             showInfo(I18n.instance.getString('sieExchangeDialog.company.newCompanyImported'))
           } else {
             reloadFiscalYears()
@@ -477,6 +480,9 @@ final class SieExchangeDialog extends JDialog {
         try {
           SieImportResult result = get()
           if (importingToNewCompany) {
+            companyId = targetCompanyId
+            reloadFiscalYears()
+            reloadJobs()
             showInfo(I18n.instance.getString('sieExchangeDialog.company.newCompanyImported'))
           } else {
             reloadFiscalYears()

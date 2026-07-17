@@ -822,7 +822,7 @@ final class MainFrame implements PropertyChangeListener {
   private void showSieExchangeDialog() {
     long openedForCompanyId = activeCompanyManager.companyId
     SieExchangeDialog.showDialog(frame, sieImportExportService, fiscalYearService, companyService, openedForCompanyId, { Long targetCompanyId ->
-      if (targetCompanyId != openedForCompanyId) {
+      if (targetCompanyId != activeCompanyManager.companyId) {
         reloadCompanyComboBox()
         selectCompanyInComboBox(targetCompanyId)
       } else {
