@@ -35,6 +35,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JTable
 import javax.swing.JTextArea
@@ -263,6 +264,47 @@ class VatPeriodPanelTest {
     assertTrue(feedback.contains(I18n.instance.format('vatPeriodPanel.message.reportedMultiple', 2)))
   }
 
+  @Test
+  void vatYearDefaultsToGlobalKeepsLocalOverrideAndResetsOnActivation() {
+    FiscalYear previousYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2025',
+        LocalDate.of(2025, 1, 1),
+        LocalDate.of(2025, 12, 31)
+    )
+    FiscalYear nextYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID,
+        '2027',
+        LocalDate.of(2027, 1, 1),
+        LocalDate.of(2027, 12, 31)
+    )
+    activeCompanyManager.fiscalYear = fiscalYear
+    VatPeriodPanel panel = onEdt {
+      new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
+    }
+    JComboBox<FiscalYear> comboBox = findFiscalYearComboBox(panel)
+
+    assertSelectedFiscalYear(comboBox, fiscalYear)
+
+    activeCompanyManager.fiscalYear = nextYear
+    flushEdt()
+    assertSelectedFiscalYear(comboBox, nextYear)
+
+    onEdt {
+      comboBox.selectedItem = previousYear
+    }
+    assertSelectedFiscalYear(comboBox, previousYear)
+
+    activeCompanyManager.fiscalYear = fiscalYear
+    flushEdt()
+    assertSelectedFiscalYear(comboBox, previousYear)
+
+    onEdt {
+      panel.activateFiscalYearContext()
+    }
+    assertSelectedFiscalYear(comboBox, fiscalYear)
+  }
+
   private List<Voucher> bookVatFixtures() {
     [
         bookSaleVoucher(),
@@ -382,6 +424,16 @@ class VatPeriodPanelTest {
     findComponent(root, JLabel, predicate) as JLabel
   }
 
+  private static JComboBox<FiscalYear> findFiscalYearComboBox(Container root) {
+    findComponent(root, JComboBox) { JComboBox comboBox ->
+      comboBox.itemCount > 0 && comboBox.getItemAt(0) instanceof FiscalYear
+    } as JComboBox<FiscalYear>
+  }
+
+  private static void assertSelectedFiscalYear(JComboBox<FiscalYear> comboBox, FiscalYear fiscalYear) {
+    assertEquals(fiscalYear.id, onEdt { ((FiscalYear) comboBox.selectedItem).id })
+  }
+
   private static <T extends Component> T findComponent(Container root, Class<T> type, Closure<Boolean> predicate) {
     List<Component> components = allComponents(root)
     T component = components.find { Component child ->
@@ -419,6 +471,10 @@ class VatPeriodPanelTest {
       throw failure.get()
     }
     result.get()
+  }
+
+  private static void flushEdt() {
+    onEdt { null }
   }
 
   private static String digitsOnly(String value) {

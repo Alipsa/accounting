@@ -38,7 +38,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
-final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
+final class VatPeriodPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
 
   private static final Logger log = Logger.getLogger(VatPeriodPanel.name)
 
@@ -61,6 +61,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
+  private boolean localFiscalYearOverride
+  private boolean programmaticFiscalYearSelection
 
   @PackageScope
   interface BulkConfirmation {
@@ -97,14 +99,30 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater {
+        localFiscalYearOverride = false
         reloadFiscalYears()
         reloadPeriods()
+      }
+    } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater {
+        if (!localFiscalYearOverride) {
+          reloadFiscalYears()
+          reloadPeriods()
+        }
       }
     }
   }
 
+  @Override
+  void activateFiscalYearContext() {
+    localFiscalYearOverride = false
+    reloadFiscalYears()
+    reloadPeriods()
+  }
+
   private void applyLocale() {
-    fiscalYearLabel.text = I18n.instance.getString('vatPeriodPanel.label.fiscalYear')
+    fiscalYearLabel.text = I18n.instance.getString('vatPeriodPanel.label.vatYear')
+    fiscalYearComboBox.toolTipText = I18n.instance.getString('vatPeriodPanel.tooltip.vatYear')
     refreshButton.text = I18n.instance.getString('vatPeriodPanel.button.refresh')
     reportButton.text = I18n.instance.getString('vatPeriodPanel.button.report')
     transferButton.text = I18n.instance.getString('vatPeriodPanel.button.bookTransfer')
@@ -136,7 +154,8 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     JPanel panel = new JPanel(new BorderLayout(0, 8))
 
     JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    fiscalYearLabel = new JLabel(I18n.instance.getString('vatPeriodPanel.label.fiscalYear'))
+    fiscalYearLabel = new JLabel(I18n.instance.getString('vatPeriodPanel.label.vatYear'))
+    fiscalYearComboBox.toolTipText = I18n.instance.getString('vatPeriodPanel.tooltip.vatYear')
     filters.add(fiscalYearLabel)
     filters.add(fiscalYearComboBox)
     refreshButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.refresh'))
@@ -194,22 +213,38 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
   @SuppressWarnings('CatchRuntimeException')
   private void reloadFiscalYears() {
     if (!activeCompanyManager.hasActiveCompany()) {
-      fiscalYearComboBox.removeAllItems()
+      programmaticFiscalYearSelection = true
+      try {
+        fiscalYearComboBox.removeAllItems()
+      } finally {
+        programmaticFiscalYearSelection = false
+      }
       periodTableModel.setRows([])
       reportTableModel.setRows([])
       return
     }
     try {
-      FiscalYear selected = selectedFiscalYear()
-      fiscalYearComboBox.removeAllItems()
-      fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
-        fiscalYearComboBox.addItem(fiscalYear)
-      }
-      if (selected != null) {
-        selectFiscalYear(selected.id)
+      Long oldFiscalYearId = selectedFiscalYear()?.id
+      Long preferredFiscalYearId = localFiscalYearOverride
+          ? oldFiscalYearId
+          : activeCompanyManager.fiscalYear?.id
+      programmaticFiscalYearSelection = true
+      try {
+        fiscalYearComboBox.removeAllItems()
+        fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
+          fiscalYearComboBox.addItem(fiscalYear)
+        }
+        if (!selectFiscalYear(preferredFiscalYearId) && fiscalYearComboBox.itemCount > 0) {
+          fiscalYearComboBox.selectedIndex = 0
+        }
+      } finally {
+        programmaticFiscalYearSelection = false
       }
       if (!fiscalYearListenerInstalled) {
         fiscalYearComboBox.addActionListener {
+          if (!programmaticFiscalYearSelection) {
+            localFiscalYearOverride = true
+          }
           reloadPeriods()
         }
         fiscalYearListenerInstalled = true
@@ -403,17 +438,18 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener {
     rows.collect { int row -> periodTableModel.rowAt(row) }
   }
 
-  private void selectFiscalYear(Long fiscalYearId) {
+  private boolean selectFiscalYear(Long fiscalYearId) {
     if (fiscalYearId == null) {
-      return
+      return false
     }
     for (int index = 0; index < fiscalYearComboBox.itemCount; index++) {
       FiscalYear fiscalYear = fiscalYearComboBox.getItemAt(index)
       if (fiscalYear?.id == fiscalYearId) {
         fiscalYearComboBox.selectedIndex = index
-        return
+        return true
       }
     }
+    false
   }
 
   private void selectPeriod(Long vatPeriodId) {

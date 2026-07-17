@@ -347,8 +347,12 @@ final class MainFrame implements PropertyChangeListener {
     }
     applyTabLocale()
     tabbedPane.addChangeListener { javax.swing.event.ChangeEvent ignored ->
-      if (tabbedPane.selectedComponent == overviewPanel) {
+      Component selectedComponent = tabbedPane.selectedComponent
+      if (selectedComponent == overviewPanel) {
         overviewPanel.reload()
+      }
+      if (selectedComponent instanceof FiscalYearContextAware) {
+        ((FiscalYearContextAware) selectedComponent).activateFiscalYearContext()
       }
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)

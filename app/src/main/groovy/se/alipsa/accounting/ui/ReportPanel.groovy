@@ -55,7 +55,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
-final class ReportPanel extends JPanel implements PropertyChangeListener {
+final class ReportPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
 
   private static final Logger log = Logger.getLogger(ReportPanel.name)
 
@@ -94,6 +94,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
   private ReportResult currentReport
   private boolean pdfGenerationInProgress
   private boolean excelExportInProgress
+  private boolean localFiscalYearOverride
+  private boolean programmaticFiscalYearSelection
 
   ReportPanel(
       ReportDataService reportDataService,
@@ -127,16 +129,32 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
       SwingUtilities.invokeLater {
+        localFiscalYearOverride = false
         reloadFiscalYears()
         reloadArchives()
         reloadReport()
       }
+    } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
+      SwingUtilities.invokeLater {
+        if (!localFiscalYearOverride && reloadFiscalYears()) {
+          reloadReport()
+        }
+      }
+    }
+  }
+
+  @Override
+  void activateFiscalYearContext() {
+    localFiscalYearOverride = false
+    if (reloadFiscalYears()) {
+      reloadReport()
     }
   }
 
   private void applyLocale() {
     reportLabel.text = I18n.instance.getString('reportPanel.label.report')
-    fiscalYearLabel.text = I18n.instance.getString('reportPanel.label.fiscalYear')
+    fiscalYearLabel.text = I18n.instance.getString('reportPanel.label.reportYear')
+    fiscalYearComboBox.toolTipText = I18n.instance.getString('reportPanel.tooltip.reportYear')
     periodLabel.text = I18n.instance.getString('reportPanel.label.period')
     fromLabel.text = I18n.instance.getString('reportPanel.label.from')
     toLabel.text = I18n.instance.getString('reportPanel.label.to')
@@ -181,6 +199,9 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     panel.add(buildActionButtons(), BorderLayout.CENTER)
     panel.add(summaryLabel, BorderLayout.SOUTH)
     fiscalYearComboBox.addActionListener {
+      if (!programmaticFiscalYearSelection) {
+        localFiscalYearOverride = true
+      }
       reloadAccountingPeriods()
     }
     accountingPeriodComboBox.addActionListener {
@@ -208,7 +229,8 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
 
     labelConstraints.gridx = 2
     fieldConstraints.gridx = 3
-    fiscalYearLabel = new JLabel(I18n.instance.getString('reportPanel.label.fiscalYear'))
+    fiscalYearLabel = new JLabel(I18n.instance.getString('reportPanel.label.reportYear'))
+    fiscalYearComboBox.toolTipText = I18n.instance.getString('reportPanel.tooltip.reportYear')
     filters.add(fiscalYearLabel, labelConstraints)
     filters.add(fiscalYearComboBox, fieldConstraints)
 
@@ -279,20 +301,35 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     feedbackArea
   }
 
-  private void reloadFiscalYears() {
+  private boolean reloadFiscalYears() {
     if (!activeCompanyManager.hasActiveCompany()) {
+      Long oldFiscalYearId = selectedFiscalYear()?.id
+      programmaticFiscalYearSelection = true
+      try {
+        fiscalYearComboBox.removeAllItems()
+      } finally {
+        programmaticFiscalYearSelection = false
+      }
+      return oldFiscalYearId != null
+    }
+    Long oldFiscalYearId = selectedFiscalYear()?.id
+    Long preferredFiscalYearId = localFiscalYearOverride
+        ? oldFiscalYearId
+        : activeCompanyManager.fiscalYear?.id
+    programmaticFiscalYearSelection = true
+    try {
       fiscalYearComboBox.removeAllItems()
-      return
-    }
-    FiscalYear selected = selectedFiscalYear()
-    fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
-      fiscalYearComboBox.addItem(fiscalYear)
-    }
-    if (selected != null) {
-      selectFiscalYear(selected.id)
+      fiscalYearService.listFiscalYears(activeCompanyManager.companyId).each { FiscalYear fiscalYear ->
+        fiscalYearComboBox.addItem(fiscalYear)
+      }
+      if (!selectFiscalYear(preferredFiscalYearId) && fiscalYearComboBox.itemCount > 0) {
+        fiscalYearComboBox.selectedIndex = 0
+      }
+    } finally {
+      programmaticFiscalYearSelection = false
     }
     reloadAccountingPeriods()
+    oldFiscalYearId != selectedFiscalYear()?.id
   }
 
   private void reloadAccountingPeriods() {
@@ -527,14 +564,18 @@ final class ReportPanel extends JPanel implements PropertyChangeListener {
     selected instanceof AccountingPeriod ? (AccountingPeriod) selected : null
   }
 
-  private void selectFiscalYear(Long fiscalYearId) {
+  private boolean selectFiscalYear(Long fiscalYearId) {
+    if (fiscalYearId == null) {
+      return false
+    }
     for (int index = 0; index < fiscalYearComboBox.itemCount; index++) {
       FiscalYear fiscalYear = fiscalYearComboBox.getItemAt(index)
       if (fiscalYear?.id == fiscalYearId) {
         fiscalYearComboBox.selectedIndex = index
-        return
+        return true
       }
     }
+    false
   }
 
   private void selectAccountingPeriod(Long accountingPeriodId) {
