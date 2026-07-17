@@ -10,9 +10,12 @@ import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFFont
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
+import se.alipsa.accounting.domain.report.BalanceSheetRow
+import se.alipsa.accounting.domain.report.BalanceSheetRowType
 import se.alipsa.accounting.domain.report.IncomeStatementRow
 import se.alipsa.accounting.domain.report.IncomeStatementRowType
 import se.alipsa.accounting.domain.report.ReportArchive
@@ -101,6 +104,8 @@ final class ReportExportService {
     try {
       if (report.reportType == ReportType.INCOME_STATEMENT) {
         renderIncomeStatementWorkbook(workbook, report)
+      } else if (report.reportType == ReportType.BALANCE_SHEET) {
+        renderBalanceSheetWorkbook(workbook, report)
       } else {
         renderGenericWorkbook(workbook, report)
       }
@@ -154,7 +159,7 @@ final class ReportExportService {
       throw new IllegalStateException("templateModel saknar 'typedRows' för resultatrapportens Excel-export.")
     }
     String companyName = resolveCompanyName(report.fiscalYearId)
-    IncomeStatementStyles styles = createIncomeStatementStyles(workbook)
+    StatementStyles styles = createStatementStyles(workbook)
 
     int rowIndex = 0
     rowIndex = writeSingleCellRow(sheet, rowIndex, report.title, styles.titleStyle)
@@ -162,10 +167,31 @@ final class ReportExportService {
     rowIndex = writeSingleCellRow(sheet, rowIndex, report.selectionLabel ?: '', styles.metaStyle)
     rowIndex++
 
-    rowIndex = writeIncomeStatementHeaderRow(sheet, rowIndex, report.tableHeaders, styles)
+    rowIndex = writeStatementHeaderRow(sheet, rowIndex, report.tableHeaders, styles)
     writeIncomeStatementRows(sheet, rowIndex, report.tableRows, typedRows, styles)
 
     applyIncomeStatementColumnWidths(sheet)
+  }
+
+  private void renderBalanceSheetWorkbook(XSSFWorkbook workbook, ReportResult report) {
+    def sheet = workbook.createSheet(sheetNameFor(report))
+    List<BalanceSheetRow> typedRows = report.templateModel.get('typedRows') as List<BalanceSheetRow>
+    if (typedRows == null) {
+      throw new IllegalStateException("templateModel saknar 'typedRows' för balansrapportens Excel-export.")
+    }
+    String companyName = resolveCompanyName(report.fiscalYearId)
+    StatementStyles styles = createStatementStyles(workbook)
+
+    int rowIndex = 0
+    rowIndex = writeSingleCellRow(sheet, rowIndex, report.title, styles.titleStyle)
+    rowIndex = writeSingleCellRow(sheet, rowIndex, companyName, styles.metaStyle)
+    rowIndex = writeSingleCellRow(sheet, rowIndex, report.selectionLabel ?: '', styles.metaStyle)
+    rowIndex++
+
+    rowIndex = writeStatementHeaderRow(sheet, rowIndex, report.tableHeaders, styles)
+    writeBalanceSheetRows(sheet, rowIndex, report.tableRows, typedRows, styles)
+
+    applyBalanceSheetColumnWidths(sheet)
   }
 
   private String resolveCompanyName(long fiscalYearId) {
@@ -178,7 +204,7 @@ final class ReportExportService {
     }
   }
 
-  private static IncomeStatementStyles createIncomeStatementStyles(XSSFWorkbook workbook) {
+  private static StatementStyles createStatementStyles(XSSFWorkbook workbook) {
     XSSFFont titleFont = createFont(workbook, (short) 20, true)
     XSSFFont metaFont = createFont(workbook, (short) 10, false)
     XSSFFont sectionFont = createFont(workbook, (short) 12, true)
@@ -209,7 +235,7 @@ final class ReportExportService {
     CellStyle sectionTextStyle = workbook.createCellStyle()
     sectionTextStyle.setFont(sectionFont)
 
-    new IncomeStatementStyles(
+    new StatementStyles(
         titleStyle,
         metaStyle,
         headerStyle,
@@ -253,7 +279,7 @@ final class ReportExportService {
     rowIndex + 1
   }
 
-  private static int writeIncomeStatementHeaderRow(Sheet sheet, int rowIndex, List<String> headers, IncomeStatementStyles styles) {
+  private static int writeStatementHeaderRow(Sheet sheet, int rowIndex, List<String> headers, StatementStyles styles) {
     Row headerRow = sheet.createRow(rowIndex)
     headers.eachWithIndex { String header, int columnIndex ->
       Cell cell = headerRow.createCell(columnIndex)
@@ -268,7 +294,7 @@ final class ReportExportService {
       int rowIndex,
       List<List<String>> tableRows,
       List<IncomeStatementRow> typedRows,
-      IncomeStatementStyles styles
+      StatementStyles styles
   ) {
     typedRows.eachWithIndex { IncomeStatementRow typedRow, int index ->
       List<String> rowValues = tableRows[index]
@@ -292,6 +318,44 @@ final class ReportExportService {
     }
   }
 
+  private static void writeBalanceSheetRows(
+      Sheet sheet,
+      int rowIndex,
+      List<List<String>> tableRows,
+      List<BalanceSheetRow> typedRows,
+      StatementStyles styles
+  ) {
+    typedRows.eachWithIndex { BalanceSheetRow typedRow, int index ->
+      List<String> rowValues = tableRows[index]
+      Row row = sheet.createRow(rowIndex + index)
+      row.heightInPoints = heightForStatementRow(typedRow.rowType.name())
+
+      Cell labelCell = row.createCell(0)
+      labelCell.setCellValue(rowValues[0] ?: '')
+      labelCell.cellStyle = textStyleForStatementRow(typedRow.rowType.name(), styles)
+
+      if (typedRow.rowType == BalanceSheetRowType.SECTION_HEADER) {
+        (1..<rowValues.size()).each { int columnIndex ->
+          Cell cell = row.createCell(columnIndex)
+          cell.setCellValue('')
+          cell.cellStyle = styles.sectionTextStyle
+        }
+        sheet.addMergedRegion(new CellRangeAddress(row.rowNum, row.rowNum, 0, rowValues.size() - 1))
+      } else {
+        (1..<rowValues.size()).each { int columnIndex ->
+          Cell amountCell = row.createCell(columnIndex)
+          BigDecimal numericValue = balanceNumericValue(typedRow, columnIndex)
+          if (numericValue == null) {
+            amountCell.setCellValue(rowValues[columnIndex] ?: '')
+          } else {
+            amountCell.setCellValue(numericValue.doubleValue())
+          }
+          amountCell.cellStyle = numberStyleForBalanceRow(typedRow.rowType.name(), columnIndex, styles)
+        }
+      }
+    }
+  }
+
   private static BigDecimal incomeNumericValue(IncomeStatementRow row, int columnIndex) {
     switch (columnIndex) {
       case 1:
@@ -311,6 +375,19 @@ final class ReportExportService {
     }
   }
 
+  private static BigDecimal balanceNumericValue(BalanceSheetRow row, int columnIndex) {
+    switch (columnIndex) {
+      case 1:
+        return row.openingBalance
+      case 2:
+        return row.periodMovement
+      case 3:
+        return row.closingBalance
+      default:
+        return null
+    }
+  }
+
   private static void applyIncomeStatementColumnWidths(Sheet sheet) {
     sheet.setColumnWidth(0, 38 * 256)
     sheet.setColumnWidth(1, 15 * 256)
@@ -321,46 +398,75 @@ final class ReportExportService {
     sheet.setColumnWidth(6, 10 * 256)
   }
 
+  private static void applyBalanceSheetColumnWidths(Sheet sheet) {
+    sheet.setColumnWidth(0, 38 * 256)
+    sheet.setColumnWidth(1, 15 * 256)
+    sheet.setColumnWidth(2, 15 * 256)
+    sheet.setColumnWidth(3, 15 * 256)
+  }
+
   private static short heightForIncomeRow(IncomeStatementRowType rowType) {
-    switch (rowType) {
-      case IncomeStatementRowType.SECTION_HEADER:
+    heightForStatementRow(rowType.name())
+  }
+
+  private static short heightForStatementRow(String rowTypeName) {
+    switch (rowTypeName) {
+      case 'SECTION_HEADER':
         return 24
-      case IncomeStatementRowType.GROUP_HEADER:
+      case 'GROUP_HEADER':
         return 17
-      case IncomeStatementRowType.SECTION_TOTAL:
-      case IncomeStatementRowType.RESULT_LINE:
+      case 'SECTION_TOTAL':
+      case 'SUBGROUP_TOTAL':
+      case 'RESULT_LINE':
         return 21
-      case IncomeStatementRowType.GRAND_TOTAL:
+      case 'GRAND_TOTAL':
         return 24
       default:
         return 15
     }
   }
 
-  private static CellStyle textStyleForIncomeRow(IncomeStatementRowType rowType, IncomeStatementStyles styles) {
-    switch (rowType) {
-      case IncomeStatementRowType.SECTION_HEADER:
-      case IncomeStatementRowType.GRAND_TOTAL:
+  private static CellStyle textStyleForIncomeRow(IncomeStatementRowType rowType, StatementStyles styles) {
+    textStyleForStatementRow(rowType.name(), styles)
+  }
+
+  private static CellStyle textStyleForStatementRow(String rowTypeName, StatementStyles styles) {
+    switch (rowTypeName) {
+      case 'SECTION_HEADER':
+      case 'GRAND_TOTAL':
         return styles.sectionTextStyle
-      case IncomeStatementRowType.GROUP_HEADER:
-      case IncomeStatementRowType.SUBTOTAL:
-      case IncomeStatementRowType.SECTION_TOTAL:
-      case IncomeStatementRowType.RESULT_LINE:
+      case 'GROUP_HEADER':
+      case 'SUBTOTAL':
+      case 'SUBGROUP_TOTAL':
+      case 'SECTION_TOTAL':
+      case 'RESULT_LINE':
         return styles.boldTextStyle
       default:
         return styles.detailTextStyle
     }
   }
 
-  private static CellStyle numberStyleForIncomeRow(IncomeStatementRowType rowType, IncomeStatementStyles styles) {
-    switch (rowType) {
-      case IncomeStatementRowType.SECTION_HEADER:
-      case IncomeStatementRowType.GRAND_TOTAL:
+  private static CellStyle numberStyleForIncomeRow(IncomeStatementRowType rowType, StatementStyles styles) {
+    numberStyleForStatementRow(rowType.name(), styles)
+  }
+
+  private static CellStyle numberStyleForBalanceRow(String rowTypeName, int columnIndex, StatementStyles styles) {
+    if (columnIndex != 3) {
+      return numberStyleForStatementRow(rowTypeName, styles)
+    }
+    rowTypeName == 'DETAIL' ? styles.boldNumberStyle : numberStyleForStatementRow(rowTypeName, styles)
+  }
+
+  private static CellStyle numberStyleForStatementRow(String rowTypeName, StatementStyles styles) {
+    switch (rowTypeName) {
+      case 'SECTION_HEADER':
+      case 'GRAND_TOTAL':
         return styles.sectionNumberStyle
-      case IncomeStatementRowType.GROUP_HEADER:
-      case IncomeStatementRowType.SUBTOTAL:
-      case IncomeStatementRowType.SECTION_TOTAL:
-      case IncomeStatementRowType.RESULT_LINE:
+      case 'GROUP_HEADER':
+      case 'SUBTOTAL':
+      case 'SUBGROUP_TOTAL':
+      case 'SECTION_TOTAL':
+      case 'RESULT_LINE':
         return styles.boldNumberStyle
       default:
         return styles.detailNumberStyle
@@ -420,7 +526,7 @@ final class ReportExportService {
   }
 
   @TupleConstructor
-  private static final class IncomeStatementStyles {
+  private static final class StatementStyles {
 
     final CellStyle titleStyle
     final CellStyle metaStyle
