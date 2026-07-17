@@ -57,7 +57,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
   private final JTable periodTable = new JTable(periodTableModel)
   private final JTable reportTable = new JTable(reportTableModel)
   private JLabel fiscalYearLabel
-  private JButton refreshButton
   private JButton reportButton
   private JButton transferButton
   private boolean fiscalYearListenerInstalled = false
@@ -123,7 +122,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
   private void applyLocale() {
     fiscalYearLabel.text = I18n.instance.getString('vatPeriodPanel.label.vatYear')
     fiscalYearComboBox.toolTipText = I18n.instance.getString('vatPeriodPanel.tooltip.vatYear')
-    refreshButton.text = I18n.instance.getString('vatPeriodPanel.button.refresh')
     reportButton.text = I18n.instance.getString('vatPeriodPanel.button.report')
     transferButton.text = I18n.instance.getString('vatPeriodPanel.button.bookTransfer')
     transferDefaultsLabel.text = I18n.instance.format('vatPeriodPanel.transferDefaults',
@@ -158,12 +156,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
     fiscalYearComboBox.toolTipText = I18n.instance.getString('vatPeriodPanel.tooltip.vatYear')
     filters.add(fiscalYearLabel)
     filters.add(fiscalYearComboBox)
-    refreshButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.refresh'))
-    refreshButton.addActionListener {
-      reloadFiscalYears()
-      reloadPeriods()
-    }
-    filters.add(refreshButton)
 
     JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     reportButton = new JButton(I18n.instance.getString('vatPeriodPanel.button.report'))
