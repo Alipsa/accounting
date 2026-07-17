@@ -97,9 +97,13 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     filterLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.filter')
     activeOnlyCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly')
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
+    importButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.import')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
+    resetButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.reset')
     toggleActiveButton.text = I18n.instance.getString('chartOfAccountsPanel.button.toggleActive')
+    toggleActiveButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.toggleActive')
     setVatCodeButton.text = I18n.instance.getString('chartOfAccountsPanel.button.setVatCode')
+    setVatCodeButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.setVatCode')
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
     refreshOverview()
@@ -188,12 +192,16 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private JPanel buildActionPanel() {
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     importButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.import'))
+    importButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.import')
     importButton.addActionListener { importChartOfAccounts() }
     resetButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.reset'))
+    resetButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.reset')
     resetButton.addActionListener { resetFilters() }
     toggleActiveButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.toggleActive'))
+    toggleActiveButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.toggleActive')
     toggleActiveButton.addActionListener { toggleSelectedAccountActive() }
     setVatCodeButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.button.setVatCode'))
+    setVatCodeButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.setVatCode')
     setVatCodeButton.enabled = false
     setVatCodeButton.addActionListener { setVatCodeForSelectedAccount() }
 
