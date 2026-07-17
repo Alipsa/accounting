@@ -230,6 +230,37 @@ final class VoucherPanelNavigationTest {
     assertEquals([], attachmentService.listAttachments(duplicate.id))
   }
 
+  @Test
+  void printableVoucherHtmlContainsHeaderLinesAndTotals() {
+    Voucher voucher = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2030, 4, 5),
+        'Kundfaktura <test>',
+        [
+            voucherLine('1510', 'Kundfordringar', 'Rad & ett', 125.50G, 0.00G),
+            voucherLine('3010', 'Försäljning', 'Rad två', 0.00G, 125.50G)
+        ]
+    )
+    Locale previousLocale = I18n.instance.locale
+
+    try {
+      I18n.instance.setLocale(Locale.forLanguageTag('sv'))
+      String html = VoucherPrintDocument.buildHtml(voucher, Locale.forLanguageTag('sv-SE'))
+
+      assertTrue(html.contains('Verifikation A-1'))
+      assertTrue(html.contains('2030-04-05'))
+      assertTrue(html.contains('Kundfaktura &lt;test&gt;'))
+      assertTrue(html.contains('Rad &amp; ett'))
+      assertTrue(html.contains('1510'))
+      assertTrue(html.contains('3010'))
+      assertTrue(html.contains('125,50'))
+      assertTrue(html.contains('Summa'))
+    } finally {
+      I18n.instance.setLocale(previousLocale)
+    }
+  }
+
   private void setSingleLine(String normalBalanceSide) {
     VoucherPanel.LineEntry line = new VoucherPanel.LineEntry(normalBalanceSide: normalBalanceSide)
     panel.lineTableModel.rows.clear()

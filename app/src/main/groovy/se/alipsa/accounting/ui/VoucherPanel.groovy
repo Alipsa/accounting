@@ -30,8 +30,10 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.print.PrinterException
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.text.MessageFormat
 import java.time.LocalDate
 import java.util.function.Consumer
 import java.util.logging.Logger
@@ -40,6 +42,7 @@ import javax.swing.AbstractAction
 import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
 import javax.swing.JButton
+import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JMenuItem
 import javax.swing.JPanel
@@ -91,6 +94,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JButton prevButton
   private JButton nextButton
   private JButton saveButton
+  private JButton printButton
   private JButton duplicateButton
   private JButton correctionButton
   private JButton voidButton
@@ -197,6 +201,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     saveButton.addActionListener { saveVoucher() }
     panel.add(saveButton)
+
+    printButton = new JButton('\u2399')
+    printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
+    printButton.addActionListener { printCurrentVoucher() }
+    panel.add(printButton)
 
     duplicateButton = new JButton('\u29C9')
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
@@ -779,6 +788,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     descriptionField.enabled = !readOnly
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
+    printButton.enabled = currentVoucher != null
     duplicateButton.enabled = currentVoucher != null
     voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
@@ -860,6 +870,34 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
+  private void printCurrentVoucher() {
+    if (currentVoucher == null) {
+      showError(I18n.instance.getString('voucherPanel.error.noVoucherToPrint'))
+      return
+    }
+    String voucherNumber = currentVoucher.voucherNumber ?: String.valueOf(currentVoucher.id)
+    JEditorPane document = new JEditorPane(
+        'text/html',
+        VoucherPrintDocument.buildHtml(currentVoucher, activeCompanyManager.companyLocale)
+    )
+    document.editable = false
+    try {
+      boolean completed = document.print(
+          new MessageFormat(I18n.instance.format('voucherPanel.print.header', voucherNumber)),
+          null,
+          true,
+          null,
+          null,
+          true
+      )
+      if (completed) {
+        showInfo(I18n.instance.format('voucherPanel.message.printed', voucherNumber))
+      }
+    } catch (PrinterException exception) {
+      showError(I18n.instance.format('voucherPanel.error.printFailed', exception.message ?: exception.class.simpleName))
+    }
+  }
+
   private void updateAttachmentButtons() {
     addAttachmentButton.enabled = currentVoucher != null
     openAttachmentButton.enabled = attachmentTable.selectedRow >= 0
@@ -915,6 +953,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
+    printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
