@@ -1,5 +1,10 @@
 # Alipsa Accounting, Release History
 
+## v1.5.1, in progress
+
+### Bugfixes
+- Fixed the macOS CI warning in app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest
+
 ## v1.5.0, 2026-07-18
 - Re-enable splash screen
 - Configurable data location — The database and app-data folder (attachments, reports, backups, SIE exports, logs) can now be pointed at a custom, persisted location from Settings, so the same user can run the app from multiple machines against a shared or mounted drive. Includes a guided move of existing data to the new location, and the app fails loudly with a clear message instead of silently falling back to a different database if the configured location becomes unreachable.
