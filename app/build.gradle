@@ -74,7 +74,7 @@ def releaseConfig = [
   mainClassName : application.mainClass,
   releaseRoot   : layout.buildDirectory.dir('release'),
   packagingRoot : rootProject.layout.projectDirectory.dir('packaging'),
-  installLibDir : layout.buildDirectory.dir('install/app/lib'),
+  installLibDir : layout.buildDirectory.dir("install/${application.applicationName}/lib"),
   generatedRoot : layout.buildDirectory.dir('generated/packaging')
 ]
 
