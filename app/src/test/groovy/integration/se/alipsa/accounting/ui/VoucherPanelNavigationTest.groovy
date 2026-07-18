@@ -82,6 +82,11 @@ final class VoucherPanelNavigationTest {
 
   @AfterEach
   void tearDown() {
+    if (panel != null) {
+      I18n.instance.removeLocaleChangeListener(panel)
+      activeCompanyManager.removePropertyChangeListener(panel)
+      onEdt { null }
+    }
     databaseService?.shutdown()
     if (previousHome == null) {
       System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
