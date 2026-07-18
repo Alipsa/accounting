@@ -737,7 +737,7 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private static boolean isGvfsPath(Path path) {
-    String value = path.toString()
+    String value = String.valueOf(path)
     value.startsWith('/run/user/') && value.contains('/gvfs/')
   }
 

@@ -849,7 +849,9 @@ final class MainFrame implements PropertyChangeListener {
     SystemFileChooser chooser = new SystemFileChooser()
     chooser.fileFilter = new FileNameExtensionFilter(I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
     chooser.selectedFile = new File('alipsa-accounting-backup.zip')
-    if (chooser.showSaveDialog(frame) != SystemFileChooser.APPROVE_OPTION) return
+    if (chooser.showSaveDialog(frame) != SystemFileChooser.APPROVE_OPTION) {
+      return
+    }
     new SwingWorker<BackupResult, Void>() {
       @Override protected BackupResult doInBackground() { backupService.createBackup(chooser.selectedFile.toPath()) }
       @Override protected void done() {
@@ -867,10 +869,14 @@ final class MainFrame implements PropertyChangeListener {
   private void restoreBackupRequested() {
     SystemFileChooser chooser = new SystemFileChooser()
     chooser.fileFilter = new FileNameExtensionFilter(I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
-    if (chooser.showOpenDialog(frame) != SystemFileChooser.APPROVE_OPTION) return
+    if (chooser.showOpenDialog(frame) != SystemFileChooser.APPROVE_OPTION) {
+      return
+    }
     int choice = JOptionPane.showConfirmDialog(frame, I18n.instance.getString('systemDocumentationPanel.confirm.restoreMessage'),
         I18n.instance.getString('systemDocumentationPanel.confirm.restoreTitle'), JOptionPane.OK_CANCEL_OPTION)
-    if (choice != JOptionPane.OK_OPTION) return
+    if (choice != JOptionPane.OK_OPTION) {
+      return
+    }
     new SwingWorker<RestoreResult, Void>() {
       @Override protected RestoreResult doInBackground() { backupService.restoreBackup(chooser.selectedFile.toPath()) }
       @Override protected void done() {
@@ -1142,11 +1148,13 @@ final class MainFrame implements PropertyChangeListener {
     }
 
     @Override
+    @SuppressWarnings('GetterMethodCouldBeProperty')
     int getIconWidth() {
       SIZE
     }
 
     @Override
+    @SuppressWarnings('GetterMethodCouldBeProperty')
     int getIconHeight() {
       SIZE
     }
