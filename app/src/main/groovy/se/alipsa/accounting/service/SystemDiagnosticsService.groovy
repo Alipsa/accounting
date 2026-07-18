@@ -33,7 +33,7 @@ final class SystemDiagnosticsService {
 
   SystemDiagnosticsSnapshot snapshot() {
     StartupVerificationReport verificationReport = startupVerificationService.verify()
-    BackupSummary latestBackup = backupService.listBackups(1).find()
+    BackupSummary latestBackup = latestBackup()
     AuditLogEntry latestSieExport = auditLogService.listAllEntries(200).find { AuditLogEntry entry ->
       entry.eventType == AuditLogService.EXPORT && entry.summary?.startsWith('Exporterade SIE')
     }
@@ -48,5 +48,17 @@ final class SystemDiagnosticsService {
         latestSieExport?.createdAt,
         latestSieExport?.summary
     )
+  }
+
+  private BackupSummary latestBackup() {
+    BackupSummary storedBackup = backupService.listBackups(1).find()
+    AuditLogEntry recordedBackup = auditLogService.listAllEntries(200).find { AuditLogEntry entry ->
+      entry.eventType == AuditLogService.BACKUP
+    }
+    if (recordedBackup == null || (storedBackup != null && !recordedBackup.createdAt.isAfter(storedBackup.createdAt))) {
+      return storedBackup
+    }
+    String path = recordedBackup.details?.readLines()?.find { String line -> line.startsWith('path=') }?.substring(5)
+    new BackupSummary(Path.of(path ?: recordedBackup.summary), recordedBackup.createdAt, 0, 0, 0, null)
   }
 }

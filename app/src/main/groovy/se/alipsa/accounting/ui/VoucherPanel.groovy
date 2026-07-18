@@ -3,6 +3,7 @@ package se.alipsa.accounting.ui
 import groovy.transform.PackageScope
 
 import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.UIScale
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AttachmentMetadata
@@ -188,6 +189,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     prevButton.addActionListener { navigatePrev() }
     panel.add(prevButton)
 
+    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.jump')))
     jumpField.addActionListener { jumpToVoucher(jumpField.text) }
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
     panel.add(jumpField)
@@ -244,6 +246,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     installAccountLookupEditor()
     installAmountAndTextEditors()
     installRightAlignedColumns()
+    configureLineTableColumnWidths()
     installDeleteKeyBinding()
     installLineTableContextMenu()
 
@@ -257,6 +260,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     rightRenderer.horizontalAlignment = SwingConstants.RIGHT
     [2, 3, 5, 6].each { int col ->
       lineTable.columnModel.getColumn(col).cellRenderer = rightRenderer
+    }
+  }
+
+  private void configureLineTableColumnWidths() {
+    int[] preferredWidths = [100, 500, 153, 153, 300, 230, 230]
+    preferredWidths.eachWithIndex { int width, int columnIndex ->
+      lineTable.columnModel.getColumn(columnIndex).preferredWidth = UIScale.scale(width)
     }
   }
 
@@ -652,12 +662,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (!normalized) {
       return
     }
-    int found = voucherList.findIndexOf { Voucher v ->
-      v.voucherNumber == normalized
-    }
-    if (found >= 0) {
-      currentIndex = found
-      showVoucher(voucherList[currentIndex])
+    FiscalYear fiscalYear = activeCompanyManager.fiscalYear
+    Voucher voucher = fiscalYear == null ? null : voucherService.findVoucher(
+        activeCompanyManager.companyId, fiscalYear.id, normalized)
+    if (voucher != null) {
+      currentIndex = voucherList.findIndexOf { Voucher candidate -> candidate.id == voucher.id }
+      showVoucher(voucher)
     } else {
       showError("${I18n.instance.getString('voucherPanel.label.voucherNumber')} ${normalized} — ${I18n.instance.getString('voucherPanel.lookup.noMatches')}" as String)
     }

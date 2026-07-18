@@ -152,6 +152,24 @@ final class VoucherService {
     }
   }
 
+  Voucher findVoucher(long companyId, long fiscalYearId, String voucherNumber) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalizedNumber = voucherNumber?.trim()
+    if (!normalizedNumber) {
+      return null
+    }
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select id
+            from voucher
+           where company_id = ?
+             and fiscal_year_id = ?
+             and voucher_number = ?
+      ''', [companyId, fiscalYearId, normalizedNumber]) as GroovyRowResult
+      row == null ? null : findVoucher(sql, ((Number) row.id).longValue())
+    }
+  }
+
   List<Voucher> listVouchers(long companyId, Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->

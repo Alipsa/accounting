@@ -123,9 +123,6 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
     manualButton.addActionListener { UserManualDialog.showDialog(ownerFrame(), userManualService) }
     panel.add(refreshButton)
     panel.add(exportDocsButton)
-    panel.add(backupButton)
-    panel.add(restoreButton)
-    panel.add(manualButton)
     panel
   }
 

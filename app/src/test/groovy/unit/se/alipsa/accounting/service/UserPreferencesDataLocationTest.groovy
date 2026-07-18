@@ -70,4 +70,15 @@ class UserPreferencesDataLocationTest {
     assertNull(service.getPendingMigrationTarget())
     assertFalse(service.isPendingMigrationMove())
   }
+
+  @Test
+  void roundTripsLastSieImportDirectory() {
+    assertNull(service.getLastSieImportDirectory())
+
+    service.setLastSieImportDirectory('/mnt/sie-imports')
+    assertEquals('/mnt/sie-imports', service.getLastSieImportDirectory())
+
+    service.setLastSieImportDirectory(null)
+    assertNull(service.getLastSieImportDirectory())
+  }
 }

@@ -16,6 +16,7 @@ final class UserPreferencesService {
   private static final String DATA_LOCATION_KEY = 'data.location'
   private static final String PENDING_MIGRATION_TARGET_KEY = 'data.pendingMigrationTarget'
   private static final String PENDING_MIGRATION_MOVE_KEY = 'data.pendingMigrationMove'
+  private static final String LAST_SIE_IMPORT_DIRECTORY_KEY = 'sie.import.lastDirectory'
 
   private final Preferences preferences
 
@@ -106,5 +107,17 @@ final class UserPreferencesService {
   void clearPendingMigration() {
     preferences.remove(PENDING_MIGRATION_TARGET_KEY)
     preferences.remove(PENDING_MIGRATION_MOVE_KEY)
+  }
+
+  String getLastSieImportDirectory() {
+    preferences.get(LAST_SIE_IMPORT_DIRECTORY_KEY, null)
+  }
+
+  void setLastSieImportDirectory(String path) {
+    if (path?.trim()) {
+      preferences.put(LAST_SIE_IMPORT_DIRECTORY_KEY, path)
+    } else {
+      preferences.remove(LAST_SIE_IMPORT_DIRECTORY_KEY)
+    }
   }
 }

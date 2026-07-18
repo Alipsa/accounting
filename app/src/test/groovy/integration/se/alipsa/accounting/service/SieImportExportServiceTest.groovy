@@ -65,10 +65,11 @@ class SieImportExportServiceTest {
     targetDatabaseService.initialize()
     SieImportExportService targetService = createSieService(targetDatabaseService)
 
-    def result = targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath)
+    def result = targetService.importFile(CompanyService.LEGACY_COMPANY_ID, exportPath, 'New_Field_AB_2023.SE')
 
     assertFalse(result.duplicate)
     assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertEquals('New_Field_AB_2023.SE', result.job.fileName)
     assertEquals(fixture.accountCount, result.accountsCreated)
     assertEquals(fixture.openingBalanceCount, result.openingBalanceCount)
     assertEquals(fixture.voucherCount, result.voucherCount)

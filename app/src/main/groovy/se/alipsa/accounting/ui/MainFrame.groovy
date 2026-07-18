@@ -3,6 +3,9 @@ package se.alipsa.accounting.ui
 import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
 
+import com.formdev.flatlaf.FlatClientProperties
+import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
 import com.formdev.flatlaf.util.UIScale
 
 import se.alipsa.accounting.domain.Company
@@ -12,6 +15,7 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.BackupResult
 import se.alipsa.accounting.service.BackupService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ClosingService
@@ -26,6 +30,7 @@ import se.alipsa.accounting.service.ReportArchiveService
 import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.ReportExportService
 import se.alipsa.accounting.service.ReportIntegrityService
+import se.alipsa.accounting.service.RestoreResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.StartupVerificationService
 import se.alipsa.accounting.service.SystemDiagnosticsService
@@ -40,13 +45,17 @@ import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 
+import java.awt.BasicStroke
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.FlowLayout
+import java.awt.Graphics
+import java.awt.Graphics2D
 import java.awt.Image
+import java.awt.RenderingHints
 import java.awt.Taskbar
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
@@ -71,6 +80,15 @@ final class MainFrame implements PropertyChangeListener {
       '/icons/logo128.png'
   ]
   private static final String TASKBAR_ICON_PATH = '/icons/logo512.png'
+  private static final List<NavigationIcon> NAVIGATION_ICONS = [
+      new NavigationIcon(NavigationIcon.Type.OVERVIEW),
+      new NavigationIcon(NavigationIcon.Type.VOUCHERS),
+      new NavigationIcon(NavigationIcon.Type.VAT),
+      new NavigationIcon(NavigationIcon.Type.REPORTS),
+      new NavigationIcon(NavigationIcon.Type.ACCOUNTS),
+      new NavigationIcon(NavigationIcon.Type.FISCAL_YEARS),
+      new NavigationIcon(NavigationIcon.Type.SETTINGS)
+  ]
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
@@ -169,6 +187,11 @@ final class MainFrame implements PropertyChangeListener {
   private JMenuItem unarchiveCompanyMenuItem
   private JMenuItem deleteCompanyMenuItem
   private JMenuItem exitMenuItem
+  private JMenu systemMenu
+  private JMenuItem systemInfoMenuItem
+  private JMenuItem createBackupMenuItem
+  private JMenuItem restoreBackupMenuItem
+  private JMenuItem openManualMenuItem
   private JMenu helpMenu
   private JMenuItem manualMenuItem
   private JMenuItem updateMenuItem
@@ -300,6 +323,11 @@ final class MainFrame implements PropertyChangeListener {
     unarchiveCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.unarchiveCompany')
     deleteCompanyMenuItem.text = I18n.instance.getString('mainFrame.menu.file.deleteCompany')
     exitMenuItem.text = I18n.instance.getString('mainFrame.menu.file.exit')
+    systemMenu.text = I18n.instance.getString('mainFrame.menu.system')
+    systemInfoMenuItem.text = I18n.instance.getString('mainFrame.menu.system.info')
+    createBackupMenuItem.text = I18n.instance.getString('mainFrame.menu.system.backup')
+    restoreBackupMenuItem.text = I18n.instance.getString('mainFrame.menu.system.restore')
+    openManualMenuItem.text = I18n.instance.getString('mainFrame.menu.system.manual')
     helpMenu.text = I18n.instance.getString('mainFrame.menu.help')
     manualMenuItem.text = I18n.instance.getString('mainFrame.menu.help.manual')
     updateMenuItem.text = I18n.instance.getString('mainFrame.menu.help.checkForUpdates')
@@ -314,20 +342,21 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setTitleAt(3, I18n.instance.getString('mainFrame.tab.reports'))
     tabbedPane.setTitleAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts'))
     tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
-    tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.system'))
-    tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
+    tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.settings'))
     tabbedPane.setToolTipTextAt(0, I18n.instance.getString('mainFrame.tab.overview.tooltip'))
     tabbedPane.setToolTipTextAt(1, I18n.instance.getString('mainFrame.tab.vouchers.tooltip'))
     tabbedPane.setToolTipTextAt(2, I18n.instance.getString('mainFrame.tab.vat.tooltip'))
     tabbedPane.setToolTipTextAt(3, I18n.instance.getString('mainFrame.tab.reports.tooltip'))
     tabbedPane.setToolTipTextAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts.tooltip'))
     tabbedPane.setToolTipTextAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears.tooltip'))
-    tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.system.tooltip'))
-    tabbedPane.setToolTipTextAt(7, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
+    tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
+    NAVIGATION_ICONS.eachWithIndex { NavigationIcon icon, int index ->
+      tabbedPane.setIconAt(index, icon)
+    }
   }
 
   private JFrame buildFrame() {
-    List<Integer> size = scaledWindowSize(1100, 720)
+    List<Integer> size = scaledWindowSize(1280, 720)
     JFrame f = swing.frame(
         title: I18n.instance.getString('mainFrame.title'),
         size: size,
@@ -342,6 +371,11 @@ final class MainFrame implements PropertyChangeListener {
       borderLayout()
       tabbedPane = tabbedPane(constraints: BorderLayout.CENTER)
     } as JFrame
+    buildSystemMenu()
+    f.JMenuBar.add(systemMenu, 1)
+    tabbedPane.tabPlacement = JTabbedPane.LEFT
+    tabbedPane.tabLayoutPolicy = JTabbedPane.SCROLL_TAB_LAYOUT
+    tabbedPane.putClientProperty(FlatClientProperties.STYLE, 'tabAlignment: leading')
     buildMainTabs().each { Map<String, Object> tab ->
       tabbedPane.addTab(tab.title as String, tab.component as JComponent)
     }
@@ -775,14 +809,80 @@ final class MainFrame implements PropertyChangeListener {
         )],
         [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.system'), component: new SystemDocumentationPanel(
-            systemDocumentationService,
-            diagnosticsService,
-            backupService,
-            userManualService
-        )],
         [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildSettingsPanel()]
     ]
+  }
+
+  private void showSystemDialog() {
+    JDialog dialog = new JDialog(frame, I18n.instance.getString('mainFrame.menu.system'), true)
+    dialog.defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
+    dialog.contentPane.add(new SystemDocumentationPanel(
+        systemDocumentationService,
+        diagnosticsService,
+        backupService,
+        userManualService
+    ))
+    dialog.size = scaledWindowSize(900, 640)
+    dialog.setLocationRelativeTo(frame)
+    dialog.visible = true
+  }
+
+  private void buildSystemMenu() {
+    systemMenu = new JMenu(I18n.instance.getString('mainFrame.menu.system'))
+    systemInfoMenuItem = new JMenuItem(I18n.instance.getString('mainFrame.menu.system.info'))
+    systemInfoMenuItem.addActionListener { showSystemDialog() }
+    createBackupMenuItem = new JMenuItem(I18n.instance.getString('mainFrame.menu.system.backup'))
+    createBackupMenuItem.addActionListener { createBackupRequested() }
+    restoreBackupMenuItem = new JMenuItem(I18n.instance.getString('mainFrame.menu.system.restore'))
+    restoreBackupMenuItem.addActionListener { restoreBackupRequested() }
+    openManualMenuItem = new JMenuItem(I18n.instance.getString('mainFrame.menu.system.manual'))
+    openManualMenuItem.addActionListener { UserManualDialog.showDialog(frame, userManualService) }
+    systemMenu.add(systemInfoMenuItem)
+    systemMenu.addSeparator()
+    systemMenu.add(createBackupMenuItem)
+    systemMenu.add(restoreBackupMenuItem)
+    systemMenu.addSeparator()
+    systemMenu.add(openManualMenuItem)
+  }
+
+  private void createBackupRequested() {
+    SystemFileChooser chooser = new SystemFileChooser()
+    chooser.fileFilter = new FileNameExtensionFilter(I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
+    chooser.selectedFile = new File('alipsa-accounting-backup.zip')
+    if (chooser.showSaveDialog(frame) != SystemFileChooser.APPROVE_OPTION) return
+    new SwingWorker<BackupResult, Void>() {
+      @Override protected BackupResult doInBackground() { backupService.createBackup(chooser.selectedFile.toPath()) }
+      @Override protected void done() {
+        try {
+          BackupResult result = get()
+          setStatus(I18n.instance.format('systemDocumentationPanel.status.backupCreated', result.summary.backupPath))
+          overviewPanel.reload()
+        } catch (Exception exception) {
+          setStatus(exception.cause?.message ?: exception.message)
+        }
+      }
+    }.execute()
+  }
+
+  private void restoreBackupRequested() {
+    SystemFileChooser chooser = new SystemFileChooser()
+    chooser.fileFilter = new FileNameExtensionFilter(I18n.instance.getString('systemDocumentationPanel.fileFilter.zip'), 'zip')
+    if (chooser.showOpenDialog(frame) != SystemFileChooser.APPROVE_OPTION) return
+    int choice = JOptionPane.showConfirmDialog(frame, I18n.instance.getString('systemDocumentationPanel.confirm.restoreMessage'),
+        I18n.instance.getString('systemDocumentationPanel.confirm.restoreTitle'), JOptionPane.OK_CANCEL_OPTION)
+    if (choice != JOptionPane.OK_OPTION) return
+    new SwingWorker<RestoreResult, Void>() {
+      @Override protected RestoreResult doInBackground() { backupService.restoreBackup(chooser.selectedFile.toPath()) }
+      @Override protected void done() {
+        try {
+          RestoreResult result = get()
+          setStatus(I18n.instance.format('systemDocumentationPanel.status.restored', result.backupPath.fileName))
+          overviewPanel.reload()
+        } catch (Exception exception) {
+          setStatus(exception.cause?.message ?: exception.message)
+        }
+      }
+    }.execute()
   }
 
   private void exitRequested() {
@@ -1026,6 +1126,119 @@ final class MainFrame implements PropertyChangeListener {
         (int) (baseWidth * scale),
         (int) (baseHeight * scale)
     ]
+  }
+
+  private static final class NavigationIcon implements Icon {
+
+    enum Type {
+      OVERVIEW, VOUCHERS, VAT, REPORTS, ACCOUNTS, FISCAL_YEARS, SETTINGS
+    }
+
+    private static final int SIZE = 18
+    private final Type type
+
+    NavigationIcon(Type type) {
+      this.type = type
+    }
+
+    @Override
+    int getIconWidth() {
+      SIZE
+    }
+
+    @Override
+    int getIconHeight() {
+      SIZE
+    }
+
+    @Override
+    void paintIcon(Component component, Graphics graphics, int x, int y) {
+      Graphics2D graphics2d = (Graphics2D) graphics.create()
+      try {
+        graphics2d.color = component?.foreground ?: Color.DARK_GRAY
+        graphics2d.stroke = new BasicStroke(1.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+        graphics2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        switch (type) {
+          case Type.OVERVIEW:
+            drawOverview(graphics2d, x, y)
+            break
+          case Type.VOUCHERS:
+            drawDocument(graphics2d, x, y)
+            break
+          case Type.VAT:
+            drawVat(graphics2d, x, y)
+            break
+          case Type.REPORTS:
+            drawReports(graphics2d, x, y)
+            break
+          case Type.ACCOUNTS:
+            drawAccounts(graphics2d, x, y)
+            break
+          case Type.FISCAL_YEARS:
+            drawCalendar(graphics2d, x, y)
+            break
+          case Type.SETTINGS:
+            drawSettings(graphics2d, x, y)
+            break
+        }
+      } finally {
+        graphics2d.dispose()
+      }
+    }
+
+    private static void drawOverview(Graphics2D graphics, int x, int y) {
+      graphics.drawRect(x + 2, y + 2, 14, 14)
+      graphics.fillRect(x + 5, y + 10, 2, 3)
+      graphics.fillRect(x + 9, y + 7, 2, 6)
+      graphics.fillRect(x + 13, y + 5, 2, 8)
+    }
+
+    private static void drawDocument(Graphics2D graphics, int x, int y) {
+      graphics.drawRect(x + 3, y + 2, 12, 14)
+      graphics.drawLine(x + 6, y + 7, x + 12, y + 7)
+      graphics.drawLine(x + 6, y + 10, x + 12, y + 10)
+      graphics.drawLine(x + 6, y + 13, x + 10, y + 13)
+    }
+
+    private static void drawVat(Graphics2D graphics, int x, int y) {
+      graphics.drawOval(x + 2, y + 2, 14, 14)
+      graphics.drawLine(x + 5, y + 13, x + 13, y + 5)
+      graphics.fillOval(x + 4, y + 4, 2, 2)
+      graphics.fillOval(x + 12, y + 12, 2, 2)
+    }
+
+    private static void drawReports(Graphics2D graphics, int x, int y) {
+      graphics.drawLine(x + 3, y + 15, x + 15, y + 15)
+      graphics.drawLine(x + 3, y + 15, x + 3, y + 3)
+      graphics.fillRect(x + 6, y + 9, 2, 5)
+      graphics.fillRect(x + 10, y + 6, 2, 8)
+      graphics.fillRect(x + 14, y + 3, 2, 11)
+    }
+
+    private static void drawAccounts(Graphics2D graphics, int x, int y) {
+      graphics.drawRoundRect(x + 2, y + 2, 14, 14, 2, 2)
+      graphics.drawLine(x + 5, y + 6, x + 13, y + 6)
+      graphics.drawLine(x + 5, y + 10, x + 13, y + 10)
+      graphics.drawLine(x + 5, y + 14, x + 10, y + 14)
+    }
+
+    private static void drawCalendar(Graphics2D graphics, int x, int y) {
+      graphics.drawRoundRect(x + 2, y + 3, 14, 13, 2, 2)
+      graphics.drawLine(x + 2, y + 7, x + 16, y + 7)
+      graphics.drawLine(x + 6, y + 1, x + 6, y + 5)
+      graphics.drawLine(x + 12, y + 1, x + 12, y + 5)
+      graphics.fillRect(x + 6, y + 10, 2, 2)
+      graphics.fillRect(x + 10, y + 10, 2, 2)
+    }
+
+    private static void drawSettings(Graphics2D graphics, int x, int y) {
+      graphics.drawOval(x + 3, y + 3, 12, 12)
+      graphics.drawOval(x + 7, y + 7, 4, 4)
+      graphics.drawLine(x + 9, y + 1, x + 9, y + 4)
+      graphics.drawLine(x + 9, y + 14, x + 9, y + 17)
+      graphics.drawLine(x + 1, y + 9, x + 4, y + 9)
+      graphics.drawLine(x + 14, y + 9, x + 17, y + 9)
+    }
   }
 
 }

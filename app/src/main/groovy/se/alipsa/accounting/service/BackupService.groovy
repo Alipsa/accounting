@@ -174,30 +174,32 @@ final class BackupService {
 
   List<BackupSummary> listBackups(int limit = 20) {
     int safeLimit = Math.max(1, limit)
+    List<BackupSummary> backups = []
     Path backupRoot = AppPaths.backupsDirectory()
-    if (!Files.isDirectory(backupRoot)) {
-      return []
+    if (Files.isDirectory(backupRoot)) {
+      Files.list(backupRoot).withCloseable { stream ->
+        backups.addAll(stream.filter { Path path -> Files.isRegularFile(path) && path.fileName.toString().toLowerCase(Locale.ROOT).endsWith('.zip') }
+            .sorted { Path left, Path right -> Files.getLastModifiedTime(right) <=> Files.getLastModifiedTime(left) }
+            .limit(MAX_BACKUPS_TO_SCAN as long)
+            .collect { Path path ->
+              try {
+                BackupManifest manifest = readManifest(path)
+                new BackupSummary(path, manifest.createdAt, manifest.schemaVersion,
+                    manifest.files.count { BackupFileEntry file -> file.section == 'ATTACHMENT' } as int,
+                    manifest.files.count { BackupFileEntry file -> file.section == 'REPORT' } as int, null)
+              } catch (Exception ignored) {
+                null
+              }
+            }.findAll { BackupSummary summary -> summary != null } as List<BackupSummary>)
+      }
     }
-    Files.list(backupRoot).withCloseable { stream ->
-      stream.filter { Path path -> Files.isRegularFile(path) && path.fileName.toString().toLowerCase(Locale.ROOT).endsWith('.zip') }
-          .sorted { Path left, Path right -> Files.getLastModifiedTime(right) <=> Files.getLastModifiedTime(left) }
-          .limit(Math.min(MAX_BACKUPS_TO_SCAN, safeLimit) as long)
-          .collect { Path path ->
-            try {
-              BackupManifest manifest = readManifest(path)
-              new BackupSummary(
-                  path,
-                  manifest.createdAt,
-                  manifest.schemaVersion,
-                  manifest.files.count { BackupFileEntry file -> file.section == 'ATTACHMENT' } as int,
-                  manifest.files.count { BackupFileEntry file -> file.section == 'REPORT' } as int,
-                  null
-              )
-            } catch (Exception ignored) {
-              null
-            }
-          }.findAll { BackupSummary summary -> summary != null } as List<BackupSummary>
+    auditLogService.listAllEntries(MAX_BACKUPS_TO_SCAN).findAll { entry -> entry.eventType == AuditLogService.BACKUP }.each { entry ->
+      String path = entry.details?.readLines()?.find { String line -> line.startsWith('path=') }?.substring(5)
+      if (path != null && !backups.any { BackupSummary backup -> backup.backupPath.toString() == path }) {
+        backups << new BackupSummary(Path.of(path), entry.createdAt, 0, 0, 0, null)
+      }
     }
+    backups.sort { BackupSummary left, BackupSummary right -> right.createdAt <=> left.createdAt }.take(safeLimit)
   }
 
   private BackupManifest buildManifest(

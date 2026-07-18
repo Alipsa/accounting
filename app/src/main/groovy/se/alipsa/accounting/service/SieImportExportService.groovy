@@ -161,23 +161,42 @@ final class SieImportExportService {
   }
 
   SieImportResult importFile(long companyId, Path filePath) {
-    importFile(companyId, filePath, false, false)
+    importFile(companyId, filePath, null, false, false)
+  }
+
+  SieImportResult importFile(long companyId, Path filePath, String sourceFileName) {
+    importFile(companyId, filePath, sourceFileName, false, false)
   }
 
   SieImportResult replaceFiscalYear(long companyId, Path filePath) {
-    importFile(companyId, filePath, true, false)
+    importFile(companyId, filePath, null, true, false)
+  }
+
+  SieImportResult replaceFiscalYear(long companyId, Path filePath, String sourceFileName) {
+    importFile(companyId, filePath, sourceFileName, true, false)
   }
 
   SieImportResult reopenAndReplaceFiscalYear(long companyId, Path filePath) {
-    importFile(companyId, filePath, true, true)
+    importFile(companyId, filePath, null, true, true)
   }
 
-  private SieImportResult importFile(long companyId, Path filePath, boolean replaceExistingFiscalYear, boolean reopenFirst) {
+  SieImportResult reopenAndReplaceFiscalYear(long companyId, Path filePath, String sourceFileName) {
+    importFile(companyId, filePath, sourceFileName, true, true)
+  }
+
+  private SieImportResult importFile(
+      long companyId,
+      Path filePath,
+      String sourceFileName,
+      boolean replaceExistingFiscalYear,
+      boolean reopenFirst
+  ) {
     CompanyService.requireValidCompanyId(companyId)
     Path safePath = validateImportPath(filePath)
     byte[] content = Files.readAllBytes(safePath)
     String checksum = sha256(content)
-    long jobId = importJobRepository.create(companyId, safePath.fileName.toString(), checksum)
+    String jobFileName = sourceFileName?.trim() ?: safePath.fileName.toString()
+    long jobId = importJobRepository.create(companyId, jobFileName, checksum)
     // Duplicate-check is intentionally skipped for replacements: each replacement is a distinct destructive operation.
     if (!replaceExistingFiscalYear) {
       ImportJob duplicate = importJobRepository.markDuplicateIfNeeded(jobId, companyId, checksum)

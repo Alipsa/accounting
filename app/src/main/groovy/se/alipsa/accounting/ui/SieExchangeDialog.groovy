@@ -15,6 +15,7 @@ import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.SieImportPreview
 import se.alipsa.accounting.service.SieImportResult
+import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -24,6 +25,7 @@ import java.awt.Frame
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ExecutionException
@@ -58,6 +60,7 @@ final class SieExchangeDialog extends JDialog {
   private final SieImportExportService sieImportExportService
   private final FiscalYearService fiscalYearService
   private final CompanyService companyService
+  private final UserPreferencesService userPreferencesService = new UserPreferencesService()
   private final Consumer<Long> onImportSuccess
   private long companyId
 
@@ -69,6 +72,8 @@ final class SieExchangeDialog extends JDialog {
   private final JButton importButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.import'))
   private final JButton exportButton = new JButton(I18n.instance.getString('sieExchangeDialog.button.export'))
   private boolean workInProgress
+  private Path temporaryImportFile
+  private String importDisplayFileName
 
   SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
@@ -186,18 +191,24 @@ final class SieExchangeDialog extends JDialog {
   }
 
   private void importRequested() {
-    SystemFileChooser chooser = new SystemFileChooser(defaultExchangeDirectory())
+    SystemFileChooser chooser = importFileChooser()
     chooser.fileFilter = sieImportFileFilter()
     if (chooser.showOpenDialog(this) != SystemFileChooser.APPROVE_OPTION) {
       return
     }
     Path selectedPath = chooser.selectedFile.toPath()
+    userPreferencesService.setLastSieImportDirectory(selectedPath.parent?.toString())
+    importDisplayFileName = selectedPath.fileName.toString()
+    deleteTemporaryImportFile()
     setWorkingState(true)
     showInfo(I18n.instance.format('sieExchangeDialog.status.importing', selectedPath.fileName))
     new SwingWorker<SieCompany, Void>() {
+      private Path importPath
+
       @Override
       protected SieCompany doInBackground() {
-        sieImportExportService.peekSieCompany(selectedPath)
+        importPath = prepareImportPath(selectedPath)
+        sieImportExportService.peekSieCompany(importPath)
       }
 
       @Override
@@ -223,7 +234,7 @@ final class SieExchangeDialog extends JDialog {
             showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
             return
           }
-          runSmartImport(selectedPath, targetCompanyId)
+          runSmartImport(importPath, targetCompanyId)
         } catch (Exception ex) {
           setWorkingState(false)
           showError(ex.message ?: I18n.instance.getString('sieExchangeDialog.status.importFailed'), null)
@@ -430,8 +441,8 @@ final class SieExchangeDialog extends JDialog {
       @Override
       protected SieImportResult doInBackground() {
         replaceExistingFiscalYear
-            ? sieImportExportService.replaceFiscalYear(targetCompanyId, selectedPath)
-            : sieImportExportService.importFile(targetCompanyId, selectedPath)
+            ? sieImportExportService.replaceFiscalYear(targetCompanyId, selectedPath, importDisplayFileName)
+            : sieImportExportService.importFile(targetCompanyId, selectedPath, importDisplayFileName)
       }
 
       @Override
@@ -471,7 +482,7 @@ final class SieExchangeDialog extends JDialog {
     new SwingWorker<SieImportResult, Void>() {
       @Override
       protected SieImportResult doInBackground() {
-        sieImportExportService.reopenAndReplaceFiscalYear(targetCompanyId, selectedPath)
+        sieImportExportService.reopenAndReplaceFiscalYear(targetCompanyId, selectedPath, importDisplayFileName)
       }
 
       @Override
@@ -671,6 +682,69 @@ final class SieExchangeDialog extends JDialog {
   private static File defaultExchangeDirectory() {
     File directory = new File('.')
     directory.isDirectory() ? directory : new File(System.getProperty('user.home', '.'))
+  }
+
+  private File initialImportDirectory() {
+    String lastDirectory = userPreferencesService.lastSieImportDirectory
+    File directory = lastDirectory ? new File(lastDirectory) : null
+    directory != null && (directory.isDirectory() || isGvfsPath(directory.toPath()))
+        ? directory
+        : defaultExchangeDirectory()
+  }
+
+  private SystemFileChooser importFileChooser() {
+    File initialDirectory = initialImportDirectory()
+    if (!isGvfsPath(initialDirectory.toPath())) {
+      return new SystemFileChooser(initialDirectory)
+    }
+    SystemFileChooser chooser = new SystemFileChooser(defaultExchangeDirectory())
+    // SystemFileChooser rejects GVFS directories before invoking GTK. Seeding a child file lets
+    // its Linux provider pass the GVFS parent directly to GTK, which understands that location.
+    chooser.selectedFile = new File(initialDirectory, '.')
+    chooser
+  }
+
+  private Path prepareImportPath(Path selectedPath) {
+    if (Files.isRegularFile(selectedPath) || !isGvfsPath(selectedPath)) {
+      return selectedPath
+    }
+    Path temporaryFile = Files.createTempFile('alipsa-accounting-sie-import-', '.sie')
+    try {
+      Process process = new ProcessBuilder('gio', 'copy', selectedPath.toString(), temporaryFile.toString())
+          .redirectErrorStream(true)
+          .start()
+      String output = process.inputStream.text.trim()
+      if (process.waitFor() != 0 || !Files.isRegularFile(temporaryFile)) {
+        String errorMessage = output ? "Kunde inte läsa SIE-filen från nätverksplatsen: ${output}" :
+            'Kunde inte läsa SIE-filen från nätverksplatsen.'
+        throw new IllegalStateException(errorMessage)
+      }
+      temporaryImportFile = temporaryFile
+      temporaryFile.toFile().deleteOnExit()
+      temporaryFile
+    } catch (Exception exception) {
+      Files.deleteIfExists(temporaryFile)
+      throw exception
+    }
+  }
+
+  private void deleteTemporaryImportFile() {
+    if (temporaryImportFile == null) {
+      return
+    }
+    Files.deleteIfExists(temporaryImportFile)
+    temporaryImportFile = null
+  }
+
+  private static boolean isGvfsPath(Path path) {
+    String value = path.toString()
+    value.startsWith('/run/user/') && value.contains('/gvfs/')
+  }
+
+  @Override
+  void dispose() {
+    deleteTemporaryImportFile()
+    super.dispose()
   }
 
   private static String sanitizeFilePart(String value) {
