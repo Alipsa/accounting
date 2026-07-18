@@ -19,6 +19,7 @@ This repository is a Gradle-based desktop accounting application with one main m
 - `docs/`, `specs/`, `issues/`, and `req/`: design notes, task documents, and roadmap material.
 
 ## Build, Test, and Development Commands
+- Java 21 is the required Gradle toolchain.
 - `./gradlew build`: full validation, including compilation, tests, Spotless, and CodeNarc.
 - `./gradlew test`: run all tests.
 - `./gradlew run`: start the desktop application locally.

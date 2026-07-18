@@ -2,7 +2,7 @@
 
 ![Groovy 5.0](https://img.shields.io/badge/Groovy-5.0-blue?logo=apachegroovy)
 ![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
-![Gradle 9.4](https://img.shields.io/badge/Gradle-9.4-02303A?logo=gradle)
+![Gradle 9.6](https://img.shields.io/badge/Gradle-9.4-02303A?logo=gradle)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 Desktopbaserat bokföringsprogram för små svenska företag.
