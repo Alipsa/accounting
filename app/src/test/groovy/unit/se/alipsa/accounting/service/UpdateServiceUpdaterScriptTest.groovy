@@ -75,6 +75,7 @@ final class UpdateServiceUpdaterScriptTest {
     assertTrue(content.contains('echo [%DATE% %TIME%] Updating launcher configuration.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Launching application.'))
     assertTrue(content.contains('app-1.4.0.jar'))
+    assertFalse(content.contains('del "%~f0"'))
   }
 
   @Test

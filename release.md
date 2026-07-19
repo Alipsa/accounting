@@ -4,6 +4,9 @@
 
 ### Bugfixes
 - Fixed the macOS CI warning in app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest
+- Fixed the Windows updater cleanup bug. The updater no longer deletes its own batch file while returning from call :main, which caused the “The batch file cannot be found” terminal after a successful update. The staged
+  script remains and is overwritten on the next update.
+
 
 ## v1.5.0, 2026-07-18
 - Re-enable splash screen

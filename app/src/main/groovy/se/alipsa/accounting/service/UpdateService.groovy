@@ -324,7 +324,8 @@ del "${context.stagingDir}\\*.zip"
 echo [%DATE% %TIME%] Launching application.
 ${context.launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${context.launcherCommand}"}
 echo [%DATE% %TIME%] Update script finished.
-del "%~f0"
+rem Keep this script until the next update. Deleting it here prevents cmd.exe
+rem from returning from the call to :main and leaves a "batch file cannot be found" window.
 """.stripIndent()
   }
 
