@@ -411,13 +411,15 @@ done
 """.stripIndent()
   }
 
-  private static String windowsConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
-    String escapedInstallDir = installDir.toString().replace('\\', '\\\\')
+ private static String windowsConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
+    String mainJarUpdateCommand =
+        "  \$lines = Get-Content -LiteralPath \$cfg.FullName; \$updatedLines = \$lines | ForEach-Object { if (\$_.StartsWith('app.classpath=') -and \$_ -match '[\\\\/]app-') { 'app.classpath=\$APPDIR/${newMainJar}' } else { \$_ } }; \$updatedLines | Set-Content -LiteralPath \$cfg.FullName"
+   String escapedInstallDir = installDir.toString().replace('\\', '\\\\')
     String versionCommand = newVersion.isEmpty()
         ? ''
         : "  (Get-Content -LiteralPath \$cfg.FullName) -replace '^java-options=-Djpackage.app-version=.*', 'java-options=-Djpackage.app-version=${newVersion}' | Set-Content -LiteralPath \$cfg.FullName\n"
     """\
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; (Get-Content -LiteralPath \$cfg.FullName) -replace '^app.classpath=\\\$APPDIR[/\\\\]app-.*\\.jar', 'app.classpath=\\\$APPDIR/${newMainJar}' | Set-Content -LiteralPath \$cfg.FullName; ${versionCommand.trim()} }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; ${mainJarUpdateCommand}; ${versionCommand.trim()} }"
 """.stripIndent()
   }
 

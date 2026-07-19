@@ -74,8 +74,10 @@ final class UpdateServiceUpdaterScriptTest {
     assertTrue(content.contains('Update failed while copying files, restoring backup'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Updating launcher configuration.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Launching application.'))
-    assertTrue(content.contains('app-1.4.0.jar'))
-    assertFalse(content.contains('del "%~f0"'))
+   assertTrue(content.contains('app-1.4.0.jar'))
+   assertTrue(content.contains("'app.classpath=\$APPDIR/app-1.4.0.jar'"))
+    assertTrue(content.contains("\$_.StartsWith('app.classpath=')"))
+   assertFalse(content.contains('del "%~f0"'))
   }
 
   @Test
