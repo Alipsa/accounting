@@ -1,6 +1,6 @@
 # Alipsa Accounting, Release History
 
-## v1.5.1, in progress
+## v1.5.1, 2026-07-19
 
 ### Bugfixes
 - Fixed the macOS CI warning in app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest
