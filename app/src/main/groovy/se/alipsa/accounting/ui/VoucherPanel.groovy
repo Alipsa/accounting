@@ -941,6 +941,19 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void recalculateAllBalances() {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    if (fy != null) {
+      try {
+        Set<String> accountNumbers = lineTableModel.rows
+            .collect { LineEntry entry -> entry.accountNumber }
+            .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
+        Map<String, BigDecimal> balances = accountService.calculateAccountBalances(
+            activeCompanyManager.companyId, fy.id, accountNumbers, currentVoucher?.id)
+        balanceCache.putAll(balances)
+      } catch (Exception ignored) {
+        // Individual balance lookups below retain the previous fallback behaviour.
+      }
+    }
     for (int i = 0; i < lineTableModel.rows.size(); i++) {
       recalculateBalances(i)
     }

@@ -115,6 +115,9 @@ create index if not exists idx_voucher_line_company
 create index if not exists idx_voucher_line_account
     on voucher_line(account_number);
 
+create index if not exists idx_voucher_line_account_id
+    on voucher_line(account_id, voucher_id);
+
 create index if not exists idx_attachment_voucher
     on attachment(voucher_id, created_at);
 

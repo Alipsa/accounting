@@ -7,6 +7,12 @@
 - Fixed the Windows updater cleanup bug. The updater no longer deletes its own batch file while returning from call :main, which caused the “The batch file cannot be found” terminal after a successful update. The staged
   script remains and is overwritten on the next update.
 
+### Enahancements
+- Improved voucher navigation performance
+  - Voucher navigation now calculates all line-account balances in one database session, rather than running a separate query sequence per line.
+  - Added voucher_line(account_id, voucher_id) index, which the balance aggregation needs.
+  - Added migration V24 so existing Windows databases receive the index automatically.
+
 
 ## v1.5.0, 2026-07-18
 - Re-enable splash screen

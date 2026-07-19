@@ -47,7 +47,8 @@ final class DatabaseService {
       new MigrationDefinition(20, 'V20__opening_balance_management.sql', '/db/migrations/V20__opening_balance_management.sql'),
       new MigrationDefinition(21, 'V21__audit_log_archive_flag.sql', '/db/migrations/V21__audit_log_archive_flag.sql'),
       new MigrationDefinition(22, 'V22__company_archive_flag.sql', '/db/migrations/V22__company_archive_flag.sql'),
-      new MigrationDefinition(23, 'V23__attachment_status.sql', '/db/migrations/V23__attachment_status.sql')
+      new MigrationDefinition(23, 'V23__attachment_status.sql', '/db/migrations/V23__attachment_status.sql'),
+      new MigrationDefinition(24, 'V24__voucher_navigation_index.sql', '/db/migrations/V24__voucher_navigation_index.sql')
   ]
 
   static DatabaseService newForTesting() {

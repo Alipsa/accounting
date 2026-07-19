@@ -382,6 +382,88 @@ final class AccountService {
     }
   }
 
+  Map<String, BigDecimal> calculateAccountBalances(
+      long companyId,
+      long fiscalYearId,
+      Collection<String> accountNumbers,
+      Long excludeVoucherId
+  ) {
+    CompanyService.requireValidCompanyId(companyId)
+    Set<String> normalizedAccounts = new LinkedHashSet<>()
+    accountNumbers.each { String accountNumber ->
+      if (accountNumber?.trim()) {
+        normalizedAccounts << normalizeAccountNumber(accountNumber)
+      }
+    }
+    if (normalizedAccounts.isEmpty()) {
+      return [:]
+    }
+
+    String accountPlaceholders = normalizedAccounts.collect { '?' }.join(', ')
+    databaseService.withSql { Sql sql ->
+      List<Object> accountParams = [fiscalYearId, companyId]
+      accountParams.addAll(normalizedAccounts)
+      List<GroovyRowResult> accounts = sql.rows("""
+          select a.id,
+                 a.account_number as accountNumber,
+                 a.normal_balance_side as normalBalanceSide,
+                 coalesce(ob.amount, 0) as openingAmount
+            from account a
+            left join opening_balance ob
+              on ob.account_id = a.id
+             and ob.fiscal_year_id = ?
+           where a.company_id = ?
+             and a.account_number in (${accountPlaceholders})
+      """, accountParams) as List<GroovyRowResult>
+      if (accounts.isEmpty()) {
+        return [:]
+      }
+
+      String transactionPlaceholders = accounts.collect { '?' }.join(', ')
+      List<Object> transactionParams = accounts.collect { GroovyRowResult row ->
+        ((Number) row.get('id')).longValue()
+      } as List<Object>
+      transactionParams << fiscalYearId
+      if (excludeVoucherId != null) {
+        transactionParams << excludeVoucherId
+      }
+      List<GroovyRowResult> transactions = sql.rows("""
+          select vl.account_id as accountId,
+                 coalesce(sum(vl.debit_amount), 0) as totalDebit,
+                 coalesce(sum(vl.credit_amount), 0) as totalCredit
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id in (${transactionPlaceholders})
+             and v.fiscal_year_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+             ${excludeVoucherId == null ? '' : 'and v.id != ?'}
+           group by vl.account_id
+      """, transactionParams) as List<GroovyRowResult>
+      Map<Long, GroovyRowResult> transactionsByAccountId = [:]
+      transactions.each { GroovyRowResult row ->
+        transactionsByAccountId[((Number) row.get('accountId')).longValue()] = row
+      }
+
+      Map<String, BigDecimal> balances = [:]
+      accounts.each { GroovyRowResult account ->
+        long accountId = ((Number) account.get('id')).longValue()
+        GroovyRowResult transaction = transactionsByAccountId[accountId]
+        BigDecimal totalDebit = transaction == null
+            ? BigDecimal.ZERO
+            : new BigDecimal(transaction.get('totalDebit').toString())
+        BigDecimal totalCredit = transaction == null
+            ? BigDecimal.ZERO
+            : new BigDecimal(transaction.get('totalCredit').toString())
+        BigDecimal net = account.get('normalBalanceSide') == 'CREDIT'
+            ? totalCredit.subtract(totalDebit)
+            : totalDebit.subtract(totalCredit)
+        balances[account.get('accountNumber') as String] = new BigDecimal(
+            account.get('openingAmount').toString()).add(net).setScale(2)
+      }
+      balances
+    }
+  }
+
   static BigDecimal calculateBalanceAfter(
       BigDecimal balanceBefore,
       BigDecimal debitAmount,
