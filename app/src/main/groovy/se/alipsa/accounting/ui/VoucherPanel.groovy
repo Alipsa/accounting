@@ -57,7 +57,6 @@ import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
-import javax.swing.SwingWorker
 import javax.swing.Timer
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
@@ -77,6 +76,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final AttachmentService attachmentService
   private final AuditLogService auditLogService
   private final ActiveCompanyManager activeCompanyManager
+  private final VoucherBalanceCachePreloader voucherBalanceCachePreloader
 
   @PackageScope
   Closure cursorMover = { int row, int col -> moveCursorToCell(row, col) }
@@ -134,6 +134,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     this.attachmentService = attachmentService
     this.auditLogService = auditLogService
     this.activeCompanyManager = activeCompanyManager
+    this.voucherBalanceCachePreloader = new VoucherBalanceCachePreloader(accountService)
     lineTableModel = new LineTableModel()
     lineTable = new JTable(lineTableModel)
     I18n.instance.addLocaleChangeListener(this)
@@ -551,7 +552,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
     currentIndex = -1
     showBlankVoucher()
-    preloadVoucherBalanceCache(activeCompanyManager.companyId, fy.id, voucherList, voucherBalanceCacheGeneration)
+    voucherBalanceCachePreloader.preload(
+        activeCompanyManager.companyId,
+        fy.id,
+        voucherList,
+        voucherBalanceCacheGeneration
+    ) { Map<Long, Map<String, BigDecimal>> preloadedBalances, int cacheGeneration ->
+      if (cacheGeneration == voucherBalanceCacheGeneration) {
+        voucherBalanceCache.putAll(preloadedBalances)
+      }
+    }
   }
 
   private void showVoucher(Voucher v) {
@@ -983,65 +993,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (currentVoucher != null) {
       voucherBalanceCache[currentVoucher.id] = new LinkedHashMap<>(balanceCache)
     }
-  }
-
-  private void preloadVoucherBalanceCache(
-      long companyId,
-      long fiscalYearId,
-      List<Voucher> vouchers,
-      int cacheGeneration
-  ) {
-    Set<String> accountNumbers = vouchers
-        .collectMany { Voucher voucher -> voucher.lines }
-        .collect { VoucherLine line -> line.accountNumber }
-        .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
-    if (accountNumbers.isEmpty()) {
-      return
-    }
-    new SwingWorker<Map<Long, Map<String, BigDecimal>>, Void>() {
-      @Override
-      protected Map<Long, Map<String, BigDecimal>> doInBackground() {
-        Map<String, BigDecimal> endingBalances = accountService.calculateAccountBalances(
-            companyId, fiscalYearId, accountNumbers, null)
-        Map<String, String> normalBalanceSides = accountService.normalBalanceSides(companyId, accountNumbers)
-        Map<Long, Map<String, BigDecimal>> preloadedBalances = [:]
-        vouchers.each { Voucher voucher ->
-          Map<String, BigDecimal> voucherBalances = [:]
-          Map<String, BigDecimal> voucherChanges = [:]
-          if (voucher.status == VoucherStatus.ACTIVE || voucher.status == VoucherStatus.CORRECTION) {
-            voucher.lines.each { VoucherLine line ->
-              String accountNumber = line.accountNumber
-              String normalBalanceSide = normalBalanceSides[accountNumber]
-              BigDecimal change = 'CREDIT' == normalBalanceSide
-                  ? (line.creditAmount ?: BigDecimal.ZERO).subtract(line.debitAmount ?: BigDecimal.ZERO)
-                  : (line.debitAmount ?: BigDecimal.ZERO).subtract(line.creditAmount ?: BigDecimal.ZERO)
-              voucherChanges[accountNumber] = (voucherChanges[accountNumber] ?: BigDecimal.ZERO).add(change)
-            }
-          }
-          voucher.lines.each { VoucherLine line ->
-            BigDecimal endingBalance = endingBalances[line.accountNumber]
-            if (endingBalance != null) {
-              voucherBalances[line.accountNumber] = endingBalance.subtract(
-                  voucherChanges[line.accountNumber] ?: BigDecimal.ZERO)
-            }
-          }
-          preloadedBalances[voucher.id] = voucherBalances
-        }
-        preloadedBalances
-      }
-
-      @Override
-      protected void done() {
-        if (isCancelled() || cacheGeneration != voucherBalanceCacheGeneration) {
-          return
-        }
-        try {
-          voucherBalanceCache.putAll(get())
-        } catch (Exception ex) {
-          log.fine("Could not pre-populate voucher balance cache: ${ex.message}")
-        }
-      }
-    }.execute()
   }
 
   private void ensureAutoRow() {
