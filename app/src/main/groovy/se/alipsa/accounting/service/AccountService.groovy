@@ -400,6 +400,7 @@ final class AccountService {
     }
 
     String accountPlaceholders = normalizedAccounts.collect { '?' }.join(', ')
+    Map<String, BigDecimal> balances = [:]
     databaseService.withSql { Sql sql ->
       List<Object> accountParams = [fiscalYearId, companyId]
       accountParams.addAll(normalizedAccounts)
@@ -416,7 +417,7 @@ final class AccountService {
              and a.account_number in (${accountPlaceholders})
       """, accountParams) as List<GroovyRowResult>
       if (accounts.isEmpty()) {
-        return [:]
+        return
       }
 
       String transactionPlaceholders = accounts.collect { '?' }.join(', ')
@@ -444,7 +445,6 @@ final class AccountService {
         transactionsByAccountId[((Number) row.get('accountId')).longValue()] = row
       }
 
-      Map<String, BigDecimal> balances = [:]
       accounts.each { GroovyRowResult account ->
         long accountId = ((Number) account.get('id')).longValue()
         GroovyRowResult transaction = transactionsByAccountId[accountId]
@@ -460,8 +460,38 @@ final class AccountService {
         balances[account.get('accountNumber') as String] = new BigDecimal(
             account.get('openingAmount').toString()).add(net).setScale(2)
       }
-      balances
     }
+    balances
+  }
+
+  Map<String, String> normalBalanceSides(long companyId, Collection<String> accountNumbers) {
+    CompanyService.requireValidCompanyId(companyId)
+    Set<String> normalizedAccounts = new LinkedHashSet<>()
+    accountNumbers.each { String accountNumber ->
+      if (accountNumber?.trim()) {
+        normalizedAccounts << normalizeAccountNumber(accountNumber)
+      }
+    }
+    if (normalizedAccounts.isEmpty()) {
+      return [:]
+    }
+
+    String placeholders = normalizedAccounts.collect { '?' }.join(', ')
+    Map<String, String> sides = [:]
+    databaseService.withSql { Sql sql ->
+      List<Object> params = [companyId]
+      params.addAll(normalizedAccounts)
+      sql.rows("""
+          select account_number as accountNumber,
+                 normal_balance_side as normalBalanceSide
+            from account
+           where company_id = ?
+             and account_number in (${placeholders})
+      """, params).each { GroovyRowResult row ->
+        sides[row.get('accountNumber') as String] = row.get('normalBalanceSide') as String
+      }
+    }
+    sides
   }
 
   static BigDecimal calculateBalanceAfter(

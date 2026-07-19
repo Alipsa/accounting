@@ -7,11 +7,14 @@
 - Fixed the Windows updater cleanup bug. The updater no longer deletes its own batch file while returning from call :main, which caused the “The batch file cannot be found” terminal after a successful update. The staged
   script remains and is overwritten on the next update.
 
-### Enahancements
+### Improvements
 - Improved voucher navigation performance
   - Voucher navigation now calculates all line-account balances in one database session, rather than running a separate query sequence per line.
   - Added voucher_line(account_id, voucher_id) index, which the balance aggregation needs.
   - Added migration V24 so existing Windows databases receive the index automatically.
+  - add a session cache for per-voucher balance calculations
+  - compute every line’s balance first and emits one fireTableDataChanged() event, rather than one event per row.
+  - removed the redundant balance refresh and changed the row loader to retain a trailing blank row and update existing rows when the row count is unchanged.
 
 
 ## v1.5.0, 2026-07-18

@@ -33,6 +33,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
@@ -189,7 +190,10 @@ final class VoucherPanelNavigationTest {
         panel,
         I18n.instance.getString('voucherEditor.table.auditLog.time')
     )
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+    onEdt { tabs.selectedIndex = 1 }
     assertEquals(1, onEdt { attachmentTable.rowCount })
+    onEdt { tabs.selectedIndex = 2 }
     assertTrue(onEdt { auditLogTable.rowCount > 0 })
 
     onEdt {

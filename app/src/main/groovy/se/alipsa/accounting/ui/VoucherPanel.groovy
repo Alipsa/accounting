@@ -57,6 +57,7 @@ import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
 import javax.swing.Timer
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
@@ -116,6 +117,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private Voucher currentVoucher
   private boolean readOnly = false
   private final Map<String, BigDecimal> balanceCache = [:]
+  private final Map<Long, Map<String, BigDecimal>> voucherBalanceCache = [:]
+  private int voucherBalanceCacheGeneration = 0
 
   VoucherPanel(
       VoucherService voucherService,
@@ -232,6 +235,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     tabs.addTab(I18n.instance.getString('voucherPanel.tab.lines'), buildLinesTab())
     tabs.addTab(I18n.instance.getString('voucherPanel.tab.attachments'), buildAttachmentTab())
     tabs.addTab(I18n.instance.getString('voucherPanel.tab.history'), buildHistoryTab())
+    tabs.addChangeListener { refreshAttachmentAndHistory() }
     tabs
   }
 
@@ -534,6 +538,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void reloadVoucherList() {
+    voucherBalanceCache.clear()
+    voucherBalanceCacheGeneration++
     FiscalYear fy = activeCompanyManager.fiscalYear
     if (fy == null || activeCompanyManager.companyId <= 0) {
       voucherList = []
@@ -545,6 +551,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
     currentIndex = -1
     showBlankVoucher()
+    preloadVoucherBalanceCache(activeCompanyManager.companyId, fy.id, voucherList, voucherBalanceCacheGeneration)
   }
 
   private void showVoucher(Voucher v) {
@@ -553,6 +560,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (v == null) {
       showBlankVoucher()
       return
+    }
+    Map<String, BigDecimal> cachedBalances = voucherBalanceCache[v.id]
+    if (cachedBalances != null) {
+      balanceCache.putAll(cachedBalances)
     }
     String displayNumber = v.voucherNumber ?: String.valueOf(v.id)
     voucherNumberLabel.text = displayNumber
@@ -570,7 +581,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     lineTableModel.setRows(v.lines)
     ensureAutoRow()
     recalculateAllBalances()
-    refreshAttachmentAndHistory()
+    clearAttachmentAndHistory()
     refreshTotals()
     applyReadOnlyState()
     updateNavigationButtons()
@@ -590,8 +601,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     correctsLabel.visible = false
     lineTableModel.clear()
     lineTableModel.addBlankRows(2)
-    attachmentTableModel.setRows([])
-    auditLogTableModel.setRows([])
+    clearAttachmentAndHistory()
     refreshTotals()
     applyReadOnlyState()
     updateNavigationButtons()
@@ -828,14 +838,21 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private void refreshAttachmentAndHistory() {
     if (currentVoucher == null) {
-      attachmentTableModel.setRows([])
-      auditLogTableModel.setRows([])
+      clearAttachmentAndHistory()
       updateAttachmentButtons()
       return
     }
-    attachmentTableModel.setRows(attachmentService.listAttachments(currentVoucher.id))
-    auditLogTableModel.setRows(auditLogService.listEntriesForVoucher(currentVoucher.id))
+    if (tabs.selectedIndex == 1) {
+      attachmentTableModel.setRows(attachmentService.listAttachments(currentVoucher.id))
+    } else if (tabs.selectedIndex == 2) {
+      auditLogTableModel.setRows(auditLogService.listEntriesForVoucher(currentVoucher.id))
+    }
     updateAttachmentButtons()
+  }
+
+  private void clearAttachmentAndHistory() {
+    attachmentTableModel.setRows([])
+    auditLogTableModel.setRows([])
   }
 
   private void addAttachmentRequested() {
@@ -915,9 +932,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private void recalculateBalances(int rowIndex) {
     LineEntry entry = lineTableModel.rows[rowIndex]
+    recalculateBalance(entry)
+    lineTableModel.fireTableRowsUpdated(rowIndex, rowIndex)
+  }
+
+  private void recalculateBalance(LineEntry entry) {
     if (!hasText(entry.accountNumber)) {
       entry.balanceBefore = null
-      lineTableModel.fireTableRowsUpdated(rowIndex, rowIndex)
       return
     }
     FiscalYear fy = activeCompanyManager.fiscalYear
@@ -937,26 +958,90 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       balanceCache.put(cacheKey, balance)
     }
     entry.balanceBefore = balance
-    lineTableModel.fireTableRowsUpdated(rowIndex, rowIndex)
   }
 
   private void recalculateAllBalances() {
+    Set<String> displayedAccounts = lineTableModel.rows
+        .collect { LineEntry entry -> entry.accountNumber }
+        .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
+    Set<String> missingAccounts = displayedAccounts.findAll { String accountNumber ->
+      !balanceCache.containsKey(accountNumber)
+    } as Set<String>
     FiscalYear fy = activeCompanyManager.fiscalYear
     if (fy != null) {
       try {
-        Set<String> accountNumbers = lineTableModel.rows
-            .collect { LineEntry entry -> entry.accountNumber }
-            .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
-        Map<String, BigDecimal> balances = accountService.calculateAccountBalances(
-            activeCompanyManager.companyId, fy.id, accountNumbers, currentVoucher?.id)
-        balanceCache.putAll(balances)
+        if (!missingAccounts.isEmpty()) {
+          Map<String, BigDecimal> balances = accountService.calculateAccountBalances(
+              activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher?.id)
+          balanceCache.putAll(balances)
+        }
       } catch (Exception ignored) {
         // Individual balance lookups below retain the previous fallback behaviour.
       }
     }
-    for (int i = 0; i < lineTableModel.rows.size(); i++) {
-      recalculateBalances(i)
+    lineTableModel.rows.each { LineEntry entry -> recalculateBalance(entry) }
+    if (currentVoucher != null) {
+      voucherBalanceCache[currentVoucher.id] = new LinkedHashMap<>(balanceCache)
     }
+  }
+
+  private void preloadVoucherBalanceCache(
+      long companyId,
+      long fiscalYearId,
+      List<Voucher> vouchers,
+      int cacheGeneration
+  ) {
+    Set<String> accountNumbers = vouchers
+        .collectMany { Voucher voucher -> voucher.lines }
+        .collect { VoucherLine line -> line.accountNumber }
+        .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
+    if (accountNumbers.isEmpty()) {
+      return
+    }
+    new SwingWorker<Map<Long, Map<String, BigDecimal>>, Void>() {
+      @Override
+      protected Map<Long, Map<String, BigDecimal>> doInBackground() {
+        Map<String, BigDecimal> endingBalances = accountService.calculateAccountBalances(
+            companyId, fiscalYearId, accountNumbers, null)
+        Map<String, String> normalBalanceSides = accountService.normalBalanceSides(companyId, accountNumbers)
+        Map<Long, Map<String, BigDecimal>> preloadedBalances = [:]
+        vouchers.each { Voucher voucher ->
+          Map<String, BigDecimal> voucherBalances = [:]
+          Map<String, BigDecimal> voucherChanges = [:]
+          if (voucher.status == VoucherStatus.ACTIVE || voucher.status == VoucherStatus.CORRECTION) {
+            voucher.lines.each { VoucherLine line ->
+              String accountNumber = line.accountNumber
+              String normalBalanceSide = normalBalanceSides[accountNumber]
+              BigDecimal change = 'CREDIT' == normalBalanceSide
+                  ? (line.creditAmount ?: BigDecimal.ZERO).subtract(line.debitAmount ?: BigDecimal.ZERO)
+                  : (line.debitAmount ?: BigDecimal.ZERO).subtract(line.creditAmount ?: BigDecimal.ZERO)
+              voucherChanges[accountNumber] = (voucherChanges[accountNumber] ?: BigDecimal.ZERO).add(change)
+            }
+          }
+          voucher.lines.each { VoucherLine line ->
+            BigDecimal endingBalance = endingBalances[line.accountNumber]
+            if (endingBalance != null) {
+              voucherBalances[line.accountNumber] = endingBalance.subtract(
+                  voucherChanges[line.accountNumber] ?: BigDecimal.ZERO)
+            }
+          }
+          preloadedBalances[voucher.id] = voucherBalances
+        }
+        preloadedBalances
+      }
+
+      @Override
+      protected void done() {
+        if (isCancelled() || cacheGeneration != voucherBalanceCacheGeneration) {
+          return
+        }
+        try {
+          voucherBalanceCache.putAll(get())
+        } catch (Exception ex) {
+          log.fine("Could not pre-populate voucher balance cache: ${ex.message}")
+        }
+      }
+    }.execute()
   }
 
   private void ensureAutoRow() {
@@ -1051,6 +1136,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
 
     void setRows(List<VoucherLine> voucherLines) {
+      int previousRowCount = rows.size()
       rows.clear()
       voucherLines.each { VoucherLine line ->
         LineEntry entry = new LineEntry()
@@ -1062,10 +1148,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         rows << entry
       }
       if (rows.isEmpty()) {
-        addBlankRows(2)
-        return
+        2.times { rows << new LineEntry() }
+      } else {
+        rows << new LineEntry()
       }
-      fireTableDataChanged()
+      if (rows.size() == previousRowCount) {
+        fireTableRowsUpdated(0, rows.size() - 1)
+      } else {
+        fireTableDataChanged()
+      }
     }
 
     void clear() {
