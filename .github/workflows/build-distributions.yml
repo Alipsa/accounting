@@ -36,11 +36,11 @@ jobs:
       - name: Build and test
         run: ./gradlew build
 
-      - name: Build distribution
-        run: ./gradlew ${{ matrix.tasks }}
-
       - name: Verify packaged launcher
         run: ./gradlew verifyCurrentPlatformRelease
+
+      - name: Build distribution
+        run: ./gradlew ${{ matrix.tasks }}
 
       - uses: actions/upload-artifact@v7
         with:
