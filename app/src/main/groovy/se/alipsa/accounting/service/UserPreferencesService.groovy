@@ -13,6 +13,7 @@ final class UserPreferencesService {
   private static final String THEME_KEY = 'ui.theme'
   private static final String UPDATE_CHECK_ENABLED_KEY = 'update.autoCheckEnabled'
   private static final String LAST_ACTIVE_COMPANY_ID_KEY = 'company.lastActiveId'
+  private static final String LAST_ACTIVE_FISCAL_YEAR_ID_KEY = 'fiscalYear.lastActiveId'
   private static final String DATA_LOCATION_KEY = 'data.location'
   private static final String PENDING_MIGRATION_TARGET_KEY = 'data.pendingMigrationTarget'
   private static final String PENDING_MIGRATION_MOVE_KEY = 'data.pendingMigrationMove'
@@ -77,6 +78,19 @@ final class UserPreferencesService {
       return
     }
     preferences.putLong(LAST_ACTIVE_COMPANY_ID_KEY, companyId)
+  }
+
+  Long getLastActiveFiscalYearId() {
+    long fiscalYearId = preferences.getLong(LAST_ACTIVE_FISCAL_YEAR_ID_KEY, 0L)
+    fiscalYearId > 0L ? fiscalYearId : null
+  }
+
+  void setLastActiveFiscalYearId(Long fiscalYearId) {
+    if (fiscalYearId == null || fiscalYearId <= 0L) {
+      preferences.remove(LAST_ACTIVE_FISCAL_YEAR_ID_KEY)
+      return
+    }
+    preferences.putLong(LAST_ACTIVE_FISCAL_YEAR_ID_KEY, fiscalYearId)
   }
 
   String getDataLocation() {

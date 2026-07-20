@@ -20,6 +20,7 @@ final class Company {
   LocalDateTime createdAt
   LocalDateTime updatedAt
   boolean archived = false
+  AccountingMethod accountingMethod = AccountingMethod.CASH
 
   @Override
   String toString() {

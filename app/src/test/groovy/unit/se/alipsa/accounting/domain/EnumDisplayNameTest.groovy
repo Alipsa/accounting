@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
+import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.report.ReportType
@@ -61,6 +62,21 @@ final class EnumDisplayNameTest {
     VatPeriodicity.values().each { VatPeriodicity periodicity ->
       String name = periodicity.displayName
       assertFalse(name.startsWith('['), "Missing key for ${periodicity.name()}: ${name}")
+    }
+  }
+
+  @Test
+  void accountingMethodDisplayNamesResolve() {
+    assertEquals('Cash accounting', AccountingMethod.CASH.displayName)
+    I18n.instance.setLocale(Locale.forLanguageTag('sv'))
+    assertEquals('Fakturametoden', AccountingMethod.INVOICE.displayName)
+  }
+
+  @Test
+  void allAccountingMethodValuesHaveDisplayNames() {
+    AccountingMethod.values().each { AccountingMethod method ->
+      String name = method.displayName
+      assertFalse(name.startsWith('['), "Missing key for ${method.name()}: ${name}")
     }
   }
 

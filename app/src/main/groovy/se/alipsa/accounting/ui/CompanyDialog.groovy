@@ -1,5 +1,6 @@
 package se.alipsa.accounting.ui
 
+import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanyService
@@ -53,6 +54,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
   private final JComboBox<LocaleItem> localeComboBox =
       new JComboBox<>(buildLocaleList().toArray(new LocaleItem[0]))
   private final JComboBox<VatPeriodicity> vatPeriodicityComboBox = new JComboBox<>(VatPeriodicity.values())
+  private final JComboBox<AccountingMethod> accountingMethodComboBox = new JComboBox<>(AccountingMethod.values())
   private final JTextArea validationArea = new JTextArea(4, 30)
 
   private JLabel companyNameLabel
@@ -60,6 +62,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
   private JLabel currencyLabel
   private JLabel localeLabel
   private JLabel vatPeriodLabel
+  private JLabel accountingMethodLabel
   private JButton cancelButton
   private JButton saveButton
 
@@ -103,6 +106,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     currencyLabel.text = I18n.instance.getString('companySettingsDialog.label.currency')
     localeLabel.text = I18n.instance.getString('companySettingsDialog.label.locale')
     vatPeriodLabel.text = I18n.instance.getString('companySettingsDialog.label.vatPeriod')
+    accountingMethodLabel.text = I18n.instance.getString('companySettingsDialog.label.accountingMethod')
     cancelButton.text = I18n.instance.getString('companySettingsDialog.button.cancel')
     saveButton.text = I18n.instance.getString('companySettingsDialog.button.save')
     pack()
@@ -160,6 +164,12 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     panel.add(vatPeriodLabel, labelConstraints)
     panel.add(vatPeriodicityComboBox, fieldConstraints)
 
+    labelConstraints.gridy = 5
+    fieldConstraints.gridy = 5
+    accountingMethodLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.accountingMethod'))
+    panel.add(accountingMethodLabel, labelConstraints)
+    panel.add(accountingMethodComboBox, fieldConstraints)
+
     panel
   }
 
@@ -190,6 +200,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
       selectCurrency('SEK')
       selectLocale(Locale.getDefault().toLanguageTag())
       vatPeriodicityComboBox.selectedItem = VatPeriodicity.MONTHLY
+      accountingMethodComboBox.selectedItem = AccountingMethod.CASH
       return
     }
     companyNameField.text = company.companyName
@@ -197,6 +208,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     selectCurrency(company.defaultCurrency ?: 'SEK')
     selectLocale(company.localeTag ?: Locale.getDefault().toLanguageTag())
     vatPeriodicityComboBox.selectedItem = company.vatPeriodicity ?: VatPeriodicity.MONTHLY
+    accountingMethodComboBox.selectedItem = company.accountingMethod ?: AccountingMethod.CASH
   }
 
   private void selectCurrency(String code) {
@@ -241,7 +253,9 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
           vatPeriodicityComboBox.selectedItem as VatPeriodicity,
           true,
           null,
-          null
+          null,
+          company?.archived ?: false,
+          accountingMethodComboBox.selectedItem as AccountingMethod
       )
       company = companyService.save(toSave)
       onSave.accept(company)

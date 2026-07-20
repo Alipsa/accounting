@@ -223,6 +223,21 @@ final class VoucherService {
     }
   }
 
+  LocalDate latestVoucherDate(long companyId, long fiscalYearId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select accounting_date as accountingDate
+            from voucher
+           where company_id = ?
+             and fiscal_year_id = ?
+           order by id desc
+           limit 1
+      ''', [companyId, fiscalYearId]) as GroovyRowResult
+      row == null ? null : SqlValueMapper.toLocalDate(row.get('accountingDate'))
+    }
+  }
+
   int countVouchers(long companyId, long fiscalYearId) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->

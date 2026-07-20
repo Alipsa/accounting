@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.function.Executable
 
+import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.ui.StartupSplash
 
 import java.awt.image.BufferedImage
@@ -34,5 +35,16 @@ final class SplashScreenTest {
     assertDoesNotThrow({
       StartupSplash.showIfPossible(false).close()
     } as Executable)
+  }
+
+  @Test
+  void startupMessageUsesSelectedLanguage() {
+    Locale originalLocale = I18n.instance.locale
+    try {
+      I18n.instance.setLocale(Locale.forLanguageTag('sv'))
+      assertEquals('Startar Alipsa Bokföring', StartupSplash.startupMessage())
+    } finally {
+      I18n.instance.setLocale(originalLocale)
+    }
   }
 }
