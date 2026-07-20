@@ -99,7 +99,12 @@ final class StartupSplash implements AutoCloseable {
     if (image == null) {
       return null
     }
-    drawStartupMessage(image.createGraphics(), image.width, image.height)
+    Graphics2D graphics = image.createGraphics()
+    try {
+      drawStartupMessage(graphics, image.width, image.height)
+    } finally {
+      graphics.dispose()
+    }
     ImageIcon icon = new ImageIcon(image)
     if (icon.imageLoadStatus != MediaTracker.COMPLETE) {
       return null
@@ -137,21 +142,17 @@ final class StartupSplash implements AutoCloseable {
   }
 
   private static void drawStartupMessage(Graphics2D graphics, int width, int height) {
-    try {
-      graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-      graphics.color = Color.WHITE
-      graphics.fillRect(0, height - TEXT_BAND_HEIGHT, width, TEXT_BAND_HEIGHT)
-      graphics.color = new Color(60, 60, 60)
-      graphics.font = new Font(Font.SANS_SERIF, Font.PLAIN, 22)
-      FontMetrics metrics = graphics.fontMetrics
-      String text = startupMessage()
-      int textX = (width - metrics.stringWidth(text)).intdiv(2)
-      int textY = height - TEXT_BAND_HEIGHT + ((TEXT_BAND_HEIGHT - metrics.height).intdiv(2)) + metrics.ascent
-      graphics.drawString(text, textX, textY)
-    } finally {
-      graphics.dispose()
-    }
+    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+    graphics.color = Color.WHITE
+    graphics.fillRect(0, height - TEXT_BAND_HEIGHT, width, TEXT_BAND_HEIGHT)
+    graphics.color = new Color(60, 60, 60)
+    graphics.font = new Font(Font.SANS_SERIF, Font.PLAIN, 22)
+    FontMetrics metrics = graphics.fontMetrics
+    String text = startupMessage()
+    int textX = (width - metrics.stringWidth(text)).intdiv(2)
+    int textY = height - TEXT_BAND_HEIGHT + ((TEXT_BAND_HEIGHT - metrics.height).intdiv(2)) + metrics.ascent
+    graphics.drawString(text, textX, textY)
   }
 
   private void closeNativeSplash() {
