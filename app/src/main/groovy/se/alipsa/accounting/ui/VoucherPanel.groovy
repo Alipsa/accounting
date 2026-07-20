@@ -42,6 +42,7 @@ import java.util.logging.Logger
 import javax.swing.AbstractAction
 import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
+import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JEditorPane
 import javax.swing.JLabel
@@ -69,6 +70,7 @@ import javax.swing.table.DefaultTableCellRenderer
 final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
+  private static final Icon SAVE_ICON = new VoucherSaveIcon()
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -203,7 +205,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     nextButton.addActionListener { navigateNext() }
     panel.add(nextButton)
 
-    saveButton = new JButton('\uD83D\uDCBE')
+    saveButton = new JButton(SAVE_ICON)
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     saveButton.addActionListener { saveVoucher() }
     panel.add(saveButton)
@@ -365,21 +367,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   @PackageScope
   void advanceFromCell(int row, int col) {
     switch (col) {
-      case 0: // Account number — jump to debet/kredit based on normalBalanceSide
+      case 0: // Account number — alternate from the preceding amount, otherwise use normal balance side
         LineEntry entry = lineTableModel.rows[row]
-        if (hasText(entry.normalBalanceSide)) {
-          cursorToAmountColumn(row, entry.normalBalanceSide)
-        } else {
-          cursorMover.call(row, 2)
-        }
+        cursorToSuggestedAmountColumn(row, entry.normalBalanceSide)
         break
       case 1: // Account description — same as account number
         LineEntry descEntry = lineTableModel.rows[row]
-        if (hasText(descEntry.normalBalanceSide)) {
-          cursorToAmountColumn(row, descEntry.normalBalanceSide)
-        } else {
-          cursorMover.call(row, 2)
-        }
+        cursorToSuggestedAmountColumn(row, descEntry.normalBalanceSide)
         break
       case 2: // Debet — always advance to kredit
         cursorMover.call(row, 3)
@@ -435,7 +429,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         if (lineTable.cellEditor != null) {
           lineTable.cellEditor.stopCellEditing()
         }
-        cursorToAmountColumn(row, selected.normalBalanceSide)
+        cursorToSuggestedAmountColumn(row, selected.normalBalanceSide)
       }
     } as Consumer<Account>
     AccountLookupPopup numberPopup = new AccountLookupPopup(
@@ -462,7 +456,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
         if (lineTable.cellEditor != null) {
           lineTable.cellEditor.stopCellEditing()
         }
-        cursorToAmountColumn(row, selected.normalBalanceSide)
+        cursorToSuggestedAmountColumn(row, selected.normalBalanceSide)
       }
     } as Consumer<Account>
     AccountLookupPopup namePopup = new AccountLookupPopup(
@@ -640,8 +634,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     if (fy == null) {
       return LocalDate.now()
     }
-    LocalDate today = LocalDate.now()
-    today.isBefore(fy.startDate) || today.isAfter(fy.endDate) ? fy.startDate : today
+    voucherService.latestVoucherDate(activeCompanyManager.companyId, fy.id) ?: fy.startDate
   }
 
   private void navigatePrev() {
@@ -1052,8 +1045,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     feedbackArea.text = message
   }
 
-  private void cursorToAmountColumn(int row, String normalBalanceSide) {
-    cursorMover.call(row, 'CREDIT' == normalBalanceSide ? 3 : 2)
+  private void cursorToSuggestedAmountColumn(int row, String normalBalanceSide) {
+    VoucherPairing.Suggestion suggestion = VoucherPairing.suggest(lineTableModel.rows, row, normalBalanceSide)
+    lineTableModel.setSuggestedAmount(row, suggestion.column, suggestion.amount)
+    cursorMover.call(row, suggestion.column)
   }
 
   private static boolean hasText(String value) {
@@ -1141,6 +1136,25 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       row.accountNumber = accountNumber ?: ''
       row.accountName = accountName ?: ''
       row.normalBalanceSide = normalBalanceSide ?: ''
+      fireTableRowsUpdated(rowIndex, rowIndex)
+      checkAutoRow()
+    }
+
+    void setSuggestedAmount(int rowIndex, int columnIndex, String amount) {
+      if (rowIndex < 0 || rowIndex >= rows.size() || !hasText(amount)) {
+        return
+      }
+      LineEntry row = rows[rowIndex]
+      if (hasText(row.debit) || hasText(row.credit)) {
+        return
+      }
+      if (columnIndex == 2) {
+        row.debit = amount
+      } else if (columnIndex == 3) {
+        row.credit = amount
+      } else {
+        return
+      }
       fireTableRowsUpdated(rowIndex, rowIndex)
       checkAutoRow()
     }

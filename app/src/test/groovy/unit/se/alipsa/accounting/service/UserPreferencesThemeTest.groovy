@@ -17,6 +17,7 @@ class UserPreferencesThemeTest {
     service.setTheme(null)
     service.setAutomaticUpdateCheckEnabled(true)
     service.setLastActiveCompanyId(null)
+    service.setLastActiveFiscalYearId(null)
   }
 
   @Test
@@ -63,5 +64,14 @@ class UserPreferencesThemeTest {
 
     service.setLastActiveCompanyId(null)
     assertEquals(null, service.getLastActiveCompanyId())
+  }
+
+  @Test
+  void roundTripsLastActiveFiscalYearPreference() {
+    service.setLastActiveFiscalYearId(42L)
+    assertEquals(42L, service.getLastActiveFiscalYearId())
+
+    service.setLastActiveFiscalYearId(null)
+    assertEquals(null, service.getLastActiveFiscalYearId())
   }
 }

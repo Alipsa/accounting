@@ -1,5 +1,13 @@
 # Alipsa Accounting, Release History
 
+## v1.5.2, 2026-07-20
+
+### Improvements
+- **Company accounting method** — Company settings can now specify cash or invoice accounting. Existing companies are safely migrated to cash accounting through database migration V25.
+- **Restored working context** — The most recently selected company and fiscal year are restored on the next startup.
+- **Smoother voucher entry** — New vouchers use the latest voucher date. Account and amount entry provide better counter-entry suggestions, and the save action has a clear icon.
+- **Localized startup screen** — The startup message follows the application's selected language.
+
 ## v1.5.1, 2026-07-19
 
 ### Bugfixes

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Company
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AuditLogService
@@ -19,6 +20,7 @@ import se.alipsa.accounting.support.AppPaths
 
 import java.beans.PropertyChangeEvent
 import java.nio.file.Path
+import java.time.LocalDate
 
 class ActiveCompanyManagerTest {
 
@@ -75,6 +77,20 @@ class ActiveCompanyManagerTest {
     ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService, 999_999L)
 
     assertEquals(CompanyService.LEGACY_COMPANY_ID, manager.companyId)
+  }
+
+  @Test
+  void initializesToPreferredFiscalYearForPreferredCompany() {
+    FiscalYear firstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2025', LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))
+    FiscalYear preferredYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+
+    ActiveCompanyManager manager = new ActiveCompanyManager(
+        companyService, fiscalYearService, CompanyService.LEGACY_COMPANY_ID, preferredYear.id)
+
+    assertEquals(preferredYear.id, manager.fiscalYear.id)
+    assertTrue(manager.fiscalYear.id != firstYear.id)
   }
 
   @Test

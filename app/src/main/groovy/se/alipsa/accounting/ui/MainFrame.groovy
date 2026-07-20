@@ -169,7 +169,8 @@ final class MainFrame implements PropertyChangeListener {
   private final ActiveCompanyManager activeCompanyManager = new ActiveCompanyManager(
       companyService,
       fiscalYearService,
-      userPreferencesService.lastActiveCompanyId
+      userPreferencesService.lastActiveCompanyId,
+      userPreferencesService.lastActiveFiscalYearId
   )
 
   private JLabel statusLabel
@@ -259,9 +260,11 @@ final class MainFrame implements PropertyChangeListener {
     if ('locale' == evt.propertyName) {
       SwingUtilities.invokeLater { applyLocale() }
     } else if (ActiveCompanyManager.COMPANY_ID_PROPERTY == evt.propertyName) {
+      userPreferencesService.setLastActiveCompanyId(activeCompanyManager.companyId)
       SwingUtilities.invokeLater { onCompanyChanged() }
     } else if (ActiveCompanyManager.FISCAL_YEAR_PROPERTY == evt.propertyName) {
-      SwingUtilities.invokeLater { reloadFiscalYearComboBox() }
+      userPreferencesService.setLastActiveFiscalYearId(activeCompanyManager.fiscalYear?.id)
+      SwingUtilities.invokeLater { onFiscalYearChanged() }
     }
   }
 
@@ -271,9 +274,12 @@ final class MainFrame implements PropertyChangeListener {
     refreshCompanyProfileSummary()
     Company active = activeCompanyManager.activeCompany
     if (active != null) {
-      userPreferencesService.setLastActiveCompanyId(active.id)
       setStatus(I18n.instance.format('mainFrame.status.companySwitched', active.companyName))
     }
+  }
+
+  private void onFiscalYearChanged() {
+    reloadFiscalYearComboBox()
   }
 
   private void refreshTitle() {
@@ -477,7 +483,9 @@ final class MainFrame implements PropertyChangeListener {
         escapeHtml(active.defaultCurrency),
         escapeHtml(active.localeTag),
         I18n.instance.getString('mainFrame.companySettings.vatPeriod'),
-        escapeHtml(active.vatPeriodicity?.toString())
+        escapeHtml(active.vatPeriodicity?.toString()),
+        I18n.instance.getString('mainFrame.companySettings.accountingMethod'),
+        escapeHtml(active.accountingMethod?.toString())
     )
   }
 
@@ -531,9 +539,18 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void switchLanguage(Locale locale) {
+    if (I18n.instance.locale.language == locale.language) {
+      return
+    }
     I18n.instance.setLocale(locale)
     userPreferencesService.setLanguage(locale)
     updateLanguageButtonBorders()
+    JOptionPane.showMessageDialog(
+        frame,
+        I18n.instance.getString('settings.language.restartRequired'),
+        I18n.instance.getString('settings.language.restartRequiredTitle'),
+        JOptionPane.INFORMATION_MESSAGE
+    )
   }
 
   private JPanel buildThemeRow() {
@@ -717,7 +734,7 @@ final class MainFrame implements PropertyChangeListener {
     if (fiscalYearComboBox == null) {
       return
     }
-    FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
+    FiscalYear selected = (fiscalYearComboBox.selectedItem as FiscalYear) ?: activeCompanyManager.fiscalYear
     java.awt.event.ActionListener[] listeners = fiscalYearComboBox.actionListeners
     listeners.each { fiscalYearComboBox.removeActionListener(it) }
     try {

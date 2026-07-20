@@ -24,6 +24,7 @@ import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
+import se.alipsa.datepicker.DatePicker
 
 import java.awt.Component
 import java.awt.Container
@@ -36,6 +37,7 @@ import javax.swing.JButton
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
+import javax.swing.JTextField
 import javax.swing.SwingUtilities
 
 final class VoucherPanelNavigationTest {
@@ -106,12 +108,43 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void saveButtonUsesAnIconInsteadOfAFontDependentSymbol() {
+    JButton saveButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.save')
+    }
+
+    assertNotNull(saveButton.icon)
+  }
+
+  @Test
   void advancesFromAccountColumnToCreditForCreditAccount() {
     setSingleLine('CREDIT')
 
     panel.advanceFromCell(0, 0)
 
     assertEquals([[0, 3]], moves)
+  }
+
+  @Test
+  void advancesToDebitAfterCreditOnPreviousRowRegardlessOfAccountNormalSide() {
+    setRows('CREDIT', 'CREDIT')
+    panel.lineTableModel.rows[0].credit = '3144'
+
+    panel.advanceFromCell(1, 0)
+
+    assertEquals([[1, 2]], moves)
+    assertEquals('3144', panel.lineTableModel.rows[1].debit)
+  }
+
+  @Test
+  void advancesToCreditAfterDebitOnPreviousRowRegardlessOfAccountNormalSide() {
+    setRows('DEBIT', 'DEBIT')
+    panel.lineTableModel.rows[0].debit = '3144'
+
+    panel.advanceFromCell(1, 0)
+
+    assertEquals([[1, 3]], moves)
+    assertEquals('3144', panel.lineTableModel.rows[1].credit)
   }
 
   @Test
@@ -217,6 +250,13 @@ final class VoucherPanelNavigationTest {
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
     }
 
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    assertEquals('A-1', onEdt { voucherJumpField.text })
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+    assertEquals('B-2', onEdt { voucherJumpField.text })
+
     List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
     assertEquals(2, vouchers.size())
     Voucher duplicate = vouchers.find { Voucher voucher -> voucher.id != source.id }
@@ -224,7 +264,7 @@ final class VoucherPanelNavigationTest {
     assertEquals('B', duplicate.seriesCode)
     assertEquals('B-2', duplicate.voucherNumber)
     assertEquals('Leverantörsfaktura', duplicate.description)
-    assertEquals(LocalDate.of(2030, 1, 1), duplicate.accountingDate)
+    assertEquals(LocalDate.of(2030, 3, 15), duplicate.accountingDate)
     assertEquals(2, duplicate.lines.size())
     assertEquals('1510', duplicate.lines[0].accountNumber)
     assertEquals('Kundfordringar', duplicate.lines[0].accountName)
@@ -237,6 +277,35 @@ final class VoucherPanelNavigationTest {
     assertEquals(0.00G, duplicate.lines[1].debitAmount)
     assertEquals(125.50G, duplicate.lines[1].creditAmount)
     assertEquals([], attachmentService.listAttachments(duplicate.id))
+  }
+
+  @Test
+  void blankVoucherUsesFiscalYearStartThenMostRecentlySavedVoucherDate() {
+    DatePicker datePicker = findComponent(panel, DatePicker) { true }
+    assertEquals(LocalDate.of(2030, 1, 1), onEdt { datePicker.date })
+
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2030, 3, 15),
+        'Första verifikatet',
+        [voucherLine('1510', 'Kundfordringar', 'Rad', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 100.00G)]
+    )
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2030, 2, 20),
+        'Senast sparade verifikatet',
+        [voucherLine('1510', 'Kundfordringar', 'Rad', 200.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 200.00G)]
+    )
+
+    panel = buildPanel()
+    installPanelHooks()
+    datePicker = findComponent(panel, DatePicker) { true }
+
+    assertEquals(LocalDate.of(2030, 2, 20), onEdt { datePicker.date })
   }
 
   @Test
@@ -274,6 +343,12 @@ final class VoucherPanelNavigationTest {
     VoucherPanel.LineEntry line = new VoucherPanel.LineEntry(normalBalanceSide: normalBalanceSide)
     panel.lineTableModel.rows.clear()
     panel.lineTableModel.rows.add(line)
+  }
+
+  private void setRows(String firstNormalBalanceSide, String secondNormalBalanceSide) {
+    panel.lineTableModel.rows.clear()
+    panel.lineTableModel.rows.add(new VoucherPanel.LineEntry(normalBalanceSide: firstNormalBalanceSide))
+    panel.lineTableModel.rows.add(new VoucherPanel.LineEntry(normalBalanceSide: secondNormalBalanceSide))
   }
 
   private VoucherPanel buildPanel() {

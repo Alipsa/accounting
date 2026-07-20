@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
+import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.VatPeriodicity
 
@@ -41,7 +42,8 @@ final class CompanyService {
                  active,
                  created_at as createdAt,
                  updated_at as updatedAt,
-                 archived
+                 archived,
+                 accounting_method as accountingMethod
             from company
       ''')
       List<Object> params = []
@@ -80,7 +82,8 @@ final class CompanyService {
                  active,
                  created_at as createdAt,
                  updated_at as updatedAt,
-                 archived
+                 archived,
+                 accounting_method as accountingMethod
             from company
            where archived = true
            order by company_name, id
@@ -176,9 +179,10 @@ final class CompanyService {
             vat_periodicity,
             active,
             archived,
+            accounting_method,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
     ''', [
         company.companyName.trim(),
         company.organizationNumber.trim(),
@@ -186,7 +190,8 @@ final class CompanyService {
         company.localeTag.trim(),
         (company.vatPeriodicity ?: VatPeriodicity.MONTHLY).name(),
         company.active,
-        company.archived
+        company.archived,
+        (company.accountingMethod ?: AccountingMethod.CASH).name()
     ])
     long companyId = ((Number) keys.first().first()).longValue()
     sql.executeInsert('''
@@ -206,6 +211,7 @@ final class CompanyService {
                vat_periodicity = ?,
                active = ?,
                archived = ?,
+               accounting_method = ?,
                updated_at = current_timestamp
          where id = ?
     ''', [
@@ -216,6 +222,7 @@ final class CompanyService {
         (company.vatPeriodicity ?: VatPeriodicity.MONTHLY).name(),
         company.active,
         company.archived,
+        (company.accountingMethod ?: AccountingMethod.CASH).name(),
         company.id
     ])
     if (updated != 1) {
@@ -258,7 +265,8 @@ final class CompanyService {
                active,
                created_at as createdAt,
                updated_at as updatedAt,
-               archived
+               archived,
+               accounting_method as accountingMethod
           from company
          where id = ?
     ''', [companyId]) as GroovyRowResult
@@ -276,7 +284,8 @@ final class CompanyService {
         Boolean.TRUE == row.get('active'),
         SqlValueMapper.toLocalDateTime(row.get('createdAt')),
         SqlValueMapper.toLocalDateTime(row.get('updatedAt')),
-        Boolean.TRUE == row.get('archived')
+        Boolean.TRUE == row.get('archived'),
+        AccountingMethod.fromDatabaseValue(row.get('accountingMethod') as String)
     )
   }
 
@@ -298,6 +307,9 @@ final class CompanyService {
     }
     if (company.vatPeriodicity == null) {
       throw new IllegalArgumentException('VAT periodicity is required.')
+    }
+    if (company.accountingMethod == null) {
+      throw new IllegalArgumentException('Accounting method is required.')
     }
   }
 }
