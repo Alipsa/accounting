@@ -24,11 +24,10 @@ final class VoucherDraftEditorAccess implements VoucherDraftAccess {
 
   @Override
   Map<String, Object> getVoucherDraft() {
-    if (!unsavedDraftSupplier.get()) {
-      return [:]
-    }
     Map<String, Object>[] holder = new Map[1]
-    SwingThreading.runOnEdt { holder[0] = draftSupplier.get() }
+    SwingThreading.runOnEdt {
+      holder[0] = unsavedDraftSupplier.get() ? draftSupplier.get() : [:]
+    }
     holder[0]
   }
 
