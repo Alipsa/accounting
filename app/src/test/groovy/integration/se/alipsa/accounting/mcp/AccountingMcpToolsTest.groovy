@@ -395,6 +395,32 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void failedVatTransferReleasesItsReportHashForRetry() {
+    postVatSaleInFirstPeriod()
+    long vatPeriodId = firstVatPeriodId()
+    Map<String, Object> report = tools.callTool('get_vat_report', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId
+    ])
+    String reportHash = report.get('report_hash') as String
+
+    Map<String, Object> failed = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) reportHash,
+        settlement_account: (Object) '9999'
+    ])
+    assertFalse((boolean) failed.get('ok'))
+
+    Map<String, Object> retry = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) reportHash
+    ])
+    assertTrue((boolean) retry.get('ok'), "Expected retry to succeed but got: ${retry.get('errors')}")
+  }
+
+  @Test
   void previewYearEndReturnsFiscalYearInfoAndToken() {
     insertClosingAccount()
 
@@ -516,18 +542,36 @@ class AccountingMcpToolsTest {
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
     assertTrue(errors.any { String error -> error.contains('obalanserad') })
-    assertNull(result.get('preview_token'), 'Ogiltigt förslag skall inte ha en preview_token')
+    assertFalse(result.containsKey('preview_token'), 'Voucherförhandsgranskning returnerar ingen token eftersom den aldrig kan bokföra.')
   }
 
   @Test
-  void previewVoucherResolvesAccountsAndReturnsTokenWhenValid() {
+  void previewVoucherResolvesAccountsWithoutReturningAnUnusedToken() {
     Map<String, Object> result = tools.callTool('preview_voucher', balancedVoucherArgs('Balanserad verifikation', 1000.00G))
 
     assertTrue((boolean) result.get('ok'))
     assertTrue(((List) result.get('errors')).isEmpty())
     assertEquals(2, ((List) result.get('lines')).size())
     assertEquals('1930', ((Map) ((List) result.get('lines')).first()).get('account_number'))
-    assertNotNull(result.get('preview_token'), 'Giltigt förslag skall ha en preview_token')
+    assertFalse(result.containsKey('preview_token'), 'Voucherförhandsgranskning returnerar ingen token eftersom den aldrig kan bokföra.')
+  }
+
+  @Test
+  void previewVoucherReportsMalformedAmountsAsValidationErrors() {
+    Map<String, Object> result = tools.callTool('preview_voucher', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Fel belopp',
+        lines: (Object) [
+            [account_number: '1930', debit: 'inte-ett-tal', credit: 0],
+            [account_number: '2440', debit: 0, credit: 100]
+        ]
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((List<String>) result.get('errors')).any { String error -> error.contains('debit måste vara ett giltigt belopp') })
   }
 
   @Test

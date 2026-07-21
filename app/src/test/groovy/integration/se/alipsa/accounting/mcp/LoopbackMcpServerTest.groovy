@@ -66,6 +66,18 @@ class LoopbackMcpServerTest {
     assertEquals(405, get.statusCode())
   }
 
+  @Test
+  void reportsMalformedJsonAsAParseError() {
+    server = new LoopbackMcpServer(preferences)
+    server.start()
+
+    HttpResponse<String> response = HttpClient.newHttpClient().send(requestBuilder('{').build(), HttpResponse.BodyHandlers.ofString())
+
+    assertEquals(400, response.statusCode())
+    Map body = (Map) new JsonSlurper().parseText(response.body())
+    assertEquals(-32700, ((Map) body.get('error')).get('code'))
+  }
+
   private HttpRequest.Builder requestBuilder(String body) {
     HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
         .header('Authorization', "Bearer ${preferences.ensureMcpToken()}")

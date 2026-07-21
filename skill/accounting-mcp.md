@@ -25,7 +25,7 @@ Always read before you write. Gather context first, propose actions, then place 
 | `get_general_ledger` | Full posting history with running balance per account |
 | `list_vat_periods` | VAT periods with status (`OPEN`, `REPORTED`, `LOCKED`) |
 | `get_vat_report` | Calculated VAT report for a period; returns `report_hash` |
-| `preview_voucher` | Validate a proposed voucher without posting it; returns `preview_token` only when valid |
+| `preview_voucher` | Validate a proposed voucher without posting it; use `set_active_voucher_draft` to place a valid proposal in the GUI |
 | `get_active_voucher_draft` | Read the unsaved voucher draft currently shown in the desktop application |
 | `preview_year_end` | Year-end pre-checks: blocking issues, warnings, net result; returns `preview_token` only when ready |
 | `preview_sie_import` | Preview a SIE4 import; returns `import_token` only when importable |
@@ -53,7 +53,7 @@ Only call write tools after the user explicitly confirms the proposed action.
    Call `list_accounts` with a query string when needed. Verify each account is active and has the expected `account_class`.
 
 3. Propose and validate.
-   Summarize the voucher to the user: date, description, and lines with account numbers and amounts. Call `preview_voucher` and show resolved account names plus any errors or warnings. Do not proceed if `ok` is false or `preview_token` is missing.
+   Summarize the voucher to the user: date, description, and lines with account numbers and amounts. Call `preview_voucher` and show resolved account names plus any errors or warnings. Do not proceed if `ok` is false.
 
 4. Place the draft for review.
    Ask the user whether to prepare the proposed voucher. Call `set_active_voucher_draft`, then tell the user to review and save it in the desktop application. Never claim it was posted or saved.

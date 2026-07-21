@@ -85,7 +85,7 @@ final class McpToolDefinitions {
   private static List<Map<String, Object>> voucherToolDefs() {
     [
         toolDef('preview_voucher',
-            'Validates a voucher proposal without posting it. Returns resolved accounts, balance check, and any errors or warnings. VAT reporting uses VAT codes configured on accounts; per-line vat_code is not accepted in Phase 3.',
+            'Validates a voucher proposal without posting it. Returns resolved accounts, balance check, and any errors or warnings. To place a proposal in the application, use set_active_voucher_draft; the user must then save it in the GUI. VAT reporting uses VAT codes configured on accounts; per-line vat_code is not accepted in Phase 3.',
             ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines'],
             [
                 company_id: intParam('Company ID'),

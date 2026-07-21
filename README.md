@@ -8,11 +8,13 @@
 Desktopbaserat bokföringsprogram för små svenska företag.
 Byggt med Groovy, Swing och en inbäddad H2-databas — inga externa tjänster behövs.
 
-Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut.
+Programmet hanterar löpande bokföring, moms, rapporter, SIE-utväxling och årsbokslut — och ger dig dessutom AI-assisterad bokföring med människan i kontroll.
+Anslut valfri MCP-kompatibel AI-klient för att analysera ditt bokföringsunderlag, få förslag och arbeta direkt mot samma valideringar och affärsregler som i desktopappen. AI:n kan förbereda en verifikation, men bara du kan spara den.
 Det är inte ett komplett affärssystem — fakturering, lönehantering, bankintegration och årsredovisningsflöden ingår inte.
 
 ## Funktioner
 
+- **AI-assisterad bokföring — med dig i kontroll** — anslut Claude Code, Codex, Kimi eller Vibe till en lokal, token-skyddad MCP-server. AI:n får kontoplan, historik och rapporter som kontext, kan validera förslag och fylla den osparade verifikationsvyn, men kan aldrig bokföra eller spara åt dig. Allt går genom samma lokala H2-databas, valideringar och affärsregler som i appen.
 - **Flerföretagsstöd** — skapa och växla mellan flera företag i samma installation. Varje företag har egen kontoplan, egna räkenskapsår, nummerserier, hashkedjor och rapportarkiv. Data isoleras fullständigt via `company_id` i datamodellen.
 - **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering. Kontoplanen är företagsspecifik — två företag kan ha samma BAS-kontonummer utan konflikt.
 - **Räkenskapsår och perioder** — skapa år, dela in i perioder och lås perioder när de är klara.
@@ -129,7 +131,9 @@ Kör alla kommandon från rotmappen.
 - Fliken `System` visar diagnostik, backup/restore och inbyggd systemdokumentation.
 - Hjälpmenyn öppnar användarmanualen från `app/src/main/resources/docs/user-manual.md`.
 
-## AI/MCP och LLM-klienter
+## AI-assisterad bokföring
+
+Alipsa Accounting kombinerar en vanlig desktopapp med en lokal AI-arbetsyta: AI-klienten får relevant bokföringskontext och kan hjälpa till med förslag, konton, moms, rättelser, SIE och bokslut, medan appens regler och ditt godkännande styr alla förändringar. Det är assistans i bokföringsflödet — inte automatisk bokföring.
 
 När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
 

@@ -57,6 +57,28 @@ class McpOperationCoordinatorTest {
     }
   }
 
+  @Test
+  void returnsAnExplicitTimeoutWithoutInterruptingTheOperation() {
+    CountingGuard guard = new CountingGuard()
+    McpOperationCoordinator coordinator = new McpOperationCoordinator(guard, 1, 1, 25)
+    CountDownLatch started = new CountDownLatch(1)
+    CountDownLatch release = new CountDownLatch(1)
+    try {
+      McpOperationTimeoutException exception = assertThrows(McpOperationTimeoutException) {
+        coordinator.execute(true) {
+          started.countDown()
+          release.await(5, TimeUnit.SECONDS)
+          'completed'
+        }
+      }
+      assertTrue(started.await(1, TimeUnit.SECONDS))
+      assertTrue(exception.message.contains('may still be completing'))
+    } finally {
+      release.countDown()
+      coordinator.close()
+    }
+  }
+
   private static void waitFor(Closure<Boolean> condition) {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
     while (!condition.call() && System.nanoTime() < deadline) {

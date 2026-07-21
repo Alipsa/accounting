@@ -66,6 +66,14 @@ final class McpDispatcher {
     errorResponse(id, -32001, 'MCP server is busy; retry the request shortly.')
   }
 
+  static Map<String, Object> operationTimeoutError(Object id) {
+    errorResponse(id, -32002, 'MCP operation timed out; a started operation may still be completing.')
+  }
+
+  static Map<String, Object> internalError(Object id) {
+    errorResponse(id, INTERNAL_ERROR, 'Internal MCP server error.')
+  }
+
   private static boolean validRequest(Map<String, Object> request) {
     request?.jsonrpc == JSONRPC_VERSION && request.method instanceof String &&
         (request.containsKey('id') || ((String) request.method).startsWith('notifications/') ||

@@ -95,7 +95,13 @@ final class LoopbackMcpServer implements Closeable {
           send(exchange, 405, [error: 'Method not allowed'])
           return
         }
-        Object parsed = jsonSlurper.parse(exchange.requestBody)
+        Object parsed
+        try {
+          parsed = jsonSlurper.parse(exchange.requestBody)
+        } catch (Exception exception) {
+          send(exchange, 400, McpDispatcher.parseError(null, 'Malformed JSON request.'))
+          return
+        }
         if (!(parsed instanceof Map)) {
           send(exchange, 400, McpDispatcher.parseError(null, 'Request must be a JSON object.'))
           return
@@ -120,8 +126,10 @@ final class LoopbackMcpServer implements Closeable {
         send(exchange, 200, response)
       } catch (RejectedExecutionException exception) {
         send(exchange, 503, McpDispatcher.busyError(requestId))
+      } catch (McpOperationTimeoutException exception) {
+        send(exchange, 504, McpDispatcher.operationTimeoutError(requestId))
       } catch (Exception exception) {
-        send(exchange, 400, McpDispatcher.parseError(null, 'Invalid MCP request.'))
+        send(exchange, 500, McpDispatcher.internalError(requestId))
       } finally {
         exchange.close()
       }
