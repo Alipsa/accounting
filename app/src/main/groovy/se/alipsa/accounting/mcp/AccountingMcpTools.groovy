@@ -21,6 +21,7 @@ import se.alipsa.accounting.service.ReportDataService
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.SieImportPreview
+import se.alipsa.accounting.service.SieImportResult
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.service.YearEndClosingPreview
@@ -34,7 +35,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Registry and implementation entrypoint for MCP tools.
@@ -52,9 +52,7 @@ class AccountingMcpTools {
   private final ReportDataService reportDataService
   private final SieImportExportService sieImportExportService
   private VoucherDraftAccess voucherDraftAccess
-  // Tokens remain consumed for this desktop session so a disconnected client cannot replay a successful write.
-  // This intentionally grows for the bounded lifetime of a desktop process, preserving replay protection.
-  private final Set<String> consumedPreviewTokens = ConcurrentHashMap.newKeySet()
+  private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
 
   AccountingMcpTools() {
     this(
@@ -409,8 +407,6 @@ class AccountingMcpTools {
     String seriesCode = optionalString(args, 'series_code', VatService.DEFAULT_TRANSFER_SERIES)
     String settlementAccount = optionalString(args, 'settlement_account', VatService.DEFAULT_SETTLEMENT_ACCOUNT)
     String token = "vat:${providedHash}"
-    boolean tokenReserved = false
-    boolean writeCompleted = false
     try {
       VatPeriod period = vatService.findPeriod(vatPeriodId)
       if (period == null) {
@@ -425,36 +421,28 @@ class AccountingMcpTools {
       if (providedHash != expectedHash) {
         return [ok: false, errors: ['report_hash stämmer inte med aktuell momsrapport — kör get_vat_report igen.']]
       }
-      if (!consumePreviewToken(token)) {
+      if (!previewTokenLedger.reserve(token)) {
         return [ok: false, errors: ['report_hash har redan använts — kör get_vat_report igen.']]
       }
-      tokenReserved = true
-      if (period.status == VatService.OPEN) {
-        vatService.reportPeriod(vatPeriodId)
+      Voucher voucher = (Voucher) previewTokenLedger.executeReservedWrite(token) {
+        if (period.status == VatService.OPEN) {
+          vatService.reportPeriod(vatPeriodId)
+        }
+        vatService.bookTransfer(vatPeriodId, seriesCode, settlementAccount)
       }
-      Voucher voucher = vatService.bookTransfer(vatPeriodId, seriesCode, settlementAccount)
-      writeCompleted = true
-      vatTransferResponse(voucher)
+      [
+          ok: true,
+          voucher_id: voucher.id,
+          voucher_number: voucher.voucherNumber,
+          fiscal_year_id: voucher.fiscalYearId,
+          accounting_date: voucher.accountingDate?.toString(),
+          description: voucher.description,
+          status: voucher.status?.name(),
+          line_count: voucher.lines?.size() ?: 0
+      ]
     } catch (Exception exception) {
-      if (tokenReserved && !writeCompleted) {
-        releasePreviewToken(token)
-      }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
     }
-  }
-
-  /** Kept overridable so post-write response failures can be regression-tested. */
-  protected Map<String, Object> vatTransferResponse(Voucher voucher) {
-    [
-        ok: true,
-        voucher_id: voucher.id,
-        voucher_number: voucher.voucherNumber,
-        fiscal_year_id: voucher.fiscalYearId,
-        accounting_date: voucher.accountingDate?.toString(),
-        description: voucher.description,
-        status: voucher.status?.name(),
-        line_count: voucher.lines?.size() ?: 0
-    ]
   }
 
   private Map<String, Object> previewVoucher(Map<String, Object> args) {
@@ -570,8 +558,6 @@ class AccountingMcpTools {
       return [ok: false, errors: ['preview_token krävs — kör preview_year_end först.']]
     }
     String token = "year-end:${providedToken}"
-    boolean tokenReserved = false
-    boolean writeCompleted = false
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
       if (expectedCompanyId != companyId) {
@@ -581,12 +567,12 @@ class AccountingMcpTools {
       if (providedToken != expectedToken) {
         return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
       }
-      if (!consumePreviewToken(token)) {
+      if (!previewTokenLedger.reserve(token)) {
         return [ok: false, errors: ['preview_token har redan använts — kör preview_year_end igen.']]
       }
-      tokenReserved = true
-      YearEndClosingResult result = closingService.closeFiscalYear(fiscalYearId, closingAccount)
-      writeCompleted = true
+      YearEndClosingResult result = (YearEndClosingResult) previewTokenLedger.executeReservedWrite(token) {
+        closingService.closeFiscalYear(fiscalYearId, closingAccount)
+      }
       [
           ok: true,
           closed_fiscal_year_id: result.closedFiscalYear?.id,
@@ -602,9 +588,6 @@ class AccountingMcpTools {
           warnings: result.warnings
       ]
     } catch (Exception exception) {
-      if (tokenReserved && !writeCompleted) {
-        releasePreviewToken(token)
-      }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
     }
   }
@@ -633,8 +616,6 @@ class AccountingMcpTools {
       return [ok: false, errors: ['import_token krävs — kör preview_sie_import med exakt samma fil och replace_existing-värde först.']]
     }
     String token = "sie:${providedToken}"
-    boolean tokenReserved = false
-    boolean writeCompleted = false
 
     try {
       SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
@@ -652,14 +633,14 @@ class AccountingMcpTools {
             ]
         ]
       }
-      if (!consumePreviewToken(token)) {
+      if (!previewTokenLedger.reserve(token)) {
         return [ok: false, errors: ['import_token har redan använts — kör preview_sie_import igen.']]
       }
-      tokenReserved = true
-      def result = replaceExisting
-          ? sieImportExportService.replaceFiscalYear(companyId, filePath)
-          : sieImportExportService.importFile(companyId, filePath)
-      writeCompleted = true
+      SieImportResult result = (SieImportResult) previewTokenLedger.executeReservedWrite(token) {
+        replaceExisting
+            ? sieImportExportService.replaceFiscalYear(companyId, filePath)
+            : sieImportExportService.importFile(companyId, filePath)
+      }
       [
           ok: true,
           duplicate: result.duplicate,
@@ -675,9 +656,6 @@ class AccountingMcpTools {
           summary: result.job?.summary
       ]
     } catch (Exception exception) {
-      if (tokenReserved && !writeCompleted) {
-        releasePreviewToken(token)
-      }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
     }
   }
@@ -784,14 +762,6 @@ class AccountingMcpTools {
         .digest(canonical.bytes)
         .encodeHex()
         .toString()
-  }
-
-  private boolean consumePreviewToken(String token) {
-    consumedPreviewTokens.add(token)
-  }
-
-  private void releasePreviewToken(String token) {
-    consumedPreviewTokens.remove(token)
   }
 
   private static Map<String, Object> voucherEditorUnavailable() {

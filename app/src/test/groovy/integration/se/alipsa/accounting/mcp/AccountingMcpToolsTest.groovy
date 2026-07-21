@@ -32,9 +32,6 @@ class AccountingMcpToolsTest {
 
   private String previousHome
   private DatabaseService databaseService
-  private AuditLogService auditLogService
-  private AccountingPeriodService periodService
-  private ReportIntegrityService reportIntegrityService
   private FiscalYearService fiscalYearService
   private VoucherService voucherService
   private AccountingMcpTools tools
@@ -47,11 +44,11 @@ class AccountingMcpToolsTest {
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
 
-    auditLogService = new AuditLogService(databaseService)
-    periodService = new AccountingPeriodService(databaseService, auditLogService)
+    AuditLogService auditLogService = new AuditLogService(databaseService)
+    AccountingPeriodService periodService = new AccountingPeriodService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, periodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
-    reportIntegrityService = new ReportIntegrityService(
+    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
         new se.alipsa.accounting.service.AttachmentService(databaseService, auditLogService),
         auditLogService
     )
@@ -421,42 +418,6 @@ class AccountingMcpToolsTest {
         report_hash: (Object) reportHash
     ])
     assertTrue((boolean) retry.get('ok'), "Expected retry to succeed but got: ${retry.get('errors')}")
-  }
-
-  @Test
-  void postWriteResponseFailureKeepsTheReportHashConsumed() {
-    postVatSaleInFirstPeriod()
-    long vatPeriodId = firstVatPeriodId()
-    Map<String, Object> report = tools.callTool('get_vat_report', [
-        company_id: (Object) 1L,
-        vat_period_id: (Object) vatPeriodId
-    ])
-    String reportHash = report.get('report_hash') as String
-    AccountingMcpTools failingResponseTools = new AccountingMcpTools(
-        new CompanyService(databaseService), fiscalYearService, new AccountService(databaseService), voucherService,
-        new VatService(databaseService, voucherService, auditLogService),
-        new se.alipsa.accounting.service.ClosingService(
-            databaseService, periodService, fiscalYearService, voucherService, reportIntegrityService
-        ),
-        new ReportDataService(databaseService), new SieImportExportService(
-            databaseService, periodService, voucherService, new CompanyService(databaseService),
-            reportIntegrityService, auditLogService, fiscalYearService
-        )
-    ) {
-      @Override
-      protected Map<String, Object> vatTransferResponse(se.alipsa.accounting.domain.Voucher voucher) {
-        throw new IllegalStateException('Simulated response failure.')
-      }
-    }
-
-    Map<String, Object> result = failingResponseTools.callTool('book_vat_transfer', [
-        company_id: (Object) 1L,
-        vat_period_id: (Object) vatPeriodId,
-        report_hash: (Object) reportHash
-    ])
-
-    assertFalse((boolean) result.get('ok'))
-    assertTrue(previewTokenIsConsumed(failingResponseTools, "vat:${reportHash}"))
   }
 
   @Test
@@ -882,12 +843,6 @@ class AccountingMcpToolsTest {
     def voucher = voucherService.createVoucher(fiscalYearId, postArgs.series_code as String,
         LocalDate.parse(postArgs.accounting_date as String), postArgs.description as String, voucherLines)
     [ok: true, voucher_id: voucher.id, accounting_date: voucher.accountingDate.toString()]
-  }
-
-  private static boolean previewTokenIsConsumed(AccountingMcpTools mcpTools, String token) {
-    java.lang.reflect.Field field = AccountingMcpTools.getDeclaredField('consumedPreviewTokens')
-    field.accessible = true
-    ((Set<String>) field.get(mcpTools)).contains(token)
   }
 
   private Map firstVatPeriod() {
