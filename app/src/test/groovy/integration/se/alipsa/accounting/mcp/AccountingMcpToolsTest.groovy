@@ -556,6 +556,29 @@ class AccountingMcpToolsTest {
     }
   }
 
+  @Test
+  void voucherDraftToolsRouteThroughVoucherDraftAccess() {
+    Map<String, Object> existingDraft = [description: 'Existing draft', lines: []]
+    Map<String, Object>[] appliedDraft = new Map[1]
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override
+      Map<String, Object> getVoucherDraft() { existingDraft }
+
+      @Override
+      void setVoucherDraft(Map<String, Object> draft) { appliedDraft[0] = draft }
+    })
+
+    Map<String, Object> readResult = tools.callTool('get_active_voucher_draft', [:])
+    assertTrue((boolean) readResult.get('ok'))
+    assertEquals(existingDraft, readResult.get('draft'))
+
+    Map<String, Object> replacement = [accounting_date: '2026-03-01', description: 'Prepared by AI', lines: []]
+    Map<String, Object> writeResult = tools.callTool('set_active_voucher_draft', replacement)
+    assertTrue((boolean) writeResult.get('ok'))
+    assertTrue((boolean) writeResult.get('awaiting_user_save'))
+    assertEquals(replacement, appliedDraft[0])
+  }
+
 
   @Test
   void createCorrectionVoucherCreatesReversingVoucher() {
