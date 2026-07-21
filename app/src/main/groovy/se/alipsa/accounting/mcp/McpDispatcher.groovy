@@ -66,8 +66,10 @@ final class McpDispatcher {
     errorResponse(id, -32001, 'MCP server is busy; retry the request shortly.')
   }
 
-  static Map<String, Object> operationTimeoutError(Object id) {
-    errorResponse(id, -32002, 'MCP operation timed out; a started operation may still be completing.')
+  static Map<String, Object> operationTimeoutError(Object id, boolean safeToRetry) {
+    errorResponse(id, -32002, safeToRetry
+        ? 'MCP operation timed out before it started; it is safe to retry.'
+        : 'MCP operation timed out after it started; it may still be completing.')
   }
 
   static Map<String, Object> internalError(Object id) {

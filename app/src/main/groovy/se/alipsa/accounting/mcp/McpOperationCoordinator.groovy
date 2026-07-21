@@ -51,7 +51,7 @@ final class McpOperationCoordinator implements Closeable {
     long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(operationTimeoutMillis)
     Future<Object> result = (write ? writeExecutor : readExecutor).submit {
       if (System.nanoTime() >= deadlineNanos) {
-        throw new McpOperationTimeoutException('MCP operation timed out before it could start.')
+        throw new McpOperationTimeoutException('MCP operation timed out before it could start.', true)
       }
       if (write) {
         uiGuard.beginWrite()
@@ -68,7 +68,7 @@ final class McpOperationCoordinator implements Closeable {
       result.get(operationTimeoutMillis, TimeUnit.MILLISECONDS)
     } catch (TimeoutException exception) {
       // Do not interrupt a started database operation. A queued operation observes the deadline below.
-      throw new McpOperationTimeoutException('MCP operation timed out; a started operation may still be completing.')
+      throw new McpOperationTimeoutException('MCP operation timed out; a started operation may still be completing.', false)
     } catch (ExecutionException exception) {
       if (exception.cause instanceof McpOperationTimeoutException) {
         throw (McpOperationTimeoutException) exception.cause

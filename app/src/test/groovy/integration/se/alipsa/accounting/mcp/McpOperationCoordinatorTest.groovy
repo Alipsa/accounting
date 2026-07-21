@@ -73,6 +73,7 @@ class McpOperationCoordinatorTest {
       }
       assertTrue(started.await(1, TimeUnit.SECONDS))
       assertTrue(exception.message.contains('may still be completing'))
+      assertFalse(exception.safeToRetry)
     } finally {
       release.countDown()
       coordinator.close()

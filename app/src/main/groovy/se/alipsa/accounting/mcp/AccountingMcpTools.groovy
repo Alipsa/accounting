@@ -410,6 +410,7 @@ class AccountingMcpTools {
     String settlementAccount = optionalString(args, 'settlement_account', VatService.DEFAULT_SETTLEMENT_ACCOUNT)
     String token = "vat:${providedHash}"
     boolean tokenReserved = false
+    boolean writeCompleted = false
     try {
       VatPeriod period = vatService.findPeriod(vatPeriodId)
       if (period == null) {
@@ -432,6 +433,7 @@ class AccountingMcpTools {
         vatService.reportPeriod(vatPeriodId)
       }
       Voucher voucher = vatService.bookTransfer(vatPeriodId, seriesCode, settlementAccount)
+      writeCompleted = true
       [
           ok: true,
           voucher_id: voucher.id,
@@ -443,7 +445,7 @@ class AccountingMcpTools {
           line_count: voucher.lines?.size() ?: 0
       ]
     } catch (Exception exception) {
-      if (tokenReserved) {
+      if (tokenReserved && !writeCompleted) {
         releasePreviewToken(token)
       }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
@@ -564,6 +566,7 @@ class AccountingMcpTools {
     }
     String token = "year-end:${providedToken}"
     boolean tokenReserved = false
+    boolean writeCompleted = false
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
       if (expectedCompanyId != companyId) {
@@ -578,6 +581,7 @@ class AccountingMcpTools {
       }
       tokenReserved = true
       YearEndClosingResult result = closingService.closeFiscalYear(fiscalYearId, closingAccount)
+      writeCompleted = true
       [
           ok: true,
           closed_fiscal_year_id: result.closedFiscalYear?.id,
@@ -593,7 +597,7 @@ class AccountingMcpTools {
           warnings: result.warnings
       ]
     } catch (Exception exception) {
-      if (tokenReserved) {
+      if (tokenReserved && !writeCompleted) {
         releasePreviewToken(token)
       }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
@@ -625,6 +629,7 @@ class AccountingMcpTools {
     }
     String token = "sie:${providedToken}"
     boolean tokenReserved = false
+    boolean writeCompleted = false
 
     try {
       SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
@@ -649,6 +654,7 @@ class AccountingMcpTools {
       def result = replaceExisting
           ? sieImportExportService.replaceFiscalYear(companyId, filePath)
           : sieImportExportService.importFile(companyId, filePath)
+      writeCompleted = true
       [
           ok: true,
           duplicate: result.duplicate,
@@ -664,7 +670,7 @@ class AccountingMcpTools {
           summary: result.job?.summary
       ]
     } catch (Exception exception) {
-      if (tokenReserved) {
+      if (tokenReserved && !writeCompleted) {
         releasePreviewToken(token)
       }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]

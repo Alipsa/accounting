@@ -85,6 +85,14 @@ class McpDispatcherTest {
   }
 
   @Test
+  void timeoutErrorsDistinguishRetrySafety() {
+    Map<String, Object> safeError = (Map<String, Object>) McpDispatcher.operationTimeoutError(1, true).get('error')
+    Map<String, Object> uncertainError = (Map<String, Object>) McpDispatcher.operationTimeoutError(1, false).get('error')
+    assertTrue((safeError.get('message') as String).contains('safe to retry'))
+    assertTrue((uncertainError.get('message') as String).contains('may still be completing'))
+  }
+
+  @Test
   void toolsListReturnsRegisteredTools() {
     McpDispatcher dispatcher = new McpDispatcher(new FakeTools())
 

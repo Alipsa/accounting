@@ -127,7 +127,7 @@ final class LoopbackMcpServer implements Closeable {
       } catch (RejectedExecutionException exception) {
         send(exchange, 503, McpDispatcher.busyError(requestId))
       } catch (McpOperationTimeoutException exception) {
-        send(exchange, 504, McpDispatcher.operationTimeoutError(requestId))
+        send(exchange, 504, McpDispatcher.operationTimeoutError(requestId, exception.safeToRetry))
       } catch (Exception exception) {
         send(exchange, 500, McpDispatcher.internalError(requestId))
       } finally {
