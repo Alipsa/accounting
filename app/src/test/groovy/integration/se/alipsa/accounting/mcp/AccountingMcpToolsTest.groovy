@@ -565,7 +565,12 @@ class AccountingMcpToolsTest {
       Map<String, Object> getVoucherDraft() { existingDraft }
 
       @Override
-      void setVoucherDraft(Map<String, Object> draft) { appliedDraft[0] = draft }
+      void setVoucherDraft(Map<String, Object> draft) {
+        if (draft.get('description') == 'invalid') {
+          throw new IllegalArgumentException('accounting_date must be an ISO date (YYYY-MM-DD).')
+        }
+        appliedDraft[0] = draft
+      }
     })
 
     Map<String, Object> readResult = tools.callTool('get_active_voucher_draft', [:])
@@ -577,6 +582,9 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) writeResult.get('ok'))
     assertTrue((boolean) writeResult.get('awaiting_user_save'))
     assertEquals(replacement, appliedDraft[0])
+    assertThrows(IllegalArgumentException) {
+      tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []])
+    }
   }
 
 
