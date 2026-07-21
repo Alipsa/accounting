@@ -52,6 +52,7 @@ class AccountingMcpTools {
   private final ReportDataService reportDataService
   private final SieImportExportService sieImportExportService
   private VoucherDraftAccess voucherDraftAccess
+  // Tokens remain consumed for this desktop session so a disconnected client cannot replay a write.
   private final Set<String> consumedPreviewTokens = ConcurrentHashMap.newKeySet()
 
   AccountingMcpTools() {
@@ -167,7 +168,11 @@ class AccountingMcpTools {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
     }
-    [ok: true, saved: false, draft: voucherDraftAccess.getVoucherDraft()]
+    Map<String, Object> draft = voucherDraftAccess.getVoucherDraft()
+    if (draft == null) {
+      return [ok: false, error: 'No unsaved voucher draft is active.']
+    }
+    [ok: true, saved: false, draft: draft]
   }
 
   private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {

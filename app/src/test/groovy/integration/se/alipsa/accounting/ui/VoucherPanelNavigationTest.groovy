@@ -322,6 +322,21 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void savedVoucherIsNotExposedAsAnUnsavedDraft() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', 'Rad', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 100.00G)]
+    )
+    panel = buildPanel()
+    JButton previous = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
+    }
+    onEdt { previous.doClick() }
+    assertEquals(null, panel.getVoucherDraft())
+  }
+
+  @Test
   void printableVoucherHtmlContainsHeaderLinesAndTotals() {
     Voucher voucher = voucherService.createVoucher(
         fiscalYear.id,

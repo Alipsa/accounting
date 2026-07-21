@@ -719,6 +719,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Vouch
   Map<String, Object> getVoucherDraft() {
     Map<String, Object>[] holder = new Map[1]
     runOnEdt {
+      if (currentVoucher != null) {
+        return
+      }
       holder[0] = [
           accounting_date: datePicker.date?.toString(),
           description: descriptionField.text ?: '',

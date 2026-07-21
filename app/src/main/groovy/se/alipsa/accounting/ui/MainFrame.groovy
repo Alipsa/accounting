@@ -228,6 +228,7 @@ final class MainFrame implements PropertyChangeListener {
   private TitledBorder mcpSectionBorder
   private JLabel mcpEndpointValueLabel
   private JTextField mcpTokenField
+  private JLabel mcpStatusLabel
   private JTabbedPane tabbedPane
   private VoucherPanel voucherPanel
   private LoopbackMcpServer mcpServer
@@ -432,9 +433,11 @@ final class MainFrame implements PropertyChangeListener {
       tools.setVoucherDraftAccess(voucherPanel)
       mcpServer = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools), mcpUiGuard())
       mcpServer.start()
+      mcpStatusLabel.text = I18n.instance.getString('settings.mcp.status.running')
       log.info("Local MCP server available at ${LoopbackMcpServer.ENDPOINT}")
     } catch (Exception exception) {
       log.warning("Could not start local MCP server: ${exception.message}")
+      mcpStatusLabel.text = I18n.instance.format('settings.mcp.status.unavailable', exception.message ?: '')
     }
   }
 
@@ -602,8 +605,14 @@ final class MainFrame implements PropertyChangeListener {
     }
     tokenRow.add(regenerate)
 
+    JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    statusRow.add(new JLabel(I18n.instance.getString('settings.label.mcpStatus')))
+    mcpStatusLabel = new JLabel(I18n.instance.getString('settings.mcp.status.starting'))
+    statusRow.add(mcpStatusLabel)
+
     section.add(endpointRow)
     section.add(tokenRow)
+    section.add(statusRow)
     section
   }
 

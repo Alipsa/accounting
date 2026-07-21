@@ -29,6 +29,7 @@ final class LoopbackMcpServer implements Closeable {
   private final UserPreferencesService preferences
   private final McpDispatcher dispatcher
   private final JsonSlurper jsonSlurper = new JsonSlurper()
+  // Sessions are intentionally process-local and are released by DELETE or application shutdown.
   private final Set<String> sessions = ConcurrentHashMap.newKeySet()
   private final SecureRandom random = new SecureRandom()
   private final ExecutorService executor = Executors.newFixedThreadPool(8)
