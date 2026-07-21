@@ -769,7 +769,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Vouch
     if (SwingUtilities.isEventDispatchThread()) {
       action.call()
     } else {
-      SwingUtilities.invokeAndWait(action as Runnable)
+      try {
+        SwingUtilities.invokeAndWait(action as Runnable)
+      } catch (java.lang.reflect.InvocationTargetException exception) {
+        Throwable cause = exception.cause
+        if (cause instanceof IllegalArgumentException) {
+          throw (IllegalArgumentException) cause
+        }
+        throw new IllegalStateException(cause?.message ?: exception.message, cause)
+      }
     }
   }
 

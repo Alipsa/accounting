@@ -8,6 +8,7 @@ import groovy.json.JsonOutput
 final class McpDispatcher {
 
   static final String PROTOCOL_VERSION = '2025-11-25'
+  static final String COMPATIBLE_PROTOCOL_VERSION = '2025-06-18'
   private static final String JSONRPC_VERSION = '2.0'
   private static final int PARSE_ERROR = -32700
   private static final int INVALID_REQUEST = -32600
@@ -34,7 +35,7 @@ final class McpDispatcher {
     try {
       switch (method) {
         case 'initialize':
-          return successResponse(request.id, initializeResult())
+          return successResponse(request.id, initializeResult(paramsAsMap(request.params)))
         case 'tools/list':
           return successResponse(request.id, toolsListResult())
         case 'tools/call':
@@ -67,9 +68,14 @@ final class McpDispatcher {
             request.method == '$/cancelRequest')
   }
 
-  private static Map<String, Object> initializeResult() {
+  private static Map<String, Object> initializeResult(Map<String, Object> params) {
+    String requestedVersion = requiredString(params, 'protocolVersion')
+    if (!(requestedVersion in [PROTOCOL_VERSION, COMPATIBLE_PROTOCOL_VERSION])) {
+      throw new IllegalArgumentException(
+          "Unsupported MCP protocol version ${requestedVersion}; supported versions are ${PROTOCOL_VERSION} and ${COMPATIBLE_PROTOCOL_VERSION}.")
+    }
     [
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: requestedVersion,
         capabilities   : [
             tools: [:],
             resources: [:],

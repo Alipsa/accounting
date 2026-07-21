@@ -9,10 +9,12 @@ import com.sun.net.httpserver.HttpServer
 
 import se.alipsa.accounting.service.UserPreferencesService
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Local, token-protected Streamable HTTP endpoint for MCP clients. */
 final class LoopbackMcpServer implements Closeable {
@@ -20,6 +22,8 @@ final class LoopbackMcpServer implements Closeable {
   static final int PORT = 48652
   static final String PATH = '/mcp'
   static final String ENDPOINT = "http://127.0.0.1:${PORT}${PATH}"
+  private static final String LOOPBACK_HOST = "127.0.0.1:${PORT}"
+  private static final String LOCALHOST_HOST = "localhost:${PORT}"
 
   private final UserPreferencesService preferences
   private final McpDispatcher dispatcher
@@ -27,11 +31,16 @@ final class LoopbackMcpServer implements Closeable {
   private final Set<String> sessions = ConcurrentHashMap.newKeySet()
   private final SecureRandom random = new SecureRandom()
   private final ExecutorService executor = Executors.newFixedThreadPool(8)
+  private final McpOperationCoordinator operationCoordinator
   private HttpServer server
 
-  LoopbackMcpServer(UserPreferencesService preferences, McpDispatcher dispatcher = new McpDispatcher()) {
+  LoopbackMcpServer(UserPreferencesService preferences, McpDispatcher dispatcher = new McpDispatcher(), McpUiGuard uiGuard = null) {
     this.preferences = preferences
     this.dispatcher = dispatcher
+    this.operationCoordinator = new McpOperationCoordinator(uiGuard ?: new McpUiGuard() {
+      @Override void beginWrite() { }
+      @Override void endWrite() { }
+    })
   }
 
   synchronized void start() {
@@ -53,11 +62,13 @@ final class LoopbackMcpServer implements Closeable {
   @Override
   synchronized void close() {
     if (server != null) {
-      server.stop(0)
+      server.stop(5)
       server = null
     }
     sessions.clear()
-    executor.shutdownNow()
+    executor.shutdown()
+    executor.awaitTermination(30, TimeUnit.SECONDS)
+    operationCoordinator.close()
   }
 
   private final class McpHandler implements HttpHandler {
@@ -66,6 +77,15 @@ final class LoopbackMcpServer implements Closeable {
       try {
         if (!authorized(exchange)) {
           send(exchange, 401, [error: 'Unauthorized'])
+          return
+        }
+        if (exchange.requestMethod == 'DELETE') {
+          String sessionId = exchange.requestHeaders.getFirst('Mcp-Session-Id')
+          if (sessionId == null || !sessions.remove(sessionId)) {
+            send(exchange, 400, McpDispatcher.parseError(null, 'A valid Mcp-Session-Id is required.'))
+          } else {
+            exchange.sendResponseHeaders(204, -1)
+          }
           return
         }
         if (exchange.requestMethod == 'GET') {
@@ -87,7 +107,7 @@ final class LoopbackMcpServer implements Closeable {
           send(exchange, 400, McpDispatcher.parseError(request.id, 'A valid Mcp-Session-Id is required.'))
           return
         }
-        Object response = dispatcher.dispatch(request)
+        Object response = operationCoordinator.dispatch(dispatcher, request)
         if (initialize && response instanceof Map && ((Map) response).get('error') == null) {
           String sessionId = newSessionId()
           sessions.add(sessionId)
@@ -111,9 +131,11 @@ final class LoopbackMcpServer implements Closeable {
     String authorization = exchange.requestHeaders.getFirst('Authorization')
     String host = exchange.requestHeaders.getFirst('Host')
     String origin = exchange.requestHeaders.getFirst('Origin')
-    boolean validHost = host == '127.0.0.1:48652' || host == 'localhost:48652'
-    boolean validOrigin = origin == null || origin == 'http://127.0.0.1:48652' || origin == 'http://localhost:48652'
-    validHost && validOrigin && authorization == "Bearer ${expected}"
+    boolean validHost = host == LOOPBACK_HOST || host == LOCALHOST_HOST
+    boolean validOrigin = origin == null || origin == "http://${LOOPBACK_HOST}" || origin == "http://${LOCALHOST_HOST}"
+    byte[] expectedHeader = "Bearer ${expected}".getBytes('UTF-8')
+    byte[] suppliedHeader = authorization == null ? new byte[0] : authorization.getBytes('UTF-8')
+    validHost && validOrigin && MessageDigest.isEqual(expectedHeader, suppliedHeader)
   }
 
   private String newSessionId() {

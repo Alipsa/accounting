@@ -14,6 +14,7 @@ import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.mcp.AccountingMcpTools
 import se.alipsa.accounting.mcp.LoopbackMcpServer
 import se.alipsa.accounting.mcp.McpDispatcher
+import se.alipsa.accounting.mcp.McpUiGuard
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
@@ -229,6 +230,7 @@ final class MainFrame implements PropertyChangeListener {
   private JTabbedPane tabbedPane
   private VoucherPanel voucherPanel
   private LoopbackMcpServer mcpServer
+  private JPanel mcpGlassPane
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
   private final JFrame frame
@@ -322,6 +324,7 @@ final class MainFrame implements PropertyChangeListener {
     companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
     applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
     relatedConfigurationSectionBorder.title = I18n.instance.getString('settings.section.relatedConfiguration')
+    mcpSectionBorder.title = I18n.instance.getString('settings.section.mcp')
     companyProfileEditButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
     vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
@@ -408,6 +411,10 @@ final class MainFrame implements PropertyChangeListener {
       }
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
+    mcpGlassPane = new JPanel()
+    mcpGlassPane.add(new JLabel('AI-assistenten arbetar …'))
+    f.glassPane = mcpGlassPane
+    mcpGlassPane.visible = false
     f.addWindowListener(new WindowAdapter() {
       @Override
       void windowClosing(WindowEvent event) {
@@ -421,11 +428,25 @@ final class MainFrame implements PropertyChangeListener {
     try {
       AccountingMcpTools tools = new AccountingMcpTools()
       tools.setVoucherDraftAccess(voucherPanel)
-      mcpServer = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools))
+      mcpServer = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools), mcpUiGuard())
       mcpServer.start()
       log.info("Local MCP server available at ${LoopbackMcpServer.ENDPOINT}")
     } catch (Exception exception) {
       log.warning("Could not start local MCP server: ${exception.message}")
+    }
+  }
+
+  private McpUiGuard mcpUiGuard() {
+    new McpUiGuard() {
+      @Override
+      void beginWrite() {
+        SwingUtilities.invokeAndWait { mcpGlassPane.visible = true }
+      }
+
+      @Override
+      void endWrite() {
+        SwingUtilities.invokeAndWait { mcpGlassPane.visible = false }
+      }
     }
   }
 
@@ -560,20 +581,20 @@ final class MainFrame implements PropertyChangeListener {
   private JPanel buildMcpSection() {
     JPanel section = new JPanel()
     section.layout = new BoxLayout(section, BoxLayout.Y_AXIS)
-    mcpSectionBorder = BorderFactory.createTitledBorder('AI / MCP')
+    mcpSectionBorder = BorderFactory.createTitledBorder(I18n.instance.getString('settings.section.mcp'))
     section.border = mcpSectionBorder
 
     JPanel endpointRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    endpointRow.add(new JLabel('Endpoint:'))
+    endpointRow.add(new JLabel(I18n.instance.getString('settings.label.mcpEndpoint')))
     mcpEndpointValueLabel = new JLabel(LoopbackMcpServer.ENDPOINT)
     endpointRow.add(mcpEndpointValueLabel)
 
     JPanel tokenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    tokenRow.add(new JLabel('Bearer token:'))
+    tokenRow.add(new JLabel(I18n.instance.getString('settings.label.mcpToken')))
     mcpTokenField = new JTextField(userPreferencesService.ensureMcpToken(), 30)
     mcpTokenField.editable = false
     tokenRow.add(mcpTokenField)
-    JButton regenerate = new JButton('Regenerate token')
+    JButton regenerate = new JButton(I18n.instance.getString('settings.button.regenerateMcpToken'))
     regenerate.addActionListener {
       mcpTokenField.text = userPreferencesService.regenerateMcpToken()
     }

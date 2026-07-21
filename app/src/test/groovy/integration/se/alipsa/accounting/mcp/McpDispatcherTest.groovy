@@ -19,7 +19,7 @@ class McpDispatcherTest {
         id     : 1,
         method : 'initialize',
         params : [
-            protocolVersion: '2024-11-05',
+            protocolVersion: McpDispatcher.PROTOCOL_VERSION,
             capabilities   : [:],
             clientInfo     : [
                 name   : 'test-client',
@@ -61,6 +61,26 @@ class McpDispatcherTest {
 
     Map<String, Object> result = (Map<String, Object>) response.result
     assertFalse(((List) result.resources).isEmpty())
+    assertEquals(7, response.id)
+  }
+
+  @Test
+  void initializeNegotiatesCompatibleProtocolVersion() {
+    McpDispatcher dispatcher = new McpDispatcher()
+    Map<String, Object> response = dispatchToMap(dispatcher, [
+        jsonrpc: JSONRPC_VERSION,
+        id: 3,
+        method: 'initialize',
+        params: [protocolVersion: McpDispatcher.COMPATIBLE_PROTOCOL_VERSION]
+    ])
+    assertEquals(McpDispatcher.COMPATIBLE_PROTOCOL_VERSION, ((Map) response.result).get('protocolVersion'))
+  }
+
+  @Test
+  void unknownMethodReturnsJsonRpcMethodNotFound() {
+    McpDispatcher dispatcher = new McpDispatcher()
+    Map<String, Object> response = dispatchToMap(dispatcher, [jsonrpc: JSONRPC_VERSION, id: 7, method: 'unknown/method'])
+    assertEquals(-32601, ((Map) response.error).get('code'))
     assertEquals(7, response.id)
   }
 

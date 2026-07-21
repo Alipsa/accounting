@@ -557,6 +557,23 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void voucherDraftToolsReturnDraftAndPropagateValidationErrors() {
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override
+      Map<String, Object> getVoucherDraft() { [description: 'Draft', lines: []] }
+
+      @Override
+      void setVoucherDraft(Map<String, Object> draft) {
+        if (!(draft.lines instanceof List)) {
+          throw new IllegalArgumentException('lines must be an array.')
+        }
+      }
+    })
+    assertEquals('Draft', ((Map) tools.callTool('get_active_voucher_draft', [:]).draft).description)
+    assertThrows(IllegalArgumentException) { tools.callTool('set_active_voucher_draft', [lines: 'wrong']) }
+  }
+
+  @Test
   void createCorrectionVoucherCreatesReversingVoucher() {
     Map<String, Object> posted = previewAndPost(balancedVoucherArgs('Original att korrigera', 300.00G))
     assertTrue((boolean) posted.get('ok'))
