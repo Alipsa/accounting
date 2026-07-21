@@ -170,7 +170,7 @@ class AccountingMcpTools {
     }
     Map<String, Object> draft = voucherDraftAccess.getVoucherDraft()
     if (draft == null) {
-      return [ok: false, error: 'No unsaved voucher draft is active.']
+      return [ok: false, errors: ['No unsaved voucher draft is active.']]
     }
     [ok: true, saved: false, draft: draft]
   }
@@ -762,7 +762,7 @@ class AccountingMcpTools {
   }
 
   private static Map<String, Object> voucherEditorUnavailable() {
-    [ok: false, error: 'Voucher editor is not available.']
+    [ok: false, errors: ['Voucher editor is not available.']]
   }
 
   private static String voucherPreviewToken(

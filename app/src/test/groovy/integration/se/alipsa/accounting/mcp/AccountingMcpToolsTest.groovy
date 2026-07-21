@@ -585,6 +585,14 @@ class AccountingMcpToolsTest {
     assertThrows(IllegalArgumentException) {
       tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []])
     }
+    boolean noDraft = true
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override Map<String, Object> getVoucherDraft() { noDraft ? null : [:] }
+      @Override void setVoucherDraft(Map<String, Object> draft) { }
+    })
+    Map<String, Object> missingDraft = tools.callTool('get_active_voucher_draft', [:])
+    assertFalse((boolean) missingDraft.get('ok'))
+    assertEquals(['No unsaved voucher draft is active.'], missingDraft.get('errors'))
   }
 
 
