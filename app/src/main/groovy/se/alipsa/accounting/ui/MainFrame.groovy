@@ -381,7 +381,7 @@ final class MainFrame implements PropertyChangeListener {
     JFrame f = swing.frame(
         title: I18n.instance.getString('mainFrame.title'),
         size: size,
-        defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
+        defaultCloseOperation: JFrame.DO_NOTHING_ON_CLOSE,
         locationByPlatform: true,
         show: false
     ) {
@@ -418,7 +418,7 @@ final class MainFrame implements PropertyChangeListener {
     f.addWindowListener(new WindowAdapter() {
       @Override
       void windowClosing(WindowEvent event) {
-        mcpServer?.close()
+        shutdownAndDispose()
       }
     })
     f
@@ -991,8 +991,17 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void exitRequested() {
-    LoggingConfigurer.shutdown()
-    frame.dispose()
+    shutdownAndDispose()
+  }
+
+  private void shutdownAndDispose() {
+    frame.enabled = false
+    Thread shutdownThread = new Thread({
+      mcpServer?.close()
+      LoggingConfigurer.shutdown()
+      SwingUtilities.invokeLater { frame.dispose() }
+    } as Runnable, 'mcp-shutdown')
+    shutdownThread.start()
   }
 
   private void showAboutDialog() {

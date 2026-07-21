@@ -11,7 +11,7 @@ final class McpOperationCoordinator implements Closeable {
 
   private static final Set<String> WRITE_TOOLS = [
       'set_active_voucher_draft', 'create_correction_voucher', 'book_vat_transfer',
-      'close_fiscal_year', 'import_sie', 'export_sie'
+      'close_fiscal_year', 'import_sie'
   ] as Set<String>
   private final McpUiGuard uiGuard
   private final ExecutorService writeExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,

@@ -62,6 +62,10 @@ final class McpDispatcher {
     errorResponse(id, PARSE_ERROR, message)
   }
 
+  static Map<String, Object> busyError(Object id) {
+    errorResponse(id, -32001, 'MCP server is busy; retry the request shortly.')
+  }
+
   private static boolean validRequest(Map<String, Object> request) {
     request?.jsonrpc == JSONRPC_VERSION && request.method instanceof String &&
         (request.containsKey('id') || ((String) request.method).startsWith('notifications/') ||

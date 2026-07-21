@@ -45,6 +45,27 @@ class LoopbackMcpServerTest {
     assertEquals(McpDispatcher.PROTOCOL_VERSION, ((Map) response.get('result')).get('protocolVersion'))
   }
 
+  @Test
+  void rejectsBadOriginsAndTerminatesSessions() {
+    server = new LoopbackMcpServer(preferences)
+    server.start()
+    HttpClient client = HttpClient.newHttpClient()
+    HttpResponse<String> badOrigin = client.send(requestBuilder('{}').header('Origin', 'https://example.invalid').build(),
+        HttpResponse.BodyHandlers.ofString())
+    assertEquals(401, badOrigin.statusCode())
+    String initialize = JsonOutput.toJson([jsonrpc: '2.0', id: 1, method: 'initialize',
+        params: [protocolVersion: McpDispatcher.PROTOCOL_VERSION]])
+    HttpResponse<String> response = client.send(requestBuilder(initialize).build(), HttpResponse.BodyHandlers.ofString())
+    String sessionId = response.headers().firstValue('Mcp-Session-Id').orElseThrow()
+    HttpResponse<String> deleted = client.send(HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+        .header('Authorization', "Bearer ${preferences.ensureMcpToken()}")
+        .header('Mcp-Session-Id', sessionId).DELETE().build(), HttpResponse.BodyHandlers.ofString())
+    assertEquals(204, deleted.statusCode())
+    HttpResponse<String> get = client.send(HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+        .header('Authorization', "Bearer ${preferences.ensureMcpToken()}").GET().build(), HttpResponse.BodyHandlers.ofString())
+    assertEquals(405, get.statusCode())
+  }
+
   private HttpRequest.Builder requestBuilder(String body) {
     HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
         .header('Authorization', "Bearer ${preferences.ensureMcpToken()}")

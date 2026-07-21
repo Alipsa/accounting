@@ -14,6 +14,7 @@ import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 /** Local, token-protected Streamable HTTP endpoint for MCP clients. */
@@ -74,6 +75,7 @@ final class LoopbackMcpServer implements Closeable {
   private final class McpHandler implements HttpHandler {
     @Override
     void handle(HttpExchange exchange) throws IOException {
+      Object requestId = null
       try {
         if (!authorized(exchange)) {
           send(exchange, 401, [error: 'Unauthorized'])
@@ -102,6 +104,7 @@ final class LoopbackMcpServer implements Closeable {
           return
         }
         Map<String, Object> request = (Map<String, Object>) parsed
+        requestId = request.get('id')
         boolean initialize = request.method == 'initialize'
         if (!initialize && !sessions.contains(exchange.requestHeaders.getFirst('Mcp-Session-Id'))) {
           send(exchange, 400, McpDispatcher.parseError(request.id, 'A valid Mcp-Session-Id is required.'))
@@ -118,6 +121,8 @@ final class LoopbackMcpServer implements Closeable {
           return
         }
         send(exchange, 200, response)
+      } catch (RejectedExecutionException exception) {
+        send(exchange, 503, McpDispatcher.busyError(requestId))
       } catch (Exception exception) {
         send(exchange, 400, McpDispatcher.parseError(null, 'Invalid MCP request.'))
       } finally {
@@ -150,4 +155,5 @@ final class LoopbackMcpServer implements Closeable {
     exchange.sendResponseHeaders(status, bytes.length)
     exchange.responseBody.write(bytes)
   }
+
 }
