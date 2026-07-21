@@ -434,22 +434,27 @@ class AccountingMcpTools {
       }
       Voucher voucher = vatService.bookTransfer(vatPeriodId, seriesCode, settlementAccount)
       writeCompleted = true
-      [
-          ok: true,
-          voucher_id: voucher.id,
-          voucher_number: voucher.voucherNumber,
-          fiscal_year_id: voucher.fiscalYearId,
-          accounting_date: voucher.accountingDate?.toString(),
-          description: voucher.description,
-          status: voucher.status?.name(),
-          line_count: voucher.lines?.size() ?: 0
-      ]
+      vatTransferResponse(voucher)
     } catch (Exception exception) {
       if (tokenReserved && !writeCompleted) {
         releasePreviewToken(token)
       }
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
     }
+  }
+
+  /** Kept overridable so post-write response failures can be regression-tested. */
+  protected Map<String, Object> vatTransferResponse(Voucher voucher) {
+    [
+        ok: true,
+        voucher_id: voucher.id,
+        voucher_number: voucher.voucherNumber,
+        fiscal_year_id: voucher.fiscalYearId,
+        accounting_date: voucher.accountingDate?.toString(),
+        description: voucher.description,
+        status: voucher.status?.name(),
+        line_count: voucher.lines?.size() ?: 0
+    ]
   }
 
   private Map<String, Object> previewVoucher(Map<String, Object> args) {
