@@ -65,6 +65,7 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -231,6 +232,7 @@ final class MainFrame implements PropertyChangeListener {
   private VoucherPanel voucherPanel
   private LoopbackMcpServer mcpServer
   private JPanel mcpGlassPane
+  private final AtomicBoolean shuttingDown = new AtomicBoolean(false)
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
   private final JFrame frame
@@ -995,6 +997,9 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void shutdownAndDispose() {
+    if (!shuttingDown.compareAndSet(false, true)) {
+      return
+    }
     frame.enabled = false
     Thread shutdownThread = new Thread({
       mcpServer?.close()

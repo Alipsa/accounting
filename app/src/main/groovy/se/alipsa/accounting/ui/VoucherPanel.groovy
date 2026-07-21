@@ -748,7 +748,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Vouch
         lines << new VoucherLine(null, null, index, null, line.account_number as String, line.account_name as String,
             line.description as String, decimal(line.debit), decimal(line.credit))
       }
-      LocalDate date = LocalDate.parse(draft.get('accounting_date') as String)
+      LocalDate date
+      try {
+        date = LocalDate.parse(draft.get('accounting_date') as String)
+      } catch (Exception exception) {
+        throw new IllegalArgumentException('accounting_date must be an ISO date (YYYY-MM-DD).', exception)
+      }
       showBlankVoucher()
       datePicker.date = date
       descriptionField.text = draft.get('description') as String ?: ''

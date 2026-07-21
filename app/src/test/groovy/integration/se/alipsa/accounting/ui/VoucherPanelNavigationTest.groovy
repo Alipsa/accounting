@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
@@ -114,6 +115,18 @@ final class VoucherPanelNavigationTest {
     }
 
     assertNotNull(saveButton.icon)
+  }
+
+  @Test
+  void draftValidationFromWorkerThreadPreservesActionableDateError() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      panel.setVoucherDraft([
+          accounting_date: 'not-a-date',
+          description: 'AI draft',
+          lines: [[account_number: '1930', debit: 100G, credit: 0G]]
+      ])
+    }
+    assertTrue(exception.message.contains('accounting_date'))
   }
 
   @Test
