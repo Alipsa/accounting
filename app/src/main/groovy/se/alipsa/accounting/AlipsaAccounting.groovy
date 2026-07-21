@@ -320,6 +320,13 @@ final class AlipsaAccounting {
           return
         }
         if (argument.startsWith(MODE_ARGUMENT_PREFIX)) {
+          String mode = argument.substring(MODE_ARGUMENT_PREFIX.length()).trim()
+          if (mode == 'gui') {
+            return
+          }
+          if (mode == 'mcp') {
+            throw new IllegalArgumentException(I18n.instance.getString('alipsaAccounting.error.mcpModeRemoved'))
+          }
           throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))
         }
         throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))

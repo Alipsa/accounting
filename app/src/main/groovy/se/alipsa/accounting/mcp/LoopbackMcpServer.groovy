@@ -57,10 +57,6 @@ final class LoopbackMcpServer implements Closeable {
     server = created
   }
 
-  boolean isRunning() {
-    server != null
-  }
-
   @Override
   synchronized void close() {
     if (server != null) {

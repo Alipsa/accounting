@@ -11,10 +11,6 @@ import com.formdev.flatlaf.util.UIScale
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ThemeMode
-import se.alipsa.accounting.mcp.AccountingMcpTools
-import se.alipsa.accounting.mcp.LoopbackMcpServer
-import se.alipsa.accounting.mcp.McpDispatcher
-import se.alipsa.accounting.mcp.McpUiGuard
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
@@ -76,7 +72,6 @@ import javax.swing.border.TitledBorder
 /**
  * Main desktop window with phase two navigation and setup actions.
  */
-// codenarc-disable ClassSize
 @CompileDynamic
 final class MainFrame implements PropertyChangeListener {
 
@@ -225,14 +220,12 @@ final class MainFrame implements PropertyChangeListener {
   private TitledBorder companyProfileSectionBorder
   private TitledBorder applicationPreferencesSectionBorder
   private TitledBorder relatedConfigurationSectionBorder
-  private TitledBorder mcpSectionBorder
-  private JLabel mcpEndpointValueLabel
-  private JTextField mcpTokenField
-  private JLabel mcpStatusLabel
+  private McpSettingsSection mcpSettingsSection
   private JTabbedPane tabbedPane
   private VoucherPanel voucherPanel
-  private LoopbackMcpServer mcpServer
+  private McpServerLifecycle mcpServerLifecycle
   private JPanel mcpGlassPane
+  private JLabel mcpGlassPaneLabel
   private final AtomicBoolean shuttingDown = new AtomicBoolean(false)
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
@@ -242,6 +235,7 @@ final class MainFrame implements PropertyChangeListener {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
+    mcpServerLifecycle = new McpServerLifecycle(userPreferencesService, voucherPanel, mcpSettingsSection, mcpGlassPane)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
@@ -249,7 +243,7 @@ final class MainFrame implements PropertyChangeListener {
 
   void display() {
     frame.visible = true
-    startMcpServer()
+    mcpServerLifecycle.start()
     if (!activeCompanyManager.hasActiveCompany()) {
       SwingUtilities.invokeLater {
         showNewCompanyDialog()
@@ -327,7 +321,8 @@ final class MainFrame implements PropertyChangeListener {
     companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
     applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
     relatedConfigurationSectionBorder.title = I18n.instance.getString('settings.section.relatedConfiguration')
-    mcpSectionBorder.title = I18n.instance.getString('settings.section.mcp')
+    mcpSettingsSection.applyLocale()
+    mcpGlassPaneLabel.text = I18n.instance.getString('mainFrame.mcp.working')
     companyProfileEditButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
     vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
@@ -415,7 +410,8 @@ final class MainFrame implements PropertyChangeListener {
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
     mcpGlassPane = new JPanel()
-    mcpGlassPane.add(new JLabel('AI-assistenten arbetar …'))
+    mcpGlassPaneLabel = new JLabel(I18n.instance.getString('mainFrame.mcp.working'))
+    mcpGlassPane.add(mcpGlassPaneLabel)
     f.glassPane = mcpGlassPane
     mcpGlassPane.visible = false
     f.addWindowListener(new WindowAdapter() {
@@ -425,34 +421,6 @@ final class MainFrame implements PropertyChangeListener {
       }
     })
     f
-  }
-
-  private void startMcpServer() {
-    try {
-      AccountingMcpTools tools = new AccountingMcpTools()
-      tools.setVoucherDraftAccess(voucherPanel)
-      mcpServer = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools), mcpUiGuard())
-      mcpServer.start()
-      mcpStatusLabel.text = I18n.instance.getString('settings.mcp.status.running')
-      log.info("Local MCP server available at ${LoopbackMcpServer.ENDPOINT}")
-    } catch (Exception exception) {
-      log.warning("Could not start local MCP server: ${exception.message}")
-      mcpStatusLabel.text = I18n.instance.format('settings.mcp.status.unavailable', exception.message ?: '')
-    }
-  }
-
-  private McpUiGuard mcpUiGuard() {
-    new McpUiGuard() {
-      @Override
-      void beginWrite() {
-        SwingUtilities.invokeAndWait { mcpGlassPane.visible = true }
-      }
-
-      @Override
-      void endWrite() {
-        SwingUtilities.invokeAndWait { mcpGlassPane.visible = false }
-      }
-    }
   }
 
   private void buildFileMenu(Object builder) {
@@ -492,7 +460,8 @@ final class MainFrame implements PropertyChangeListener {
     JPanel companyProfileSection = buildCompanyProfileSection()
     JPanel applicationPreferencesSection = buildApplicationPreferencesSection()
     JPanel relatedConfigurationSection = buildRelatedConfigurationSection()
-    JPanel mcpSection = buildMcpSection()
+    mcpSettingsSection = new McpSettingsSection(userPreferencesService)
+    JPanel mcpSection = mcpSettingsSection.panel
     companyProfileSection.alignmentX = Component.LEFT_ALIGNMENT
     applicationPreferencesSection.alignmentX = Component.LEFT_ALIGNMENT
     relatedConfigurationSection.alignmentX = Component.LEFT_ALIGNMENT
@@ -580,39 +549,6 @@ final class MainFrame implements PropertyChangeListener {
     section.add(buildThemeRow())
     section.add(buildUpdateRow())
     section.add(buildDataLocationRow())
-    section
-  }
-
-  private JPanel buildMcpSection() {
-    JPanel section = new JPanel()
-    section.layout = new BoxLayout(section, BoxLayout.Y_AXIS)
-    mcpSectionBorder = BorderFactory.createTitledBorder(I18n.instance.getString('settings.section.mcp'))
-    section.border = mcpSectionBorder
-
-    JPanel endpointRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    endpointRow.add(new JLabel(I18n.instance.getString('settings.label.mcpEndpoint')))
-    mcpEndpointValueLabel = new JLabel(LoopbackMcpServer.ENDPOINT)
-    endpointRow.add(mcpEndpointValueLabel)
-
-    JPanel tokenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    tokenRow.add(new JLabel(I18n.instance.getString('settings.label.mcpToken')))
-    mcpTokenField = new JTextField(userPreferencesService.ensureMcpToken(), 30)
-    mcpTokenField.editable = false
-    tokenRow.add(mcpTokenField)
-    JButton regenerate = new JButton(I18n.instance.getString('settings.button.regenerateMcpToken'))
-    regenerate.addActionListener {
-      mcpTokenField.text = userPreferencesService.regenerateMcpToken()
-    }
-    tokenRow.add(regenerate)
-
-    JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    statusRow.add(new JLabel(I18n.instance.getString('settings.label.mcpStatus')))
-    mcpStatusLabel = new JLabel(I18n.instance.getString('settings.mcp.status.starting'))
-    statusRow.add(mcpStatusLabel)
-
-    section.add(endpointRow)
-    section.add(tokenRow)
-    section.add(statusRow)
     section
   }
 
@@ -1011,7 +947,7 @@ final class MainFrame implements PropertyChangeListener {
     }
     frame.enabled = false
     Thread shutdownThread = new Thread({
-      mcpServer?.close()
+      mcpServerLifecycle.close()
       LoggingConfigurer.shutdown()
       SwingUtilities.invokeLater { frame.dispose() }
     } as Runnable, 'mcp-shutdown')

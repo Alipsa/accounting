@@ -120,7 +120,7 @@ final class VoucherPanelNavigationTest {
   @Test
   void draftValidationFromWorkerThreadPreservesActionableDateError() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      panel.setVoucherDraft([
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
           accounting_date: 'not-a-date',
           description: 'AI draft',
           lines: [[account_number: '1930', debit: 100G, credit: 0G]]
@@ -333,7 +333,7 @@ final class VoucherPanelNavigationTest {
       button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
     }
     onEdt { previous.doClick() }
-    assertEquals(null, panel.getVoucherDraft())
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
   }
 
   @Test
