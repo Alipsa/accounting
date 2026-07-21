@@ -16,3 +16,4 @@ build
 /.gradle-user/
 /releases/
 /issues/
+/.mcp.json
