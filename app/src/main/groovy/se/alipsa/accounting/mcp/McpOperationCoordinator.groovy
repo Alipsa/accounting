@@ -1,5 +1,7 @@
 package se.alipsa.accounting.mcp
 
+import groovy.transform.PackageScope
+
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Future
@@ -14,23 +16,34 @@ final class McpOperationCoordinator implements Closeable {
       'close_fiscal_year', 'import_sie'
   ] as Set<String>
   private final McpUiGuard uiGuard
-  private final ExecutorService writeExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
-      new ArrayBlockingQueue<>(16), new ThreadPoolExecutor.AbortPolicy())
-  private final ExecutorService readExecutor = new ThreadPoolExecutor(8, 8, 0L, TimeUnit.MILLISECONDS,
-      new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.AbortPolicy())
+  private final ExecutorService writeExecutor
+  private final ExecutorService readExecutor
 
   McpOperationCoordinator(McpUiGuard uiGuard) {
+    this(uiGuard, 16, 32)
+  }
+
+  @PackageScope
+  McpOperationCoordinator(McpUiGuard uiGuard, int writeQueueCapacity, int readQueueCapacity) {
     this.uiGuard = uiGuard
+    writeExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(writeQueueCapacity), new ThreadPoolExecutor.AbortPolicy())
+    readExecutor = new ThreadPoolExecutor(8, 8, 0L, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(readQueueCapacity), new ThreadPoolExecutor.AbortPolicy())
   }
 
   Object dispatch(McpDispatcher dispatcher, Map<String, Object> request) {
-    boolean write = isWrite(request)
+    execute(isWrite(request)) { dispatcher.dispatch(request) }
+  }
+
+  @PackageScope
+  Object execute(boolean write, Closure<Object> action) {
     Future<Object> result = (write ? writeExecutor : readExecutor).submit {
       if (write) {
         uiGuard.beginWrite()
       }
       try {
-        dispatcher.dispatch(request)
+        action.call()
       } finally {
         if (write) {
           uiGuard.endWrite()
@@ -38,6 +51,11 @@ final class McpOperationCoordinator implements Closeable {
       }
     }
     result.get()
+  }
+
+  @PackageScope
+  int writeQueueSize() {
+    ((ThreadPoolExecutor) writeExecutor).queue.size()
   }
 
   @Override
