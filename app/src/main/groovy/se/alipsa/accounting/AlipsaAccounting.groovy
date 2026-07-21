@@ -1,6 +1,5 @@
 package se.alipsa.accounting
 
-import se.alipsa.accounting.mcp.McpServer
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.StartupVerificationReport
 import se.alipsa.accounting.service.StartupVerificationService
@@ -86,11 +85,6 @@ final class AlipsaAccounting {
   private static void runApplication(StartupOptions options, StartupSplash splash, UserPreferencesService userPreferencesService) {
     LoggingConfigurer.configure()
     DatabaseService.instance.initialize()
-    if (options.mode == RunMode.MCP) {
-      splash.close()
-      runMcpMode()
-      return
-    }
     ThemeApplier.apply(userPreferencesService.getTheme())
     StartupVerificationReport startupReport = new StartupVerificationService().verify()
     if (options.verifyLaunchRequested) {
@@ -216,20 +210,6 @@ final class AlipsaAccounting {
     SwingUtilities.invokeAndWait(action)
   }
 
-  private static void runMcpMode() {
-    StartupVerificationReport startupReport = new StartupVerificationService().verify()
-    failOnStartupErrors(startupReport)
-    if (!startupReport.warnings.isEmpty()) {
-      log.warning("Startup warnings: ${startupReport.warnings.join(' | ')}")
-    }
-    try {
-      new McpServer().run()
-    } finally {
-      DatabaseService.instance.shutdown()
-      LoggingConfigurer.shutdown()
-    }
-  }
-
   private static void configureProcessLaunchMechanism() {
     if (System.getProperty(PROCESS_LAUNCH_MECHANISM_PROPERTY) != null) {
       return
@@ -298,39 +278,30 @@ final class AlipsaAccounting {
     }
   }
 
-  private enum RunMode {
-    GUI,
-    MCP
-  }
-
   private static final class StartupOptions {
 
     final boolean verifyLaunchRequested
     final boolean versionRequested
     final String applicationHomeOverride
-    final RunMode mode
 
     private StartupOptions(
         boolean verifyLaunchRequested,
         boolean versionRequested,
-        String applicationHomeOverride,
-        RunMode mode
+        String applicationHomeOverride
     ) {
       this.verifyLaunchRequested = verifyLaunchRequested
       this.versionRequested = versionRequested
       this.applicationHomeOverride = applicationHomeOverride
-      this.mode = mode
     }
 
     boolean getInteractive() {
-      mode == RunMode.GUI && !verifyLaunchRequested && !versionRequested
+      !verifyLaunchRequested && !versionRequested
     }
 
     static StartupOptions parse(String[] arguments) {
       boolean verifyLaunchRequested = false
       boolean versionRequested = false
       String applicationHomeOverride = null
-      RunMode mode = RunMode.GUI
       arguments.each { String argument ->
         if (argument == VERIFY_LAUNCH_ARGUMENT) {
           verifyLaunchRequested = true
@@ -349,22 +320,18 @@ final class AlipsaAccounting {
           return
         }
         if (argument.startsWith(MODE_ARGUMENT_PREFIX)) {
-          mode = parseMode(argument.substring(MODE_ARGUMENT_PREFIX.length()).trim())
-          return
+          String mode = argument.substring(MODE_ARGUMENT_PREFIX.length()).trim()
+          if (mode == 'gui') {
+            return
+          }
+          if (mode == 'mcp') {
+            throw new IllegalArgumentException(I18n.instance.getString('alipsaAccounting.error.mcpModeRemoved'))
+          }
+          throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))
         }
         throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', argument))
       }
-      new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride, mode)
-    }
-
-    private static RunMode parseMode(String value) {
-      if (value == 'mcp') {
-        return RunMode.MCP
-      }
-      if (value == 'gui') {
-        return RunMode.GUI
-      }
-      throw new IllegalArgumentException(I18n.instance.format('alipsaAccounting.error.unknownArgument', "${MODE_ARGUMENT_PREFIX}${value}"))
+      new StartupOptions(verifyLaunchRequested, versionRequested, applicationHomeOverride)
     }
   }
 }

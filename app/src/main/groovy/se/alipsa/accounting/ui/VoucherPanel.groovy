@@ -121,6 +121,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final Map<String, BigDecimal> balanceCache = [:]
   private final Map<Long, Map<String, BigDecimal>> voucherBalanceCache = [:]
   private int voucherBalanceCacheGeneration = 0
+  private final VoucherDraftEditorAccess mcpVoucherDraftAccess
+  private final VoucherEditorActions voucherEditorActions
 
   VoucherPanel(
       VoucherService voucherService,
@@ -142,7 +144,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
     buildUi()
+    mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
+    voucherEditorActions = new VoucherEditorActions(voucherService, activeCompanyManager, { datePicker.date },
+        { descriptionField.text?.trim() }, { lineTableModel.toVoucherLines() }, { currentVoucher },
+        { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::reloadVoucherList)
     reloadVoucherList()
+  }
+
+  VoucherDraftEditorAccess getMcpVoucherDraftAccess() {
+    mcpVoucherDraftAccess
   }
 
   @Override
@@ -207,7 +217,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
     saveButton = new JButton(SAVE_ICON)
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
-    saveButton.addActionListener { saveVoucher() }
+    saveButton.addActionListener { voucherEditorActions.save() }
     panel.add(saveButton)
 
     printButton = new JButton('\u2399')
@@ -222,7 +232,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
     correctionButton = new JButton('\u270E')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
-    correctionButton.addActionListener { createCorrection() }
+    correctionButton.addActionListener { voucherEditorActions.createCorrection() }
     panel.add(correctionButton)
 
     voidButton = new JButton('\u2716')
@@ -686,44 +696,20 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
   }
 
-  private void saveVoucher() {
-    FiscalYear fy = activeCompanyManager.fiscalYear
-    if (fy == null) {
-      showError(I18n.instance.getString('voucherPanel.error.noFiscalYear'))
-      return
-    }
-    try {
-      LocalDate date = datePicker.date
-      if (date == null) {
-        showError(I18n.instance.getString('voucherPanel.error.dateFormat'))
-        return
-      }
-      String description = descriptionField.text?.trim()
-      List<VoucherLine> lines = lineTableModel.toVoucherLines()
-      if (currentVoucher != null) {
-        showError(I18n.instance.getString('voucherPanel.error.existingVoucherReadOnly'))
-        return
-      }
-      String series = seriesField.text?.trim() ?: 'A'
-      Voucher saved = voucherService.createVoucher(fy.id, series, date, description, lines)
-      showInfo(I18n.instance.getString('voucherPanel.message.saved').replace('{0}', saved.voucherNumber ?: ''))
-      reloadVoucherList()
-    } catch (Exception ex) {
-      showError(ex.message ?: I18n.instance.getString('voucherPanel.error.saveFailed'))
-    }
+  private Map<String, Object> snapshotDraft() {
+    VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesField.text, lineTableModel.toVoucherLines())
   }
 
-  private void createCorrection() {
-    if (currentVoucher == null) {
-      return
-    }
-    try {
-      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated', correction.voucherNumber ?: ''))
-      reloadVoucherList()
-    } catch (Exception ex) {
-      showError(ex.message ?: I18n.instance.getString('voucherPanel.error.correctionFailed'))
-    }
+  private void applyDraft(VoucherDraftMapper.VoucherDraft voucherDraft) {
+    showBlankVoucher()
+    datePicker.date = voucherDraft.accountingDate
+    descriptionField.text = voucherDraft.description
+    seriesField.text = voucherDraft.seriesCode
+    lineTableModel.setRows(voucherDraft.lines)
+    ensureAutoRow()
+    recalculateAllBalances()
+    refreshTotals()
+    dateFocusRequester.call()
   }
 
   private void duplicateVoucher() {

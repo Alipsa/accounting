@@ -19,7 +19,7 @@ class McpDispatcherTest {
         id     : 1,
         method : 'initialize',
         params : [
-            protocolVersion: '2024-11-05',
+            protocolVersion: McpDispatcher.PROTOCOL_VERSION,
             capabilities   : [:],
             clientInfo     : [
                 name   : 'test-client',
@@ -34,7 +34,7 @@ class McpDispatcherTest {
     Map<String, Object> serverInfo = (Map<String, Object>) result.serverInfo
     assertEquals(McpDispatcher.PROTOCOL_VERSION, result.protocolVersion)
     assertEquals('alipsa-accounting', serverInfo.name)
-    assertEquals([tools: [:]], result.capabilities)
+    assertEquals([tools: [:], resources: [:], prompts: [:]], result.capabilities)
   }
 
   @Test
@@ -50,7 +50,7 @@ class McpDispatcherTest {
   }
 
   @Test
-  void unknownMethodReturnsJsonRpcMethodNotFound() {
+  void resourcesListReturnsRegisteredResources() {
     McpDispatcher dispatcher = new McpDispatcher()
 
     Map<String, Object> response = dispatchToMap(dispatcher, [
@@ -59,9 +59,37 @@ class McpDispatcherTest {
         method : 'resources/list'
     ])
 
-    Map<String, Object> error = (Map<String, Object>) response.error
-    assertEquals(-32601, error.code)
+    Map<String, Object> result = (Map<String, Object>) response.result
+    assertFalse(((List) result.resources).isEmpty())
     assertEquals(7, response.id)
+  }
+
+  @Test
+  void initializeNegotiatesCompatibleProtocolVersion() {
+    McpDispatcher dispatcher = new McpDispatcher()
+    Map<String, Object> response = dispatchToMap(dispatcher, [
+        jsonrpc: JSONRPC_VERSION,
+        id: 3,
+        method: 'initialize',
+        params: [protocolVersion: McpDispatcher.COMPATIBLE_PROTOCOL_VERSION]
+    ])
+    assertEquals(McpDispatcher.COMPATIBLE_PROTOCOL_VERSION, ((Map) response.result).get('protocolVersion'))
+  }
+
+  @Test
+  void unknownMethodReturnsJsonRpcMethodNotFound() {
+    McpDispatcher dispatcher = new McpDispatcher()
+    Map<String, Object> response = dispatchToMap(dispatcher, [jsonrpc: JSONRPC_VERSION, id: 7, method: 'unknown/method'])
+    assertEquals(-32601, ((Map) response.error).get('code'))
+    assertEquals(7, response.id)
+  }
+
+  @Test
+  void timeoutErrorsDistinguishRetrySafety() {
+    Map<String, Object> safeError = (Map<String, Object>) McpDispatcher.operationTimeoutError(1, true).get('error')
+    Map<String, Object> uncertainError = (Map<String, Object>) McpDispatcher.operationTimeoutError(1, false).get('error')
+    assertTrue((safeError.get('message') as String).contains('safe to retry'))
+    assertTrue((uncertainError.get('message') as String).contains('may still be completing'))
   }
 
   @Test

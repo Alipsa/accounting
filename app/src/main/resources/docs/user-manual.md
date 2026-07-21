@@ -65,6 +65,14 @@ Programmet kan hantera flera företag i samma installation. Varje företag har s
 - Bokföringsdata, bilagor och rapportarkiv får inte rensas före sju års bevarandetid.
 - Räkenskapsår eller företag med blockerande beroenden kan inte raderas. Programmet visar orsaken innan något tas bort.
 
+## AI-assistent (MCP)
+
+- När programmet körs finns en lokal MCP-adress på `http://127.0.0.1:48652/mcp`. Den är endast tillgänglig från samma dator.
+- Under `Inställningar` visas anslutningsadressen och den token som behövs när Claude Code, Codex, Kimi eller Vibe konfigureras som HTTP-MCP-klient.
+- AI-assistenten kan läsa bokföringsunderlag och fylla ett osparat verifikationsförslag. Granska alltid förslaget i fliken `Verifikationer`; endast du kan spara det genom att trycka på Spara.
+- När programmet är stängt får AI-klienten ett anslutningsfel. Det är normalt och påverkar inte bokföringsdata.
+- Den AI-klient som ansluts kan skicka information till sin AI-leverantör. Kontrollera därför leverantörens integritetspolicy innan du använder funktionen.
+
 ## Uppdatering och avinstallation
 
 - Programmet kan söka efter uppdateringar vid start. Automatisk uppdateringskontroll kan stängas av i `Inställningar`.

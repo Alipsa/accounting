@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.Sql
@@ -114,6 +115,18 @@ final class VoucherPanelNavigationTest {
     }
 
     assertNotNull(saveButton.icon)
+  }
+
+  @Test
+  void draftValidationFromWorkerThreadPreservesActionableDateError() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
+          accounting_date: 'not-a-date',
+          description: 'AI draft',
+          lines: [[account_number: '1930', debit: 100G, credit: 0G]]
+      ])
+    }
+    assertTrue(exception.message.contains('accounting_date'))
   }
 
   @Test
@@ -306,6 +319,21 @@ final class VoucherPanelNavigationTest {
     datePicker = findComponent(panel, DatePicker) { true }
 
     assertEquals(LocalDate.of(2030, 2, 20), onEdt { datePicker.date })
+  }
+
+  @Test
+  void savedVoucherIsNotExposedAsAnUnsavedDraft() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', 'Rad', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 100.00G)]
+    )
+    panel = buildPanel()
+    JButton previous = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
+    }
+    onEdt { previous.doClick() }
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
   }
 
   @Test

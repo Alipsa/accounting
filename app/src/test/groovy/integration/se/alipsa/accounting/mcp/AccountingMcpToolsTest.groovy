@@ -395,6 +395,32 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void failedVatTransferReleasesItsReportHashForRetry() {
+    postVatSaleInFirstPeriod()
+    long vatPeriodId = firstVatPeriodId()
+    Map<String, Object> report = tools.callTool('get_vat_report', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId
+    ])
+    String reportHash = report.get('report_hash') as String
+
+    Map<String, Object> failed = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) reportHash,
+        settlement_account: (Object) '9999'
+    ])
+    assertFalse((boolean) failed.get('ok'))
+
+    Map<String, Object> retry = tools.callTool('book_vat_transfer', [
+        company_id: (Object) 1L,
+        vat_period_id: (Object) vatPeriodId,
+        report_hash: (Object) reportHash
+    ])
+    assertTrue((boolean) retry.get('ok'), "Expected retry to succeed but got: ${retry.get('errors')}")
+  }
+
+  @Test
   void previewYearEndReturnsFiscalYearInfoAndToken() {
     insertClosingAccount()
 
@@ -516,18 +542,36 @@ class AccountingMcpToolsTest {
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
     assertTrue(errors.any { String error -> error.contains('obalanserad') })
-    assertNull(result.get('preview_token'), 'Ogiltigt förslag skall inte ha en preview_token')
+    assertFalse(result.containsKey('preview_token'), 'Voucherförhandsgranskning returnerar ingen token eftersom den aldrig kan bokföra.')
   }
 
   @Test
-  void previewVoucherResolvesAccountsAndReturnsTokenWhenValid() {
+  void previewVoucherResolvesAccountsWithoutReturningAnUnusedToken() {
     Map<String, Object> result = tools.callTool('preview_voucher', balancedVoucherArgs('Balanserad verifikation', 1000.00G))
 
     assertTrue((boolean) result.get('ok'))
     assertTrue(((List) result.get('errors')).isEmpty())
     assertEquals(2, ((List) result.get('lines')).size())
     assertEquals('1930', ((Map) ((List) result.get('lines')).first()).get('account_number'))
-    assertNotNull(result.get('preview_token'), 'Giltigt förslag skall ha en preview_token')
+    assertFalse(result.containsKey('preview_token'), 'Voucherförhandsgranskning returnerar ingen token eftersom den aldrig kan bokföra.')
+  }
+
+  @Test
+  void previewVoucherReportsMalformedAmountsAsValidationErrors() {
+    Map<String, Object> result = tools.callTool('preview_voucher', [
+        company_id: (Object) 1L,
+        fiscal_year_id: (Object) fiscalYearId,
+        series_code: (Object) 'A',
+        accounting_date: (Object) '2026-03-01',
+        description: (Object) 'Fel belopp',
+        lines: (Object) [
+            [account_number: '1930', debit: 'inte-ett-tal', credit: 0],
+            [account_number: '2440', debit: 0, credit: 100]
+        ]
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((List<String>) result.get('errors')).any { String error -> error.contains('debit måste vara ett giltigt belopp') })
   }
 
   @Test
@@ -550,93 +594,51 @@ class AccountingMcpToolsTest {
   }
 
   @Test
-  void postVoucherCreatesVoucherAndReturnsId() {
-    Map<String, Object> result = previewAndPost(balancedVoucherArgs('Kontantinsättning', 500.00G))
-
-    assertTrue((boolean) result.get('ok'), "Expected ok but got errors: ${result.get('errors')}")
-    assertNotNull(result.get('voucher_id'))
-    assertEquals('2026-03-01', result.get('accounting_date'))
+  void postVoucherIsNotExposed() {
+    assertThrows(IllegalArgumentException) {
+      tools.callTool('post_voucher', balancedVoucherArgs('No direct posting', 500.00G))
+    }
   }
 
   @Test
-  void postVoucherWithoutPreviewTokenIsRejected() {
-    Map<String, Object> result = tools.callTool('post_voucher', balancedVoucherArgs('Ingen token', 500.00G))
+  void voucherDraftToolsRouteThroughVoucherDraftAccess() {
+    Map<String, Object> existingDraft = [description: 'Existing draft', lines: []]
+    Map<String, Object>[] appliedDraft = new Map[1]
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override
+      Map<String, Object> getVoucherDraft() { existingDraft }
 
-    assertFalse((boolean) result.get('ok'))
-    List<String> errors = (List<String>) result.get('errors')
-    assertTrue(errors.any { String error -> error.contains('preview_token') })
+      @Override
+      void setVoucherDraft(Map<String, Object> draft) {
+        if (draft.get('description') == 'invalid') {
+          throw new IllegalArgumentException('accounting_date must be an ISO date (YYYY-MM-DD).')
+        }
+        appliedDraft[0] = draft
+      }
+    })
+
+    Map<String, Object> readResult = tools.callTool('get_active_voucher_draft', [:])
+    assertTrue((boolean) readResult.get('ok'))
+    assertEquals(existingDraft, readResult.get('draft'))
+
+    Map<String, Object> replacement = [accounting_date: '2026-03-01', description: 'Prepared by AI', lines: []]
+    Map<String, Object> writeResult = tools.callTool('set_active_voucher_draft', replacement)
+    assertTrue((boolean) writeResult.get('ok'))
+    assertTrue((boolean) writeResult.get('awaiting_user_save'))
+    assertEquals(replacement, appliedDraft[0])
+    assertThrows(IllegalArgumentException) {
+      tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []])
+    }
+    boolean noDraft = true
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override Map<String, Object> getVoucherDraft() { noDraft ? null : [:] }
+      @Override void setVoucherDraft(Map<String, Object> draft) { }
+    })
+    Map<String, Object> missingDraft = tools.callTool('get_active_voucher_draft', [:])
+    assertFalse((boolean) missingDraft.get('ok'))
+    assertEquals(['No unsaved voucher draft is active.'], missingDraft.get('errors'))
   }
 
-  @Test
-  void postVoucherWithTamperedPayloadIsRejected() {
-    Map<String, Object> validArgs = balancedVoucherArgs('Ska postas', 500.00G)
-    Map<String, Object> preview = tools.callTool('preview_voucher', validArgs)
-    String token = (String) preview.get('preview_token')
-    Map<String, Object> tampered = new LinkedHashMap<>(validArgs)
-    tampered.put('description', (Object) 'Ändrad beskrivning')
-    tampered.put('preview_token', (Object) token)
-
-    Map<String, Object> result = tools.callTool('post_voucher', tampered)
-
-    assertFalse((boolean) result.get('ok'))
-  }
-
-  @Test
-  void postVoucherAcceptsEquivalentNumericRepresentations() {
-    Map<String, Object> previewArgs = [
-        company_id: (Object) 1L,
-        fiscal_year_id: (Object) fiscalYearId,
-        series_code: (Object) 'A',
-        accounting_date: (Object) '2026-03-01',
-        description: (Object) 'Olika numerisk form',
-        lines: (Object) [
-            [account_number: '1930', debit: 500, credit: 0],
-            [account_number: '2440', debit: 0, credit: 500]
-        ]
-    ]
-    Map<String, Object> preview = tools.callTool('preview_voucher', previewArgs)
-    assertTrue((boolean) preview.get('ok'))
-    Map<String, Object> postArgs = balancedVoucherArgs('Olika numerisk form', 500.00G)
-    postArgs.put('preview_token', (Object) preview.get('preview_token'))
-
-    Map<String, Object> result = tools.callTool('post_voucher', postArgs)
-
-    assertTrue((boolean) result.get('ok'), "Expected ok but got errors: ${result.get('errors')}")
-    assertNotNull(result.get('voucher_id'))
-  }
-
-  @Test
-  void postVoucherRevalidatesClosedFiscalYearAfterPreview() {
-    Map<String, Object> validArgs = balancedVoucherArgs('Stängt år efter preview', 500.00G)
-    Map<String, Object> preview = tools.callTool('preview_voucher', validArgs)
-    assertTrue((boolean) preview.get('ok'))
-    fiscalYearService.closeFiscalYear(fiscalYearId)
-    Map<String, Object> argsWithToken = new LinkedHashMap<>(validArgs)
-    argsWithToken.put('preview_token', (Object) preview.get('preview_token'))
-
-    Map<String, Object> result = tools.callTool('post_voucher', argsWithToken)
-
-    assertFalse((boolean) result.get('ok'))
-    List<String> errors = (List<String>) result.get('errors')
-    assertTrue(errors.any { String error -> error.contains('stängt') })
-  }
-
-  @Test
-  void postVoucherWithoutTokenIsRejectedRegardlessOfBalance() {
-    Map<String, Object> result = tools.callTool('post_voucher', [
-        company_id: (Object) 1L,
-        fiscal_year_id: (Object) fiscalYearId,
-        series_code: (Object) 'A',
-        accounting_date: (Object) '2026-03-01',
-        description: (Object) 'Obalanserad',
-        lines: (Object) [
-            [account_number: '1930', debit: 500.00G, credit: 0.00G],
-            [account_number: '2440', debit: 0.00G, credit: 200.00G]
-        ]
-    ])
-
-    assertFalse((boolean) result.get('ok'))
-  }
 
   @Test
   void createCorrectionVoucherCreatesReversingVoucher() {
@@ -724,7 +726,7 @@ class AccountingMcpToolsTest {
   }
 
   @Test
-  void importSieWithTokenImportsAndDuplicateSecondImportReturnsDuplicate() {
+  void importSieTokenCannotBeReusedAfterImport() {
     Path sieFile = writeSimpleSie(tempDir.resolve('mcp-import.sie'), 2027, '1510', 'Kundfordringar')
     Map<String, Object> preview = tools.callTool('preview_sie_import', [
         company_id: (Object) 1L,
@@ -750,8 +752,8 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) first.get('ok'), "Expected ok but got: ${first.get('errors')}")
     assertNotNull(first.get('fiscal_year_id'))
     assertTrue((boolean) duplicatePreview.get('is_duplicate'))
-    assertTrue((boolean) second.get('ok'), "Expected duplicate ok but got: ${second.get('errors')}")
-    assertTrue((boolean) second.get('duplicate'))
+    assertFalse((boolean) second.get('ok'))
+    assertTrue(((List<String>) second.get('errors')).any { String error -> error.contains('redan använts') })
   }
 
   @Test
@@ -832,12 +834,15 @@ class AccountingMcpToolsTest {
   }
 
   private Map<String, Object> previewAndPost(Map<String, Object> postArgs) {
-    Map<String, Object> previewResult = tools.callTool('preview_voucher', postArgs)
-    assertTrue((boolean) previewResult.get('ok'), "Preview failed: ${previewResult.get('errors')}")
-    String token = (String) previewResult.get('preview_token')
-    Map<String, Object> argsWithToken = new LinkedHashMap<>(postArgs)
-    argsWithToken.put('preview_token', (Object) token)
-    tools.callTool('post_voucher', argsWithToken)
+    List<Map<String, Object>> lines = (List<Map<String, Object>>) postArgs.get('lines')
+    List<VoucherLine> voucherLines = []
+    lines.eachWithIndex { Map<String, Object> line, int index ->
+      voucherLines << new VoucherLine(null, null, index, null, line.account_number as String, null, null,
+          line.debit as BigDecimal, line.credit as BigDecimal)
+    }
+    def voucher = voucherService.createVoucher(fiscalYearId, postArgs.series_code as String,
+        LocalDate.parse(postArgs.accounting_date as String), postArgs.description as String, voucherLines)
+    [ok: true, voucher_id: voucher.id, accounting_date: voucher.accountingDate.toString()]
   }
 
   private Map firstVatPeriod() {

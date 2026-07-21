@@ -57,8 +57,11 @@ import java.awt.Graphics2D
 import java.awt.Image
 import java.awt.RenderingHints
 import java.awt.Taskbar
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -217,7 +220,13 @@ final class MainFrame implements PropertyChangeListener {
   private TitledBorder companyProfileSectionBorder
   private TitledBorder applicationPreferencesSectionBorder
   private TitledBorder relatedConfigurationSectionBorder
+  private McpSettingsSection mcpSettingsSection
   private JTabbedPane tabbedPane
+  private VoucherPanel voucherPanel
+  private McpServerLifecycle mcpServerLifecycle
+  private JPanel mcpGlassPane
+  private JLabel mcpGlassPaneLabel
+  private final AtomicBoolean shuttingDown = new AtomicBoolean(false)
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
   private final JFrame frame
@@ -226,6 +235,7 @@ final class MainFrame implements PropertyChangeListener {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
+    mcpServerLifecycle = new McpServerLifecycle(userPreferencesService, voucherPanel, mcpSettingsSection, mcpGlassPane)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
@@ -233,6 +243,7 @@ final class MainFrame implements PropertyChangeListener {
 
   void display() {
     frame.visible = true
+    mcpServerLifecycle.start()
     if (!activeCompanyManager.hasActiveCompany()) {
       SwingUtilities.invokeLater {
         showNewCompanyDialog()
@@ -310,6 +321,8 @@ final class MainFrame implements PropertyChangeListener {
     companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
     applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
     relatedConfigurationSectionBorder.title = I18n.instance.getString('settings.section.relatedConfiguration')
+    mcpSettingsSection.applyLocale()
+    mcpGlassPaneLabel.text = I18n.instance.getString('mainFrame.mcp.working')
     companyProfileEditButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
     vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
@@ -366,7 +379,7 @@ final class MainFrame implements PropertyChangeListener {
     JFrame f = swing.frame(
         title: I18n.instance.getString('mainFrame.title'),
         size: size,
-        defaultCloseOperation: JFrame.EXIT_ON_CLOSE,
+        defaultCloseOperation: JFrame.DO_NOTHING_ON_CLOSE,
         locationByPlatform: true,
         show: false
     ) {
@@ -396,6 +409,17 @@ final class MainFrame implements PropertyChangeListener {
       }
     }
     f.contentPane.add(buildStatusBar(), BorderLayout.SOUTH)
+    mcpGlassPane = new JPanel()
+    mcpGlassPaneLabel = new JLabel(I18n.instance.getString('mainFrame.mcp.working'))
+    mcpGlassPane.add(mcpGlassPaneLabel)
+    f.glassPane = mcpGlassPane
+    mcpGlassPane.visible = false
+    f.addWindowListener(new WindowAdapter() {
+      @Override
+      void windowClosing(WindowEvent event) {
+        shutdownAndDispose()
+      }
+    })
     f
   }
 
@@ -436,15 +460,20 @@ final class MainFrame implements PropertyChangeListener {
     JPanel companyProfileSection = buildCompanyProfileSection()
     JPanel applicationPreferencesSection = buildApplicationPreferencesSection()
     JPanel relatedConfigurationSection = buildRelatedConfigurationSection()
+    mcpSettingsSection = new McpSettingsSection(userPreferencesService)
+    JPanel mcpSection = mcpSettingsSection.panel
     companyProfileSection.alignmentX = Component.LEFT_ALIGNMENT
     applicationPreferencesSection.alignmentX = Component.LEFT_ALIGNMENT
     relatedConfigurationSection.alignmentX = Component.LEFT_ALIGNMENT
+    mcpSection.alignmentX = Component.LEFT_ALIGNMENT
 
     panel.add(companyProfileSection)
     panel.add(Box.createVerticalStrut(12))
     panel.add(applicationPreferencesSection)
     panel.add(Box.createVerticalStrut(12))
     panel.add(relatedConfigurationSection)
+    panel.add(Box.createVerticalStrut(12))
+    panel.add(mcpSection)
     panel.add(Box.createVerticalGlue())
 
     panel
@@ -812,7 +841,7 @@ final class MainFrame implements PropertyChangeListener {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
@@ -909,8 +938,20 @@ final class MainFrame implements PropertyChangeListener {
   }
 
   private void exitRequested() {
-    LoggingConfigurer.shutdown()
-    frame.dispose()
+    shutdownAndDispose()
+  }
+
+  private void shutdownAndDispose() {
+    if (!shuttingDown.compareAndSet(false, true)) {
+      return
+    }
+    frame.enabled = false
+    Thread shutdownThread = new Thread({
+      mcpServerLifecycle.close()
+      LoggingConfigurer.shutdown()
+      SwingUtilities.invokeLater { frame.dispose() }
+    } as Runnable, 'mcp-shutdown')
+    shutdownThread.start()
   }
 
   private void showAboutDialog() {
