@@ -412,7 +412,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void openOpeningBalances() {
-    FiscalYear fiscalYear = selectedFiscalYear()
+    FiscalYear fiscalYear = selectedFiscalYear() ?: activeCompanyManager.fiscalYear
     if (fiscalYear == null) {
       showValidation([ValidationSupport.fieldError(
           '',
@@ -420,14 +420,18 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
       )])
       return
     }
-    FiscalYearOpeningBalanceDialog.showDialog(
-        ownerFrame(),
-        openingBalanceService,
-        activeCompanyManager.companyId,
-        fiscalYear,
-        activeCompanyManager.companyLocale,
-        { activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id) } as Runnable
-    )
+    try {
+      FiscalYearOpeningBalanceDialog.showDialog(
+          ownerFrame(),
+          openingBalanceService,
+          activeCompanyManager.companyId,
+          fiscalYear,
+          activeCompanyManager.companyLocale,
+          { activeCompanyManager.clearOpeningBalanceRefreshPrompt(fiscalYear.id) } as Runnable
+      )
+    } catch (Exception exception) {
+      showValidation([ValidationSupport.fieldError('', exception.message ?: exception.class.simpleName)])
+    }
   }
 
   private void showValidation(List<ValidationMessage> messages) {

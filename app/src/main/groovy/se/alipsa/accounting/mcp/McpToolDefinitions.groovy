@@ -14,6 +14,11 @@ final class McpToolDefinitions {
 
   private static List<Map<String, Object>> readOnlyToolDefs() {
     [
+        toolDef('get_active_context',
+            'Returns the company and fiscal year currently selected in the desktop application.',
+            [],
+            [:]
+        ),
         toolDef('get_company_info',
             'Returns the company record for the given company ID.',
             ['company_id'],
@@ -25,15 +30,20 @@ final class McpToolDefinitions {
             [company_id: intParam('Company ID')]
         ),
         toolDef('list_accounts',
-            'Returns active accounts in the chart of accounts for the given company. Accepts an optional query string.',
+            'Returns active accounts in the chart of accounts for the given company. Use this before preparing a voucher so account numbers are not guessed. Accepts an optional query string.',
             ['company_id'],
             [
                 company_id: intParam('Company ID'),
                 query: optStrParam('Optional search string (account number or name)')
             ]
         ),
+        toolDef('list_accounting_instructions',
+            'Lists company-approved accounting instructions. Check these before using historical vouchers or proposing accounts.',
+            ['company_id'],
+            [company_id: intParam('Company ID')]
+        ),
         toolDef('list_vouchers',
-            'Returns posted vouchers for the given fiscal year. Returns at most 200 rows.',
+            'Returns posted vouchers and their posting lines for the given fiscal year. Use this before preparing a voucher to follow the company\'s established account usage. Returns at most 200 vouchers.',
             ['company_id', 'fiscal_year_id'],
             [
                 company_id: intParam('Company ID'),
@@ -101,13 +111,25 @@ final class McpToolDefinitions {
             [], [:]
         ),
         toolDef('set_active_voucher_draft',
-            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application.',
+            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool.',
             ['accounting_date', 'description', 'lines'],
             [
                 accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
                 description: strParam('Voucher description'),
                 series_code: optStrParam('Voucher series code. Defaults to A.'),
                 lines: voucherLinesParam()
+            ]
+        ),
+        toolDef('save_accounting_instruction',
+            'Saves or updates a company-approved accounting instruction. Call only after the user explicitly confirms that this recurring account mapping should be remembered.',
+            ['company_id', 'trigger_text', 'debit_account_number', 'credit_account_number'],
+            [
+                company_id: intParam('Company ID'),
+                trigger_text: strParam('User-facing phrase that identifies the recurring event.'),
+                description: optStrParam('Optional default voucher description.'),
+                debit_account_number: strParam('Account to debit.'),
+                credit_account_number: strParam('Account to credit.'),
+                series_code: optStrParam('Voucher series. Defaults to A.')
             ]
         ),
         toolDef('create_correction_voucher',

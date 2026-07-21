@@ -134,9 +134,9 @@ final class McpDispatcher {
   private static Map<String, Object> resourceReadResult(Map<String, Object> params) {
     String uri = requiredString(params, 'uri')
     String text = uri == 'accounting://workflow'
-        ? 'Use get_company_info and read tools first. Prepare vouchers with set_active_voucher_draft; the user must save in the desktop application.'
+        ? 'Use get_active_context first. Before proposing accounts, check list_accounting_instructions; if no instruction applies, inspect list_accounts and list_vouchers. Save an instruction only after the user explicitly confirms it should be remembered. Prepare vouchers with set_active_voucher_draft; the user must save in the desktop application.'
         : uri == 'accounting://trusted-sources'
-            ? 'Prioritize https://www.skatteverket.se/ and https://www.bokforingstips.se/ for Swedish bookkeeping questions.'
+            ? 'For Swedish bookkeeping questions, prioritize primary sources: https://www.skatteverket.se/ for taxes and tax-account events; https://www.bfn.se/ for accounting rules and guidance; https://www.bas.se/ for the BAS chart of accounts; and https://www.verksamt.se/ for business administration guidance. Treat company-approved accounting instructions and comparable historical vouchers as the primary source for that company\'s established practice.'
             : null
     if (text == null) {
       throw new IllegalArgumentException("Unknown resource: ${uri}")

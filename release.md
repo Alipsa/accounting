@@ -2,6 +2,9 @@
 
 ## v1.6.0, In progress
 
+### Bugfixes
+- **Opening balances and SIE correctness** — The opening-balance editor is more robust when locale data is missing, and SIE imports now preserve the sign of credit-normal opening balances correctly.
+
 ### Improvements
 - **Local HTTP MCP integration** — The desktop app now exposes a token-protected MCP endpoint on localhost for AI clients. Stdio `--mode=mcp` configurations are no longer supported; configure the HTTP endpoint shown in Settings instead.
 - **AI-assisted voucher drafts** — AI clients can inspect and fill an unsaved voucher draft, but only the user can save it from the desktop application.
@@ -9,6 +12,9 @@
 - **Restored working context** — The most recently selected company and fiscal year are restored on the next startup.
 - **Smoother voucher entry** — New vouchers use the latest voucher date. Account and amount entry provide better counter-entry suggestions, and the save action has a clear icon.
 - **Localized startup screen** — The startup message follows the application's selected language.
+- **Better AI accounting context** — MCP clients can read the active company and fiscal year, account names, recent voucher lines, and user-approved accounting instructions for consistent recurring postings.
+- **Voucher workflow improvements** — Unsaved drafts remain when browsing vouchers; first/last navigation and printing of drafts are available; corrections refer to the voucher number; and unsaved status is clearly marked.
+- **Linux HiDPI polish** — The voucher save action is sized consistently with the other toolbar actions.
 
 ## v1.5.1, 2026-07-19
 

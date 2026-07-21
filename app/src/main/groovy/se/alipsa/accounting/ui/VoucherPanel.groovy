@@ -26,6 +26,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Desktop
 import java.awt.FlowLayout
+import java.awt.Insets
 import java.awt.event.ActionEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
@@ -67,6 +68,7 @@ import javax.swing.table.DefaultTableCellRenderer
  * Inline voucher editor panel with sequential navigation.
  * Replaces VoucherListPanel and VoucherEditor.
  */
+// codenarc-disable ClassSize
 final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
@@ -87,6 +89,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   Closure dateFocusRequester = { datePicker.requestFocusInWindow() }
 
   private final JLabel voucherNumberLabel = new JLabel('')
+  private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
   private final JTextField descriptionField = new JTextField(30)
   private final JTextField seriesField = new JTextField(4)
@@ -97,6 +100,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   private JButton prevButton
   private JButton nextButton
+  private JButton firstButton
+  private JButton lastButton
   private JButton saveButton
   private JButton printButton
   private JButton duplicateButton
@@ -114,9 +119,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private final AuditLogTableModel auditLogTableModel = new AuditLogTableModel()
   private final JTable auditLogTable = new JTable(auditLogTableModel)
 
-  private List<Voucher> voucherList = []
-  private int currentIndex = -1
   private Voucher currentVoucher
+  private final VoucherNavigation navigation = new VoucherNavigation()
   private boolean readOnly = false
   private final Map<String, BigDecimal> balanceCache = [:]
   private final Map<Long, Map<String, BigDecimal>> voucherBalanceCache = [:]
@@ -185,6 +189,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4))
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber')))
     panel.add(voucherNumberLabel)
+    unsavedLabel.foreground = new Color(180, 83, 9)
+    unsavedLabel.text = I18n.instance.getString('voucherPanel.label.unsaved')
+    unsavedLabel.toolTipText = I18n.instance.getString('voucherPanel.label.unsaved')
+    panel.add(unsavedLabel)
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')))
     panel.add(datePicker)
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')))
@@ -200,9 +208,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private JPanel buildNavigationToolbar() {
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2))
 
-    prevButton = new JButton('\u25C0')
-    prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
-    prevButton.addActionListener { navigatePrev() }
+    firstButton = navigationButton('\u23EE', 'voucherPanel.button.first') { navigateFirst() }
+    panel.add(firstButton)
+
+    prevButton = navigationButton('\u25C0', 'voucherPanel.button.prev') { navigatePrev() }
     panel.add(prevButton)
 
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.jump')))
@@ -210,12 +219,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
     panel.add(jumpField)
 
-    nextButton = new JButton('\u25B6')
-    nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
-    nextButton.addActionListener { navigateNext() }
+    nextButton = navigationButton('\u25B6', 'voucherPanel.button.next') { navigateNext() }
     panel.add(nextButton)
 
+    lastButton = navigationButton('\u23ED', 'voucherPanel.button.last') { navigateLast() }
+    panel.add(lastButton)
+
     saveButton = new JButton(SAVE_ICON)
+    saveButton.margin = new Insets(5, 6, 5, 6)
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     saveButton.addActionListener { voucherEditorActions.save() }
     panel.add(saveButton)
@@ -241,6 +252,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     panel.add(voidButton)
 
     panel
+  }
+
+  private static JButton navigationButton(String symbol, String tooltipKey, Closure<Void> action) {
+    JButton button = new JButton(symbol)
+    button.toolTipText = I18n.instance.getString(tooltipKey)
+    button.addActionListener { action.call() }
+    button
   }
 
   private JTabbedPane buildMainTabs() {
@@ -547,19 +565,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     voucherBalanceCacheGeneration++
     FiscalYear fy = activeCompanyManager.fiscalYear
     if (fy == null || activeCompanyManager.companyId <= 0) {
-      voucherList = []
-      currentIndex = -1
+      navigation.reset([])
       showBlankVoucher()
       return
     }
     // Reversed so navigatePrev() (which starts from the end) shows the most recent voucher first.
-    voucherList = voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse()
-    currentIndex = -1
+    navigation.reset(voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse())
     showBlankVoucher()
     voucherBalanceCachePreloader.preload(
         activeCompanyManager.companyId,
         fy.id,
-        voucherList,
+        navigation.vouchers,
         voucherBalanceCacheGeneration
     ) { Map<Long, Map<String, BigDecimal>> preloadedBalances, int cacheGeneration ->
       if (cacheGeneration == voucherBalanceCacheGeneration) {
@@ -581,12 +597,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     }
     String displayNumber = v.voucherNumber ?: String.valueOf(v.id)
     voucherNumberLabel.text = displayNumber
+    unsavedLabel.visible = false
     jumpField.text = displayNumber
     datePicker.date = v.accountingDate
     descriptionField.text = v.description ?: ''
     seriesField.text = v.seriesCode ?: 'A'
     if (v.originalVoucherId != null) {
-      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + v.originalVoucherId
+      Voucher original = voucherService.findVoucher(v.originalVoucherId)
+      String originalNumber = original?.voucherNumber ?: String.valueOf(v.originalVoucherId)
+      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + originalNumber
       correctsLabel.visible = true
     } else {
       correctsLabel.text = ''
@@ -602,11 +621,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void showBlankVoucher() {
+    navigation.clearDraft()
+    showEmptyVoucher()
+  }
+
+  private void showEmptyVoucher() {
     currentVoucher = null
     readOnly = false
     balanceCache.clear()
     String nextNumber = previewNextVoucherNumber('A')
     voucherNumberLabel.text = nextNumber
+    unsavedLabel.visible = true
     jumpField.text = nextNumber
     datePicker.date = defaultDate()
     descriptionField.text = ''
@@ -648,36 +673,29 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void navigatePrev() {
-    if (voucherList.isEmpty()) {
-      return
-    }
-    if (currentIndex < 0) {
-      currentIndex = voucherList.size() - 1
-    } else if (currentIndex > 0) {
-      currentIndex--
-    }
-    showVoucher(voucherList[currentIndex])
+    rememberDraftBeforeNavigation()
+    navigation.previous(this::showVoucher)
   }
 
   private void navigateNext() {
-    if (voucherList.isEmpty()) {
-      return
-    }
-    if (currentIndex < 0) {
-      return
-    }
-    if (currentIndex >= voucherList.size() - 1) {
-      currentIndex = -1
-      showBlankVoucher()
-    } else {
-      currentIndex++
-      showVoucher(voucherList[currentIndex])
-    }
+    navigation.next(this::showVoucher, this::restoreNavigationDraft)
   }
 
   private void updateNavigationButtons() {
-    prevButton.enabled = !voucherList.isEmpty() && currentIndex != 0
-    nextButton.enabled = !voucherList.isEmpty() && currentIndex >= 0
+    prevButton.enabled = navigation.canGoPrevious()
+    nextButton.enabled = navigation.canGoNext()
+    firstButton.enabled = navigation.canGoPrevious()
+    lastButton.enabled = navigation.canGoLast()
+  }
+
+  private void navigateFirst() {
+    rememberDraftBeforeNavigation()
+    navigation.first(this::showVoucher)
+  }
+
+  private void navigateLast() {
+    rememberDraftBeforeNavigation()
+    navigation.last(this::showVoucher)
   }
 
   private void jumpToVoucher(String number) {
@@ -689,8 +707,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     Voucher voucher = fiscalYear == null ? null : voucherService.findVoucher(
         activeCompanyManager.companyId, fiscalYear.id, normalized)
     if (voucher != null) {
-      currentIndex = voucherList.findIndexOf { Voucher candidate -> candidate.id == voucher.id }
-      showVoucher(voucher)
+      rememberDraftBeforeNavigation()
+      navigation.select(voucher, this::showVoucher)
     } else {
       showError("${I18n.instance.getString('voucherPanel.label.voucherNumber')} ${normalized} — ${I18n.instance.getString('voucherPanel.lookup.noMatches')}" as String)
     }
@@ -712,6 +730,25 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     dateFocusRequester.call()
   }
 
+  private void rememberDraftBeforeNavigation() {
+    if (currentVoucher != null || !navigation.isOnDraft()) {
+      return
+    }
+    if (lineTable.editing) {
+      lineTable.cellEditor.stopCellEditing()
+    }
+    navigation.rememberDraft(VoucherDraftMapper.fromDraft(snapshotDraft()))
+  }
+
+  private void restoreNavigationDraft() {
+    VoucherDraftMapper.VoucherDraft draft = navigation.draft()
+    if (draft == null) {
+      showEmptyVoucher()
+      return
+    }
+    applyDraft(draft)
+  }
+
   private void duplicateVoucher() {
     if (currentVoucher == null) { return }
     Voucher source = currentVoucher
@@ -719,7 +756,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     List<VoucherLine> copiedLines = source.lines.collect { VoucherLine line ->
       new VoucherLine(null, null, line.lineIndex, null, line.accountNumber, line.accountName, line.description, line.debitAmount ?: BigDecimal.ZERO, line.creditAmount ?: BigDecimal.ZERO)
     }
-    currentIndex = -1
+    navigation.showDraft()
     showBlankVoucher()
     voucherNumberLabel.text = previewNextVoucherNumber(seriesCode)
     jumpField.text = voucherNumberLabel.text
@@ -797,7 +834,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     descriptionField.enabled = !readOnly
     seriesField.enabled = currentVoucher == null
     saveButton.enabled = !readOnly
-    printButton.enabled = currentVoucher != null
+    printButton.enabled = true
     duplicateButton.enabled = currentVoucher != null
     voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
@@ -887,14 +924,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   }
 
   private void printCurrentVoucher() {
-    if (currentVoucher == null) {
-      showError(I18n.instance.getString('voucherPanel.error.noVoucherToPrint'))
+    Voucher source = printableVoucher()
+    if (source == null) {
       return
     }
-    String voucherNumber = currentVoucher.voucherNumber ?: String.valueOf(currentVoucher.id)
+    String voucherNumber = source.voucherNumber ?: String.valueOf(source.id)
     JEditorPane document = new JEditorPane(
         'text/html',
-        VoucherPrintDocument.buildHtml(currentVoucher, activeCompanyManager.companyLocale)
+        VoucherPrintDocument.buildHtml(source, activeCompanyManager.companyLocale)
     )
     document.editable = false
     try {
@@ -911,6 +948,28 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       }
     } catch (PrinterException exception) {
       showError(I18n.instance.format('voucherPanel.error.printFailed', exception.message ?: exception.class.simpleName))
+    }
+  }
+
+  @PackageScope
+  Voucher printableVoucher() {
+    if (currentVoucher != null) {
+      return currentVoucher
+    }
+    try {
+      VoucherDraftMapper.VoucherDraft draft = VoucherDraftMapper.fromDraft(snapshotDraft())
+      new Voucher(
+          id: null,
+          fiscalYearId: activeCompanyManager.fiscalYear?.id ?: 0L,
+          seriesCode: draft.seriesCode,
+          voucherNumber: I18n.instance.getString('voucherPanel.print.draft'),
+          accountingDate: draft.accountingDate,
+          description: draft.description,
+          lines: draft.lines
+      )
+    } catch (IllegalArgumentException exception) {
+      showError(exception.message ?: I18n.instance.getString('voucherPanel.error.invalidAmount'))
+      null
     }
   }
 
@@ -990,6 +1049,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     datePicker.locale = I18n.instance.locale
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
+    firstButton.toolTipText = I18n.instance.getString('voucherPanel.button.first')
+    lastButton.toolTipText = I18n.instance.getString('voucherPanel.button.last')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
     printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
@@ -998,6 +1059,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
+    unsavedLabel.text = I18n.instance.getString('voucherPanel.label.unsaved')
+    unsavedLabel.toolTipText = unsavedLabel.text
     tabs.setTitleAt(0, I18n.instance.getString('voucherPanel.tab.lines'))
     tabs.setTitleAt(1, I18n.instance.getString('voucherPanel.tab.attachments'))
     tabs.setTitleAt(2, I18n.instance.getString('voucherPanel.tab.history'))

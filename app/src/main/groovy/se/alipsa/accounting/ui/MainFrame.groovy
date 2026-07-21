@@ -235,7 +235,8 @@ final class MainFrame implements PropertyChangeListener {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
-    mcpServerLifecycle = new McpServerLifecycle(userPreferencesService, voucherPanel, mcpSettingsSection, mcpGlassPane)
+    mcpServerLifecycle = new McpServerLifecycle(
+        userPreferencesService, activeCompanyManager, voucherPanel, mcpSettingsSection, mcpGlassPane)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))

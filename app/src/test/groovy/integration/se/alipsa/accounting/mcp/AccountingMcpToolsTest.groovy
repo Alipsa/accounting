@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.service.AccountService
+import se.alipsa.accounting.service.AccountingInstructionService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.CompanyService
@@ -75,7 +76,8 @@ class AccountingMcpToolsTest {
             reportIntegrityService,
             auditLogService,
             fiscalYearService
-        )
+        ),
+        new AccountingInstructionService(databaseService)
     )
 
     databaseService.withTransaction { groovy.sql.Sql sql ->
@@ -113,6 +115,73 @@ class AccountingMcpToolsTest {
     } else {
       System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
     }
+  }
+
+  @Test
+  void getActiveContextReturnsProvidedDesktopSelection() {
+    tools.setActiveContextProvider {
+      Map<String, Object> context = [:]
+      context.ok = true
+      context.company_id = CompanyService.LEGACY_COMPANY_ID
+      context.company_name = 'Default Company'
+      context.fiscal_year_id = fiscalYearId
+      context.fiscal_year_name = '2026'
+      context
+    }
+
+    Map<String, Object> result = tools.callTool('get_active_context', [:])
+
+    assertEquals(true, result.ok)
+    assertEquals(CompanyService.LEGACY_COMPANY_ID, result.company_id)
+    assertEquals(fiscalYearId, result.fiscal_year_id)
+  }
+
+  @Test
+  void voucherListIncludesPostingLines() {
+    voucherService.createVoucher(
+        fiscalYearId,
+        'A',
+        LocalDate.of(2026, 3, 1),
+        'Established pattern',
+        [
+            new VoucherLine(null, null, 0, accountId('1930'), '1930', 'Företagskonto', null, 100.00G, 0.00G),
+            new VoucherLine(null, null, 1, accountId('2440'), '2440', 'Leverantörsskulder', null, 0.00G, 100.00G)
+        ]
+    )
+
+    Map<String, Object> result = tools.callTool('list_vouchers', [
+        company_id: (Object) CompanyService.LEGACY_COMPANY_ID,
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    List<Map<String, Object>> vouchers = (List<Map<String, Object>>) result.vouchers
+    List<Map<String, Object>> lines = (List<Map<String, Object>>) vouchers.first().lines
+    assertEquals('1930', lines.first().account_number)
+    assertEquals('Företagskonto', lines.first().account_name)
+  }
+
+  @Test
+  void savesAndListsCompanyApprovedAccountingInstruction() {
+    Map<String, Object> saved = tools.callTool('save_accounting_instruction', [
+        company_id: (Object) CompanyService.LEGACY_COMPANY_ID,
+        trigger_text: 'Tillgodoförd debiterad preliminärskatt',
+        description: 'Tillgodoförd debiterad preliminärskatt',
+        debit_account_number: '1930',
+        credit_account_number: '2440',
+        series_code: 'A'
+    ])
+
+    assertTrue((boolean) saved.ok)
+    Map<String, Object> instruction = (Map<String, Object>) saved.instruction
+    assertEquals('1930', instruction.debit_account_number)
+    assertEquals('2440', instruction.credit_account_number)
+
+    Map<String, Object> listed = tools.callTool('list_accounting_instructions', [
+        company_id: (Object) CompanyService.LEGACY_COMPANY_ID
+    ])
+    List<Map<String, Object>> instructions = (List<Map<String, Object>>) listed.instructions
+    assertEquals(1, instructions.size())
+    assertEquals('Tillgodoförd debiterad preliminärskatt', instructions.first().trigger_text)
   }
 
   @Test
@@ -604,6 +673,13 @@ class AccountingMcpToolsTest {
   void voucherDraftToolsRouteThroughVoucherDraftAccess() {
     Map<String, Object> existingDraft = [description: 'Existing draft', lines: []]
     Map<String, Object>[] appliedDraft = new Map[1]
+    tools.setActiveContextProvider {
+      Map<String, Object> context = [:]
+      context.ok = true
+      context.company_id = CompanyService.LEGACY_COMPANY_ID
+      context.fiscal_year_id = fiscalYearId
+      context
+    }
     tools.setVoucherDraftAccess(new VoucherDraftAccess() {
       @Override
       Map<String, Object> getVoucherDraft() { existingDraft }
@@ -626,6 +702,19 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) writeResult.get('ok'))
     assertTrue((boolean) writeResult.get('awaiting_user_save'))
     assertEquals(replacement, appliedDraft[0])
+    Map<String, Object> linesReplacement = [
+        accounting_date: '2026-03-01',
+        description: 'Prepared with account names',
+        lines: [
+            [account_number: '1930', debit: 100.00G, credit: 0.00G],
+            [account_number: '2440', debit: 0.00G, credit: 100.00G]
+        ]
+    ]
+    Map<String, Object> linesWriteResult = tools.callTool('set_active_voucher_draft', linesReplacement)
+    assertTrue((boolean) linesWriteResult.get('ok'))
+    List<Map<String, Object>> appliedLines = (List<Map<String, Object>>) appliedDraft[0].lines
+    assertEquals('Företagskonto', appliedLines.first().account_name)
+    assertEquals('Leverantörsskulder', appliedLines.last().account_name)
     assertThrows(IllegalArgumentException) {
       tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []])
     }

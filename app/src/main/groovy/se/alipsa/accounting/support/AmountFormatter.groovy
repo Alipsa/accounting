@@ -34,7 +34,7 @@ final class AmountFormatter {
     if (!trimmed) {
       return null
     }
-    DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(locale)
+    DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(effectiveLocale(locale))
     char groupSep = symbols.groupingSeparator
     char decSep = symbols.decimalSeparator
     String normalized = trimmed
@@ -70,7 +70,7 @@ final class AmountFormatter {
   }
 
   static char decimalSeparator(Locale locale) {
-    DecimalFormatSymbols.getInstance(locale).decimalSeparator
+    DecimalFormatSymbols.getInstance(effectiveLocale(locale)).decimalSeparator
   }
 
   static Locale resolveLocale(String localeTag) {
@@ -82,7 +82,8 @@ final class AmountFormatter {
   }
 
   private static DecimalFormat formatter(Locale locale) {
-    FORMATTERS.get().computeIfAbsent(locale) { Locale loc ->
+    Locale resolvedLocale = effectiveLocale(locale)
+    FORMATTERS.get().computeIfAbsent(resolvedLocale) { Locale loc ->
       DecimalFormat fmt = (DecimalFormat) NumberFormat.getNumberInstance(loc)
       fmt.minimumFractionDigits = SCALE
       fmt.maximumFractionDigits = SCALE
@@ -91,6 +92,10 @@ final class AmountFormatter {
       fmt.decimalFormatSymbols = symbols
       fmt
     }
+  }
+
+  private static Locale effectiveLocale(Locale locale) {
+    locale ?: Locale.forLanguageTag('sv-SE')
   }
 
   private static BigDecimal scale(BigDecimal amount) {

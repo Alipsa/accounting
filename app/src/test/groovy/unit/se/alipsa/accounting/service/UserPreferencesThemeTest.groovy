@@ -3,21 +3,28 @@ package unit.se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.UserPreferencesService
 
+import java.util.prefs.Preferences
+
 class UserPreferencesThemeTest {
 
-  private final UserPreferencesService service = new UserPreferencesService()
+  private Preferences node
+  private UserPreferencesService service
+
+  @BeforeEach
+  void setUp() {
+    node = Preferences.userRoot().node("accounting-test-${UUID.randomUUID()}")
+    service = new UserPreferencesService(node)
+  }
 
   @AfterEach
   void cleanup() {
-    service.setTheme(null)
-    service.setAutomaticUpdateCheckEnabled(true)
-    service.setLastActiveCompanyId(null)
-    service.setLastActiveFiscalYearId(null)
+    node.removeNode()
   }
 
   @Test
@@ -65,6 +72,7 @@ class UserPreferencesThemeTest {
     service.setLastActiveCompanyId(null)
     assertEquals(null, service.getLastActiveCompanyId())
   }
+
 
   @Test
   void roundTripsLastActiveFiscalYearPreference() {
