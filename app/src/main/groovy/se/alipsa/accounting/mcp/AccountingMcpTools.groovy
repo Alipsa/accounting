@@ -8,7 +8,6 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
-import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
@@ -35,6 +34,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Registry and implementation entrypoint for MCP tools.
@@ -51,6 +51,8 @@ class AccountingMcpTools {
   private final ClosingService closingService
   private final ReportDataService reportDataService
   private final SieImportExportService sieImportExportService
+  private VoucherDraftAccess voucherDraftAccess
+  private final Set<String> consumedPreviewTokens = ConcurrentHashMap.newKeySet()
 
   AccountingMcpTools() {
     this(
@@ -110,6 +112,10 @@ class AccountingMcpTools {
     McpToolDefinitions.listTools()
   }
 
+  void setVoucherDraftAccess(VoucherDraftAccess value) {
+    voucherDraftAccess = value
+  }
+
   Map<String, Object> callTool(String name, Map<String, Object> arguments) {
     switch (name) {
       case 'get_company_info':
@@ -132,8 +138,10 @@ class AccountingMcpTools {
         return bookVatTransfer(arguments)
       case 'preview_voucher':
         return previewVoucher(arguments)
-      case 'post_voucher':
-        return postVoucher(arguments)
+      case 'get_active_voucher_draft':
+        return getActiveVoucherDraft()
+      case 'set_active_voucher_draft':
+        return setActiveVoucherDraft(arguments)
       case 'create_correction_voucher':
         return createCorrectionVoucher(arguments)
       case 'preview_year_end':
@@ -155,6 +163,21 @@ class AccountingMcpTools {
 
   // ---- read-only tools ----
 
+  private Map<String, Object> getActiveVoucherDraft() {
+    if (voucherDraftAccess == null) {
+      return voucherEditorUnavailable()
+    }
+    [ok: true, saved: false, draft: voucherDraftAccess.getVoucherDraft()]
+  }
+
+  private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {
+    if (voucherDraftAccess == null) {
+      return voucherEditorUnavailable()
+    }
+    voucherDraftAccess.setVoucherDraft(args)
+    [ok: true, saved: false, awaiting_user_save: true]
+  }
+
   private Map<String, Object> getCompanyInfo(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     Company company = companyService.findById(companyId)
@@ -169,6 +192,7 @@ class AccountingMcpTools {
             organization_number: company.organizationNumber,
             default_currency: company.defaultCurrency,
             vat_periodicity: company.vatPeriodicity?.name(),
+            accounting_method: company.accountingMethod?.name(),
             active: company.active
         ]
     ]
@@ -392,6 +416,9 @@ class AccountingMcpTools {
       if (providedHash != expectedHash) {
         return [ok: false, errors: ['report_hash stämmer inte med aktuell momsrapport — kör get_vat_report igen.']]
       }
+      if (!consumePreviewToken("vat:${providedHash}")) {
+        return [ok: false, errors: ['report_hash har redan använts — kör get_vat_report igen.']]
+      }
       if (period.status == VatService.OPEN) {
         vatService.reportPeriod(vatPeriodId)
       }
@@ -460,46 +487,6 @@ class AccountingMcpTools {
         total_debit: preview.totalDebit,
         total_credit: preview.totalCredit
     ]
-  }
-
-  private Map<String, Object> postVoucher(Map<String, Object> args) {
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    String seriesCode = requiredString(args, 'series_code')
-    String dateText = requiredString(args, 'accounting_date')
-    String description = requiredString(args, 'description')
-    List<Map<String, Object>> rawLines = linesArg(args)
-    String providedToken = args.get('preview_token') as String
-    if (!providedToken) {
-      return [ok: false, errors: ['preview_token krävs — kör preview_voucher med exakt samma argument först.']]
-    }
-
-    String expectedToken = voucherPreviewToken(fiscalYearId, seriesCode, dateText, description, rawLines)
-    if (providedToken != expectedToken) {
-      return [ok: false, errors: ['preview_token stämmer inte med aktuell nyttolast — kör preview_voucher igen med exakt samma argument.']]
-    }
-
-    Map<String, Object> preview = previewVoucher(args)
-    if (!(boolean) preview.ok) {
-      return [ok: false, errors: preview.errors]
-    }
-
-    LocalDate accountingDate = LocalDate.parse(dateText)
-    List<VoucherLine> lines = toVoucherLines((List<Map<String, Object>>) preview.lines)
-    try {
-      Voucher voucher = voucherService.createVoucher(fiscalYearId, seriesCode, accountingDate, description, lines)
-      [
-          ok: true,
-          voucher_id: voucher.id,
-          voucher_number: voucher.voucherNumber,
-          fiscal_year_id: voucher.fiscalYearId,
-          accounting_date: voucher.accountingDate?.toString(),
-          description: voucher.description,
-          status: voucher.status?.name(),
-          line_count: voucher.lines?.size() ?: 0
-      ]
-    } catch (Exception exception) {
-      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
-    }
   }
 
   private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
@@ -573,6 +560,9 @@ class AccountingMcpTools {
       if (providedToken != expectedToken) {
         return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
       }
+      if (!consumePreviewToken("year-end:${providedToken}")) {
+        return [ok: false, errors: ['preview_token har redan använts — kör preview_year_end igen.']]
+      }
       YearEndClosingResult result = closingService.closeFiscalYear(fiscalYearId, closingAccount)
       [
           ok: true,
@@ -632,6 +622,9 @@ class AccountingMcpTools {
                     : 'Ogiltig import_token — kör preview_sie_import med exakt samma fil och replace_existing-värde.'
             ]
         ]
+      }
+      if (!consumePreviewToken("sie:${providedToken}")) {
+        return [ok: false, errors: ['import_token har redan använts — kör preview_sie_import igen.']]
       }
       def result = replaceExisting
           ? sieImportExportService.replaceFiscalYear(companyId, filePath)
@@ -757,6 +750,14 @@ class AccountingMcpTools {
         .digest(canonical.bytes)
         .encodeHex()
         .toString()
+  }
+
+  private boolean consumePreviewToken(String token) {
+    consumedPreviewTokens.add(token)
+  }
+
+  private static Map<String, Object> voucherEditorUnavailable() {
+    [ok: false, error: 'Voucher editor is not available.']
   }
 
   private static String voucherPreviewToken(
@@ -906,22 +907,6 @@ class AccountingMcpTools {
         debit: debit,
         credit: credit
     ]
-  }
-
-  private static List<VoucherLine> toVoucherLines(List<Map<String, Object>> lines) {
-    lines.withIndex().collect { Map<String, Object> line, int index ->
-      new VoucherLine(
-          null,
-          null,
-          index,
-          ((Number) line.account_id).longValue(),
-          line.account_number as String,
-          line.account_name as String,
-          null,
-          amount(line.debit),
-          amount(line.credit)
-      )
-    }
   }
 
   private static LocalDate parseAccountingDate(String dateText, List<String> errors) {

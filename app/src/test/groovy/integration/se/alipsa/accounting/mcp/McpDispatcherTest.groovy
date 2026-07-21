@@ -34,7 +34,7 @@ class McpDispatcherTest {
     Map<String, Object> serverInfo = (Map<String, Object>) result.serverInfo
     assertEquals(McpDispatcher.PROTOCOL_VERSION, result.protocolVersion)
     assertEquals('alipsa-accounting', serverInfo.name)
-    assertEquals([tools: [:]], result.capabilities)
+    assertEquals([tools: [:], resources: [:], prompts: [:]], result.capabilities)
   }
 
   @Test
@@ -50,7 +50,7 @@ class McpDispatcherTest {
   }
 
   @Test
-  void unknownMethodReturnsJsonRpcMethodNotFound() {
+  void resourcesListReturnsRegisteredResources() {
     McpDispatcher dispatcher = new McpDispatcher()
 
     Map<String, Object> response = dispatchToMap(dispatcher, [
@@ -59,8 +59,8 @@ class McpDispatcherTest {
         method : 'resources/list'
     ])
 
-    Map<String, Object> error = (Map<String, Object>) response.error
-    assertEquals(-32601, error.code)
+    Map<String, Object> result = (Map<String, Object>) response.result
+    assertFalse(((List) result.resources).isEmpty())
     assertEquals(7, response.id)
   }
 

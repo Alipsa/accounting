@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import se.alipsa.accounting.domain.ThemeMode
 
+import java.security.SecureRandom
 import java.util.prefs.Preferences
 
 /**
@@ -18,6 +19,7 @@ final class UserPreferencesService {
   private static final String PENDING_MIGRATION_TARGET_KEY = 'data.pendingMigrationTarget'
   private static final String PENDING_MIGRATION_MOVE_KEY = 'data.pendingMigrationMove'
   private static final String LAST_SIE_IMPORT_DIRECTORY_KEY = 'sie.import.lastDirectory'
+  private static final String MCP_TOKEN_KEY = 'mcp.token'
 
   private final Preferences preferences
 
@@ -133,5 +135,21 @@ final class UserPreferencesService {
     } else {
       preferences.remove(LAST_SIE_IMPORT_DIRECTORY_KEY)
     }
+  }
+
+  String ensureMcpToken() {
+    String token = preferences.get(MCP_TOKEN_KEY, null)
+    if (token) {
+      return token
+    }
+    regenerateMcpToken()
+  }
+
+  String regenerateMcpToken() {
+    byte[] bytes = new byte[32]
+    new SecureRandom().nextBytes(bytes)
+    String token = bytes.encodeBase64Url().toString().replace('=', '')
+    preferences.put(MCP_TOKEN_KEY, token)
+    token
   }
 }

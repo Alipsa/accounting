@@ -12,6 +12,7 @@ import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherSeries
 import se.alipsa.accounting.domain.VoucherStatus
+import se.alipsa.accounting.mcp.VoucherDraftAccess
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
@@ -67,7 +68,8 @@ import javax.swing.table.DefaultTableCellRenderer
  * Inline voucher editor panel with sequential navigation.
  * Replaces VoucherListPanel and VoucherEditor.
  */
-final class VoucherPanel extends JPanel implements PropertyChangeListener {
+// codenarc-disable ClassSize
+final class VoucherPanel extends JPanel implements PropertyChangeListener, VoucherDraftAccess {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
@@ -710,6 +712,64 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
       reloadVoucherList()
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.saveFailed'))
+    }
+  }
+
+  @Override
+  Map<String, Object> getVoucherDraft() {
+    Map<String, Object>[] holder = new Map[1]
+    runOnEdt {
+      holder[0] = [
+          accounting_date: datePicker.date?.toString(),
+          description: descriptionField.text ?: '',
+          series_code: seriesField.text?.trim() ?: 'A',
+          lines: lineTableModel.toVoucherLines().collect { VoucherLine line ->
+            [account_number: line.accountNumber, account_name: line.accountName, description: line.description,
+             debit: line.debitAmount, credit: line.creditAmount]
+          }
+      ]
+    }
+    holder[0]
+  }
+
+  @Override
+  void setVoucherDraft(Map<String, Object> draft) {
+    runOnEdt {
+      Object linesValue = draft.get('lines')
+      if (!(linesValue instanceof List)) {
+        throw new IllegalArgumentException('lines must be an array.')
+      }
+      List<VoucherLine> lines = []
+      ((List) linesValue).eachWithIndex { Object value, int index ->
+        if (!(value instanceof Map)) {
+          throw new IllegalArgumentException('Each voucher line must be an object.')
+        }
+        Map line = (Map) value
+        lines << new VoucherLine(null, null, index, null, line.account_number as String, line.account_name as String,
+            line.description as String, decimal(line.debit), decimal(line.credit))
+      }
+      LocalDate date = LocalDate.parse(draft.get('accounting_date') as String)
+      showBlankVoucher()
+      datePicker.date = date
+      descriptionField.text = draft.get('description') as String ?: ''
+      seriesField.text = draft.get('series_code') as String ?: 'A'
+      lineTableModel.setRows(lines)
+      ensureAutoRow()
+      recalculateAllBalances()
+      refreshTotals()
+      dateFocusRequester.call()
+    }
+  }
+
+  private static BigDecimal decimal(Object value) {
+    value == null || value.toString().trim().isEmpty() ? BigDecimal.ZERO : new BigDecimal(value.toString())
+  }
+
+  private static void runOnEdt(Closure action) {
+    if (SwingUtilities.isEventDispatchThread()) {
+      action.call()
+    } else {
+      SwingUtilities.invokeAndWait(action as Runnable)
     }
   }
 

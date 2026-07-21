@@ -131,33 +131,11 @@ Kör alla kommandon från rotmappen.
 
 ## AI/MCP och LLM-klienter
 
-Alipsa Accounting kan köras i två lägen:
+När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
 
-- **Desktopläge** — standardläget med Swing-gränssnittet.
-- **MCP-läge** — ett headless stdio-läge för LLM-klienter som kan prata Model Context Protocol.
+Servern använder samma lokala H2-databas, valideringar och affärsregler som desktopappen. Den är endast åtkomlig från den egna datorn och slutar svara när appen stängs; ett anslutningsfel i AI-klienten då är förväntat och ofarligt. Äldre stdio-konfigurationer med `--mode=mcp` stöds inte längre och måste ersättas med HTTP-konfigurationen.
 
-MCP-läget startas med `--mode=mcp` och använder samma lokala H2-databas, samma valideringar och samma affärsregler som desktopappen. Servern exponerar verktyg för bland annat företag, räkenskapsår, konton, verifikationer, rapporter, moms, bokslut samt SIE-import och SIE-export. Den skriver JSON-RPC-svar på stdout; loggar och fel skrivs inte till stdout.
-
-Exempel vid utveckling:
-
-```bash
-./gradlew run --args='--mode=mcp'
-```
-
-Exempel från en installerad eller uppackad distribution:
-
-```bash
-# Linux/macOS
-/path/to/AlipsaAccounting --mode=mcp
-
-# Windows
-C:\path\to\AlipsaAccounting.exe --mode=mcp
-```
-
-En LLM CLI, till exempel Claude Code eller Codex, behöver normalt två saker:
-
-1. **MCP-serverkonfiguration** som pekar på Alipsa Accounting-kommandot med argumentet `--mode=mcp`.
-2. **Skill-instruktioner** från `skill/accounting-mcp.md`, som beskriver bokföringsarbetsflöden, bekräftelsekrav och säkerhetsregler för LLM:en.
+AI:n kan lägga ett förslag i den osparade verifikationsvyn, men kan aldrig spara det. Användaren granskar och trycker själv på Spara i desktopappen.
 
 MCP-servern ger klienten verktygen. Skill-filen styr hur LLM:en bör använda verktygen. Skill-filen installeras inte automatiskt av Claude Code eller Codex; se releaseavsnittet nedan för hur den länkas eller kopieras till respektive klients skill-katalog.
 

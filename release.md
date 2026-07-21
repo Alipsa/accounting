@@ -1,8 +1,10 @@
 # Alipsa Accounting, Release History
 
-## v1.5.2, 2026-07-20
+## v1.6.0, In progress
 
 ### Improvements
+- **Local HTTP MCP integration** — The desktop app now exposes a token-protected MCP endpoint on localhost for AI clients. Stdio `--mode=mcp` configurations are no longer supported; configure the HTTP endpoint shown in Settings instead.
+- **AI-assisted voucher drafts** — AI clients can inspect and fill an unsaved voucher draft, but only the user can save it from the desktop application.
 - **Company accounting method** — Company settings can now specify cash or invoice accounting. Existing companies are safely migrated to cash accounting through database migration V25.
 - **Restored working context** — The most recently selected company and fiscal year are restored on the next startup.
 - **Smoother voucher entry** — New vouchers use the latest voucher date. Account and amount entry provide better counter-entry suggestions, and the save action has a clear icon.

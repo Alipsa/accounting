@@ -96,17 +96,18 @@ final class McpToolDefinitions {
                 lines: voucherLinesParam()
             ]
         ),
-        toolDef('post_voucher',
-            'Posts a voucher. Use preview_voucher first to validate. The lines must be balanced (debit total = credit total). VAT reporting uses VAT codes configured on accounts; per-line vat_code is not accepted in Phase 3.',
-            ['company_id', 'fiscal_year_id', 'series_code', 'accounting_date', 'description', 'lines', 'preview_token'],
+        toolDef('get_active_voucher_draft',
+            'Gets the unsaved voucher currently displayed in the desktop application.',
+            [], [:]
+        ),
+        toolDef('set_active_voucher_draft',
+            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application.',
+            ['accounting_date', 'description', 'lines'],
             [
-                company_id: intParam('Company ID'),
-                fiscal_year_id: intParam('Fiscal year ID'),
-                series_code: strParam('Voucher series code, e.g. "A"'),
                 accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
                 description: strParam('Voucher description'),
-                lines: voucherLinesParam(),
-                preview_token: strParam('Token returned by preview_voucher for the exact same payload.')
+                series_code: optStrParam('Voucher series code. Defaults to A.'),
+                lines: voucherLinesParam()
             ]
         ),
         toolDef('create_correction_voucher',

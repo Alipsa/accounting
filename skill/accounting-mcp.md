@@ -9,7 +9,7 @@ description: Bookkeeping workflows for the Alipsa Accounting MCP server.
 
 This skill governs how you assist users with bookkeeping through the Alipsa Accounting MCP server. The server exposes the application's existing domain and service layer. The same business rules that apply in the GUI apply here. You cannot bypass them.
 
-Always read before you write. Gather context first, propose actions, then post only after the user confirms.
+Always read before you write. Gather context first, propose actions, then place a draft in the GUI for the user to review and save.
 
 ## Available Tools
 
@@ -26,6 +26,7 @@ Always read before you write. Gather context first, propose actions, then post o
 | `list_vat_periods` | VAT periods with status (`OPEN`, `REPORTED`, `LOCKED`) |
 | `get_vat_report` | Calculated VAT report for a period; returns `report_hash` |
 | `preview_voucher` | Validate a proposed voucher without posting it; returns `preview_token` only when valid |
+| `get_active_voucher_draft` | Read the unsaved voucher draft currently shown in the desktop application |
 | `preview_year_end` | Year-end pre-checks: blocking issues, warnings, net result; returns `preview_token` only when ready |
 | `preview_sie_import` | Preview a SIE4 import; returns `import_token` only when importable |
 | `list_import_jobs` | Recent SIE import history |
@@ -36,7 +37,7 @@ Only call write tools after the user explicitly confirms the proposed action.
 
 | Tool | Purpose |
 |------|---------|
-| `post_voucher` | Post a balanced voucher using a token from `preview_voucher` |
+| `set_active_voucher_draft` | Fill the unsaved GUI voucher; the user must review and save it |
 | `create_correction_voucher` | Reverse a posted voucher; direct edit/delete is not exposed |
 | `book_vat_transfer` | Book the VAT settlement voucher using `report_hash` from `get_vat_report` |
 | `close_fiscal_year` | Close the fiscal year using a token from `preview_year_end` |
@@ -54,8 +55,8 @@ Only call write tools after the user explicitly confirms the proposed action.
 3. Propose and validate.
    Summarize the voucher to the user: date, description, and lines with account numbers and amounts. Call `preview_voucher` and show resolved account names plus any errors or warnings. Do not proceed if `ok` is false or `preview_token` is missing.
 
-4. Confirm and post.
-   Ask the user explicitly whether to post the voucher. Only call `post_voucher` after confirmation, passing the unchanged payload and the returned `preview_token`.
+4. Place the draft for review.
+   Ask the user whether to prepare the proposed voucher. Call `set_active_voucher_draft`, then tell the user to review and save it in the desktop application. Never claim it was posted or saved.
 
 5. Correct posted vouchers through corrections.
    Direct edits and deletes are not exposed. If a posted voucher is wrong, explain that the permitted path is `create_correction_voucher`.
