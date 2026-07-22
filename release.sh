@@ -10,6 +10,7 @@
 #   ./release.sh --no-sign        # skip GPG signing
 #   ./release.sh --no-release     # skip GitHub release creation
 #   ./release.sh --skip-build     # skip CI build (use existing dist/)
+#   GPG_SIGN_KEY=... ./release.sh # sign with a specific key instead of the default
 #
 # Prerequisites: gh (GitHub CLI), authenticated with repo access, and a
 # release.md section for the current project version.
@@ -21,6 +22,10 @@ REPO="Alipsa/accounting"
 WORKFLOW="build-distributions.yml"
 DIST_DIR="dist"
 RELEASE_NOTES_FILE="release.md"
+# Explicit signing identity so GPG's implicit default-key selection can't pick the wrong
+# secret key when the local keyring holds more than one. Override with GPG_SIGN_KEY=... if
+# releasing under a different identity.
+GPG_SIGN_KEY="${GPG_SIGN_KEY:-per.nyfelt@alipsa.se}"
 SIGN=true
 RELEASE=true
 BUILD=true
@@ -221,13 +226,13 @@ fi
 
 if [ "$SIGN" = true ]; then
   echo ""
-  echo "Signing artifacts with GPG..."
+  echo "Signing artifacts with GPG as: $GPG_SIGN_KEY"
   for file in "$DIST_DIR"/*; do
     [ -f "$file" ] || continue
     case "$file" in
       *.asc|*.sha256) continue ;;
     esac
-    gpg --armor --detach-sign "$file"
+    gpg --local-user "$GPG_SIGN_KEY" --armor --detach-sign "$file"
     echo "  Signed: $(basename "$file")"
   done
   echo ""
