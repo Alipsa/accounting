@@ -786,7 +786,7 @@ final class ReportDataService {
   private ReportResult buildBalanceSheetReport(EffectiveSelection effective) {
     databaseService.withSql { Sql sql ->
       Map<String, AccountInfo> accountInfos = ReportSqlLoader.loadAccountInfos(sql, effective.companyId)
-      Map<String, BigDecimal> fiscalOpeningBalances = ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId)
+      Map<String, BigDecimal> fiscalOpeningBalances = ReportSqlLoader.naturalSignBalances(ReportSqlLoader.loadOpeningBalances(sql, effective.selection.fiscalYearId), accountInfos)
       Map<String, BigDecimal> prePeriodMovements = ReportSqlLoader.loadBalanceSheetMovements(
           sql,
           effective.selection.fiscalYearId,

@@ -24,6 +24,7 @@ final class McpSettingsSection {
   private final JLabel tokenLabel = new JLabel()
   private final JLabel statusCaptionLabel = new JLabel()
   private final JLabel statusLabel = new JLabel()
+  private final JTextField endpointField
   private final JTextField tokenField
   private final JButton regenerateButton = new JButton()
   private Status status = Status.STARTING
@@ -34,6 +35,8 @@ final class McpSettingsSection {
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     border = BorderFactory.createTitledBorder('')
     panel.border = border
+    endpointField = new JTextField(LoopbackMcpServer.ENDPOINT, 30)
+    endpointField.editable = false
     tokenField = new JTextField(userPreferencesService.ensureMcpToken(), 30)
     tokenField.editable = false
     buildRows()
@@ -67,7 +70,7 @@ final class McpSettingsSection {
   private void buildRows() {
     JPanel endpointRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     endpointRow.add(endpointLabel)
-    endpointRow.add(new JLabel(LoopbackMcpServer.ENDPOINT))
+    endpointRow.add(endpointField)
 
     JPanel tokenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     tokenRow.add(tokenLabel)

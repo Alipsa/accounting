@@ -35,6 +35,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
@@ -115,6 +116,17 @@ final class VoucherPanelNavigationTest {
     }
 
     assertNotNull(saveButton.icon)
+    assertEquals(6, saveButton.margin.left)
+    assertEquals(6, saveButton.margin.right)
+  }
+
+  @Test
+  void unsavedVoucherHasAVisibleStatusLabel() {
+    JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.unsaved')
+    }
+
+    assertTrue(unsaved.visible)
   }
 
   @Test
@@ -334,6 +346,96 @@ final class VoucherPanelNavigationTest {
     }
     onEdt { previous.doClick() }
     assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+  }
+
+  @Test
+  void preservesUnsavedDraftWhenNavigatingToSavedVouchersAndBack() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', 'Saved line', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Saved line', 0.00G, 100.00G)]
+    )
+    panel = buildPanel()
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    onEdt {
+      description.text = 'Unsaved draft'
+      panel.lineTableModel.rows[0].accountNumber = '1510'
+      panel.lineTableModel.rows[0].accountName = 'Kundfordringar'
+      panel.lineTableModel.rows[0].debit = '250'
+      panel.lineTableModel.rows[1].accountNumber = '3010'
+      panel.lineTableModel.rows[1].accountName = 'Försäljning'
+      panel.lineTableModel.rows[1].credit = '250'
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.next'))
+    }
+
+    assertEquals('Unsaved draft', onEdt { description.text })
+    assertEquals('1510', onEdt { panel.lineTableModel.rows[0].accountNumber })
+    assertEquals('250,00', onEdt { panel.lineTableModel.rows[0].debit })
+    assertEquals('3010', onEdt { panel.lineTableModel.rows[1].accountNumber })
+    assertEquals('250,00', onEdt { panel.lineTableModel.rows[1].credit })
+  }
+
+  @Test
+  void firstAndLastNavigationButtonsJumpToOldestAndNewestVoucher() {
+    Voucher oldest = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Oldest',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Voucher newest = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 1), 'Newest',
+        [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
+    )
+    panel = buildPanel()
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.first')) }
+    assertEquals(oldest.voucherNumber, onEdt { voucherJumpField.text })
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.last')) }
+    assertEquals(newest.voucherNumber, onEdt { voucherJumpField.text })
+  }
+
+  @Test
+  void printableVoucherBuildsDraftFromUnsavedEditorState() {
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    onEdt {
+      description.text = 'Unsaved printable draft'
+      panel.lineTableModel.rows[0].accountNumber = '1510'
+      panel.lineTableModel.rows[0].accountName = 'Kundfordringar'
+      panel.lineTableModel.rows[0].debit = '125'
+      panel.lineTableModel.rows[1].accountNumber = '3010'
+      panel.lineTableModel.rows[1].accountName = 'Försäljning'
+      panel.lineTableModel.rows[1].credit = '125'
+    }
+
+    Voucher printable = onEdt { panel.printableVoucher() }
+
+    assertEquals(I18n.instance.getString('voucherPanel.print.draft'), printable.voucherNumber)
+    assertEquals('Unsaved printable draft', printable.description)
+    assertEquals(2, printable.lines.size())
+    assertEquals(125G, printable.debitTotal())
+    assertEquals(125G, printable.creditTotal())
+  }
+
+  @Test
+  void correctionLabelUsesTheOriginalVoucherNumberInsteadOfItsId() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createCorrectionVoucher(original.id)
+    panel = buildPanel()
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
+
+    JLabel corrects = findComponent(panel, JLabel) { JLabel label ->
+      label.visible && label.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects'))
+    }
+    assertEquals("${I18n.instance.getString('voucherPanel.label.corrects')} ${original.voucherNumber}", corrects.text)
   }
 
   @Test

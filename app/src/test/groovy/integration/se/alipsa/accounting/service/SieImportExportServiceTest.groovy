@@ -77,6 +77,7 @@ class SieImportExportServiceTest {
     assertEquals(fixture.openingBalanceCount, countRows(targetDatabaseService, 'opening_balance'))
     assertEquals(fixture.voucherCount, countRows(targetDatabaseService, 'voucher'))
     assertEquals(fixture.accountCount, countRows(targetDatabaseService, 'account'))
+    assertEquals(100.00G, openingBalanceAmount(targetDatabaseService, '2010'))
   }
 
   @Test
@@ -933,6 +934,18 @@ class SieImportExportServiceTest {
     databaseService.withSql { Sql sql ->
       GroovyRowResult row = sql.firstRow('select count(*) as total from ' + tableName) as GroovyRowResult
       ((Number) row.get('total')).intValue()
+    }
+  }
+
+  private static BigDecimal openingBalanceAmount(DatabaseService databaseService, String accountNumber) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select ob.amount
+            from opening_balance ob
+            join account a on a.id = ob.account_id
+           where a.account_number = ?
+      ''', [accountNumber]) as GroovyRowResult
+      new BigDecimal(row.get('amount').toString())
     }
   }
 

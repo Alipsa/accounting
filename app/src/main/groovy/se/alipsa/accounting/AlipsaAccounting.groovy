@@ -84,6 +84,7 @@ final class AlipsaAccounting {
 
   private static void runApplication(StartupOptions options, StartupSplash splash, UserPreferencesService userPreferencesService) {
     LoggingConfigurer.configure()
+    log.info("Startup build marker: active-context-diagnostics-2026-07-21 (${versionLine()})")
     DatabaseService.instance.initialize()
     ThemeApplier.apply(userPreferencesService.getTheme())
     StartupVerificationReport startupReport = new StartupVerificationService().verify()

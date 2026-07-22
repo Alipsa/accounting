@@ -613,7 +613,7 @@ final class SieImportExportService {
     }
     normalizedBalances.each { String accountNumber, BigDecimal amount ->
       GroovyRowResult account = sql.firstRow(
-          'select id from account where company_id = ? and account_number = ?',
+          'select id, normal_balance_side as normalBalanceSide from account where company_id = ? and account_number = ?',
           [companyId, accountNumber]
       ) as GroovyRowResult
       if (account == null) {
@@ -622,6 +622,8 @@ final class SieImportExportService {
         )
       }
       long accountId = ((Number) account.get('id')).longValue()
+      BigDecimal normalBalanceAmount = normalBalanceAmount(
+          amount, account.get('normalBalanceSide') as String)
       sql.executeInsert('''
           insert into opening_balance (
               fiscal_year_id,
@@ -630,7 +632,7 @@ final class SieImportExportService {
               created_at,
               updated_at
           ) values (?, ?, ?, current_timestamp, current_timestamp)
-      ''', [fiscalYearId, accountId, amount])
+      ''', [fiscalYearId, accountId, normalBalanceAmount])
     }
     normalizedBalances.size()
   }
@@ -744,13 +746,15 @@ final class SieImportExportService {
     Map<String, BigDecimal> openings = [:]
     sql.rows('''
         select a.account_number as accountNumber,
+               a.normal_balance_side as normalBalanceSide,
                ob.amount
           from opening_balance ob
           join account a on a.id = ob.account_id
          where ob.fiscal_year_id = ?
            and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')
     ''', [fiscalYearId]).each { GroovyRowResult row ->
-      openings[row.get('accountNumber') as String] = scale(new BigDecimal(row.get('amount').toString()))
+      BigDecimal amount = new BigDecimal(row.get('amount').toString())
+      openings[row.get('accountNumber') as String] = sieBalanceAmount(amount, row.get('normalBalanceSide') as String)
     }
 
     Map<String, BigDecimal> movements = [:]
@@ -859,12 +863,15 @@ final class SieImportExportService {
     Map<String, BigDecimal> balances = [:]
     sql.rows('''
         select a.account_number as accountNumber,
+               a.normal_balance_side as normalBalanceSide,
                ob.amount
           from opening_balance ob
           join account a on a.id = ob.account_id
          where ob.fiscal_year_id = ?
     ''', [fiscalYearId]).each { GroovyRowResult row ->
-      balances[row.get('accountNumber') as String] = scale(new BigDecimal(row.get('amount').toString()))
+      BigDecimal amount = new BigDecimal(row.get('amount').toString())
+      balances[row.get('accountNumber') as String] = sieBalanceAmount(
+          amount, row.get('normalBalanceSide') as String)
     }
     balances
   }
@@ -1055,6 +1062,18 @@ final class SieImportExportService {
 
   private static BigDecimal scale(BigDecimal amount) {
     (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
+  }
+
+  // SIE #IB/#UB amounts are natural-sign (negative for credit-normal accounts); opening_balance.amount
+  // is stored normal-balance-side-sign (positive on the account's own normal side), matching manual entry
+  // (AccountService) and report calculations (ReportSqlLoader). Every reader/writer of opening_balance.amount
+  // in this class must convert between the two via these helpers.
+  private static BigDecimal normalBalanceAmount(BigDecimal sieAmount, String normalBalanceSide) {
+    normalBalanceSide == 'CREDIT' ? scale(sieAmount?.negate()) : scale(sieAmount)
+  }
+
+  private static BigDecimal sieBalanceAmount(BigDecimal normalBalanceAmount, String normalBalanceSide) {
+    normalBalanceSide == 'CREDIT' ? scale(normalBalanceAmount?.negate()) : scale(normalBalanceAmount)
   }
 
   private static String sha256(byte[] content) {

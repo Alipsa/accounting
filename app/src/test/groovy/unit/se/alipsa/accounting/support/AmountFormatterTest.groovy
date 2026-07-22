@@ -42,6 +42,13 @@ final class AmountFormatterTest {
   }
 
   @Test
+  void formatUsesSwedishLocaleWhenLocaleIsMissing() {
+    String result = AmountFormatter.format(1234.56G, null)
+
+    assertTrue(result.contains(','), "Expected Swedish decimal separator: ${result}")
+  }
+
+  @Test
   void formatOrEmptyReturnsEmptyForNull() {
     assertEquals('', AmountFormatter.formatOrEmpty(null, EN))
   }

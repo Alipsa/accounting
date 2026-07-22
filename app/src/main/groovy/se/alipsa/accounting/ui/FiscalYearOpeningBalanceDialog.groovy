@@ -72,7 +72,7 @@ final class FiscalYearOpeningBalanceDialog extends JDialog {
         locale,
         onSave
     )
-    dialog.visible = true
+    dialog.setVisible(true)
   }
 
   private void buildUi() {

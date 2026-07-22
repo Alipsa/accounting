@@ -17,10 +17,12 @@ Always read before you write. Gather context first, propose actions, then place 
 
 | Tool | Purpose |
 |------|---------|
+| `get_active_context` | Company and fiscal year currently selected in the desktop application |
 | `get_company_info` | Active company name, currency, VAT periodicity |
 | `list_fiscal_years` | All fiscal years with open/closed status |
 | `list_accounts` | Chart of accounts; supports optional query string filter |
-| `list_vouchers` | Recent vouchers for a fiscal year |
+| `list_accounting_instructions` | Company-approved recurring account mappings and voucher conventions |
+| `list_vouchers` | Recent vouchers and their posting lines for a fiscal year |
 | `get_trial_balance` | Opening balance, period debit/credit, closing balance per account |
 | `get_general_ledger` | Full posting history with running balance per account |
 | `list_vat_periods` | VAT periods with status (`OPEN`, `REPORTED`, `LOCKED`) |
@@ -38,6 +40,7 @@ Only call write tools after the user explicitly confirms the proposed action.
 | Tool | Purpose |
 |------|---------|
 | `set_active_voucher_draft` | Fill the unsaved GUI voucher; the user must review and save it |
+| `save_accounting_instruction` | Save a company-approved recurring mapping after explicit user confirmation |
 | `create_correction_voucher` | Reverse a posted voucher; direct edit/delete is not exposed |
 | `book_vat_transfer` | Book the VAT settlement voucher using `report_hash` from `get_vat_report` |
 | `close_fiscal_year` | Close the fiscal year using a token from `preview_year_end` |
@@ -47,18 +50,22 @@ Only call write tools after the user explicitly confirms the proposed action.
 ## Workflow: Voucher Entry
 
 1. Gather context.
-   Call `get_company_info` and `list_fiscal_years`. Identify the open fiscal year and its `fiscal_year_id`.
+   Call `get_active_context` to obtain the current `company_id` and `fiscal_year_id`. Use
+   `get_company_info` and `list_fiscal_years` when further context is needed.
 
-2. Look up accounts.
-   Call `list_accounts` with a query string when needed. Verify each account is active and has the expected `account_class`.
+2. Load company conventions.
+   Call `list_accounting_instructions` first. If an instruction clearly matches the event, use its account mapping and series exactly. If there is no matching instruction, call `list_accounts` and `list_vouchers` for the active company and fiscal year before proposing a voucher. Reuse the company’s established account usage when a comparable voucher exists. Never guess an account number or substitute another account merely because it has a similar name. Verify each proposed account is active and has the expected `account_class`.
 
-3. Propose and validate.
+3. Remember confirmed conventions.
+   When the user establishes a recurring convention (for example, “always book this as debit 1630 and credit 2510”), show the exact instruction that would be saved and ask whether it should be remembered. Only after a clear yes, call `save_accounting_instruction`. Never save inferred patterns or a one-off correction as an instruction.
+
+4. Propose and validate.
    Summarize the voucher to the user: date, description, and lines with account numbers and amounts. Call `preview_voucher` and show resolved account names plus any errors or warnings. Do not proceed if `ok` is false.
 
-4. Place the draft for review.
+5. Place the draft for review.
    Ask the user whether to prepare the proposed voucher. Call `set_active_voucher_draft`, then tell the user to review and save it in the desktop application. Never claim it was posted or saved.
 
-5. Correct posted vouchers through corrections.
+6. Correct posted vouchers through corrections.
    Direct edits and deletes are not exposed. If a posted voucher is wrong, explain that the permitted path is `create_correction_voucher`.
 
 ## Workflow: Correction Voucher

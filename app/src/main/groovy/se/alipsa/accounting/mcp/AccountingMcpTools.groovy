@@ -3,16 +3,19 @@ package se.alipsa.accounting.mcp
 import groovy.json.JsonOutput
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.AccountingInstruction
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
+import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.GeneralLedgerRow
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.service.AccountService
+import se.alipsa.accounting.service.AccountingInstructionService
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearPurgeSummary
@@ -37,9 +40,8 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 /**
- * Registry and implementation entrypoint for MCP tools.
- *
- * Phase 2 exposes read-only tools that prove service wiring and structured MCP output.
+ * Registry and implementation entrypoint for MCP tools, covering both read-only
+ * and write tools (see McpOperationCoordinator.WRITE_TOOLS for the write set).
  */
 class AccountingMcpTools {
 
@@ -51,7 +53,9 @@ class AccountingMcpTools {
   private final ClosingService closingService
   private final ReportDataService reportDataService
   private final SieImportExportService sieImportExportService
+  private final AccountingInstructionService accountingInstructionService
   private VoucherDraftAccess voucherDraftAccess
+  private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
 
   AccountingMcpTools() {
@@ -98,6 +102,30 @@ class AccountingMcpTools {
       ReportDataService reportDataService,
       SieImportExportService sieImportExportService
   ) {
+    this(
+        companyService,
+        fiscalYearService,
+        accountService,
+        voucherService,
+        vatService,
+        closingService,
+        reportDataService,
+        sieImportExportService,
+        new AccountingInstructionService()
+    )
+  }
+
+  AccountingMcpTools(
+      CompanyService companyService,
+      FiscalYearService fiscalYearService,
+      AccountService accountService,
+      VoucherService voucherService,
+      VatService vatService,
+      ClosingService closingService,
+      ReportDataService reportDataService,
+      SieImportExportService sieImportExportService,
+      AccountingInstructionService accountingInstructionService
+  ) {
     this.companyService = companyService
     this.fiscalYearService = fiscalYearService
     this.accountService = accountService
@@ -106,6 +134,7 @@ class AccountingMcpTools {
     this.closingService = closingService
     this.reportDataService = reportDataService
     this.sieImportExportService = sieImportExportService
+    this.accountingInstructionService = accountingInstructionService
   }
 
   List<Map<String, Object>> listTools() {
@@ -116,14 +145,22 @@ class AccountingMcpTools {
     voucherDraftAccess = value
   }
 
+  void setActiveContextProvider(Closure<Map<String, Object>> value) {
+    activeContextProvider = value
+  }
+
   Map<String, Object> callTool(String name, Map<String, Object> arguments) {
     switch (name) {
+      case 'get_active_context':
+        return getActiveContext()
       case 'get_company_info':
         return getCompanyInfo(arguments)
       case 'list_fiscal_years':
         return listFiscalYears(arguments)
       case 'list_accounts':
         return listAccounts(arguments)
+      case 'list_accounting_instructions':
+        return listAccountingInstructions(arguments)
       case 'list_vouchers':
         return listVouchers(arguments)
       case 'get_trial_balance':
@@ -142,6 +179,8 @@ class AccountingMcpTools {
         return getActiveVoucherDraft()
       case 'set_active_voucher_draft':
         return setActiveVoucherDraft(arguments)
+      case 'save_accounting_instruction':
+        return saveAccountingInstruction(arguments)
       case 'create_correction_voucher':
         return createCorrectionVoucher(arguments)
       case 'preview_year_end':
@@ -163,6 +202,17 @@ class AccountingMcpTools {
 
   // ---- read-only tools ----
 
+  private Map<String, Object> getActiveContext() {
+    if (activeContextProvider == null) {
+      return [ok: false, error: 'Active desktop context is unavailable.']
+    }
+    Map<String, Object> context = activeContextProvider.call()
+    if (context) {
+      return context
+    }
+    [ok: false, error: 'No active company or fiscal year is selected.']
+  }
+
   private Map<String, Object> getActiveVoucherDraft() {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
@@ -178,8 +228,40 @@ class AccountingMcpTools {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
     }
-    voucherDraftAccess.setVoucherDraft(args)
+    List<Map<String, Object>> rawLines = linesArg(args)
+    Map<String, Object> draft = new LinkedHashMap<>(args)
+    if (!rawLines.isEmpty()) {
+      Map<String, Object> context = getActiveContext()
+      if (context.ok != true || !(context.company_id instanceof Number)) {
+        return [ok: false, errors: [context.error ?: 'No active company is selected.']]
+      }
+      List<String> errors = []
+      VoucherPreview preview = resolveVoucherLines(((Number) context.company_id).longValue(), rawLines, errors)
+      if (!errors.isEmpty()) {
+        return [ok: false, errors: errors]
+      }
+      List<Map<String, Object>> enrichedLines = []
+      rawLines.eachWithIndex { Map<String, Object> line, int index ->
+        Map<String, Object> enrichedLine = new LinkedHashMap<>(line)
+        enrichedLine.account_name = preview.lines[index].account_name
+        enrichedLines << enrichedLine
+      }
+      draft.lines = enrichedLines
+    }
+    voucherDraftAccess.setVoucherDraft(draft)
     [ok: true, saved: false, awaiting_user_save: true]
+  }
+
+  private Map<String, Object> saveAccountingInstruction(Map<String, Object> args) {
+    AccountingInstruction instruction = accountingInstructionService.save(
+        requiredLong(args, 'company_id'),
+        requiredString(args, 'trigger_text'),
+        args.get('description') as String,
+        requiredString(args, 'debit_account_number'),
+        requiredString(args, 'credit_account_number'),
+        args.get('series_code') as String
+    )
+    [ok: true, instruction: instructionMap(instruction)]
   }
 
   private Map<String, Object> getCompanyInfo(Map<String, Object> args) {
@@ -240,6 +322,28 @@ class AccountingMcpTools {
     ]
   }
 
+  private Map<String, Object> listAccountingInstructions(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    [
+        ok: true,
+        instructions: accountingInstructionService.list(companyId).collect { AccountingInstruction instruction ->
+          instructionMap(instruction)
+        }
+    ]
+  }
+
+  private static Map<String, Object> instructionMap(AccountingInstruction instruction) {
+    [
+        id: instruction.id,
+        company_id: instruction.companyId,
+        trigger_text: instruction.triggerText,
+        description: instruction.description,
+        debit_account_number: instruction.debitAccountNumber,
+        credit_account_number: instruction.creditAccountNumber,
+        series_code: instruction.seriesCode
+    ]
+  }
+
   private Map<String, Object> listVouchers(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
@@ -259,7 +363,16 @@ class AccountingMcpTools {
               accounting_date: v.accountingDate?.toString(),
               description: v.description,
               status: v.status?.name(),
-              line_count: v.lines?.size() ?: 0
+              line_count: v.lines?.size() ?: 0,
+              lines: v.lines?.collect { VoucherLine line ->
+                [
+                    account_number: line.accountNumber,
+                    account_name: line.accountName,
+                    description: line.description,
+                    debit: line.debitAmount,
+                    credit: line.creditAmount
+                ]
+              } ?: []
           ]
         }
     ]

@@ -30,6 +30,8 @@ This repository is a Gradle-based desktop accounting application with one main m
 
 Run commands from the repository root.
 
+`.github/workflows/ci.yml` runs `./gradlew build` on every PR and push to `main`; `main` requires this check to pass before merging.
+
 ## Coding Style & Naming Conventions
 - Use 2-space indentation in Groovy and Gradle files.
 - Keep SQL readable and manually formatted; do not reflow migrations.

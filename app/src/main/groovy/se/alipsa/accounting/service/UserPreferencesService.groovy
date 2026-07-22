@@ -3,6 +3,9 @@ package se.alipsa.accounting.service
 import se.alipsa.accounting.domain.ThemeMode
 
 import java.security.SecureRandom
+import java.util.logging.Level
+import java.util.logging.Logger
+import java.util.prefs.BackingStoreException
 import java.util.prefs.Preferences
 
 /**
@@ -10,6 +13,7 @@ import java.util.prefs.Preferences
  */
 final class UserPreferencesService {
 
+  private static final Logger log = Logger.getLogger(UserPreferencesService.name)
   private static final String LANGUAGE_KEY = 'ui.language'
   private static final String THEME_KEY = 'ui.theme'
   private static final String UPDATE_CHECK_ENABLED_KEY = 'update.autoCheckEnabled'
@@ -33,6 +37,7 @@ final class UserPreferencesService {
    */
   UserPreferencesService(Preferences preferences) {
     this.preferences = preferences
+    log.info("Using preferences node ${preferences.absolutePath()} (user.home=${System.getProperty('user.home')}, java.util.prefs.userRoot=${System.getProperty('java.util.prefs.userRoot', '<default>')}).")
   }
 
   Locale getLanguage() {
@@ -71,28 +76,45 @@ final class UserPreferencesService {
 
   Long getLastActiveCompanyId() {
     long companyId = preferences.getLong(LAST_ACTIVE_COMPANY_ID_KEY, 0L)
-    companyId > 0L ? companyId : null
+    Long activeCompanyId = companyId > 0L ? companyId : null
+    log.info("Read ${LAST_ACTIVE_COMPANY_ID_KEY}=${activeCompanyId} from ${preferences.absolutePath()}.")
+    activeCompanyId
   }
 
   void setLastActiveCompanyId(Long companyId) {
     if (companyId == null || companyId <= 0L) {
       preferences.remove(LAST_ACTIVE_COMPANY_ID_KEY)
-      return
+    } else {
+      preferences.putLong(LAST_ACTIVE_COMPANY_ID_KEY, companyId)
     }
-    preferences.putLong(LAST_ACTIVE_COMPANY_ID_KEY, companyId)
+    flushActiveContext()
+    log.info("Saved ${LAST_ACTIVE_COMPANY_ID_KEY}=${companyId} to ${preferences.absolutePath()}.")
   }
 
   Long getLastActiveFiscalYearId() {
     long fiscalYearId = preferences.getLong(LAST_ACTIVE_FISCAL_YEAR_ID_KEY, 0L)
-    fiscalYearId > 0L ? fiscalYearId : null
+    Long activeFiscalYearId = fiscalYearId > 0L ? fiscalYearId : null
+    log.info("Read ${LAST_ACTIVE_FISCAL_YEAR_ID_KEY}=${activeFiscalYearId} from ${preferences.absolutePath()}.")
+    activeFiscalYearId
   }
 
   void setLastActiveFiscalYearId(Long fiscalYearId) {
     if (fiscalYearId == null || fiscalYearId <= 0L) {
       preferences.remove(LAST_ACTIVE_FISCAL_YEAR_ID_KEY)
-      return
+    } else {
+      preferences.putLong(LAST_ACTIVE_FISCAL_YEAR_ID_KEY, fiscalYearId)
     }
-    preferences.putLong(LAST_ACTIVE_FISCAL_YEAR_ID_KEY, fiscalYearId)
+    flushActiveContext()
+    log.info("Saved ${LAST_ACTIVE_FISCAL_YEAR_ID_KEY}=${fiscalYearId} to ${preferences.absolutePath()}.")
+  }
+
+  private void flushActiveContext() {
+    try {
+      preferences.flush()
+      log.info("Flushed active context preferences to ${preferences.absolutePath()}.")
+    } catch (BackingStoreException exception) {
+      log.log(Level.WARNING, 'Unable to save the last active company and fiscal year.', exception)
+    }
   }
 
   String getDataLocation() {
