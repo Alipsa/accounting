@@ -1079,6 +1079,20 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         // Individual balance lookups below retain the previous fallback behaviour.
       }
     }
+    if (!displayedAccounts.isEmpty()) {
+      try {
+        Map<String, String> normalBalanceSides = accountService.normalBalanceSides(
+            activeCompanyManager.companyId, displayedAccounts)
+        lineTableModel.rows.each { LineEntry entry ->
+          String side = normalBalanceSides[entry.accountNumber]
+          if (side != null) {
+            entry.normalBalanceSide = side
+          }
+        }
+      } catch (Exception ignored) {
+        // Rows loaded from account lookup already carry a normalBalanceSide; leave those be.
+      }
+    }
     lineTableModel.rows.each { LineEntry entry -> recalculateBalance(entry) }
     if (currentVoucher != null) {
       voucherBalanceCache[currentVoucher.id] = new LinkedHashMap<>(balanceCache)

@@ -386,6 +386,23 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void navigatingToASavedVoucherPopulatesNormalBalanceSideForEachLine() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    installPanelHooks()
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
+
+    assertEquals('DEBIT', onEdt { panel.lineTableModel.rows[0].normalBalanceSide })
+    assertEquals('CREDIT', onEdt { panel.lineTableModel.rows[1].normalBalanceSide })
+  }
+
+  @Test
   void firstAndLastNavigationButtonsJumpToOldestAndNewestVoucher() {
     Voucher oldest = voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Oldest',
