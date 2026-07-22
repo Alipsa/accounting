@@ -22,7 +22,7 @@ final class VoucherEditorActions {
   private final Supplier<String> seriesSupplier
   private final Consumer<String> infoConsumer
   private final Consumer<String> errorConsumer
-  private final Runnable reloadAction
+  private final Consumer<Voucher> savedConsumer
 
   VoucherEditorActions(
       VoucherService voucherService,
@@ -34,7 +34,7 @@ final class VoucherEditorActions {
       Supplier<String> seriesSupplier,
       Consumer<String> infoConsumer,
       Consumer<String> errorConsumer,
-      Runnable reloadAction
+      Consumer<Voucher> savedConsumer
   ) {
     this.voucherService = voucherService
     this.activeCompanyManager = activeCompanyManager
@@ -45,42 +45,43 @@ final class VoucherEditorActions {
     this.seriesSupplier = seriesSupplier
     this.infoConsumer = infoConsumer
     this.errorConsumer = errorConsumer
-    this.reloadAction = reloadAction
+    this.savedConsumer = savedConsumer
   }
 
-  void save() {
+  Voucher save() {
     FiscalYear fiscalYear = activeCompanyManager.fiscalYear
     if (fiscalYear == null) {
       errorConsumer.accept(I18n.instance.getString('voucherPanel.error.noFiscalYear'))
-      return
+      return null
     }
     try {
       LocalDate date = dateSupplier.get()
       if (date == null) {
         errorConsumer.accept(I18n.instance.getString('voucherPanel.error.dateFormat'))
-        return
+        return null
       }
       if (currentVoucherSupplier.get() != null) {
         errorConsumer.accept(I18n.instance.getString('voucherPanel.error.existingVoucherReadOnly'))
-        return
+        return null
       }
       Voucher saved = voucherService.createVoucher(fiscalYear.id, seriesSupplier.get(), date, descriptionSupplier.get(), linesSupplier.get())
       infoConsumer.accept(I18n.instance.getString('voucherPanel.message.saved').replace('{0}', saved.voucherNumber ?: ''))
-      reloadAction.run()
+      savedConsumer.accept(saved)
+      return saved
     } catch (Exception exception) {
       errorConsumer.accept(exception.message ?: I18n.instance.getString('voucherPanel.error.saveFailed'))
     }
   }
 
-  void createCorrection() {
+  Voucher createCorrection() {
     Voucher currentVoucher = currentVoucherSupplier.get()
     if (currentVoucher == null) {
-      return
+      return null
     }
     try {
       Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
       infoConsumer.accept(I18n.instance.format('voucherPanel.message.correctionCreated', correction.voucherNumber ?: ''))
-      reloadAction.run()
+      return correction
     } catch (Exception exception) {
       errorConsumer.accept(exception.message ?: I18n.instance.getString('voucherPanel.error.correctionFailed'))
     }

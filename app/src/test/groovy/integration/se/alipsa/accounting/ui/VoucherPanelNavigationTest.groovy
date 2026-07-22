@@ -35,6 +35,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
@@ -271,16 +272,21 @@ final class VoucherPanelNavigationTest {
     assertEquals('Försäljning', onEdt { panel.lineTableModel.rows[1].accountName })
     assertEquals('Rad två', onEdt { panel.lineTableModel.rows[1].description })
 
+    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
+      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    }
+    assertTrue(onEdt { advanceAfterSave.selected })
     onEdt {
+      advanceAfterSave.selected = false
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
     }
 
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
-    assertEquals('A-1', onEdt { voucherJumpField.text })
+    assertEquals('B-2', onEdt { voucherJumpField.text })
     onEdt {
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
     }
-    assertEquals('B-2', onEdt { voucherJumpField.text })
+    assertEquals('B-1', onEdt { voucherJumpField.text })
 
     List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
     assertEquals(2, vouchers.size())
