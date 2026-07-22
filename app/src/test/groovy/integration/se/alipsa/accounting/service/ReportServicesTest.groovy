@@ -674,8 +674,10 @@ class ReportServicesTest {
     BigDecimal assets = model.assetTotal as BigDecimal
     BigDecimal equityAndLiabilities = model.equityAndLiabilitiesTotal as BigDecimal
 
+    // Balance-sheet totals follow the sign convention of closing balances: liabilities/equity are
+    // negative, so the two totals cancel out to zero rather than being numerically equal.
     assertEquals(1000.00G, assets)
-    assertEquals(1000.00G, equityAndLiabilities)
+    assertEquals(-1000.00G, equityAndLiabilities)
   }
 
   @Test

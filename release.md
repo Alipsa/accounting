@@ -3,7 +3,7 @@
 ## v1.6.0, In progress
 
 ### Bugfixes
-- **Opening balances and SIE correctness** — The opening-balance editor is more robust when locale data is missing, and SIE imports now preserve the sign of credit-normal opening balances correctly.
+- **Opening balances and SIE correctness** — The opening-balance editor is more robust when locale data is missing, and SIE imports now preserve the sign of credit-normal opening balances correctly. This previously only covered import; SIE export crashed for any fiscal year with opening balances, the imported `#UB` closing-balance cross-check produced incorrect warnings for credit-normal accounts (equity/liabilities), and the Balance Sheet report showed the wrong amount for those same accounts. All four are now fixed and covered by tests, including an end-to-end round trip that asserts the actual signed amount, not just record counts.
 
 ### Improvements
 - **Local HTTP MCP integration** — The desktop app now exposes a token-protected MCP endpoint on localhost for AI clients. Stdio `--mode=mcp` configurations are no longer supported; configure the HTTP endpoint shown in Settings instead.

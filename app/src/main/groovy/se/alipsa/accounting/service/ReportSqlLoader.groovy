@@ -186,6 +186,18 @@ final class ReportSqlLoader {
     }
   }
 
+  /**
+   * Converts amounts stored in normal-balance-side convention (positive on the account's own
+   * normal side) to natural/ledger sign convention (negative for credit-normal accounts), matching
+   * the sign convention of {@link #loadBalanceSheetMovements}.
+   */
+  static Map<String, BigDecimal> naturalSignBalances(Map<String, BigDecimal> normalSideBalances, Map<String, AccountInfo> accountInfos) {
+    normalSideBalances.collectEntries { String accountNumber, BigDecimal amount ->
+      String normalBalanceSide = accountInfos[accountNumber]?.normalBalanceSide
+      [(accountNumber): normalBalanceSide == 'CREDIT' ? scale(amount?.negate()) : scale(amount)]
+    } as Map<String, BigDecimal>
+  }
+
   private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
     String safeNormalBalanceSide = normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
     if (!safeNormalBalanceSide) {
