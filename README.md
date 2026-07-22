@@ -42,7 +42,7 @@ Följande funktioner ingår inte ännu:
 Ladda ner rätt paket för din plattform från [GitHub Releases](https://github.com/Alipsa/accounting/releases). Varje paket innehåller en egen inbäddad Java-runtime — ingen separat Java-installation behövs.
 
 - **Linux**: packa upp `alipsa-accounting-<version>-linux.zip` och kör `./install.sh` i den uppackade katalogen.
-- **Windows**: packa upp `alipsa-accounting-<version>-windows.zip` och kör exe-installeraren.
+- **Windows**: packa upp `alipsa-accounting-<version>-windows.zip` och kör exe-installeraren, t.ex. `AlipsaAccounting-<version>.exe`.
 - **macOS**: packa upp `alipsa-accounting-<version>-macos.zip` och flytta `AlipsaAccounting.app` till Programmappen. Appen är inte signerad/notariserad (se [Release](#release) nedan), så Gatekeeper varnar första gången — högerklicka (Ctrl-klicka) på appen, välj **Öppna** och bekräfta i dialogrutan.
 
 Se [Release](#release) för filverifiering (checksummor och GPG-signaturer) samt avinstallation.
