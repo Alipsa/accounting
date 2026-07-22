@@ -56,6 +56,7 @@ class VatPeriodPanelTest {
   private FiscalYear fiscalYear
   private String previousHome
   private Locale previousLocale
+  private VatPeriodPanel panel
 
   @BeforeEach
   void setUp() {
@@ -83,6 +84,7 @@ class VatPeriodPanelTest {
 
   @AfterEach
   void tearDown() {
+    panel?.dispose()
     I18n.instance.setLocale(previousLocale)
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
   }
@@ -91,7 +93,7 @@ class VatPeriodPanelTest {
   void loadsPeriodsAndPreviewForSelectedPeriod() {
     bookVatFixtures()
 
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
 
@@ -107,7 +109,7 @@ class VatPeriodPanelTest {
 
   @Test
   void multiSelectPreviewShowsWhichPeriodIsDisplayed() {
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
 
@@ -127,7 +129,7 @@ class VatPeriodPanelTest {
 
   @Test
   void cancellingBulkConfirmationLeavesPeriodsUnchangedAndFeedbackEmpty() {
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
     panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> false } as VatPeriodPanel.BulkConfirmation
@@ -150,7 +152,7 @@ class VatPeriodPanelTest {
   void reportAndTransferButtonsUpdateStatusAndFeedback() {
     bookVatFixtures()
 
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
 
@@ -175,7 +177,7 @@ class VatPeriodPanelTest {
 
   @Test
   void multiSelectReportingStopsAfterFirstSequentialFailure() {
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
     panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
@@ -214,7 +216,7 @@ class VatPeriodPanelTest {
     VatPeriod february = periods[1]
     vatService.reportPeriod(january.id)
     vatService.reportPeriod(february.id)
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
     panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
@@ -244,7 +246,7 @@ class VatPeriodPanelTest {
         'Försäljning februari',
         saleLines(500.00G)
     )
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
     panel.bulkActionConfirmation = { String ignoredMessage, String ignoredTitle -> true } as VatPeriodPanel.BulkConfirmation
@@ -279,7 +281,7 @@ class VatPeriodPanelTest {
         LocalDate.of(2027, 12, 31)
     )
     activeCompanyManager.fiscalYear = fiscalYear
-    VatPeriodPanel panel = onEdt {
+    panel = onEdt {
       new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)
     }
     JComboBox<FiscalYear> comboBox = findFiscalYearComboBox(panel)

@@ -33,7 +33,7 @@ import javax.swing.SwingWorker
 /**
  * Shows diagnostics, system documentation and backup/restore actions.
  */
-final class SystemDocumentationPanel extends JPanel implements PropertyChangeListener {
+final class SystemDocumentationPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private final SystemDocumentationService documentationService
   private final SystemDiagnosticsService diagnosticsService
@@ -59,9 +59,31 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
     this.diagnosticsService = diagnosticsService
     this.backupService = backupService
     this.userManualService = userManualService
-    I18n.instance.addLocaleChangeListener(this)
+    registerListenersOnce()
     buildUi()
     refreshAll()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
   }
 
   @Override

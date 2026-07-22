@@ -55,7 +55,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
-final class ReportPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
+final class ReportPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(ReportPanel.name)
 
@@ -115,12 +115,35 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
     this.accountingPeriodService = accountingPeriodService
     this.voucherService = voucherService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListenersOnce()
     buildUi()
     reloadFiscalYears()
     reloadArchives()
     reloadReport()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
   }
 
   @Override

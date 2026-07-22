@@ -38,7 +38,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
-final class VatPeriodPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
+final class VatPeriodPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(VatPeriodPanel.name)
 
@@ -85,11 +85,34 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListenersOnce()
     buildUi()
     reloadFiscalYears()
     reloadPeriods()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
   }
 
   @Override

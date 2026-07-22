@@ -52,6 +52,7 @@ class ReportPanelFiscalYearContextTest {
   private FiscalYear nextYear
   private String previousHome
   private Locale previousLocale
+  private ReportPanel panel
 
   @BeforeEach
   void setUp() {
@@ -94,13 +95,14 @@ class ReportPanelFiscalYearContextTest {
 
   @AfterEach
   void tearDown() {
+    panel?.dispose()
     I18n.instance.setLocale(previousLocale)
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
   }
 
   @Test
   void reportYearDefaultsToGlobalKeepsLocalOverrideAndResetsOnActivation() {
-    ReportPanel panel = onEdt {
+    panel = onEdt {
       new ReportPanel(
           reportDataService,
           journoReportService,

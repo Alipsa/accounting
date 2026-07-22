@@ -69,7 +69,7 @@ import javax.swing.table.DefaultTableCellRenderer
  * Replaces VoucherListPanel and VoucherEditor.
  */
 // codenarc-disable ClassSize
-final class VoucherPanel extends JPanel implements PropertyChangeListener {
+final class VoucherPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
@@ -145,8 +145,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     this.voucherBalanceCachePreloader = new VoucherBalanceCachePreloader(accountService)
     lineTableModel = new LineTableModel()
     lineTable = new JTable(lineTableModel)
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListenersOnce()
     buildUi()
     mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
     voucherEditorActions = new VoucherEditorActions(voucherService, activeCompanyManager, { datePicker.date },
@@ -157,6 +156,30 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
 
   VoucherDraftEditorAccess getMcpVoucherDraftAccess() {
     mcpVoucherDraftAccess
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
   }
 
   @Override

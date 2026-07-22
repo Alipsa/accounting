@@ -30,7 +30,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists fiscal years and their periods, and provides create, closing, and reopen actions.
  */
-final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
+final class FiscalYearPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
@@ -71,10 +71,33 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     this.openingBalanceService = openingBalanceService
     this.fiscalYearDeletionService = fiscalYearDeletionService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListenersOnce()
     buildUi()
     reloadData()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
   }
 
   @Override

@@ -1,5 +1,10 @@
 # Alipsa Accounting, Release History
 
+## v1.6.1, In progress
+
+### Bugfixes
+- **Locale-change listener leak** — Seven panels (`FiscalYearPanel`, `ChartOfAccountsPanel`, `ReportPanel`, `MainFrame`, `VatPeriodPanel`, `VoucherPanel`, `SystemDocumentationPanel`) registered for locale-change and active-company notifications but never unregistered, leaking a listener on every panel construction. Panels now register/unregister via `addNotify`/`removeNotify` (or on shutdown for `MainFrame`), matching the pattern already used by `CompanyDialog` and `OverviewPanel`.
+
 ## v1.6.0, 2026-07-22
 
 ### Bugfixes

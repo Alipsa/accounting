@@ -36,7 +36,7 @@ import javax.swing.UIManager
 import javax.swing.border.EtchedBorder
 
 /** Status dashboard shown on the Overview tab: company, fiscal year, vouchers, periods, backup, integrity. */
-final class OverviewPanel extends JPanel implements PropertyChangeListener {
+final class OverviewPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final String LOCALE_PROPERTY = 'locale'
   private static final Color GREY = new Color(108, 117, 125)
@@ -55,7 +55,6 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   private boolean integrityChecked = false
   private boolean integrityCheckStarted = false
   private boolean integrityOk = false
-  private boolean listenersRegistered = false
   private int reloadRequestId = 0
   private OverviewSnapshot currentSnapshot = OverviewSnapshot.empty()
 
@@ -98,7 +97,7 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     this.startupVerificationService = startupVerificationService
     this.activeCompanyManager = activeCompanyManager
     this.editCompanySettingsAction = editCompanySettingsAction
-    registerListeners()
+    registerListenersOnce()
     buildUi()
     applyLocale()
     renderSnapshot()
@@ -108,12 +107,12 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
@@ -329,22 +328,16 @@ final class OverviewPanel extends JPanel implements PropertyChangeListener {
     daysAgo > BACKUP_WARN_DAYS && voucherService.hasVouchersCreatedAfter(companyId, createdAt)
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   private void buildUi() {

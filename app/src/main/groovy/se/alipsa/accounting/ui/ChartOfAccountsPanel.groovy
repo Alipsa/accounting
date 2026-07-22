@@ -41,7 +41,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Imports, displays and filters the chart of accounts.
  */
-final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener {
+final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(ChartOfAccountsPanel.name)
 
@@ -75,11 +75,34 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     this.accountService = accountService
     this.importService = importService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListenersOnce()
     rebuildClassFilter()
     buildUi()
     reloadAccounts()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListenersOnce()
+  }
+
+  @Override
+  void removeNotify() {
+    dispose()
+    super.removeNotify()
+  }
+
+  @Override
+  void doRegisterListeners() {
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+  }
+
+  @Override
+  void doUnregisterListeners() {
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
   }
 
   @Override

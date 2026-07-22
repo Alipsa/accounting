@@ -946,6 +946,8 @@ final class MainFrame implements PropertyChangeListener {
     if (!shuttingDown.compareAndSet(false, true)) {
       return
     }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
     frame.enabled = false
     Thread shutdownThread = new Thread({
       mcpServerLifecycle.close()
