@@ -55,7 +55,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Previews reports and exports them to PDF or CSV while keeping an archive.
  */
-final class ReportPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
+final class ReportPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(ReportPanel.name)
 
@@ -96,7 +96,6 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
   private boolean excelExportInProgress
   private boolean localFiscalYearOverride
   private boolean programmaticFiscalYearSelection
-  private boolean listenersRegistered = false
 
   ReportPanel(
       ReportDataService reportDataService,
@@ -116,7 +115,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
     this.accountingPeriodService = accountingPeriodService
     this.voucherService = voucherService
     this.activeCompanyManager = activeCompanyManager
-    registerListeners()
+    registerListenersOnce()
     buildUi()
     reloadFiscalYears()
     reloadArchives()
@@ -126,31 +125,25 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   @Override

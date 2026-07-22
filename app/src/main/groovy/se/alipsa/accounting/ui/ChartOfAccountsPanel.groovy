@@ -41,14 +41,13 @@ import javax.swing.table.AbstractTableModel
 /**
  * Imports, displays and filters the chart of accounts.
  */
-final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener {
+final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(ChartOfAccountsPanel.name)
 
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
   private final ActiveCompanyManager activeCompanyManager
-  private boolean listenersRegistered = false
 
   private final JTextField searchField = new JTextField(18)
   private final JComboBox<String> classFilter = new JComboBox<>()
@@ -76,7 +75,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     this.accountService = accountService
     this.importService = importService
     this.activeCompanyManager = activeCompanyManager
-    registerListeners()
+    registerListenersOnce()
     rebuildClassFilter()
     buildUi()
     reloadAccounts()
@@ -85,31 +84,25 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   @Override

@@ -69,7 +69,7 @@ import javax.swing.table.DefaultTableCellRenderer
  * Replaces VoucherListPanel and VoucherEditor.
  */
 // codenarc-disable ClassSize
-final class VoucherPanel extends JPanel implements PropertyChangeListener {
+final class VoucherPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
@@ -122,7 +122,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   private Voucher currentVoucher
   private final VoucherNavigation navigation = new VoucherNavigation()
   private boolean readOnly = false
-  private boolean listenersRegistered = false
   private final Map<String, BigDecimal> balanceCache = [:]
   private final Map<Long, Map<String, BigDecimal>> voucherBalanceCache = [:]
   private int voucherBalanceCacheGeneration = 0
@@ -146,7 +145,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
     this.voucherBalanceCachePreloader = new VoucherBalanceCachePreloader(accountService)
     lineTableModel = new LineTableModel()
     lineTable = new JTable(lineTableModel)
-    registerListeners()
+    registerListenersOnce()
     buildUi()
     mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
     voucherEditorActions = new VoucherEditorActions(voucherService, activeCompanyManager, { datePicker.date },
@@ -162,31 +161,25 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener {
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   @Override

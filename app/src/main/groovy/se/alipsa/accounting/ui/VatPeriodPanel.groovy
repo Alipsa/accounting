@@ -38,7 +38,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists VAT periods and previews/report/transfer actions for the selected period.
  */
-final class VatPeriodPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware {
+final class VatPeriodPanel extends JPanel implements PropertyChangeListener, FiscalYearContextAware, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(VatPeriodPanel.name)
 
@@ -62,7 +62,6 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
   private boolean fiscalYearListenerInstalled = false
   private boolean localFiscalYearOverride
   private boolean programmaticFiscalYearSelection
-  private boolean listenersRegistered = false
 
   @PackageScope
   interface BulkConfirmation {
@@ -86,7 +85,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
     this.activeCompanyManager = activeCompanyManager
-    registerListeners()
+    registerListenersOnce()
     buildUi()
     reloadFiscalYears()
     reloadPeriods()
@@ -95,31 +94,25 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   @Override

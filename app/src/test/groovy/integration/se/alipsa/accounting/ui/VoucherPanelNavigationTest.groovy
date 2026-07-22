@@ -88,8 +88,7 @@ final class VoucherPanelNavigationTest {
   @AfterEach
   void tearDown() {
     if (panel != null) {
-      I18n.instance.removeLocaleChangeListener(panel)
-      activeCompanyManager.removePropertyChangeListener(panel)
+      panel.dispose()
       onEdt { null }
     }
     databaseService?.shutdown()
@@ -234,6 +233,7 @@ final class VoucherPanelNavigationTest {
     attachmentService.addAttachment(source.id, attachment)
 
     // Rebuild after creating the fixture so constructor navigation sees the saved voucher.
+    panel?.dispose()
     panel = buildPanel()
     installPanelHooks()
     onEdt {
@@ -326,6 +326,7 @@ final class VoucherPanelNavigationTest {
          voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 200.00G)]
     )
 
+    panel?.dispose()
     panel = buildPanel()
     installPanelHooks()
     datePicker = findComponent(panel, DatePicker) { true }
@@ -340,6 +341,7 @@ final class VoucherPanelNavigationTest {
         [voucherLine('1510', 'Kundfordringar', 'Rad', 100.00G, 0.00G),
          voucherLine('3010', 'Försäljning', 'Rad', 0.00G, 100.00G)]
     )
+    panel?.dispose()
     panel = buildPanel()
     JButton previous = findComponent(panel, JButton) { JButton button ->
       button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
@@ -355,6 +357,7 @@ final class VoucherPanelNavigationTest {
         [voucherLine('1510', 'Kundfordringar', 'Saved line', 100.00G, 0.00G),
          voucherLine('3010', 'Försäljning', 'Saved line', 0.00G, 100.00G)]
     )
+    panel?.dispose()
     panel = buildPanel()
     JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
     onEdt {
@@ -388,6 +391,7 @@ final class VoucherPanelNavigationTest {
         [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
          voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
     )
+    panel?.dispose()
     panel = buildPanel()
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
 
@@ -428,6 +432,7 @@ final class VoucherPanelNavigationTest {
          voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
     )
     voucherService.createCorrectionVoucher(original.id)
+    panel?.dispose()
     panel = buildPanel()
 
     onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }

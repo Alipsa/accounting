@@ -30,7 +30,7 @@ import javax.swing.table.AbstractTableModel
 /**
  * Lists fiscal years and their periods, and provides create, closing, and reopen actions.
  */
-final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
+final class FiscalYearPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
@@ -38,7 +38,6 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final OpeningBalanceService openingBalanceService
   private final FiscalYearDeletionService fiscalYearDeletionService
   private final ActiveCompanyManager activeCompanyManager
-  private boolean listenersRegistered = false
 
   private final JTextField nameField = new JTextField(20)
   private final DatePicker startDatePicker = createDatePicker()
@@ -72,7 +71,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     this.openingBalanceService = openingBalanceService
     this.fiscalYearDeletionService = fiscalYearDeletionService
     this.activeCompanyManager = activeCompanyManager
-    registerListeners()
+    registerListenersOnce()
     buildUi()
     reloadData()
   }
@@ -80,31 +79,25 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   @Override
   void addNotify() {
     super.addNotify()
-    registerListeners()
+    registerListenersOnce()
   }
 
   @Override
   void removeNotify() {
-    unregisterListeners()
+    dispose()
     super.removeNotify()
   }
 
-  private void registerListeners() {
-    if (listenersRegistered) {
-      return
-    }
+  @Override
+  void doRegisterListeners() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
-    listenersRegistered = true
   }
 
-  private void unregisterListeners() {
-    if (!listenersRegistered) {
-      return
-    }
+  @Override
+  void doUnregisterListeners() {
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
-    listenersRegistered = false
   }
 
   @Override
