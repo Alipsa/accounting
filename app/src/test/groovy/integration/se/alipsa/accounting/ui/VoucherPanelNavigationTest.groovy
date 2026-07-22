@@ -432,8 +432,9 @@ final class VoucherPanelNavigationTest {
 
     onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
 
-    JLabel corrects = findComponent(panel, JLabel) { JLabel label -> label.visible && label.text.startsWith(
-        I18n.instance.getString('voucherPanel.label.corrects')) }
+    JLabel corrects = findComponent(panel, JLabel) { JLabel label ->
+      label.visible && label.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects'))
+    }
     assertEquals("${I18n.instance.getString('voucherPanel.label.corrects')} ${original.voucherNumber}", corrects.text)
   }
 
