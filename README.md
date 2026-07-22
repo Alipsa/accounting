@@ -1,4 +1,4 @@
-# <img src="app/src/main/resources/icons/logo128.png" alt="Alipsa Accounting" width="32" height="32"> Alipsa Accounting
+# <img src="app/src/main/resources/icons/logo128.png" alt="Alipsa Accounting" width="32" height="32"> Alipsa Bokföring / Alipsa Accounting
 
 ![Groovy 5.0](https://img.shields.io/badge/Groovy-5.0-blue?logo=apachegroovy)
 ![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
