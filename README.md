@@ -37,11 +37,23 @@ Följande funktioner ingår inte ännu:
 - Årsredovisningsflöden
 - Anläggningsregister (under utredning, inget fastställt versionsmål)
 
-## Förutsättningar
+## Installation
 
-- Java 21 eller senare
+Ladda ner rätt paket för din plattform från [GitHub Releases](https://github.com/Alipsa/accounting/releases). Varje paket innehåller en egen inbäddad Java-runtime — ingen separat Java-installation behövs.
 
-## Kom igång
+- **Linux**: packa upp `alipsa-accounting-<version>-linux.zip` och kör `./install.sh` i den uppackade katalogen.
+- **Windows**: packa upp `alipsa-accounting-<version>-windows.zip` och kör exe-installeraren, t.ex. `AlipsaAccounting-<version>.exe`.
+- **macOS**: packa upp `alipsa-accounting-<version>-macos.zip` och flytta `AlipsaAccounting.app` till Programmappen. Appen är inte signerad/notariserad (se [Release](#release) nedan), så Gatekeeper varnar första gången — högerklicka (Ctrl-klicka) på appen, välj **Öppna** och bekräfta i dialogrutan.
+
+Se [Release](#release) för filverifiering (checksummor och GPG-signaturer) samt avinstallation.
+
+## För utvecklare
+
+Det här avsnittet är för dig som vill bygga, köra eller bidra till projektet från källkod. Vill du bara använda programmet, se [Installation](#installation) ovan istället.
+
+- Java 21 eller senare krävs för att bygga och köra från källkod.
+
+### Kom igång
 
 ```bash
 git clone https://github.com/Alipsa/accounting.git
@@ -51,15 +63,13 @@ cd accounting
 
 Applikationen skapar sin H2-databas automatiskt vid första start.
 
-## Bygg och kör
+### Bygg och kör
 
 - `./gradlew build` kör full validering med kompilering, tester, Spotless och CodeNarc.
 - `./gradlew test` kör testsviten.
 - `./gradlew run` startar desktopapplikationen.
 - `./gradlew :app:packageCurrentPlatformRelease` bygger releasepaket för aktuell plattform via `jpackage`.
 - `./gradlew :app:verifyCurrentPlatformRelease` paketerar aktuell plattform och verifierar att launchern kan starta applikationen i ett isolerat hemkatalogsläge.
-
-## Utveckling
 
 ### Projektstruktur
 
