@@ -16,7 +16,7 @@ final class McpOperationCoordinator implements Closeable {
   private static final long OPERATION_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30)
   private static final Set<String> WRITE_TOOLS = [
       'set_active_voucher_draft', 'create_correction_voucher', 'book_vat_transfer',
-      'close_fiscal_year', 'import_sie', 'save_accounting_instruction'
+      'close_fiscal_year', 'import_sie', 'export_sie', 'save_accounting_instruction'
   ] as Set<String>
   private final McpUiGuard uiGuard
   private final ExecutorService writeExecutor
@@ -86,8 +86,12 @@ final class McpOperationCoordinator implements Closeable {
   void close() {
     writeExecutor.shutdown()
     readExecutor.shutdown()
-    writeExecutor.awaitTermination(30, TimeUnit.SECONDS)
-    readExecutor.awaitTermination(30, TimeUnit.SECONDS)
+    try {
+      writeExecutor.awaitTermination(30, TimeUnit.SECONDS)
+      readExecutor.awaitTermination(30, TimeUnit.SECONDS)
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt()
+    }
   }
 
   private static boolean isWrite(Map<String, Object> request) {

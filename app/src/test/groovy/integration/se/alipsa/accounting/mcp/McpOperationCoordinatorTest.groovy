@@ -28,6 +28,20 @@ class McpOperationCoordinatorTest {
   }
 
   @Test
+  void exportSieUsesTheWriteExecutorLikeOtherSideEffectingTools() {
+    CountingGuard guard = new CountingGuard()
+    McpOperationCoordinator coordinator = new McpOperationCoordinator(guard)
+    try {
+      McpDispatcher dispatcher = new McpDispatcher()
+      coordinator.dispatch(dispatcher, [jsonrpc: '2.0', id: 1, method: 'tools/call', params: [name: 'export_sie']])
+      assertEquals(1, guard.begins)
+      assertEquals(1, guard.ends)
+    } finally {
+      coordinator.close()
+    }
+  }
+
+  @Test
   void serializesWritesAndRejectsWhenTheWriteQueueIsFull() {
     CountingGuard guard = new CountingGuard()
     McpOperationCoordinator coordinator = new McpOperationCoordinator(guard, 1, 1)

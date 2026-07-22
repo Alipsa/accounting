@@ -40,9 +40,8 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 /**
- * Registry and implementation entrypoint for MCP tools.
- *
- * Phase 2 exposes read-only tools that prove service wiring and structured MCP output.
+ * Registry and implementation entrypoint for MCP tools, covering both read-only
+ * and write tools (see McpOperationCoordinator.WRITE_TOOLS for the write set).
  */
 class AccountingMcpTools {
 
