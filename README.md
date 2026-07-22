@@ -2,7 +2,7 @@
 
 ![Groovy 5.0](https://img.shields.io/badge/Groovy-5.0-blue?logo=apachegroovy)
 ![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
-![Gradle 9.6](https://img.shields.io/badge/Gradle-9.4-02303A?logo=gradle)
+![Gradle 9.6](https://img.shields.io/badge/Gradle-9.6-02303A?logo=gradle)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 Desktopbaserat bokföringsprogram för små svenska företag.
@@ -30,12 +30,12 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 
 ### Avgränsningar
 
-Följande funktioner ingår inte i v1.3.0:
+Följande funktioner ingår inte ännu:
 
 - Fakturering och lön
 - Bankintegration
 - Årsredovisningsflöden
-- Anläggningsregister (planerat till v1.5.0)
+- Anläggningsregister (under utredning, inget fastställt versionsmål)
 
 ## Förutsättningar
 
@@ -103,7 +103,7 @@ Kör alla kommandon från rotmappen.
 | Databas       | H2 (inbäddad)                           |
 | PDF-rapporter | Alipsa Journo (FreeMarker + HTML → PDF) |
 | SIE-parsning  | Alipsa SieParser                        |
-| Bygg          | Gradle 9.4                              |
+| Bygg          | Gradle 9.6                              |
 | Kodstil       | Spotless + CodeNarc                     |
 | Tester        | JUnit 6 + groovier-junit                |
 
