@@ -96,6 +96,7 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
   private boolean excelExportInProgress
   private boolean localFiscalYearOverride
   private boolean programmaticFiscalYearSelection
+  private boolean listenersRegistered = false
 
   ReportPanel(
       ReportDataService reportDataService,
@@ -115,12 +116,41 @@ final class ReportPanel extends JPanel implements PropertyChangeListener, Fiscal
     this.accountingPeriodService = accountingPeriodService
     this.voucherService = voucherService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListeners()
     buildUi()
     reloadFiscalYears()
     reloadArchives()
     reloadReport()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
+    listenersRegistered = false
   }
 
   @Override

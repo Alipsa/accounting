@@ -39,6 +39,7 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
   private final SystemDiagnosticsService diagnosticsService
   private final BackupService backupService
   private final UserManualService userManualService
+  private boolean listenersRegistered = false
 
   private final JTextArea diagnosticsArea = new JTextArea(8, 48)
   private final JTextArea documentationArea = new JTextArea(24, 48)
@@ -59,9 +60,37 @@ final class SystemDocumentationPanel extends JPanel implements PropertyChangeLis
     this.diagnosticsService = diagnosticsService
     this.backupService = backupService
     this.userManualService = userManualService
-    I18n.instance.addLocaleChangeListener(this)
+    registerListeners()
     buildUi()
     refreshAll()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    listenersRegistered = false
   }
 
   @Override

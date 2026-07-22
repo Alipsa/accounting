@@ -62,6 +62,7 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
   private boolean fiscalYearListenerInstalled = false
   private boolean localFiscalYearOverride
   private boolean programmaticFiscalYearSelection
+  private boolean listenersRegistered = false
 
   @PackageScope
   interface BulkConfirmation {
@@ -85,11 +86,40 @@ final class VatPeriodPanel extends JPanel implements PropertyChangeListener, Fis
     this.vatService = vatService
     this.fiscalYearService = fiscalYearService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListeners()
     buildUi()
     reloadFiscalYears()
     reloadPeriods()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
+    listenersRegistered = false
   }
 
   @Override

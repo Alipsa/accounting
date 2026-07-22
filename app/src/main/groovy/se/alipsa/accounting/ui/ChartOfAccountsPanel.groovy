@@ -48,6 +48,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
   private final ActiveCompanyManager activeCompanyManager
+  private boolean listenersRegistered = false
 
   private final JTextField searchField = new JTextField(18)
   private final JComboBox<String> classFilter = new JComboBox<>()
@@ -75,11 +76,40 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     this.accountService = accountService
     this.importService = importService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListeners()
     rebuildClassFilter()
     buildUi()
     reloadAccounts()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
+    listenersRegistered = false
   }
 
   @Override

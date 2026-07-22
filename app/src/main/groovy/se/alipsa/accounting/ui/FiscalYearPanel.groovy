@@ -38,6 +38,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
   private final OpeningBalanceService openingBalanceService
   private final FiscalYearDeletionService fiscalYearDeletionService
   private final ActiveCompanyManager activeCompanyManager
+  private boolean listenersRegistered = false
 
   private final JTextField nameField = new JTextField(20)
   private final DatePicker startDatePicker = createDatePicker()
@@ -71,10 +72,39 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener {
     this.openingBalanceService = openingBalanceService
     this.fiscalYearDeletionService = fiscalYearDeletionService
     this.activeCompanyManager = activeCompanyManager
-    I18n.instance.addLocaleChangeListener(this)
-    activeCompanyManager.addPropertyChangeListener(this)
+    registerListeners()
     buildUi()
     reloadData()
+  }
+
+  @Override
+  void addNotify() {
+    super.addNotify()
+    registerListeners()
+  }
+
+  @Override
+  void removeNotify() {
+    unregisterListeners()
+    super.removeNotify()
+  }
+
+  private void registerListeners() {
+    if (listenersRegistered) {
+      return
+    }
+    I18n.instance.addLocaleChangeListener(this)
+    activeCompanyManager.addPropertyChangeListener(this)
+    listenersRegistered = true
+  }
+
+  private void unregisterListeners() {
+    if (!listenersRegistered) {
+      return
+    }
+    I18n.instance.removeLocaleChangeListener(this)
+    activeCompanyManager.removePropertyChangeListener(this)
+    listenersRegistered = false
   }
 
   @Override
