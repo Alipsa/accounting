@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a "Launch AI Assistant" feature to the Settings UI that writes a project-scoped MCP config + skill/instructions file for a chosen AI CLI (Claude Code, Codex, Kimi, Mistral Vibe) into a dedicated, fixed-location, permission-hardened workspace, then spawns the user's terminal running that CLI there.
+**Goal:** Add a "Launch AI Assistant" feature to the Settings UI that writes a project-scoped MCP config, accounting skill, and bookkeeping-assistant instructions for a chosen AI CLI (Claude Code, Codex, Kimi, Mistral Vibe) into a dedicated, fixed-location, permission-hardened workspace, then spawns the user's terminal running that CLI there.
 
-**Architecture:** A new `ai-workspace` directory (fixed OS-default per-user location, independent of the app's configurable/shared data home) holds per-client config + instructions files, refreshed on each launch. `AiWorkspaceService` owns writing/detection/cleanup; `AiAssistantLauncher` renders a per-launch wrapper script and spawns a terminal adapter to run it. All filesystem writes are atomic and permission-verified (fail-closed, POSIX or Windows ACL); all process spawning uses `ProcessBuilder(List<String>)` with no shell string ever built from secret/user input.
+**Architecture:** A new `ai-workspace` directory (fixed OS-default per-user location, independent of the app's configurable/shared data home) holds per-client config, accounting skill, and project instructions files, refreshed on each launch. The bundled `assistant-profile.md` establishes the assistant as a bookkeeping helper, directs it to the MCP skill, and requires careful handling of uncertain or jurisdiction-specific advice. Claude receives that profile as root `CLAUDE.md` alongside its Claude skill; Codex, Kimi, and Vibe receive the profile prepended to their root `AGENTS.md`, followed by the MCP skill. `AiWorkspaceService` owns writing/detection/cleanup; `AiAssistantLauncher` renders a per-launch wrapper script and spawns a terminal adapter to run it. All filesystem writes are atomic and permission-verified (fail-closed, POSIX or Windows ACL); all process spawning uses `ProcessBuilder(List<String>)` with no shell string ever built from secret/user input.
 
 **Tech Stack:** Groovy 5 / Java 21, JUnit 6 (`groovier-junit`), `groovy-json` (already a dependency) for JSON config generation, hand-written TOML strings (no new TOML dependency), java.nio.file (POSIX permissions + ACL) for permission hardening.
 
@@ -27,6 +27,7 @@
 ## File Structure
 
 **New main files:**
+- `skill/assistant-profile.md` — shared bookkeeping-assistant role and safety instructions, bundled as a runtime resource.
 - `domain/AiClient.groovy` — enum: CLAUDE, CODEX, KIMI, VIBE.
 - `domain/TerminalAdapterKind.groovy` — enum: GNOME_TERMINAL, KONSOLE, XTERM, WINDOWS_TERMINAL, TERMINAL_APP.
 - `support/ProcessArgumentEscaping.groovy` — `shellQuoteSingle`, `appleScriptEscape`, `escapeForCmdScript`.
@@ -37,7 +38,7 @@
 - `service/FileMover.groovy` — interface around the atomic rename step.
 - `service/SecretFileWriter.groovy` — interface for atomic secret-file writes.
 - `service/AtomicSecretFileWriter.groovy` — real implementation.
-- `service/AiWorkspacePaths.groovy` — pure path resolution (config/instructions/wrapper paths).
+- `service/AiWorkspacePaths.groovy` — pure path resolution (config/skill/project-instructions/wrapper paths).
 - `service/AiClientConfigWriter.groovy` — per-client config file content (JSON/TOML).
 - `service/TerminalCommandBuilder.groovy` — per-adapter-kind `ProcessBuilder` argument lists.
 - `service/LaunchWrapperScript.groovy` — per-launch wrapper script content (`.sh`/`.cmd`).
@@ -50,13 +51,15 @@
 - `service/AiWorkspaceService.groovy` — orchestrator: ensure/refresh/purge/detect.
 - `service/ProcessRunner.groovy` — interface wrapping `ProcessBuilder.start()`.
 - `service/AiAssistantLauncher.groovy` — orchestrator: wrapper write + terminal spawn + failure cleanup.
+- `ui/BackgroundTaskRunner.groovy` — seam for running filesystem/PATH-scan work off the EDT and hopping back to apply results.
+- `ui/SwingBackgroundTaskRunner.groovy` — real implementation (background thread + `SwingUtilities.invokeLater`).
 - `ui/AiAssistantLauncherSection.groovy` — new Settings UI section.
 
 **Modified main files:**
-- `app/build.gradle` — bundle `skill/` as a classpath resource.
+- `app/build.gradle` — bundle `skill/` (the accounting MCP skill and assistant profile) as classpath resources.
 - `support/AppPaths.groovy` — add `aiWorkspaceDirectory()` + `AI_WORKSPACE_HOME_OVERRIDE_PROPERTY`.
 - `service/UserPreferencesService.groovy` — add binary-path / terminal-adapter-kind / terminal-path keys.
-- `ui/McpSettingsSection.groovy` — constructor gains `AiWorkspaceService`; rotation handler reordered (purge-then-rotate).
+- `ui/McpSettingsSection.groovy` — constructor gains `AiWorkspaceService`; rotation handler reordered (purge-then-rotate), purge runs via `BackgroundTaskRunner` off the EDT.
 - `ui/McpServerLifecycle.groovy` — constructor gains `AiWorkspaceService` + `AiAssistantLauncherSection`; wires availability + shutdown purge.
 - `ui/MainFrame.groovy` — construct and wire the new collaborators.
 - `app/src/main/resources/i18n/messages.properties` + `messages_sv.properties` — new keys.
@@ -77,6 +80,7 @@
 - `service/AiWorkspaceServiceTest.groovy`
 - `service/AiAssistantLauncherTest.groovy`
 - `service/UserPreferencesServiceTest.groovy` (new file — none existed before)
+- `ui/SwingBackgroundTaskRunnerTest.groovy`
 - `ui/AiAssistantLauncherSectionTest.groovy`
 - `ui/McpSettingsSectionTest.groovy` (new file — none existed before)
 
@@ -314,7 +318,7 @@ git commit -m "lägger till TerminalAdapterKind-enum"
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/support/ProcessArgumentEscapingTest.groovy`
 
 **Interfaces:**
-- Produces: `static String shellQuoteSingle(String)`, `static String appleScriptEscape(String)`, `static String escapeForCmdScript(String)` (throws `IllegalArgumentException` on embedded `"`).
+- Produces: `static String shellQuoteSingle(String)`, `static String appleScriptEscape(String)`, `static String escapeForCmdScript(String)` (throws `IllegalArgumentException` on embedded `"`, or on `&`, `|`, `<`, `>`, `^` — cmd.exe's command-line grammar treats those as operators even inside a double-quoted string *within a batch script line*, the same as it does on cmd.exe's own top-level `/c` command line; quoting a value that embeds one does not make it safe), and the public constant `UNSAFE_WINDOWS_COMMAND_CHARACTERS` holding that same five-character list, reused by `TerminalCommandBuilder` (Task 10) rather than duplicated. `LaunchWrapperScript.windowsContent(...)` (Task 11) runs every value it embeds in the generated `.cmd` file — the workspace path, the binary path, and every `envVars` value — through `escapeForCmdScript`, so this is the single choke point that fails closed for all of them, not something each call site has to separately remember to validate.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -381,6 +385,18 @@ class ProcessArgumentEscapingTest {
       ProcessArgumentEscaping.escapeForCmdScript('bad"value')
     }
   }
+
+  @Test
+  void escapeForCmdScriptRejectsEveryUnsafeCmdMetacharacter() {
+    // cmd.exe treats &, |, <, >, ^ as operators even inside a quoted string on a batch script
+    // line — quoting alone (which is all a caller could otherwise rely on) does not neutralize
+    // them, so escapeForCmdScript must fail closed rather than pass them through.
+    ['&', '|', '<', '>', '^'].each { String unsafe ->
+      assertThrows(IllegalArgumentException) {
+        ProcessArgumentEscaping.escapeForCmdScript("C:\\Users\\Per ${unsafe} Nyfelt")
+      }
+    }
+  }
 }
 ```
 
@@ -401,6 +417,15 @@ package se.alipsa.accounting.support
  */
 final class ProcessArgumentEscaping {
 
+  /**
+   * Characters cmd.exe's command-line grammar treats as operators (command separator, pipe,
+   * redirection, escape) even inside a double-quoted string — both on cmd.exe's own top-level
+   * `/c` command line (see {@code TerminalCommandBuilder}, Task 10, which reuses this same list)
+   * and on an ordinary line inside a `.cmd` batch script file, since cmd.exe uses the identical
+   * parser for both. Quoting a value that contains one of these does not make it safe.
+   */
+  static final List<String> UNSAFE_WINDOWS_COMMAND_CHARACTERS = ['&', '|', '<', '>', '^']
+
   private ProcessArgumentEscaping() {
   }
 
@@ -417,6 +442,13 @@ final class ProcessArgumentEscaping {
       throw new IllegalArgumentException(
           'Value cannot be safely represented in a Windows batch script because it contains a double quote.')
     }
+    UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
+      if (value.contains(unsafe)) {
+        throw new IllegalArgumentException(
+            "Value cannot be safely represented in a Windows batch script because it contains " +
+                "'${unsafe}', which cmd.exe's command-line grammar can misinterpret as an operator even inside a quoted string.")
+      }
+    }
     value.replace('%', '%%')
   }
 }
@@ -425,7 +457,7 @@ final class ProcessArgumentEscaping {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.support.ProcessArgumentEscapingTest"`
-Expected: PASS (10 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -534,15 +566,34 @@ git commit -m "lägger till AppPaths.aiWorkspaceDirectory()"
 
 ---
 
-## Task 5: Bundle the skill file as a classpath resource
+## Task 5: Bundle the accounting skill and assistant profile as classpath resources
 
 **Files:**
+- Create: `skill/assistant-profile.md`
 - Modify: `app/build.gradle`
 
 **Interfaces:**
-- Produces: `accounting-mcp.md` becomes readable via `SomeClass.getResourceAsStream('/accounting-mcp.md')` from anywhere in `app`'s runtime classpath.
+- Produces: `accounting-mcp.md` and `assistant-profile.md` become readable via `SomeClass.getResourceAsStream('/<name>')` from anywhere in `app`'s runtime classpath.
 
-- [ ] **Step 1: Make the change**
+- [ ] **Step 1: Add the shared assistant profile**
+
+Create `skill/assistant-profile.md`:
+
+```md
+# Alipsa Accounting Assistant
+
+You are an experienced bookkeeping assistant and advisor helping the user work with Alipsa Accounting.
+
+Use the Accounting MCP skill and its tools to inspect and assist with the user's accounting data. Follow the skill's instructions for using the MCP.
+
+Be clear about assumptions and ask for missing facts that affect accounting treatment. Do not invent transactions, balances, tax rules, or legal requirements.
+
+For questions involving current, jurisdiction-specific, or uncertain accounting, tax, payroll, or regulatory guidance, consult the authoritative web resources referenced by the skill before advising. State the relevant jurisdiction and source when it matters.
+
+Explain proposed accounting actions in plain language. Ask for confirmation before creating, changing, posting, or deleting accounting records. When appropriate, recommend that the user consult a qualified accountant or adviser.
+```
+
+- [ ] **Step 2: Make the build change**
 
 In `app/build.gradle`, add a `sourceSets` block just before the existing `distributions {}` block (~line 55):
 
@@ -568,16 +619,16 @@ distributions {
 
 (Only the new `sourceSets {}` block is added — `distributions {}` is untouched and stays.)
 
-- [ ] **Step 2: Verify the resource is on the classpath**
+- [ ] **Step 3: Verify both resources are on the classpath**
 
-Run: `./gradlew compileGroovy processResources -q && find app/build/resources/main -maxdepth 1 -iname "accounting-mcp.md"`
-Expected: prints `app/build/resources/main/accounting-mcp.md` — confirming the file is now in the compiled resources output (this is what makes `getResourceAsStream('/accounting-mcp.md')` work at runtime; Task 12's `AiWorkspaceServiceTest` gives this its first real behavioral test).
+Run: `./gradlew compileGroovy processResources -q && find app/build/resources/main -maxdepth 1 \( -iname "accounting-mcp.md" -o -iname "assistant-profile.md" \)`
+Expected: prints both resource paths — confirming the files are in the compiled resources output. Task 13's `AiWorkspaceServiceTest` is the behavioral verification that they are written into the launch workspace.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add app/build.gradle
-git commit -m "bundlar skill/ som en classpath-resurs"
+git add skill/assistant-profile.md app/build.gradle
+git commit -m "lägger till assistentprofil för AI-launcher"
 ```
 
 ---
@@ -610,6 +661,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 
 class AiWorkspacePermissionsTest {
@@ -1025,7 +1077,7 @@ git commit -m "lägger till AiWorkspacePermissions (fail-closed rättighetshante
 
 **Interfaces:**
 - Consumes: `AiWorkspacePermissions` (Task 6, specifically `verifyNoSymlinksInPath`), `SecretFileKind` (Task 6).
-- Produces: `interface SecretFileWriter { void write(Path root, Path target, byte[] content, SecretFileKind kind) }` — `root` is the AI workspace boundary, so the writer itself (not just its callers) verifies the whole path is symlink-free, immediately before creating the temp file *and* again immediately before the atomic move (the move is the actual commit point, so it gets its own fresh check). Real implementation `AtomicSecretFileWriter` with a no-arg constructor and a `(AiWorkspacePermissions, FileMover)` constructor for tests. Later tasks (`AiWorkspaceService`, `AiAssistantLauncher`) construct `new AtomicSecretFileWriter()` and depend on the `SecretFileWriter.write(root, target, ...)` signature.
+- Produces: `interface SecretFileWriter { void write(Path root, Path target, byte[] content, SecretFileKind kind) }` — `root` is the AI workspace boundary, so the writer itself (not just its callers) verifies the whole path is symlink-free, immediately before creating the temp file, again immediately before the atomic move (the move is the actual commit point, so it gets its own fresh check), *and* once more immediately after the move, before the following `applyAndVerify` call — `applyAndVerify`'s chmod/ACL-apply has no portable no-follow form in `java.nio.file`, so it cannot itself refuse a symlink swapped in during the move; the third check narrows that window as far as is practical. Real implementation `AtomicSecretFileWriter` with a no-arg constructor and a `(AiWorkspacePermissions, FileMover)` constructor for tests. Later tasks (`AiWorkspaceService`, `AiAssistantLauncher`) construct `new AtomicSecretFileWriter()` and depend on the `SecretFileWriter.write(root, target, ...)` signature.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1107,6 +1159,27 @@ class AtomicSecretFileWriterTest {
 
     assert !Files.exists(outside)
   }
+
+  @Test
+  void detectsASymlinkSwappedInImmediatelyAfterTheMoveAndRefusesToApplyPermissionsThroughIt() {
+    // Simulates a symlink-swap race won immediately after the atomic move commits, without
+    // needing real concurrency: the fake FileMover does the real move, then plants a symlink at
+    // the same path before returning, so write()'s post-move re-check has something to catch.
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    Path target = tempDir.resolve('.mcp.json')
+    Path outside = tempDir.resolve('outside.json')
+    Files.write(outside, 'sensitive-outside-content'.getBytes('UTF-8'))
+    FileMover swappingMover = { Path from, Path to ->
+      Files.move(from, to, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      Files.delete(to)
+      Files.createSymbolicLink(to, outside)
+    } as FileMover
+    AtomicSecretFileWriter writer = new AtomicSecretFileWriter(new AiWorkspacePermissions(), swappingMover)
+
+    assertThrows(IllegalStateException) {
+      writer.write(tempDir, target, 'content'.getBytes('UTF-8'), SecretFileKind.DATA)
+    }
+  }
 }
 ```
 
@@ -1152,10 +1225,15 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Writes secret-bearing files via temp-file-then-atomic-move, with fail-closed
- * permission verification and a symlink-chain check both before the temp
- * file is created and again immediately before the atomic move (the move is
- * the real commit point, so it gets its own fresh check rather than relying
- * solely on the earlier one).
+ * permission verification and a symlink-chain check before the temp file is
+ * created, again immediately before the atomic move (the move is the real
+ * commit point, so it gets its own fresh check rather than relying solely on
+ * the earlier one), and once more immediately after the move, before
+ * applyAndVerify()'s chmod/ACL-apply call — that call has no portable
+ * no-follow form in java.nio.file (POSIX chmod always follows symlinks, and
+ * there is no reachable lchmod), so it cannot refuse a symlink swapped in
+ * during the move on its own; the post-move check narrows, without being
+ * able to fully close, that TOCTOU window.
  */
 final class AtomicSecretFileWriter implements SecretFileWriter {
 
@@ -1187,6 +1265,12 @@ final class AtomicSecretFileWriter implements SecretFileWriter {
         throw new IllegalStateException(
             "Atomic write is not supported for ${target}; refusing to fall back to a non-atomic replace.", exception)
       }
+      // Re-check immediately after the move too, not just before it: applyAndVerify()'s
+      // chmod/ACL-apply call has no portable no-follow form in java.nio.file (POSIX chmod always
+      // follows symlinks, and there is no reachable lchmod equivalent), so it cannot refuse a
+      // symlink swapped in during the move on its own. This narrows — without being able to fully
+      // eliminate — the TOCTOU window between the move and the permission-apply call.
+      permissions.verifyNoSymlinksInPath(root, target)
       permissions.applyAndVerify(target, kind)
     } finally {
       Files.deleteIfExists(tempFile)
@@ -1198,7 +1282,7 @@ final class AtomicSecretFileWriter implements SecretFileWriter {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AtomicSecretFileWriterTest"`
-Expected: PASS (4 tests)
+Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1220,7 +1304,7 @@ git commit -m "lägger till AtomicSecretFileWriter (atomära hemlighetsskrivning
 
 **Interfaces:**
 - Consumes: `AiClient` (Task 1).
-- Produces: `static Path configFile(Path workspace, AiClient client)`, `static Path instructionsFile(Path workspace, AiClient client)`, `static Path wrapperScript(Path workspace, AiClient client, String launchId, boolean windows)`.
+- Produces: `static Path configFile(Path workspace, AiClient client)`, `static Path instructionsFile(Path workspace, AiClient client)` (the accounting MCP skill for Claude, or the combined profile + skill `AGENTS.md` for the other clients), `static Path assistantProfileFile(Path workspace, AiClient client)` (root `CLAUDE.md` for Claude; the same `AGENTS.md` path for the other clients), and `static Path wrapperScript(Path workspace, AiClient client, String launchId, boolean windows)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1250,6 +1334,12 @@ class AiWorkspacePathsTest {
     assertEquals(
         Paths.get('/workspace/.claude/skills/accounting/accounting-mcp.md'),
         AiWorkspacePaths.instructionsFile(workspace, AiClient.CLAUDE))
+  }
+
+  @Test
+  void resolvesClaudeProfileAndCodexAgentsInstructionsAtTheWorkspaceRoot() {
+    assertEquals(Paths.get('/workspace/CLAUDE.md'), AiWorkspacePaths.assistantProfileFile(workspace, AiClient.CLAUDE))
+    assertEquals(Paths.get('/workspace/AGENTS.md'), AiWorkspacePaths.assistantProfileFile(workspace, AiClient.CODEX))
   }
 
   @Test
@@ -1296,6 +1386,10 @@ final class AiWorkspacePaths {
     workspace.resolve(client.instructionsRelativePath)
   }
 
+  static Path assistantProfileFile(Path workspace, AiClient client) {
+    client == AiClient.CLAUDE ? workspace.resolve('CLAUDE.md') : instructionsFile(workspace, client)
+  }
+
   static Path wrapperScript(Path workspace, AiClient client, String launchId, boolean windows) {
     workspace.resolve(".launch-${client.binaryName}-${launchId}.${windows ? 'cmd' : 'sh'}")
   }
@@ -1305,7 +1399,7 @@ final class AiWorkspacePaths {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspacePathsTest"`
-Expected: PASS (4 tests)
+Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1496,7 +1590,7 @@ git commit -m "lägger till AiClientConfigWriter med fixturer"
 
 **Interfaces:**
 - Consumes: `TerminalAdapterKind` (Task 2), `ProcessArgumentEscaping` (Task 3).
-- Produces: `static List<String> commandFor(TerminalAdapterKind kind, Path executable, Path workspace, Path script)`.
+- Produces: `static List<String> commandFor(TerminalAdapterKind kind, Path executable, Path workspace, Path script)`. For `WINDOWS_TERMINAL`, the `-d <workspace>` and `/c <script>` arguments are returned pre-wrapped in a literal `"..."` pair, not bare — see the implementation's doc comment for why bare paths are unsafe here even though `ProcessBuilder` auto-quotes array elements containing spaces. It also throws `IllegalArgumentException` — fail-closed, not a residual/accepted gap — if `workspace` or `script` contains `&`, `|`, `<`, `>`, or `^`: quoting alone cannot guarantee `cmd.exe`'s own command-line grammar won't reinterpret one of those as a structural operator, so a path containing one is refused outright rather than launched and hoped to behave. `AiAssistantLauncher` (Task 14) calls this *before* writing the wrapper script, specifically so a refusal here never leaves a secret-bearing file behind. Also produces `static void rejectUnsafeWorkspacePathForWindowsTerminal(Path workspace)`, exposing the same workspace-only check standalone — for a caller that needs to fail closed on an unsafe *workspace* path before the per-launch script path even exists (`AiAssistantLauncher.validatePreflight`, Task 14, called before a client config file is written, not just before the wrapper script). The five-character unsafe set itself is `ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS` (Task 3), not a separate list defined here — `LaunchWrapperScript` (Task 11) needs the identical set for values embedded inside the `.cmd` file's own content, not just this class's outer `wt.exe`/`cmd.exe` invocation, so both share one definition rather than risking the two lists drifting apart.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1504,6 +1598,7 @@ git commit -m "lägger till AiClientConfigWriter med fixturer"
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
@@ -1542,8 +1637,42 @@ class TerminalCommandBuilderTest {
     Path winScript = Paths.get('C:/Users/per/AppData/Roaming/Alipsa/Accounting/ai-workspace/.launch-codex-abc.cmd')
 
     assertEquals(
-        [wtExe.toString(), '-d', workspace.toString(), 'cmd.exe', '/v:off', '/c', winScript.toString()],
+        [wtExe.toString(), '-d', "\"${workspace}\"".toString(), 'cmd.exe', '/v:off', '/c', "\"${winScript}\"".toString()],
         TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, wtExe, workspace, winScript))
+  }
+
+  @Test
+  void windowsTerminalQuotesAWorkspacePathContainingSpaces() {
+    Path wtExe = Paths.get('C:/Users/per/AppData/Local/Microsoft/WindowsApps/wt.exe')
+    Path spacedWorkspace = Paths.get('C:/Users/Per Nyfelt/AppData/Roaming/Alipsa/Accounting/ai-workspace')
+    Path winScript = spacedWorkspace.resolve('.launch-codex-abc.cmd')
+
+    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, wtExe, spacedWorkspace, winScript)
+
+    assertEquals("\"${spacedWorkspace}\"".toString(), command[2])
+    assertEquals("\"${winScript}\"".toString(), command[6])
+  }
+
+  @Test
+  void windowsTerminalRejectsWorkspaceOrScriptPathsContainingAnyCmdMetacharacter() {
+    // Quoting alone cannot guarantee cmd.exe's own command-line grammar won't reinterpret one of
+    // these as a structural operator (see TerminalCommandBuilder's doc comment), so a path
+    // containing any of them is refused outright — for both the workspace and the script
+    // argument, and for all five characters, not just one.
+    Path wtExe = Paths.get('C:/Users/per/AppData/Local/Microsoft/WindowsApps/wt.exe')
+    ['&', '|', '<', '>', '^'].each { String unsafe ->
+      Path unsafeWorkspace = Paths.get("C:/Users/Per ${unsafe} Nyfelt/ai-workspace")
+      Path scriptUnderUnsafeWorkspace = unsafeWorkspace.resolve('.launch-codex-abc.cmd')
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, wtExe, unsafeWorkspace, scriptUnderUnsafeWorkspace)
+      }
+
+      Path safeWorkspace = Paths.get('C:/Users/Per Nyfelt/ai-workspace')
+      Path unsafeScript = safeWorkspace.resolve(".launch-codex-abc${unsafe}.cmd")
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, wtExe, safeWorkspace, unsafeScript)
+      }
+    }
   }
 
   @Test
@@ -1557,6 +1686,20 @@ class TerminalCommandBuilderTest {
     assertEquals('-e', command[1])
     assertTrue(command[2].startsWith('tell application "Terminal" to do script "'))
     assertTrue(command[2].contains(scriptWithSpace.toString()))
+  }
+
+  @Test
+  void rejectUnsafeWorkspacePathForWindowsTerminalChecksTheWorkspaceAloneWithoutNeedingAScript() {
+    // Proves the workspace-only check works standalone, independent of commandFor() — this is
+    // what AiAssistantLauncher.validatePreflight() (Task 14) calls before a per-launch script
+    // path even exists yet.
+    Path unsafeWorkspace = Paths.get('C:/Users/Per & Nyfelt/ai-workspace')
+    assertThrows(IllegalArgumentException) {
+      TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(unsafeWorkspace)
+    }
+
+    Path safeWorkspace = Paths.get('C:/Users/Per Nyfelt/ai-workspace')
+    TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(safeWorkspace)
   }
 }
 ```
@@ -1576,7 +1719,44 @@ import se.alipsa.accounting.support.ProcessArgumentEscaping
 
 import java.nio.file.Path
 
-/** Builds the exact process argument list for each known terminal adapter kind. See design spec, "Terminal adapters". */
+/**
+ * Builds the exact process argument list for each known terminal adapter
+ * kind. See design spec, "Terminal adapters".
+ *
+ * For {@code WINDOWS_TERMINAL}, the {@code -d <workspace>} and {@code /c
+ * <script>} arguments are returned already wrapped in a literal {@code "..."}
+ * pair, rather than bare. This matters even though {@code ProcessBuilder}
+ * already auto-quotes array elements containing spaces for the
+ * {@code CreateProcess} call that spawns {@code wt.exe}: Windows processes
+ * always receive one raw command-line string (there is no real argv), so
+ * {@code wt.exe} has to re-parse that string itself to find its own flags,
+ * then re-serialize whatever follows into a *new* one-line command string to
+ * hand off to {@code cmd.exe}. Whether that second, wt.exe-owned
+ * reconstruction re-quotes a bare path containing spaces is not something
+ * this codebase controls or can verify without a Windows machine — so instead
+ * of relying on it, the path is pre-quoted here as a single literal token.
+ * The JDK's own Windows {@code ProcessBuilder} implementation recognizes an
+ * argument that is already fully wrapped in one matching pair of double
+ * quotes and passes it through unmodified rather than re-quoting it, so this
+ * does not become doubly escaped. Since NTFS forbids {@code "} in path names,
+ * wrapping a real path in quotes can never itself produce an ambiguous or
+ * malformed token. This also happens to be `cmd /?`'s own documented
+ * quote-preserving form for running a single quoted executable name with no
+ * further arguments, which is exactly this invocation's shape.
+ *
+ * Quoting alone does not close every risk, though: `cmd.exe`'s command-line
+ * grammar treats `&`, `|`, `<`, `>`, `^` as structural even inside some of
+ * its fallback quote-handling paths, and NTFS (unlike `"`) does not forbid
+ * those characters in path names — most plausibly reachable via an unusual
+ * Windows account/profile name. Rather than accept that as a residual gap,
+ * `commandFor` refuses outright (`IllegalArgumentException`) to build a
+ * `WINDOWS_TERMINAL` command line whose workspace or script path contains
+ * any of them: this keeps the class fail-closed, consistent with the rest
+ * of the AI workspace's security design, instead of launching through a
+ * path it cannot guarantee `cmd.exe` will parse safely. `AiAssistantLauncher`
+ * (Task 14) calls this before writing the wrapper script, so a refusal here
+ * never leaves a secret-bearing file behind.
+ */
 final class TerminalCommandBuilder {
 
   private TerminalCommandBuilder() {
@@ -1591,7 +1771,9 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.XTERM:
         return [executable.toString(), '-e', script.toString()]
       case TerminalAdapterKind.WINDOWS_TERMINAL:
-        return [executable.toString(), '-d', workspace.toString(), 'cmd.exe', '/v:off', '/c', script.toString()]
+        rejectUnsafeCmdCharacters(workspace)
+        rejectUnsafeCmdCharacters(script)
+        return [executable.toString(), '-d', quoteForCmd(workspace), 'cmd.exe', '/v:off', '/c', quoteForCmd(script)]
       case TerminalAdapterKind.TERMINAL_APP:
         String quotedScript = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         String appleScriptSource = 'tell application "Terminal" to do script "' +
@@ -1601,13 +1783,41 @@ final class TerminalCommandBuilder {
         throw new IllegalArgumentException("Unknown terminal adapter kind: ${kind}")
     }
   }
+
+  /**
+   * Validates a workspace path in isolation, ahead of and independent from {@link #commandFor} —
+   * for a caller that needs to fail closed on an unsafe {@code WINDOWS_TERMINAL} workspace path
+   * *before* the per-launch script path even exists, e.g. before writing a client config file
+   * (see {@code AiAssistantLauncher.validatePreflight}, Task 14). Checking the workspace path
+   * alone is equivalent to also checking the eventual script path: the script's filename portion
+   * is always safe by construction (client binary name + a UUID, both program-controlled), and
+   * the workspace path is always its prefix.
+   */
+  static void rejectUnsafeWorkspacePathForWindowsTerminal(Path workspace) {
+    rejectUnsafeCmdCharacters(workspace)
+  }
+
+  private static void rejectUnsafeCmdCharacters(Path path) {
+    String value = path.toString()
+    ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
+      if (value.contains(unsafe)) {
+        throw new IllegalArgumentException(
+            "Refusing to launch via cmd.exe: ${path} contains '${unsafe}', which cmd.exe's " +
+                'command-line grammar can misinterpret as a structural operator even when quoted.')
+      }
+    }
+  }
+
+  private static String quoteForCmd(Path path) {
+    '"' + path.toString() + '"'
+  }
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.TerminalCommandBuilderTest"`
-Expected: PASS (4 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1626,7 +1836,7 @@ git commit -m "lägger till TerminalCommandBuilder"
 
 **Interfaces:**
 - Consumes: `ProcessArgumentEscaping` (Task 3).
-- Produces: `static String unixContent(Path workspace, Path binaryPath, Map<String, String> envVars)`, `static String windowsContent(Path workspace, Path binaryPath, Map<String, String> envVars)`. `envVars` is an ordered map of extra environment variables to `export`/`set` before the `cd`/invocation lines — empty for Claude/Kimi (no secret, no extra var), `[ACCOUNTING_MCP_TOKEN: token]` for Codex, `[VIBE_HOME: workspace/.vibe path]` for Vibe (see Task 14 — Vibe's config discovery mechanism is unconfirmed by Mistral's own docs as project-local-vs-home, so the wrapper sets `VIBE_HOME` pointing at the same `.vibe/config.toml` we already write, covering both possible discovery mechanisms at once). A generic map (not a single `tokenOrNull`) is used because more than one client can need an env var, and some of those aren't secrets.
+- Produces: `static String unixContent(Path workspace, Path binaryPath, Map<String, String> envVars)`, `static String windowsContent(Path workspace, Path binaryPath, Map<String, String> envVars)`. `envVars` is an ordered map of extra environment variables to `export`/`set` before the `cd`/invocation lines — empty for Claude/Kimi/Vibe (no secret, no extra var needed: Vibe discovers `.vibe/config.toml` project-locally, confirmed by Mistral's own configuration docs, so it must not be pointed at the AI workspace via `VIBE_HOME` — doing so would relocate the user's *entire* Vibe profile, not just MCP config; see Task 14), `[ACCOUNTING_MCP_TOKEN: token]` for Codex. A generic map (not a single `tokenOrNull`) is kept even though only one client currently needs an entry, since more than one client *can* need an env var and some of those wouldn't be secrets. Every value in `windowsContent(...)`'s output — the workspace path, the binary path, and each `envVars` value — is run through `ProcessArgumentEscaping.escapeForCmdScript` (Task 3), which fails closed on `&`, `|`, `<`, `>`, `^` as well as `"`, since none of those are safe to embed in a `.cmd` file's content even quoted.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1635,6 +1845,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
@@ -1671,14 +1882,16 @@ class LaunchWrapperScriptTest {
 
   @Test
   void unixWrapperSupportsMultipleEnvVarsInInsertionOrder() {
+    // Names are arbitrary examples exercising the generic map mechanism itself — this class
+    // doesn't know about AiClient or any particular client's env vars.
     Map<String, String> envVars = new LinkedHashMap<>()
-    envVars.VIBE_HOME = '/home/per/.local/share/alipsa-accounting/ai-workspace/.vibe'
-    envVars.OTHER_VAR = 'value'
+    envVars.FIRST_VAR = 'first-value'
+    envVars.SECOND_VAR = 'second-value'
     String content = LaunchWrapperScript.unixContent(workspace, binaryPath, envVars)
     List<String> lines = content.split('\n', -1) as List<String>
 
-    assertEquals("export VIBE_HOME='/home/per/.local/share/alipsa-accounting/ai-workspace/.vibe'".toString(), lines[1])
-    assertEquals("export OTHER_VAR='value'".toString(), lines[2])
+    assertEquals("export FIRST_VAR='first-value'".toString(), lines[1])
+    assertEquals("export SECOND_VAR='second-value'".toString(), lines[2])
   }
 
   @Test
@@ -1730,6 +1943,30 @@ class LaunchWrapperScriptTest {
 
     assertTrue(content.contains('%%SOMEVAR%%'))
     assertFalse(content.contains('call '))
+  }
+
+  @Test
+  void windowsContentRejectsACmdMetacharacterInTheBinaryPath() {
+    // binaryPath is user-configurable (typed into Settings or PATH-detected) — unlike workspace,
+    // it isn't validated anywhere upstream, so windowsContent()/escapeForCmdScript() (Task 3) must
+    // be the one place that catches this.
+    Path winWorkspace = Paths.get('C:\\Users\\per\\AppData\\Roaming\\Alipsa\\Accounting\\ai-workspace')
+    ['&', '|', '<', '>', '^'].each { String unsafe ->
+      Path unsafeBinary = Paths.get("C:\\Program Files\\codex ${unsafe} co\\codex.cmd")
+      assertThrows(IllegalArgumentException) {
+        LaunchWrapperScript.windowsContent(winWorkspace, unsafeBinary, [:])
+      }
+    }
+  }
+
+  @Test
+  void windowsContentRejectsACmdMetacharacterInAnEnvVarValue() {
+    Path winWorkspace = Paths.get('C:\\Users\\per\\AppData\\Roaming\\Alipsa\\Accounting\\ai-workspace')
+    Path winBinary = Paths.get('C:\\Program Files\\codex\\codex.cmd')
+
+    assertThrows(IllegalArgumentException) {
+      LaunchWrapperScript.windowsContent(winWorkspace, winBinary, [ACCOUNTING_MCP_TOKEN: 'bad|token'])
+    }
   }
 }
 ```
@@ -1785,7 +2022,7 @@ final class LaunchWrapperScript {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.LaunchWrapperScriptTest"`
-Expected: PASS (7 tests)
+Expected: PASS (9 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1806,7 +2043,7 @@ git commit -m "lägger till LaunchWrapperScript"
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/service/PathBinaryResolverTest.groovy`
 
 **Interfaces:**
-- Produces: `interface EnvironmentLookup { String getenv(String name) }`, `interface ExecutableProbe { boolean isExecutableFile(Path candidate) }`, `class PathBinaryResolver { PathBinaryResolver(EnvironmentLookup, ExecutableProbe); Path resolve(String binaryName) }`. `AiWorkspaceService` (Task 13) constructs and uses `PathBinaryResolver`.
+- Produces: `interface EnvironmentLookup { String getenv(String name) }`, `interface ExecutableProbe { boolean isExecutableFile(Path candidate) }`, `class PathBinaryResolver { PathBinaryResolver(EnvironmentLookup, ExecutableProbe); Path resolve(String binaryName) }`. `resolve(...)` tries the bare `binaryName` in each `PATH` directory first, then — if `environmentLookup.getenv('PATHEXT')` returns a non-blank value — each `;`-separated extension from it in order (e.g. `codex.CMD`, `codex.EXE`), matching how Windows itself resolves an extensionless command name; on Linux/macOS, `PATHEXT` is unset, so `environmentLookup.getenv('PATHEXT')` naturally returns `null` and behavior is unchanged (bare name only) — no separate "is this Windows" check is needed since the *same* injectable `EnvironmentLookup` seam this class already takes for `PATH` doubles as the Windows-detection/test seam for this. All `AiClient.binaryName` values (`claude`, `codex`, `kimi`, `vibe`) are extensionless, so without this, PATH-based auto-detection could never find a real Windows install, which normally exposes `*.exe`/`*.cmd`/`*.bat`, not a bare-named file. `AiWorkspaceService` (Task 13) constructs and uses `PathBinaryResolver`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1845,6 +2082,46 @@ class PathBinaryResolverTest {
   void returnsNullWhenPathIsNotSet() {
     EnvironmentLookup environment = { String name -> null } as EnvironmentLookup
     ExecutableProbe probe = { Path candidate -> true } as ExecutableProbe
+    PathBinaryResolver resolver = new PathBinaryResolver(environment, probe)
+
+    assertNull(resolver.resolve('codex'))
+  }
+
+  @Test
+  void resolvesAWindowsStyleBinaryViaPathextWhenTheBareNameDoesNotExist() {
+    // Real Windows installs expose codex.cmd/codex.exe, never a bare "codex" file — PATHEXT is
+    // what tells resolve() which extensions to also try, the same way Windows itself would.
+    EnvironmentLookup environment = { String name ->
+      if (name == 'PATH') { return '/windows-style/bin' }
+      if (name == 'PATHEXT') { return '.COM;.EXE;.BAT;.CMD' }
+      null
+    } as EnvironmentLookup
+    ExecutableProbe probe = { Path candidate -> candidate.toString() == '/windows-style/bin/codex.CMD' } as ExecutableProbe
+    PathBinaryResolver resolver = new PathBinaryResolver(environment, probe)
+
+    assertEquals(Paths.get('/windows-style/bin/codex.CMD'), resolver.resolve('codex'))
+  }
+
+  @Test
+  void triesTheExtensionlessNameBeforeAnyPathextExtension() {
+    EnvironmentLookup environment = { String name ->
+      if (name == 'PATH') { return '/windows-style/bin' }
+      if (name == 'PATHEXT') { return '.COM;.EXE;.BAT;.CMD' }
+      null
+    } as EnvironmentLookup
+    // The probe would also accept codex.EXE, but the bare name must win since it's tried first.
+    ExecutableProbe probe = { Path candidate ->
+      candidate.toString() == '/windows-style/bin/codex' || candidate.toString() == '/windows-style/bin/codex.EXE'
+    } as ExecutableProbe
+    PathBinaryResolver resolver = new PathBinaryResolver(environment, probe)
+
+    assertEquals(Paths.get('/windows-style/bin/codex'), resolver.resolve('codex'))
+  }
+
+  @Test
+  void ignoresPathextWhenItIsNotSetLikeOnLinuxOrMacos() {
+    EnvironmentLookup environment = { String name -> name == 'PATH' ? '/usr/bin' : null } as EnvironmentLookup
+    ExecutableProbe probe = { Path candidate -> candidate.toString() == '/usr/bin/codex.CMD' } as ExecutableProbe
     PathBinaryResolver resolver = new PathBinaryResolver(environment, probe)
 
     assertNull(resolver.resolve('codex'))
@@ -1903,7 +2180,21 @@ package se.alipsa.accounting.service
 import java.nio.file.Path
 import java.nio.file.Paths
 
-/** Resolves a binary name to an absolute path by scanning PATH, via injectable environment/filesystem seams. */
+/**
+ * Resolves a binary name to an absolute path by scanning PATH, via injectable
+ * environment/filesystem seams. On Windows, an extensionless name like
+ * {@code codex} never exists as a literal file — real installs expose
+ * {@code codex.cmd}/{@code codex.exe} — so this also tries each extension
+ * from the {@code PATHEXT} environment variable, the same mechanism Windows
+ * itself uses to resolve a bare command name. The extensionless form is
+ * still tried first, for every platform. Reading {@code PATHEXT} through the
+ * same {@link EnvironmentLookup} seam already used for {@code PATH} means no
+ * separate "is this Windows" check or seam is needed: on Linux/macOS,
+ * {@code PATHEXT} is simply unset, so this falls back to the extensionless
+ * probe exactly as before, and the Windows path is still fully testable on
+ * any host OS by having the fake {@link EnvironmentLookup} return a value
+ * for it.
+ */
 final class PathBinaryResolver {
 
   private final EnvironmentLookup environmentLookup
@@ -1919,16 +2210,32 @@ final class PathBinaryResolver {
     if (!path) {
       return null
     }
+    List<String> suffixes = candidateSuffixes()
     for (String directory : path.split(java.io.File.pathSeparator)) {
       if (!directory) {
         continue
       }
-      Path candidate = Paths.get(directory, binaryName)
-      if (executableProbe.isExecutableFile(candidate)) {
-        return candidate.toAbsolutePath().normalize()
+      for (String suffix : suffixes) {
+        Path candidate = Paths.get(directory, binaryName + suffix)
+        if (executableProbe.isExecutableFile(candidate)) {
+          return candidate.toAbsolutePath().normalize()
+        }
       }
     }
     null
+  }
+
+  private List<String> candidateSuffixes() {
+    List<String> suffixes = ['']
+    String pathext = environmentLookup.getenv('PATHEXT')
+    if (pathext) {
+      pathext.split(';').each { String extension ->
+        if (extension?.trim()) {
+          suffixes << extension.trim()
+        }
+      }
+    }
+    suffixes
   }
 }
 ```
@@ -1936,7 +2243,7 @@ final class PathBinaryResolver {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.PathBinaryResolverTest"`
-Expected: PASS (3 tests)
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -2012,7 +2319,7 @@ class AiWorkspaceServiceTest {
   }
 
   @Test
-  void refreshClientFilesWritesConfigAndCopiesSkillInstructions() {
+  void refreshClientFilesWritesConfigAndCombinedProfileAndSkillForCodex() {
     AiWorkspaceService service = new AiWorkspaceService()
 
     service.refreshClientFiles(AiClient.CODEX, 'http://127.0.0.1:48652/mcp', 'unused-for-codex')
@@ -2023,7 +2330,19 @@ class AiWorkspaceServiceTest {
     assertTrue(Files.exists(configFile))
     assertTrue(configFile.text.contains('bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"'))
     assertTrue(Files.exists(instructionsFile))
-    assertTrue(instructionsFile.text.length() > 0)
+    assertTrue(instructionsFile.text.startsWith('# Alipsa Accounting Assistant'))
+    assertTrue(instructionsFile.text.contains('# Accounting MCP Skill'))
+  }
+
+  @Test
+  void refreshClientFilesWritesClaudeProfileAndSkillSeparately() {
+    AiWorkspaceService service = new AiWorkspaceService()
+
+    service.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:48652/mcp', 'claude-token')
+
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertTrue(workspace.resolve('CLAUDE.md').text.startsWith('# Alipsa Accounting Assistant'))
+    assertTrue(workspace.resolve('.claude/skills/accounting/accounting-mcp.md').text.startsWith('---'))
   }
 
   @Test
@@ -2143,7 +2462,7 @@ class AiWorkspaceServiceTest {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspaceServiceTest"`
-Expected: FAIL — classes not found. This is also the first real exercise of Task 5's classpath-resource change: if `accounting-mcp.md` weren't on the classpath, `refreshClientFilesWritesConfigAndCopiesSkillInstructions` would fail with `IllegalStateException` from the resource-missing check below, not just a missing-class error.
+Expected: FAIL — classes not found. This is also the first real exercise of Task 5's classpath-resource change: if either `accounting-mcp.md` or `assistant-profile.md` were missing from the classpath, one of the first two tests would fail with `IllegalStateException` from the resource-missing check below, not just a missing-class error.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -2258,16 +2577,28 @@ final class AiWorkspaceService {
     secretFileWriter.write(workspace, configFile, configText.getBytes('UTF-8'), SecretFileKind.DATA)
 
     Path instructionsFile = AiWorkspacePaths.instructionsFile(workspace, client)
-    permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
-    permissions.ensureDirectory(workspace, instructionsFile.parent)
-    permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
-    secretFileWriter.write(workspace, instructionsFile, skillResourceBytes(), SecretFileKind.DATA)
+    byte[] skill = resourceBytes('/accounting-mcp.md')
+    byte[] profile = resourceBytes('/assistant-profile.md')
+    if (client == AiClient.CLAUDE) {
+      writeDataFile(workspace, instructionsFile, skill)
+      writeDataFile(workspace, AiWorkspacePaths.assistantProfileFile(workspace, client), profile)
+    } else {
+      byte[] combinedInstructions = (new String(profile, 'UTF-8') + '\n\n' + new String(skill, 'UTF-8')).getBytes('UTF-8')
+      writeDataFile(workspace, instructionsFile, combinedInstructions)
+    }
   }
 
-  private static byte[] skillResourceBytes() {
-    InputStream stream = AiWorkspaceService.getResourceAsStream('/accounting-mcp.md')
+  private void writeDataFile(Path workspace, Path file, byte[] content) {
+    permissions.verifyNoSymlinksInPath(workspace, file)
+    permissions.ensureDirectory(workspace, file.parent)
+    permissions.verifyNoSymlinksInPath(workspace, file)
+    secretFileWriter.write(workspace, file, content, SecretFileKind.DATA)
+  }
+
+  private static byte[] resourceBytes(String resourceName) {
+    InputStream stream = AiWorkspaceService.getResourceAsStream(resourceName)
     if (stream == null) {
-      throw new IllegalStateException('The accounting-mcp.md skill resource is missing from the classpath.')
+      throw new IllegalStateException("The ${resourceName} resource is missing from the classpath.")
     }
     try {
       stream.bytes
@@ -2338,7 +2669,7 @@ final class AiWorkspaceService {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspaceServiceTest"`
-Expected: PASS (8 tests, on a Linux CI runner; the OS-name assumptions skip the suite cleanly elsewhere)
+Expected: PASS (9 tests, on a Linux CI runner; the OS-name assumptions skip the suite cleanly elsewhere)
 
 - [ ] **Step 5: Commit**
 
@@ -2361,7 +2692,7 @@ git commit -m "lägger till AiWorkspaceService"
 
 **Interfaces:**
 - Consumes: `AiClient` (Task 1), `TerminalAdapterKind` (Task 2), `AppPaths.aiWorkspaceDirectory()` (Task 4), `AiWorkspacePermissions`/`SecretFileKind` (Task 6), `SecretFileWriter`/`AtomicSecretFileWriter` (Task 7 — note `write(root, target, ...)`), `AiWorkspacePaths` (Task 8), `TerminalCommandBuilder` (Task 10), `LaunchWrapperScript` (Task 11 — note `Map<String,String> envVars`, not `tokenOrNull`), `ExecutableProbe`/`FileSystemExecutableProbe` (Task 12).
-- Produces: `interface ProcessRunner { Process run(List<String> command, Path workingDirectory) }`. `class AiAssistantLauncher` with a no-arg constructor and a `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` constructor, method `void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token)` — this now validates both `binaryPath` and `adapterExecutable` are real executable files *before* writing the wrapper or spawning anything, throwing `IllegalArgumentException` if not (this is the authoritative check; `AiWorkspaceService.isValidExecutable`, Task 13, additionally lets the UI, Task 17, give a friendlier per-field error before even calling `launch`). `AiAssistantLauncherSection` (Task 17) depends on this exact `launch(...)` signature.
+- Produces: `interface ProcessRunner { Process run(List<String> command, Path workingDirectory) }`. `class AiAssistantLauncher` with a no-arg constructor and a `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` constructor, method `void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token)` — this now validates both `binaryPath` and `adapterExecutable` are real executable files *before* writing the wrapper or spawning anything, throwing `IllegalArgumentException` if not (this is the authoritative check; `AiWorkspaceService.isValidExecutable`, Task 13, additionally lets the UI, Task 17, give a friendlier per-field error before even calling `launch`). `launch()` also calls `permissions.ensureDirectory(workspace, workspace)` itself before writing, so it never depends on a caller having already created the workspace (e.g. via `AiWorkspaceService.refreshClientFiles()`) — it is self-sufficient and fails with a clear permission-checked error rather than a raw `NoSuchFileException` if called on its own. `launch()` also calls `TerminalCommandBuilder.commandFor(...)` (Task 10) *before* writing the wrapper script, not after — `commandFor` itself refuses (fail-closed) a Windows workspace/script path containing a `cmd.exe` metacharacter, and that refusal must happen before any secret-bearing file is written, not after. Also produces an instance method `void validatePreflight(TerminalAdapterKind adapterKind)` — a standalone, no-write, no-spawn preflight that delegates to `TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(...)` (Task 10) for the current AI workspace path when `adapterKind == WINDOWS_TERMINAL`, a no-op otherwise. `launch()`'s own `commandFor(...)` call is too late to protect a *client config file*, which `AiAssistantLauncherSection.doLaunch()` (Task 17) writes via `AiWorkspaceService.refreshClientFiles()` *before* ever calling `launch()` — `validatePreflight` exists specifically so that write can be gated on the same check, not just the wrapper script. `AiAssistantLauncherSection` (Task 17) depends on this exact `launch(...)` signature and on `validatePreflight`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2438,7 +2769,11 @@ class AiAssistantLauncherTest {
   }
 
   @Test
-  void launchForVibeSetsVibeHomeInsteadOfTheAccountingToken() {
+  void launchForVibeSetsNoEnvironmentVariablesAtAll() {
+    // Regression test: VIBE_HOME must never be set. Vibe discovers .vibe/config.toml
+    // project-locally already (confirmed by Mistral's own configuration docs), and VIBE_HOME
+    // relocates the user's *entire* Vibe profile — config, .env credentials, agents, logs,
+    // skills — not just MCP config, which would hide their existing setup and break it.
     List<List<String>> recordedCommands = []
     ProcessRunner fakeRunner = { List<String> command, Path dir ->
       recordedCommands << command
@@ -2452,7 +2787,8 @@ class AiAssistantLauncherTest {
 
     Path writtenScript = Paths.get(recordedCommands[0][2])
     String content = writtenScript.text
-    assertTrue(content.contains('export VIBE_HOME='))
+    assertFalse(content.contains('VIBE_HOME'))
+    assertFalse(content.contains('export '))
     assertFalse(content.contains('ACCOUNTING_MCP_TOKEN'))
   }
 
@@ -2508,6 +2844,81 @@ class AiAssistantLauncherTest {
       launcher.launch(AiClient.CLAUDE, Paths.get('/does/not/exist'), TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), null)
     }
   }
+
+  @Test
+  void launchCreatesTheWorkspaceDirectoryWhenItDoesNotAlreadyExist() {
+    // Deliberately does NOT rely on the shared @BeforeEach's pre-created workspace — this proves
+    // launch() is self-sufficient and doesn't assume a prior refreshClientFiles() call already
+    // created the directory (see AiAssistantLauncher's class doc comment). Only the workspace
+    // ROOT itself is left uncreated: freshHome (its parent) is created first, because
+    // AiWorkspacePermissions.ensureDirectory() (Task 6) requires the workspace root's parent to
+    // already exist — this class creates the workspace root and everything below it, never
+    // anything above it, matching AppPaths.ensureDirectoryStructure()'s separate responsibility.
+    Path freshHome = tempDir.resolve('fresh-home')
+    Files.createDirectories(freshHome)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, freshHome.toString())
+    List<List<String>> recordedCommands = []
+    ProcessRunner fakeRunner = { List<String> command, Path dir ->
+      recordedCommands << command
+      new ProcessBuilder(['true']).start()
+    } as ProcessRunner
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, fakeRunner)
+
+    launcher.launch(AiClient.CLAUDE, Paths.get('/usr/local/bin/claude'), TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), null)
+
+    assertTrue(Files.isDirectory(AppPaths.aiWorkspaceDirectory()))
+    assertEquals(1, recordedCommands.size())
+  }
+
+  @Test
+  void launchRejectsAWindowsWorkspacePathContainingACmdMetacharacterBeforeWritingAnything() {
+    // TerminalCommandBuilder.commandFor() (Task 10) refuses a Windows workspace/script path
+    // containing &|<>^ outright — this proves launch() calls it BEFORE writing the wrapper
+    // script, not after, so a refusal never leaves a secret-bearing file (the Codex wrapper
+    // contains the plaintext token) behind on disk.
+    Path unsafeHome = tempDir.resolve('unsafe & home')
+    Files.createDirectories(unsafeHome)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, unsafeHome.toString())
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    new AiWorkspacePermissions().ensureDirectory(workspace, workspace)
+    ProcessRunner runnerThatShouldNeverBeCalled = { List<String> command, Path dir ->
+      throw new AssertionError('ProcessRunner should not be invoked when the Windows command line cannot be built safely')
+    } as ProcessRunner
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, runnerThatShouldNeverBeCalled)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.launch(AiClient.CODEX, Paths.get('/usr/local/bin/codex'), TerminalAdapterKind.WINDOWS_TERMINAL, Paths.get('/usr/bin/wt.exe'), 'secret-token')
+    }
+
+    Files.newDirectoryStream(workspace, '.launch-codex-*').withCloseable { stream ->
+      assertFalse(stream.iterator().hasNext())
+    }
+  }
+
+  @Test
+  void validatePreflightRejectsAnUnsafeWindowsWorkspacePathWithoutWritingOrSpawningAnything() {
+    // Standalone entry point for callers that need to fail closed before writing a client config
+    // file, which happens earlier than the wrapper script launch() itself protects — see
+    // AiAssistantLauncherSection.doLaunch() (Task 17).
+    Path unsafeHome = tempDir.resolve('unsafe & home')
+    Files.createDirectories(unsafeHome)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, unsafeHome.toString())
+    AiAssistantLauncher launcher = new AiAssistantLauncher()
+
+    assertThrows(IllegalArgumentException) {
+      launcher.validatePreflight(TerminalAdapterKind.WINDOWS_TERMINAL)
+    }
+  }
+
+  @Test
+  void validatePreflightIsANoOpForNonWindowsAdapterKindsAndForASafeWindowsWorkspacePath() {
+    AiAssistantLauncher launcher = new AiAssistantLauncher()
+
+    launcher.validatePreflight(TerminalAdapterKind.XTERM)
+    launcher.validatePreflight(TerminalAdapterKind.WINDOWS_TERMINAL)
+  }
 }
 ```
 
@@ -2549,6 +2960,25 @@ import java.util.logging.Logger
  * cleanup timing". Validates both paths it's given are real executable
  * files *before* writing anything or spawning — a stale/malicious path must
  * never silently "succeed" by opening a terminal that then fails inside.
+ * Also ensures the workspace directory itself exists before writing into
+ * it — {@code launch()} does not assume a prior {@code refreshClientFiles()}
+ * call already created it, so calling this class on its own fails with a
+ * clear permission-checked directory creation rather than a raw
+ * {@code NoSuchFileException} from deep inside the file writer. Builds the
+ * terminal command line ({@code TerminalCommandBuilder.commandFor}) before
+ * writing the wrapper script, not after: that call fails closed for a
+ * Windows workspace/script path containing a `cmd.exe` metacharacter, and a
+ * refusal must never happen after the wrapper (which can hold a plaintext
+ * secret for Codex) has already been written to disk.
+ *
+ * A successful launch deliberately leaves its wrapper script on disk
+ * (rather than deleting it right after spawning): there is no reliable,
+ * cross-platform signal that the spawned terminal has finished reading the
+ * script, and deleting a file a terminal (especially `cmd.exe` on Windows)
+ * may still have open could break the launch outright. This trades a
+ * bounded plaintext-secret-on-disk window — closed by the next
+ * {@code purgeAllSecrets()} (token rotation or app shutdown) — for launch
+ * reliability. See design spec, "Secret lifecycle".
  */
 final class AiAssistantLauncher {
 
@@ -2589,31 +3019,50 @@ final class AiAssistantLauncher {
     }
 
     Path workspace = AppPaths.aiWorkspaceDirectory()
+    permissions.ensureDirectory(workspace, workspace)
     boolean windows = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL
     String launchId = UUID.randomUUID().toString()
     Path script = AiWorkspacePaths.wrapperScript(workspace, client, launchId, windows)
     permissions.verifyNoSymlinksInPath(workspace, script)
 
+    // Build the command line — and let it fail closed on an unsafe Windows path — BEFORE writing
+    // the wrapper script, so a refusal here never leaves a secret-bearing file on disk.
+    List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
+
+    // Vibe deliberately gets no env vars: it discovers .vibe/config.toml project-locally already
+    // (confirmed by Mistral's own configuration docs), and must never be pointed at the AI
+    // workspace via VIBE_HOME — that relocates the user's entire Vibe profile (config, .env
+    // credentials, agents, logs, skills), not just MCP config, hiding their existing setup.
     Map<String, String> envVars = new LinkedHashMap<>()
     if (client == AiClient.CODEX) {
       envVars.ACCOUNTING_MCP_TOKEN = token
-    } else if (client == AiClient.VIBE) {
-      // Belt-and-suspenders for Vibe's unconfirmed project-local-vs-VIBE_HOME config discovery
-      // (see design spec / Task 9) — VIBE_HOME points at the same .vibe/config.toml we already
-      // write, so whichever mechanism Vibe actually uses, it finds the right file.
-      envVars.VIBE_HOME = workspace.resolve('.vibe').toString()
     }
     String content = windows
         ? LaunchWrapperScript.windowsContent(workspace, binaryPath, envVars)
         : LaunchWrapperScript.unixContent(workspace, binaryPath, envVars)
     secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
 
-    List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
     try {
       processRunner.run(command, workspace)
     } catch (Exception exception) {
       deleteWrapperBestEffort(script)
       throw exception
+    }
+  }
+
+  /**
+   * A standalone preflight: validates that a launch for {@code adapterKind} could proceed given
+   * the current AI workspace path, without writing or spawning anything. {@code launch()}'s own
+   * {@code TerminalCommandBuilder.commandFor(...)} call already fails closed on an unsafe Windows
+   * workspace/script path, but only once {@code launch()} itself runs — too late for a caller
+   * that writes a client config file (via {@code AiWorkspaceService.refreshClientFiles()}) before
+   * calling {@code launch()}, as {@code AiAssistantLauncherSection.doLaunch()} (Task 17) does.
+   * Calling this first closes that gap: the workspace path's own safety doesn't depend on which
+   * client or wrapper script is involved, so it can be checked before either exists.
+   */
+  void validatePreflight(TerminalAdapterKind adapterKind) {
+    if (adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL) {
+      TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(AppPaths.aiWorkspaceDirectory())
     }
   }
 
@@ -2630,7 +3079,7 @@ final class AiAssistantLauncher {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiAssistantLauncherTest"`
-Expected: PASS (6 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -2805,7 +3254,7 @@ git commit -m "lägger till AI-launcher-inställningar i UserPreferencesService"
 - Modify: `app/src/main/resources/i18n/messages_sv.properties`
 
 **Interfaces:**
-- Produces: the i18n keys `ui/AiAssistantLauncherSection.groovy` (Task 17) reads via `I18n.instance.getString(...)`/`format(...)`.
+- Produces: the i18n keys `ui/AiAssistantLauncherSection.groovy` (Task 17) reads via `I18n.instance.getString(...)`/`format(...)`. `aiClient.CLAUDE`/`CODEX`/`KIMI`/`VIBE` are the bare display names — no "(experimental)" text baked in. `aiLauncher.experimentalSuffix` holds that suffix (with its leading space escaped so `.properties` loading doesn't trim it) as a separate key, so Task 17's `displayName(AiClient)` helper can append it only when `client.experimental` is true — this is what makes flipping the `experimental` flag on `AiClient` (Task 1) actually change what the UI shows, rather than requiring someone to also remember to hand-edit these strings.
 
 - [ ] **Step 1: Add English keys**
 
@@ -2814,8 +3263,9 @@ In `app/src/main/resources/i18n/messages.properties`, right after the existing `
 ```properties
 aiClient.CLAUDE=Claude Code
 aiClient.CODEX=Codex
-aiClient.KIMI=Kimi (experimental)
-aiClient.VIBE=Vibe (experimental)
+aiClient.KIMI=Kimi
+aiClient.VIBE=Vibe
+aiLauncher.experimentalSuffix=\ (experimental)
 aiLauncher.section.title=Launch AI Assistant
 aiLauncher.label.client=Client:
 aiLauncher.label.binaryPath={0} binary:
@@ -2829,6 +3279,7 @@ aiLauncher.error.terminalAdapterMissing=Pick a terminal and its path before laun
 aiLauncher.error.binaryNotExecutable={0}''s configured path ({1}) is not an executable file. Fix or re-detect the path first.
 aiLauncher.error.terminalNotExecutable=The configured terminal path ({0}) is not an executable file. Fix or re-detect the path first.
 aiLauncher.error.launchFailed=Could not launch the AI assistant: {0}
+aiLauncher.error.detectionFailed=Could not check for AI CLI/terminal installations: {0}
 ```
 
 - [ ] **Step 2: Add Swedish keys**
@@ -2838,8 +3289,9 @@ In `app/src/main/resources/i18n/messages_sv.properties`, at the same location, a
 ```properties
 aiClient.CLAUDE=Claude Code
 aiClient.CODEX=Codex
-aiClient.KIMI=Kimi (experimentell)
-aiClient.VIBE=Vibe (experimentell)
+aiClient.KIMI=Kimi
+aiClient.VIBE=Vibe
+aiLauncher.experimentalSuffix=\ (experimentell)
 aiLauncher.section.title=Starta AI-assistent
 aiLauncher.label.client=Klient:
 aiLauncher.label.binaryPath={0}-binär:
@@ -2853,6 +3305,7 @@ aiLauncher.error.terminalAdapterMissing=V\u00e4lj en terminal och dess s\u00f6kv
 aiLauncher.error.binaryNotExecutable=Den angivna s\u00f6kv\u00e4gen f\u00f6r {0} ({1}) \u00e4r inte en k\u00f6rbar fil. \u00c5tg\u00e4rda eller hitta s\u00f6kv\u00e4gen p\u00e5 nytt.
 aiLauncher.error.terminalNotExecutable=Den angivna terminals\u00f6kv\u00e4gen ({0}) \u00e4r inte en k\u00f6rbar fil. \u00c5tg\u00e4rda eller hitta s\u00f6kv\u00e4gen p\u00e5 nytt.
 aiLauncher.error.launchFailed=Det gick inte att starta AI-assistenten: {0}
+aiLauncher.error.detectionFailed=Det gick inte att s\u00f6ka efter AI-CLI/terminalinstallationer: {0}
 ```
 
 - [ ] **Step 3: Verify the properties files still parse**
@@ -2869,38 +3322,137 @@ git commit -m "lägger till i18n-nycklar för AI-assistent-launcher"
 
 ---
 
-## Task 17: `AiAssistantLauncherSection` (new Settings UI section)
+## Task 17: `BackgroundTaskRunner` + `AiAssistantLauncherSection` (new Settings UI section)
 
 **Files:**
+- Create: `app/src/main/groovy/se/alipsa/accounting/ui/BackgroundTaskRunner.groovy`
+- Create: `app/src/main/groovy/se/alipsa/accounting/ui/SwingBackgroundTaskRunner.groovy`
 - Create: `app/src/main/groovy/se/alipsa/accounting/ui/AiAssistantLauncherSection.groovy`
+- Test: `app/src/test/groovy/unit/se/alipsa/accounting/ui/SwingBackgroundTaskRunnerTest.groovy`
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/ui/AiAssistantLauncherSectionTest.groovy`
 
 **Interfaces:**
 - Consumes: `AiClient`/`TerminalAdapterKind` (Tasks 1-2), `UserPreferencesService` (Task 15), `AiWorkspaceService` (Task 13), `AiAssistantLauncher` (Task 14), `LoopbackMcpServer.ENDPOINT` (existing).
-- Produces: `class AiAssistantLauncherSection` with constructor `(UserPreferencesService, AiWorkspaceService, AiAssistantLauncher)`, `JPanel getPanel()`, `void setMcpAvailable(boolean)`, `void applyLocale()`. `McpServerLifecycle` (Task 19) and `MainFrame` (Task 20) depend on this exact constructor and these method names.
+- Produces: `interface BackgroundTaskRunner { void run(Closure backgroundWork, Closure onDone, Closure onError) }` — runs `backgroundWork` off the EDT and hops back to the EDT (via `SwingUtilities.invokeLater`) to call either `onDone` (success, with the return value) or `onError` (with whatever `backgroundWork` threw). `onError` is mandatory, not optional: without it, an exception thrown off the EDT dies silently on that background thread — the JVM's default uncaught-exception handling — and the user sees nothing happen. Real `SwingBackgroundTaskRunner` implementation. `class AiAssistantLauncherSection` with constructor `(UserPreferencesService, AiWorkspaceService, AiAssistantLauncher)` (delegates to a real `SwingBackgroundTaskRunner`) and a 4-arg `(UserPreferencesService, AiWorkspaceService, AiAssistantLauncher, BackgroundTaskRunner)` constructor for tests, `JPanel getPanel()`, `void setMcpAvailable(boolean)`, `void applyLocale()`. `launchButton` is given a stable `.name` (`'aiLauncher.launchButton'`) specifically so tests can find it unambiguously — matching "the first `JButton` with a listener and non-null text" is not unique once the per-client Detect buttons exist (they're added to the panel first and satisfy the same predicate), and matches the wrong button. The full launch workflow — executable re-validation, `refreshClientFiles`, and `AiAssistantLauncher.launch` (which itself writes files and spawns a process) — now also runs via `backgroundTaskRunner.run(...)`, not just detection/purge, since all of that is blocking I/O that must not run on the EDT. The dispatched work is `doLaunch(...)`, `@PackageScope` (not `private`) so `AiAssistantLauncherSectionTest` (same package) can call it directly with an explicit `TerminalAdapterKind` the real `terminalKindCombo` cannot offer on a non-Windows test runner (it only ever populates `TerminalAdapterKind.forCurrentOs()`). `doLaunch()` calls `aiAssistantLauncher.validatePreflight(adapterKind)` (Task 14) *first*, before `refreshClientFiles(...)` — `launch()`'s own Windows-path check only protects the wrapper script it writes, which is too late to protect the client config file `refreshClientFiles` writes first (directly embeds the plaintext token for Claude/Kimi/Vibe). Each binary `JTextField` also gets a stable `.name` (`"aiLauncher.binaryField.${client.name()}"`), for the same reason `launchButton` does — so a test can locate a specific client's field unambiguously. `autoDetectBlankFields()`'s `onDone` callback re-checks each field is *still* blank immediately before writing into it, not just at snapshot time before the scan started: since this runs automatically and asynchronously the instant the Settings panel is built, a user who starts typing a custom path before the scan completes must not have it silently overwritten and persisted once the (now-stale) result arrives — the per-client "Detect" buttons don't need this same re-check, since the user explicitly asked for that field to be overwritten by clicking. `McpServerLifecycle` (Task 19) and `MainFrame` (Task 20) depend on the 3-arg constructor and these method names — they never need to know `BackgroundTaskRunner` exists. `McpSettingsSection` (Task 18) reuses `BackgroundTaskRunner`/`SwingBackgroundTaskRunner` created here for its own purge call, with the same `onError` handling, rather than defining a second copy.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```groovy
 package se.alipsa.accounting.ui
 
-import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+import javax.swing.SwingUtilities
+
+class SwingBackgroundTaskRunnerTest {
+
+  @Test
+  void runsBackgroundWorkOffThreadAndAppliesTheResultOnTheEdt() {
+    SwingBackgroundTaskRunner runner = new SwingBackgroundTaskRunner()
+    Thread callingThread = Thread.currentThread()
+    CountDownLatch latch = new CountDownLatch(1)
+    List<Boolean> ranOffCallingThread = []
+    List<Boolean> ranOnEdt = []
+    List<String> results = []
+
+    runner.run(
+        {
+          ranOffCallingThread << (Thread.currentThread() != callingThread)
+          'computed-value'
+        },
+        { String result ->
+          ranOnEdt << SwingUtilities.isEventDispatchThread()
+          results << result
+          latch.countDown()
+        },
+        { Exception exception -> throw new AssertionError('onError should not be called', exception) }
+    )
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS))
+    assertEquals([true], ranOffCallingThread)
+    assertEquals([true], ranOnEdt)
+    assertEquals(['computed-value'], results)
+  }
+
+  @Test
+  void surfacesABackgroundWorkExceptionToOnErrorOnTheEdtInsteadOfLosingItSilently() {
+    SwingBackgroundTaskRunner runner = new SwingBackgroundTaskRunner()
+    CountDownLatch latch = new CountDownLatch(1)
+    List<Boolean> ranOnEdt = []
+    List<Exception> errors = []
+
+    runner.run(
+        { throw new IllegalStateException('simulated background failure') },
+        { Object result -> throw new AssertionError('onDone should not be called when backgroundWork throws') },
+        { Exception exception ->
+          ranOnEdt << SwingUtilities.isEventDispatchThread()
+          errors << exception
+          latch.countDown()
+        }
+    )
+
+    assertTrue(latch.await(5, TimeUnit.SECONDS))
+    assertEquals([true], ranOnEdt)
+    assertEquals(1, errors.size())
+    assertEquals('simulated background failure', errors[0].message)
+  }
+}
+```
+
+```groovy
+package se.alipsa.accounting.ui
+
+import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
+import static org.junit.jupiter.api.Assertions.assertTrue
+
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+
 import se.alipsa.accounting.domain.AiClient
+import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.service.AiAssistantLauncher
+import se.alipsa.accounting.service.AiWorkspacePermissions
 import se.alipsa.accounting.service.AiWorkspaceService
+import se.alipsa.accounting.service.AtomicSecretFileWriter
+import se.alipsa.accounting.service.EnvironmentLookup
+import se.alipsa.accounting.service.ExecutableProbe
+import se.alipsa.accounting.service.FileDeleter
 import se.alipsa.accounting.service.UserPreferencesService
+import se.alipsa.accounting.support.AppPaths
 
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JPanel
+import javax.swing.JTextField
 
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.prefs.Preferences
 
 class AiAssistantLauncherSectionTest {
+
+  @TempDir
+  Path tempDir
+
+  // Runs backgroundWork, onDone, and onError synchronously on the calling (test) thread, so
+  // detection results are deterministic instead of racing a real background thread + invokeLater
+  // — every test here uses this instead of the real SwingBackgroundTaskRunner.
+  private static final BackgroundTaskRunner SYNCHRONOUS_RUNNER =
+      { Closure backgroundWork, Closure onDone, Closure onError ->
+        try {
+          onDone.call(backgroundWork.call())
+        } catch (Exception exception) {
+          onError.call(exception)
+        }
+      } as BackgroundTaskRunner
 
   @Test
   void launchButtonStartsDisabledAndIsEnabledOnceMcpIsAvailable() {
@@ -2909,7 +3461,8 @@ class AiAssistantLauncherSectionTest {
       UserPreferencesService userPreferencesService = new UserPreferencesService(node)
       AiWorkspaceService aiWorkspaceService = new AiWorkspaceService()
       AiAssistantLauncher aiAssistantLauncher = new AiAssistantLauncher()
-      AiAssistantLauncherSection section = new AiAssistantLauncherSection(userPreferencesService, aiWorkspaceService, aiAssistantLauncher)
+      AiAssistantLauncherSection section = new AiAssistantLauncherSection(
+          userPreferencesService, aiWorkspaceService, aiAssistantLauncher, SYNCHRONOUS_RUNNER)
 
       JButton launchButton = findLaunchButton(section.panel)
       assertFalse(launchButton.enabled)
@@ -2928,7 +3481,7 @@ class AiAssistantLauncherSectionTest {
     try {
       UserPreferencesService userPreferencesService = new UserPreferencesService(node)
       AiAssistantLauncherSection section = new AiAssistantLauncherSection(
-          userPreferencesService, new AiWorkspaceService(), new AiAssistantLauncher())
+          userPreferencesService, new AiWorkspaceService(), new AiAssistantLauncher(), SYNCHRONOUS_RUNNER)
 
       JComboBox<AiClient> combo = findClientCombo(section.panel)
 
@@ -2938,12 +3491,118 @@ class AiAssistantLauncherSectionTest {
     }
   }
 
+  @Test
+  void doLaunchNeverWritesClaudesConfigWhenTheWindowsWorkspacePathIsUnsafe() {
+    // terminalKindCombo only ever offers TerminalAdapterKind.forCurrentOs() (Linux/macOS CI never
+    // offers WINDOWS_TERMINAL), so this can't be driven through the real combo box on this host —
+    // it calls doLaunch() directly instead: the exact @PackageScope production method onLaunch()
+    // dispatches to, just without needing to first select an option the UI structurally cannot
+    // offer here. Proves the fix for the specific gap a review found: the Windows-path preflight
+    // used to run only inside AiAssistantLauncher.launch(), which is called AFTER
+    // refreshClientFiles() already wrote Claude's token-bearing .mcp.json — so a refusal used to
+    // still leave that secret-bearing file behind. doLaunch() now calls
+    // aiAssistantLauncher.validatePreflight(adapterKind) first, before refreshClientFiles().
+    Path unsafeHome = tempDir.resolve('unsafe & home')
+    Files.createDirectories(unsafeHome)
+    String previousOverride = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, unsafeHome.toString())
+    Preferences node = Preferences.userRoot().node("alipsa-accounting-test-${UUID.randomUUID()}")
+    try {
+      UserPreferencesService userPreferencesService = new UserPreferencesService(node)
+      AiAssistantLauncherSection section = new AiAssistantLauncherSection(
+          userPreferencesService, new AiWorkspaceService(), new AiAssistantLauncher(), SYNCHRONOUS_RUNNER)
+
+      assertThrows(IllegalArgumentException) {
+        section.doLaunch(AiClient.CLAUDE, '/usr/local/bin/claude', TerminalAdapterKind.WINDOWS_TERMINAL, 'C:/Windows/System32/wt.exe', 'test-token')
+      }
+
+      assertFalse(Files.exists(AppPaths.aiWorkspaceDirectory().resolve('.mcp.json')))
+    } finally {
+      node.removeNode()
+      if (previousOverride == null) {
+        System.clearProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+      } else {
+        System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, previousOverride)
+      }
+    }
+  }
+
+  @Test
+  void autoDetectDoesNotOverwriteABinaryPathTheUserTypedWhileDetectionWasStillRunning() {
+    Preferences node = Preferences.userRoot().node("alipsa-accounting-test-${UUID.randomUUID()}")
+    try {
+      UserPreferencesService userPreferencesService = new UserPreferencesService(node)
+      // A fake PATH + an ExecutableProbe that accepts anything, so detectBinaryPath() finds a
+      // deterministic result for every client — not dependent on what happens to be installed on
+      // whatever machine runs this test.
+      AiWorkspaceService aiWorkspaceService = new AiWorkspaceService(
+          new AiWorkspacePermissions(),
+          new AtomicSecretFileWriter(),
+          { Path candidate -> true } as ExecutableProbe,
+          { String name -> name == 'PATH' ? '/fake/bin' : null } as EnvironmentLookup,
+          { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+      DelayedBackgroundTaskRunner delayedRunner = new DelayedBackgroundTaskRunner()
+
+      AiAssistantLauncherSection section = new AiAssistantLauncherSection(
+          userPreferencesService, aiWorkspaceService, new AiAssistantLauncher(), delayedRunner)
+      // autoDetectBlankFields() ran during construction and computed its result already (the
+      // fake runner runs backgroundWork eagerly), but hasn't applied it yet — this is the gap a
+      // real background thread + invokeLater leaves open. Simulate the user typing into the
+      // still-blank Codex field during that gap, before the deferred result is applied.
+      JTextField codexField = findBinaryField(section.panel, AiClient.CODEX)
+      codexField.text = '/my/custom/codex'
+
+      delayedRunner.completeAll()
+
+      // Not overwritten in the field, and never persisted either — the fix skips both the field
+      // write and the userPreferencesService.setAiBinaryPath(...) call together, since they're
+      // gated by the same still-blank check.
+      assertEquals('/my/custom/codex', codexField.text)
+    } finally {
+      node.removeNode()
+    }
+  }
+
   private static JButton findLaunchButton(JPanel root) {
-    findComponent(root, JButton) { JButton button -> button.actionListeners.length > 0 && button.text != null }
+    // Match by the stable component name AiAssistantLauncherSection assigns to the real launch
+    // button, not by "first JButton with a listener and non-null text" — the per-client Detect
+    // buttons satisfy that predicate too and are added to the panel first, so it used to match
+    // the wrong button entirely.
+    findComponent(root, JButton) { JButton button -> button.name == 'aiLauncher.launchButton' }
   }
 
   private static JComboBox findClientCombo(JPanel root) {
     findComponent(root, JComboBox) { JComboBox combo -> combo.itemCount == 4 }
+  }
+
+  private static JTextField findBinaryField(JPanel root, AiClient client) {
+    findComponent(root, JTextField) { JTextField field -> field.name == "aiLauncher.binaryField.${client.name()}" }
+  }
+
+  /**
+   * Runs {@code backgroundWork} immediately (like {@code SYNCHRONOUS_RUNNER}) but defers calling
+   * {@code onDone}/{@code onError} until the test explicitly calls {@link #completeAll}, so a
+   * test can simulate the gap a real background thread + {@code SwingUtilities.invokeLater}
+   * leaves open between "the scan finished" and "the result got applied to the UI."
+   */
+  private static final class DelayedBackgroundTaskRunner implements BackgroundTaskRunner {
+    private final List<Closure> pendingCompletions = []
+
+    @Override
+    void run(Closure backgroundWork, Closure onDone, Closure onError) {
+      try {
+        def result = backgroundWork.call()
+        pendingCompletions << { -> onDone.call(result) }
+      } catch (Exception exception) {
+        pendingCompletions << { -> onError.call(exception) }
+      }
+    }
+
+    void completeAll() {
+      List<Closure> toRun = new ArrayList<>(pendingCompletions)
+      pendingCompletions.clear()
+      toRun.each { it.call() }
+    }
   }
 
   private static <T> T findComponent(java.awt.Container container, Class<T> type, Closure<Boolean> predicate) {
@@ -2963,15 +3622,68 @@ class AiAssistantLauncherSectionTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew test --tests "se.alipsa.accounting.ui.AiAssistantLauncherSectionTest"`
-Expected: FAIL — `AiAssistantLauncherSection` class not found.
+Run: `./gradlew test --tests "se.alipsa.accounting.ui.SwingBackgroundTaskRunnerTest" --tests "se.alipsa.accounting.ui.AiAssistantLauncherSectionTest"`
+Expected: FAIL — none of the new classes exist yet.
 
 - [ ] **Step 3: Write the implementation**
 
 ```groovy
+// app/src/main/groovy/se/alipsa/accounting/ui/BackgroundTaskRunner.groovy
 package se.alipsa.accounting.ui
+
+/**
+ * Seam around "do work off the EDT, then hop back to the EDT to apply the
+ * result or report the failure" — lets filesystem/process I/O (binary/
+ * terminal detection, workspace secret purge, and the full launch workflow)
+ * run without blocking Swing's event dispatch thread, while staying
+ * synchronous and deterministic when tests supply a same-thread fake instead
+ * of the real implementation. `onError` is mandatory: a `backgroundWork`
+ * that throws must never die silently on its background thread with the
+ * user seeing nothing.
+ */
+interface BackgroundTaskRunner {
+  void run(Closure backgroundWork, Closure onDone, Closure onError)
+}
+```
+
+```groovy
+// app/src/main/groovy/se/alipsa/accounting/ui/SwingBackgroundTaskRunner.groovy
+package se.alipsa.accounting.ui
+
+import java.util.logging.Level
+import java.util.logging.Logger
+
+import javax.swing.SwingUtilities
+
+/** Real implementation: runs {@code backgroundWork} on a new daemon thread, then posts either {@code onDone} (success) or {@code onError} (any exception {@code backgroundWork} threw) to the EDT via {@code SwingUtilities.invokeLater}. */
+final class SwingBackgroundTaskRunner implements BackgroundTaskRunner {
+
+  private static final Logger log = Logger.getLogger(SwingBackgroundTaskRunner.name)
+
+  @Override
+  void run(Closure backgroundWork, Closure onDone, Closure onError) {
+    Thread thread = new Thread({
+      try {
+        def result = backgroundWork.call()
+        SwingUtilities.invokeLater { onDone.call(result) }
+      } catch (Exception exception) {
+        log.log(Level.WARNING, 'Background task failed', exception)
+        SwingUtilities.invokeLater { onError.call(exception) }
+      }
+    } as Runnable, 'ai-workspace-background')
+    thread.daemon = true
+    thread.start()
+  }
+}
+```
+
+```groovy
+// app/src/main/groovy/se/alipsa/accounting/ui/AiAssistantLauncherSection.groovy
+package se.alipsa.accounting.ui
+
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
@@ -2998,9 +3710,12 @@ import javax.swing.border.TitledBorder
 /** Settings UI for launching an AI CLI wired to the local MCP endpoint. */
 final class AiAssistantLauncherSection {
 
+  private static final String LAUNCH_BUTTON_NAME = 'aiLauncher.launchButton'
+
   private final UserPreferencesService userPreferencesService
   private final AiWorkspaceService aiWorkspaceService
   private final AiAssistantLauncher aiAssistantLauncher
+  private final BackgroundTaskRunner backgroundTaskRunner
   private final JPanel panel = new JPanel()
   private final TitledBorder border = BorderFactory.createTitledBorder('')
   private final Map<AiClient, JLabel> binaryLabels = [:]
@@ -3021,11 +3736,22 @@ final class AiAssistantLauncherSection {
       AiWorkspaceService aiWorkspaceService,
       AiAssistantLauncher aiAssistantLauncher
   ) {
+    this(userPreferencesService, aiWorkspaceService, aiAssistantLauncher, new SwingBackgroundTaskRunner())
+  }
+
+  AiAssistantLauncherSection(
+      UserPreferencesService userPreferencesService,
+      AiWorkspaceService aiWorkspaceService,
+      AiAssistantLauncher aiAssistantLauncher,
+      BackgroundTaskRunner backgroundTaskRunner
+  ) {
     this.userPreferencesService = userPreferencesService
     this.aiWorkspaceService = aiWorkspaceService
     this.aiAssistantLauncher = aiAssistantLauncher
+    this.backgroundTaskRunner = backgroundTaskRunner
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     panel.border = border
+    launchButton.name = LAUNCH_BUTTON_NAME
     buildRows()
     autoDetectBlankFields()
     applyLocale()
@@ -3044,7 +3770,7 @@ final class AiAssistantLauncherSection {
   void applyLocale() {
     border.title = I18n.instance.getString('aiLauncher.section.title')
     AiClient.values().each { AiClient client ->
-      binaryLabels[client].text = I18n.instance.format('aiLauncher.label.binaryPath', I18n.instance.getString("aiClient.${client.name()}"))
+      binaryLabels[client].text = I18n.instance.format('aiLauncher.label.binaryPath', displayName(client))
       detectBinaryButtons[client].text = I18n.instance.getString('aiLauncher.button.detect')
     }
     terminalKindLabel.text = I18n.instance.getString('aiLauncher.label.terminalAdapter')
@@ -3053,19 +3779,36 @@ final class AiAssistantLauncherSection {
     launchButton.text = I18n.instance.getString('aiLauncher.button.launch')
   }
 
+  /**
+   * The client's display name, with the "(experimental)" suffix appended only when
+   * {@link AiClient#experimental} is true — so promoting a client out of experimental status
+   * (Task 22's manual-verification follow-up) is a one-line flag flip in {@code AiClient}, not a
+   * flag flip plus a separate, easy-to-forget edit to two i18n `.properties` files.
+   */
+  private static String displayName(AiClient client) {
+    String base = I18n.instance.getString("aiClient.${client.name()}")
+    client.experimental ? base + I18n.instance.getString('aiLauncher.experimentalSuffix') : base
+  }
+
   private void buildRows() {
     AiClient.values().each { AiClient client ->
       JLabel label = new JLabel()
       binaryLabels[client] = label
       JTextField field = new JTextField(userPreferencesService.getAiBinaryPath(client) ?: '', 24)
+      field.name = "aiLauncher.binaryField.${client.name()}"
       binaryFields[client] = field
       JButton detect = new JButton()
       detect.addActionListener {
-        Path resolved = aiWorkspaceService.detectBinaryPath(client)
-        if (resolved != null) {
-          field.text = resolved.toString()
-          userPreferencesService.setAiBinaryPath(client, resolved.toString())
-        }
+        backgroundTaskRunner.run(
+            { aiWorkspaceService.detectBinaryPath(client) },
+            { Path resolved ->
+              if (resolved != null) {
+                field.text = resolved.toString()
+                userPreferencesService.setAiBinaryPath(client, resolved.toString())
+              }
+            },
+            this.&showDetectionError
+        )
       }
       detectBinaryButtons[client] = detect
       JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
@@ -3081,13 +3824,18 @@ final class AiAssistantLauncherSection {
     }
     terminalPathField.text = userPreferencesService.terminalPath ?: ''
     detectTerminalButton.addActionListener {
-      Tuple2<TerminalAdapterKind, Path> detected = aiWorkspaceService.detectTerminalAdapter()
-      if (detected != null) {
-        terminalKindCombo.selectedItem = detected.v1
-        terminalPathField.text = detected.v2.toString()
-        userPreferencesService.terminalAdapterKind = detected.v1
-        userPreferencesService.terminalPath = detected.v2.toString()
-      }
+      backgroundTaskRunner.run(
+          { aiWorkspaceService.detectTerminalAdapter() },
+          { Tuple2<TerminalAdapterKind, Path> detected ->
+            if (detected != null) {
+              terminalKindCombo.selectedItem = detected.v1
+              terminalPathField.text = detected.v2.toString()
+              userPreferencesService.terminalAdapterKind = detected.v1
+              userPreferencesService.terminalPath = detected.v2.toString()
+            }
+          },
+          this.&showDetectionError
+      )
     }
     JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     terminalRow.add(terminalKindLabel)
@@ -3104,25 +3852,50 @@ final class AiAssistantLauncherSection {
     panel.add(launchRow)
   }
 
+  /**
+   * Snapshots which fields are blank on the EDT (cheap, no I/O — reading Swing component state
+   * off the EDT isn't safe), then does the actual PATH scanning in the background closure, which
+   * touches no Swing component. The scan can take a moment (multiple PATH directories, each a
+   * stat() call), and this runs automatically the instant the Settings panel is built — so
+   * {@code onDone}, back on the EDT, re-checks each field is *still* blank right before writing
+   * into it, not just at snapshot time above. Without that re-check, a user who starts typing a
+   * custom path into a field the instant the panel appears — before this scan completes — could
+   * have their input silently overwritten and persisted to preferences once the result arrives.
+   * The per-client "Detect" buttons (in {@link #buildRows}) don't need this: the user explicitly
+   * asked for detection on that specific field by clicking, so overwriting it is what was asked for.
+   */
   private void autoDetectBlankFields() {
-    AiClient.values().each { AiClient client ->
-      if (!binaryFields[client].text?.trim()) {
-        Path resolved = aiWorkspaceService.detectBinaryPath(client)
-        if (resolved != null) {
-          binaryFields[client].text = resolved.toString()
-          userPreferencesService.setAiBinaryPath(client, resolved.toString())
-        }
-      }
-    }
-    if (!terminalPathField.text?.trim()) {
-      Tuple2<TerminalAdapterKind, Path> detected = aiWorkspaceService.detectTerminalAdapter()
-      if (detected != null) {
-        terminalKindCombo.selectedItem = detected.v1
-        terminalPathField.text = detected.v2.toString()
-        userPreferencesService.terminalAdapterKind = detected.v1
-        userPreferencesService.terminalPath = detected.v2.toString()
-      }
-    }
+    List<AiClient> blankClients = AiClient.values().findAll { AiClient client -> !binaryFields[client].text?.trim() }
+    boolean terminalBlank = !terminalPathField.text?.trim()
+    backgroundTaskRunner.run(
+        {
+          Map<AiClient, Path> resolvedBinaries = [:]
+          blankClients.each { AiClient client ->
+            Path resolved = aiWorkspaceService.detectBinaryPath(client)
+            if (resolved != null) {
+              resolvedBinaries[client] = resolved
+            }
+          }
+          Tuple2<TerminalAdapterKind, Path> resolvedTerminal = terminalBlank ? aiWorkspaceService.detectTerminalAdapter() : null
+          new Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>>(resolvedBinaries, resolvedTerminal)
+        },
+        { Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>> result ->
+          result.v1.each { AiClient client, Path resolved ->
+            if (!binaryFields[client].text?.trim()) {
+              binaryFields[client].text = resolved.toString()
+              userPreferencesService.setAiBinaryPath(client, resolved.toString())
+            }
+          }
+          Tuple2<TerminalAdapterKind, Path> terminal = result.v2
+          if (terminal != null && !terminalPathField.text?.trim()) {
+            terminalKindCombo.selectedItem = terminal.v1
+            terminalPathField.text = terminal.v2.toString()
+            userPreferencesService.terminalAdapterKind = terminal.v1
+            userPreferencesService.terminalPath = terminal.v2.toString()
+          }
+        },
+        this.&showDetectionError
+    )
   }
 
   private void updateLaunchButtonState() {
@@ -3140,33 +3913,67 @@ final class AiAssistantLauncherSection {
     TerminalAdapterKind adapterKind = terminalKindCombo.selectedItem as TerminalAdapterKind
     String terminalPathText = terminalPathField.text?.trim()
     if (!binaryPathText) {
-      showError(I18n.instance.format('aiLauncher.error.binaryMissing', I18n.instance.getString("aiClient.${client.name()}")))
+      showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(client)))
       return
     }
     if (adapterKind == null || !terminalPathText) {
       showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing'))
       return
     }
+    String token = userPreferencesService.ensureMcpToken()
+    launchButton.enabled = false
+    backgroundTaskRunner.run(
+        { doLaunch(client, binaryPathText, adapterKind, terminalPathText, token) },
+        { String validationErrorMessage ->
+          updateLaunchButtonState()
+          if (validationErrorMessage != null) {
+            showError(validationErrorMessage)
+          }
+        },
+        { Exception exception ->
+          updateLaunchButtonState()
+          showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName))
+        }
+    )
+  }
+
+  /**
+   * Runs entirely off the EDT: executable re-validation, config/instructions writes
+   * ({@code refreshClientFiles}), and the terminal spawn ({@code AiAssistantLauncher.launch}) are
+   * all filesystem/process I/O and must not block Settings while they run. Returns null on
+   * success, or a ready-to-show i18n error message for the two validation outcomes this method
+   * itself detects. Any exception `validatePreflight`/`refreshClientFiles`/`launch` throw is
+   * deliberately left to propagate — `onLaunch()`'s `onError` callback handles it, so it isn't
+   * caught twice. `validatePreflight` runs *first*, before `refreshClientFiles`: `launch()`'s own
+   * Windows-path safety check (Task 14) only protects the wrapper script it writes, which is too
+   * late for `refreshClientFiles`'s client config file — for Claude/Kimi/Vibe, that file directly
+   * embeds the plaintext MCP token, so a refusal must happen before it's written, not after.
+   * `@PackageScope`, not `private`, specifically so `AiAssistantLauncherSectionTest` can call it
+   * directly with an explicit `TerminalAdapterKind.WINDOWS_TERMINAL` — the real `terminalKindCombo`
+   * only ever offers `TerminalAdapterKind.forCurrentOs()`, so a Linux/macOS test runner can never
+   * select that option through the actual UI combo box.
+   */
+  @PackageScope
+  String doLaunch(AiClient client, String binaryPathText, TerminalAdapterKind adapterKind, String terminalPathText, String token) {
+    aiAssistantLauncher.validatePreflight(adapterKind)
     Path binaryPathCandidate = Paths.get(binaryPathText)
     if (!aiWorkspaceService.isValidExecutable(binaryPathCandidate)) {
-      showError(I18n.instance.format('aiLauncher.error.binaryNotExecutable', I18n.instance.getString("aiClient.${client.name()}"), binaryPathText))
-      return
+      return I18n.instance.format('aiLauncher.error.binaryNotExecutable', displayName(client), binaryPathText)
     }
     Path terminalPathCandidate = Paths.get(terminalPathText)
     if (!aiWorkspaceService.isValidExecutable(terminalPathCandidate)) {
-      showError(I18n.instance.format('aiLauncher.error.terminalNotExecutable', terminalPathText))
-      return
+      return I18n.instance.format('aiLauncher.error.terminalNotExecutable', terminalPathText)
     }
     userPreferencesService.setAiBinaryPath(client, binaryPathText)
     userPreferencesService.terminalAdapterKind = adapterKind
     userPreferencesService.terminalPath = terminalPathText
-    try {
-      String token = userPreferencesService.ensureMcpToken()
-      aiWorkspaceService.refreshClientFiles(client, LoopbackMcpServer.ENDPOINT, token)
-      aiAssistantLauncher.launch(client, Paths.get(binaryPathText), adapterKind, Paths.get(terminalPathText), token)
-    } catch (Exception exception) {
-      showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName))
-    }
+    aiWorkspaceService.refreshClientFiles(client, LoopbackMcpServer.ENDPOINT, token)
+    aiAssistantLauncher.launch(client, binaryPathCandidate, adapterKind, terminalPathCandidate, token)
+    null
+  }
+
+  private void showDetectionError(Exception exception) {
+    showError(I18n.instance.format('aiLauncher.error.detectionFailed', exception.message ?: exception.class.simpleName))
   }
 
   private void showError(String message) {
@@ -3175,17 +3982,20 @@ final class AiAssistantLauncherSection {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew test --tests "se.alipsa.accounting.ui.AiAssistantLauncherSectionTest"`
-Expected: PASS (2 tests)
+Run: `./gradlew test --tests "se.alipsa.accounting.ui.SwingBackgroundTaskRunnerTest" --tests "se.alipsa.accounting.ui.AiAssistantLauncherSectionTest"`
+Expected: PASS (2 tests + 4 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/groovy/se/alipsa/accounting/ui/AiAssistantLauncherSection.groovy \
+git add app/src/main/groovy/se/alipsa/accounting/ui/BackgroundTaskRunner.groovy \
+        app/src/main/groovy/se/alipsa/accounting/ui/SwingBackgroundTaskRunner.groovy \
+        app/src/main/groovy/se/alipsa/accounting/ui/AiAssistantLauncherSection.groovy \
+        app/src/test/groovy/unit/se/alipsa/accounting/ui/SwingBackgroundTaskRunnerTest.groovy \
         app/src/test/groovy/unit/se/alipsa/accounting/ui/AiAssistantLauncherSectionTest.groovy
-git commit -m "lägger till AiAssistantLauncherSection"
+git commit -m "lägger till BackgroundTaskRunner och AiAssistantLauncherSection"
 ```
 
 ---
@@ -3197,8 +4007,8 @@ git commit -m "lägger till AiAssistantLauncherSection"
 - Create: `app/src/test/groovy/unit/se/alipsa/accounting/ui/McpSettingsSectionTest.groovy`
 
 **Interfaces:**
-- Consumes: `AiWorkspaceService`/`PurgeResult` (Task 13).
-- Produces: `McpSettingsSection(UserPreferencesService, AiWorkspaceService)` (new 2-arg constructor — the 1-arg one used by `MainFrame` today is removed). `McpServerLifecycle`/`MainFrame` (Tasks 19-20) must pass the new second argument.
+- Consumes: `AiWorkspaceService`/`PurgeResult` (Task 13), `BackgroundTaskRunner`/`SwingBackgroundTaskRunner` (Task 17 — same `se.alipsa.accounting.ui` package, no new files needed here).
+- Produces: `McpSettingsSection(UserPreferencesService, AiWorkspaceService)` (new 2-arg constructor — the 1-arg one used by `MainFrame` today is removed; internally delegates to a real `SwingBackgroundTaskRunner`) plus a 3-arg `(UserPreferencesService, AiWorkspaceService, BackgroundTaskRunner)` constructor for tests. `McpServerLifecycle`/`MainFrame` (Tasks 19-20) keep using the 2-arg constructor and never need to know `BackgroundTaskRunner` exists. `regenerateToken()`'s purge now runs off the EDT via `backgroundTaskRunner.run(backgroundWork, onDone, onError)` (Task 17's 3-arg form), with the token rotation and the "some files couldn't be removed" dialog applied back on the EDT in `onDone`, and an unexpected exception from `purgeAllSecrets()` itself — not the normal "some files failed" `PurgeResult`, but a genuine thrown exception — surfaced via `onError` instead of dying silently on the background thread.
 
 - [ ] **Step 1: Write the failing test** (new file — no test existed before for this class)
 
@@ -3227,6 +4037,17 @@ class McpSettingsSectionTest {
   @TempDir
   Path tempDir
 
+  // Runs regenerateToken()'s purge synchronously on the test thread, so the assertions right
+  // after calling it are valid — same pattern as AiAssistantLauncherSectionTest (Task 17).
+  private static final BackgroundTaskRunner SYNCHRONOUS_RUNNER =
+      { Closure backgroundWork, Closure onDone, Closure onError ->
+        try {
+          onDone.call(backgroundWork.call())
+        } catch (Exception exception) {
+          onError.call(exception)
+        }
+      } as BackgroundTaskRunner
+
   @Test
   void regenerateTokenPurgesWorkspaceSecretsBeforeRotating() {
     // Never let this test (or any test) touch the real user's AI workspace — always redirect
@@ -3241,7 +4062,7 @@ class McpSettingsSectionTest {
       AiWorkspaceService aiWorkspaceService = new AiWorkspaceService()
       aiWorkspaceService.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:48652/mcp', originalToken)
 
-      McpSettingsSection section = new McpSettingsSection(userPreferencesService, aiWorkspaceService)
+      McpSettingsSection section = new McpSettingsSection(userPreferencesService, aiWorkspaceService, SYNCHRONOUS_RUNNER)
       section.regenerateToken()
 
       assertNotEquals(originalToken, userPreferencesService.ensureMcpToken())
@@ -3261,19 +4082,28 @@ class McpSettingsSectionTest {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.ui.McpSettingsSectionTest"`
-Expected: FAIL — 2-arg constructor and `regenerateToken()` don't exist yet.
+Expected: FAIL — 3-arg constructor and `regenerateToken()` don't exist yet.
 
 - [ ] **Step 3: Modify the implementation**
 
 In `McpSettingsSection.groovy`:
-1. Add `import se.alipsa.accounting.service.AiWorkspaceService`.
-2. Add a field `private final AiWorkspaceService aiWorkspaceService`.
-3. Change the constructor signature and body:
+1. Add `import se.alipsa.accounting.service.AiWorkspaceService`. (`BackgroundTaskRunner`/`SwingBackgroundTaskRunner` need no import — same `se.alipsa.accounting.ui` package.)
+2. Add fields `private final AiWorkspaceService aiWorkspaceService` and `private final BackgroundTaskRunner backgroundTaskRunner`.
+3. Change the constructors:
 
 ```groovy
   McpSettingsSection(UserPreferencesService userPreferencesService, AiWorkspaceService aiWorkspaceService) {
+    this(userPreferencesService, aiWorkspaceService, new SwingBackgroundTaskRunner())
+  }
+
+  McpSettingsSection(
+      UserPreferencesService userPreferencesService,
+      AiWorkspaceService aiWorkspaceService,
+      BackgroundTaskRunner backgroundTaskRunner
+  ) {
     this.userPreferencesService = userPreferencesService
     this.aiWorkspaceService = aiWorkspaceService
+    this.backgroundTaskRunner = backgroundTaskRunner
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     border = BorderFactory.createTitledBorder('')
     panel.border = border
@@ -3292,35 +4122,48 @@ In `McpSettingsSection.groovy`:
     regenerateButton.addActionListener { regenerateToken() }
 ```
 
-5. Add a new public method (extracted so the test above can call it directly, and so the reorder logic lives in one obvious place):
+5. Add a new public method (extracted so the test above can call it directly, and so the reorder logic lives in one obvious place). The purge (filesystem I/O) runs in the background closure; the failure dialog and the actual token rotation only happen in `onDone`, back on the EDT; `onError` covers the (rare) case where `purgeAllSecrets()` itself throws rather than returning a `PurgeResult` with some entries failed \u2014 without it, that exception would die silently on the background thread and the user would see no rotation happen with no explanation:
 
 ```groovy
   void regenerateToken() {
-    se.alipsa.accounting.service.PurgeResult result = aiWorkspaceService.purgeAllSecrets()
-    if (!result.complete) {
-      javax.swing.JOptionPane.showMessageDialog(
-          panel,
-          I18n.instance.format('settings.mcp.rotateFailed', result.failed.join(', ')),
-          I18n.instance.getString('settings.mcp.rotateFailedTitle'),
-          javax.swing.JOptionPane.ERROR_MESSAGE)
-      return
-    }
-    tokenField.text = userPreferencesService.regenerateMcpToken()
+    backgroundTaskRunner.run(
+        { aiWorkspaceService.purgeAllSecrets() },
+        { se.alipsa.accounting.service.PurgeResult result ->
+          if (!result.complete) {
+            javax.swing.JOptionPane.showMessageDialog(
+                panel,
+                I18n.instance.format('settings.mcp.rotateFailed', result.failed.join(', ')),
+                I18n.instance.getString('settings.mcp.rotateFailedTitle'),
+                javax.swing.JOptionPane.ERROR_MESSAGE)
+            return
+          }
+          tokenField.text = userPreferencesService.regenerateMcpToken()
+        },
+        { Exception exception ->
+          javax.swing.JOptionPane.showMessageDialog(
+              panel,
+              I18n.instance.format('settings.mcp.rotateError', exception.message ?: exception.class.simpleName),
+              I18n.instance.getString('settings.mcp.rotateFailedTitle'),
+              javax.swing.JOptionPane.ERROR_MESSAGE)
+        }
+    )
   }
 ```
 
-- [ ] **Step 4: Add the two new i18n keys this uses**
+- [ ] **Step 4: Add the three new i18n keys this uses**
 
 In `messages.properties`:
 ```properties
 settings.mcp.rotateFailedTitle=Could not rotate the MCP token
 settings.mcp.rotateFailed=Some AI-workspace files could not be removed and still use the old token: {0}. Fix the listed files' permissions and try again.
+settings.mcp.rotateError=Purging the AI workspace failed unexpectedly, so the token was not rotated: {0}
 ```
 
 In `messages_sv.properties`:
 ```properties
 settings.mcp.rotateFailedTitle=Det gick inte att generera en ny MCP-token
 settings.mcp.rotateFailed=Vissa filer i AI-arbetsytan kunde inte tas bort och anv\u00e4nder fortfarande den gamla token: {0}. \u00c5tg\u00e4rda r\u00e4ttigheterna f\u00f6r de listade filerna och f\u00f6rs\u00f6k igen.
+settings.mcp.rotateError=Rensningen av AI-arbetsytan misslyckades ov\u00e4ntat, s\u00e5 token roterades inte: {0}
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -3552,6 +4395,9 @@ These are exactly the gaps the design spec's Testing section flags as impossible
 - On Linux: click "Detect" for a real installed terminal (e.g. `gnome-terminal` or `xterm`), fill in a real `claude`/`codex` binary path if available, click Launch, confirm a terminal window opens in the AI workspace directory running that CLI, and that the CLI successfully connects to the local MCP endpoint (check its own MCP status output).
 - On macOS: same, confirming `Terminal.app` opens via the `osascript` path and the wrapper script runs correctly from a path containing a space (`Application Support`).
 - On Windows: same, confirming Windows Terminal opens via `wt.exe`/`cmd.exe /v:off /c`, and that the token line in the Codex wrapper is never echoed to the terminal.
+- For Claude Code, confirm the root `CLAUDE.md` is loaded and that it directs the assistant to use the accounting MCP skill. For Codex, confirm root `AGENTS.md` contains both the bookkeeping-assistant profile and the accounting MCP skill, and that the assistant follows the profile by asking for confirmation before a record-changing action.
+- On Windows, if a test machine with a profile path containing a space is available (common — e.g. "C:\Users\Per Nyfelt\..."), confirm Launch still works from that account; this is the primary real-world case `TerminalCommandBuilder`'s Windows quoting (Task 10) exists to handle. A profile path containing `&`/`|`/`<`/`>`/`^` is refused outright before anything is written (`TerminalCommandBuilder` throws `IllegalArgumentException`, covered by an automated CI test) rather than launched and hoped to behave — if such an account happens to be available, confirm Launch shows the resulting error message rather than opening a terminal; not worth provisioning an account specially for this.
+- **On Windows only:** after Launch (or Detect) has written into the AI workspace, inspect the NTFS permissions on `.mcp.json`, `.codex/config.toml`, and a `.launch-*` wrapper script (`icacls <path>`, or right-click → Properties → Security) and confirm only the current user has access. This is the only way to exercise `RealAclPermissionAdapter` — because `AclFileAttributeView` only exists on Windows, it has zero automated test coverage anywhere in this plan (every ACL case in `AiWorkspacePermissionsTest`, Task 6, uses a fake `AclPermissionAdapter`), so this manual check is the sole verification that owner-only file permissions are actually enforced on that platform, which is the entire point of the fail-closed permission design.
 - Confirm rotating the MCP token (Settings → regenerate) purges the AI workspace and that a subsequent Launch regenerates fresh, working files.
 - Confirm closing the app purges the AI workspace (inspect the directory before/after a clean shutdown).
 - If a real Kimi or Vibe install is available, confirm the `AGENTS.md` instructions file is actually picked up before promoting either out of `EXPERIMENTAL` in `domain/AiClient.groovy` (flip the `experimental` flag as a small follow-up change once confirmed, per the design spec's "Client verification status" section).
@@ -3560,9 +4406,16 @@ These are exactly the gaps the design spec's Testing section flags as impossible
 
 ## Self-Review Notes
 
-- **Spec coverage:** Runtime skill source (Task 5), fixed-location workspace + test isolation override (Task 4), fail-closed POSIX/ACL permissions + symlink chain, including symlink checks *before* any traversal/permission mutation, not after (Task 6), atomic writes + AtomicMoveNotSupportedException handling + a symlink re-check immediately before both the temp-file create and the move (Task 7), per-client config content + fixtures, including the confirmed-correct Vibe `[[mcp_servers]]` array-of-tables schema (Task 9), terminal adapters incl. dropped `cmd`/`start` fallback and explicit `wt.exe`/`cmd.exe /v:off` (Task 10), wrapper script templates incl. no-`call`/forced-off-delayed-expansion/double-expansion regression/generalized env-var map for Vibe's `VIBE_HOME` (Task 11), PATH detection via injectable seams (Task 12), workspace orchestration + narrow-scope refresh + symlink-safe purge with directory-stream failures captured in `PurgeResult` rather than escaping + `isValidExecutable` (Task 13), launcher + spawn-failure cleanup + unique wrapper naming + Vibe's `VIBE_HOME` env var + pre-launch executable validation (Task 14), preferences (Task 15), i18n (Task 16), UI incl. typed terminal-adapter override, MCP-availability gating, and executable-path validation before writing/spawning anything (Task 17), rotation reordered to purge-then-rotate with honest partial-failure reporting and correct test isolation (Task 18), lifecycle wiring for availability + shutdown purge (Task 19-20), release notes (Task 21), full-suite + manual verification (Task 22). All spec sections have a corresponding task.
+- **Spec coverage:** Runtime skill source (Task 5), fixed-location workspace + test isolation override (Task 4), fail-closed POSIX/ACL permissions + symlink chain, including symlink checks *before* any traversal/permission mutation, not after (Task 6), atomic writes + AtomicMoveNotSupportedException handling + a symlink re-check immediately before both the temp-file create and the move (Task 7), per-client config content + fixtures, including the confirmed-correct Vibe `[[mcp_servers]]` array-of-tables schema (Task 9), terminal adapters incl. dropped `cmd`/`start` fallback and explicit `wt.exe`/`cmd.exe /v:off` (Task 10), wrapper script templates incl. no-`call`/forced-off-delayed-expansion/double-expansion regression/generalized env-var map (Task 11), PATH detection via injectable seams (Task 12), workspace orchestration + narrow-scope refresh + symlink-safe purge with directory-stream failures captured in `PurgeResult` rather than escaping + `isValidExecutable` (Task 13), launcher + spawn-failure cleanup + unique wrapper naming + pre-launch executable validation + self-sufficient workspace creation (Task 14), preferences (Task 15), i18n incl. the standalone `experimentalSuffix` key (Task 16), UI incl. typed terminal-adapter override, MCP-availability gating, executable-path validation before writing/spawning anything, an `experimental`-flag-driven display name, and PATH-scan/purge work backgrounded off the EDT via `BackgroundTaskRunner` (Task 17), rotation reordered to purge-then-rotate with honest partial-failure reporting, correct test isolation, and the purge itself backgrounded off the EDT via the same `BackgroundTaskRunner` (Task 18), lifecycle wiring for availability + shutdown purge (Task 19-20), release notes (Task 21), full-suite + manual verification including a Windows-only NTFS-permission spot check for the otherwise test-uncovered `RealAclPermissionAdapter` (Task 22). All spec sections have a corresponding task.
 - **Placeholder scan:** no TBD/TODO markers; every step has complete, runnable code.
-- **Type consistency:** `SecretFileWriter.write(Path root, Path target, byte[], SecretFileKind)` takes the workspace root as its first argument everywhere it's called (Tasks 7, 13, 14). `LaunchWrapperScript.unixContent`/`windowsContent` take a `Map<String, String> envVars`, not a `tokenOrNull`, everywhere (Tasks 11, 14). `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17). `AiWorkspaceService`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` consistently across Task 13's own tests and nowhere else constructed directly. `AiAssistantLauncher`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` consistently across Task 14's tests. `AiWorkspacePermissions.ensureDirectory(Path root, Path dir)` always takes the workspace root as its first argument, everywhere it's called (Tasks 6, 13, 14) — never the old single-`Path` form, which would have recursed and mutated permissions all the way to the filesystem root.
+- **Type consistency:** `SecretFileWriter.write(Path root, Path target, byte[], SecretFileKind)` takes the workspace root as its first argument everywhere it's called (Tasks 7, 13, 14). `LaunchWrapperScript.unixContent`/`windowsContent` take a `Map<String, String> envVars`, not a `tokenOrNull`, everywhere (Tasks 11, 14). `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17). `AiWorkspaceService`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` consistently across Task 13's own tests and nowhere else constructed directly. `AiAssistantLauncher`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` consistently across Task 14's tests. `AiWorkspacePermissions.ensureDirectory(Path root, Path dir)` always takes the workspace root as its first argument, everywhere it's called (Tasks 6, 13, 14) — never the old single-`Path` form, which would have recursed and mutated permissions all the way to the filesystem root. `BackgroundTaskRunner.run(Closure backgroundWork, Closure onDone, Closure onError)` is defined once (Task 17, `ui` package) and reused as-is by `McpSettingsSection` (Task 18) rather than duplicated; every production constructor that takes it defaults to `new SwingBackgroundTaskRunner()`, and every test that constructs `AiAssistantLauncherSection` or `McpSettingsSection` passes the same same-thread synchronous fake instead, so assertions immediately after a background-dispatching call stay valid.
+- **Review round 1 (post-implementation-review):** six findings from an implementation-readiness review were folded back in: (1) `AiClient.experimental` now actually drives the "(experimental)" UI suffix via `AiAssistantLauncherSection.displayName()` and the new `aiLauncher.experimentalSuffix` key, instead of being a flag nothing reads while two i18n strings hardcode the same text — so Task 22's "flip the flag" follow-up now has a real effect. (2) Task 22's manual checklist gained a Windows-only NTFS-permission spot check, since `RealAclPermissionAdapter` — the only thing enforcing owner-only file permissions on Windows — previously shipped with no automated *or* manual verification anywhere in the plan. (3) PATH-scanning detection (constructor auto-detect, both "Detect" buttons) and `McpSettingsSection.regenerateToken()`'s purge now run off the EDT via the new `BackgroundTaskRunner` seam, given this codebase's documented history of EDT-blocking bugs (PR #90). (4) `AiAssistantLauncher.launch()` now calls `permissions.ensureDirectory(workspace, workspace)` itself (Task 14), removing its previously-implicit reliance on `refreshClientFiles()` having been called first. (5) Wrapper-script retention after a successful launch (until the next purge) is now explicitly documented as a deliberate reliability tradeoff in `AiAssistantLauncher`'s class doc comment, not left as an unstated side effect. (6) `Files.isExecutable()` being a weaker guard on Windows than POSIX was noted as an accepted java.nio limitation, not fixable within this plan — no code change.
+- **Review round 2 (independent second review):** six more findings, all with real code/test changes. (1) `TerminalCommandBuilder`'s `WINDOWS_TERMINAL` case now returns the `-d <workspace>` and `/c <script>` arguments pre-wrapped in a literal `"..."` pair rather than bare, with a doc comment explaining why (Java's Windows `ProcessBuilder` quoting alone isn't enough once `wt.exe` re-serializes a command line for its `cmd.exe` child) and two new tests covering a workspace path with a space and one with `&`; the residual `cmd.exe` metacharacter-grammar risk that quoting alone can't fully close is documented in the same comment and given an opportunistic (not mandatory) Task 22 checklist line. *(Superseded by round 3 item 2 below — quoting the `&` case turned out not to be good enough on its own.)* (2) `AtomicSecretFileWriter.write()` now re-checks `verifyNoSymlinksInPath` a third time — immediately after the atomic move, before `applyAndVerify` — since that call's chmod/ACL-apply has no portable no-follow form and so cannot refuse a symlink swapped in during the move on its own; a new test (`detectsASymlinkSwappedInImmediatelyAfterTheMoveAndRefusesToApplyPermissionsThroughIt`) proves it deterministically via a fake `FileMover` that plants the swap itself, without needing real concurrency. (3) `AiWorkspacePermissionsTest` (Task 6) was missing its `java.nio.file.attribute.PosixFilePermission` import despite using `Set<PosixFilePermission>` — added. (4) `BackgroundTaskRunner.run` (Task 17) gained a mandatory third `onError` closure — the original two-closure form let any exception from `backgroundWork` die silently on its background thread with the user seeing nothing; `SwingBackgroundTaskRunner` now catches and dispatches it to `onError` on the EDT, every call site in `AiAssistantLauncherSection` and `McpSettingsSection.regenerateToken()` (Task 18) was updated, and a new `SwingBackgroundTaskRunnerTest` case proves the propagation. (5) `AiAssistantLauncherSectionTest`'s `findLaunchButton` (Task 17) matched "first `JButton` with a listener and non-null text," which is a per-client Detect button, not the launch button, once both exist on the panel — `launchButton` is now given a stable `.name` and the test matches on that instead. (6) `onLaunch()` (Task 17) now backgrounds the entire launch workflow — executable re-validation, `refreshClientFiles`, and `AiAssistantLauncher.launch` (file writes + process spawn) — via `doLaunch()` dispatched through `backgroundTaskRunner.run(...)`, not just the earlier detection/purge calls; only the cheap, no-I/O field/dropdown reads stay synchronous on the EDT before dispatching.
+- **Review round 3 (two blockers + one minor from a third review):** (1) Task 14's `launchCreatesTheWorkspaceDirectoryWhenItDoesNotAlreadyExist` test (added in round 1) could never pass as written: it pointed the workspace override at a `freshHome` that didn't exist at all, but `AiWorkspacePermissions.ensureDirectory()` (Task 6) requires the workspace root's *parent* to already exist — that's an intentional contract (this class creates the workspace root and below, never above it), not a bug to route around. Fixed by creating `freshHome` in the test and leaving only the workspace root itself (`freshHome/ai-workspace`) uncreated, which is what the test actually meant to exercise. (2) Round 2's `&`-quoting fix for `TerminalCommandBuilder` was not good enough: quoting narrows but does not close `cmd.exe`'s own command-line-grammar risk for `&`/`|`/`<`/`>`/`^`, and treating that as an accepted residual gap conflicts with the plan's fail-closed design elsewhere. `commandFor` now refuses outright (`IllegalArgumentException`) to build a `WINDOWS_TERMINAL` command line whose workspace or script path contains any of those five characters, with a test covering all five for both the workspace and script arguments. Because that refusal has to happen before any secret-bearing file is written, `AiAssistantLauncher.launch()` (Task 14) was reordered to call `TerminalCommandBuilder.commandFor(...)` *before* `secretFileWriter.write(...)`, not after, with a new test (`launchRejectsAWindowsWorkspacePathContainingACmdMetacharacterBeforeWritingAnything`) proving no wrapper file is left behind when it refuses. Task 22's checklist line and this document's own round 2 note were both updated to stop describing this as an accepted residual risk. (3) Minor: the "Type consistency" bullet above still described `BackgroundTaskRunner.run` as taking two closures after round 2 added the mandatory third `onError` closure — corrected.
+- **Review round 4 (one blocker from a fourth review):** Round 3's Windows-path fail-closed check lived only inside `AiAssistantLauncher.launch()`, which `AiAssistantLauncherSection.doLaunch()` (Task 17) calls *after* `AiWorkspaceService.refreshClientFiles(...)` — so for Claude/Kimi/Vibe, whose config file directly embeds the plaintext MCP token, an unsafe Windows workspace path was rejected only *after* that token-bearing file had already been written. Round 3's own claim that "a refusal here never leaves a secret-bearing file behind" was therefore only true for the wrapper script, not the client config — and round 3's test only checked for the absence of a wrapper file, not a config file, so it didn't catch this. Fixed by extracting the workspace-only half of the check into a new public `TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(Path workspace)` (Task 10, with its own test) and a new `AiAssistantLauncher.validatePreflight(TerminalAdapterKind adapterKind)` instance method that calls it (Task 14, with two new tests) — checking the workspace path alone is equivalent to checking the eventual script path too, since the script's filename portion is always safe by construction (client binary name + a UUID) and the workspace path is always its prefix, so this doesn't need the script path to exist yet. `doLaunch()` (Task 17) now calls `aiAssistantLauncher.validatePreflight(adapterKind)` as its very first step, before `refreshClientFiles(...)`. Because `terminalKindCombo` only ever offers `TerminalAdapterKind.forCurrentOs()` — never `WINDOWS_TERMINAL` on a Linux/macOS test runner — `doLaunch()` was changed from `private` to `@PackageScope` so a new test (`doLaunchNeverWritesClaudesConfigWhenTheWindowsWorkspacePathIsUnsafe`) can call it directly with `AiClient.CLAUDE` + `WINDOWS_TERMINAL` and assert `.mcp.json` is never created, proving the actual gap the review found is closed, not just a proxy for it.
+- **Review round 5 (two high, one medium, from a fifth review):** (1+3) Setting `VIBE_HOME` to the AI workspace (added in round 1 as "belt-and-suspenders" for an *unconfirmed* Vibe config-discovery mechanism) was wrong, not just unnecessary: `VIBE_HOME` relocates a Vibe installation's *entire* profile — config, `.env` credentials, agents, logs, skills — not just MCP server config, so every launch would have silently hidden the user's existing Vibe setup behind an empty one, likely forcing re-setup or breaking Vibe outright. Per Mistral's own configuration docs, the generated `.vibe/config.toml` is already discovered project-locally without any env var, which also resolves a design inconsistency the same round's findings pointed out: writing `AGENTS.md` at the workspace root (correct for Vibe's *project-level* instructions) while also pointing `VIBE_HOME` at that same workspace (which implies *user-level* state) were two contradictory assumptions about where Vibe should look. Fixed by deleting the `VIBE_HOME` branch from `AiAssistantLauncher.launch()` (Task 14) entirely — Vibe now gets the same empty `envVars` as Claude/Kimi — and replacing the test that asserted `VIBE_HOME` was set with `launchForVibeSetsNoEnvironmentVariablesAtAll`, a regression test asserting the Vibe wrapper contains no `export`/`VIBE_HOME` at all. (2) `binaryPath` — user-configurable, typed into Settings or PATH-detected — was rendered into the `.cmd` wrapper's `cd`/exec lines via `escapeForCmdScript()` (Task 3), which only rejected embedded `"` and doubled `%`; it did not reject `&`, `|`, `<`, `>`, `^`, the same characters `TerminalCommandBuilder` (Task 10) already fails closed on for the *outer* `cmd.exe /c` invocation — and quoting does not neutralize them on an ordinary line *inside* a batch script file either, since cmd.exe uses the identical grammar there. Fixed at the single choke point all three embedded values (workspace, binary path, every `envVars` value) already pass through: `escapeForCmdScript()` now rejects all five characters via a new shared `ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS` constant, which `TerminalCommandBuilder` was also switched to reference instead of keeping its own separate copy of the same five characters. New tests cover the escaping utility directly (`escapeForCmdScriptRejectsEveryUnsafeCmdMetacharacter`) and `LaunchWrapperScript.windowsContent()`'s actual production code path for both an unsafe `binaryPath` and an unsafe env var value.
+- **Review round 6 (one high, one medium, from a sixth review):** (1) `PathBinaryResolver` (Task 12) only ever probed the bare `<PATH entry>/<binaryName>` — but every `AiClient.binaryName` (`claude`, `codex`, `kimi`, `vibe`) is extensionless, and real Windows installs never expose a literal extensionless file, only `*.exe`/`*.cmd`/`*.bat`, so PATH-based auto-detection could never find anything on Windows at all. Fixed by having `resolve(...)` also try each extension from the `PATHEXT` environment variable (read through the same `EnvironmentLookup` seam already injected for `PATH` — no separate "is this Windows" check or seam needed, since `PATHEXT` is simply unset on Linux/macOS, which is what keeps this fully testable off Windows too), trying the bare name first as requested. New tests cover PATHEXT-based resolution, bare-name-first ordering when both would match, and that an unset `PATHEXT` behaves exactly as before. (2) `autoDetectBlankFields()` (Task 17) snapshotted which fields were blank before dispatching a background PATH scan, but its `onDone` callback then wrote detected values into those fields unconditionally — so a user who typed a custom binary or terminal path during the (automatic, EDT-blocking-avoidance-motivated) scan could have that input silently overwritten and persisted the moment the stale result arrived. Fixed by re-checking each field is *still* blank inside `onDone`, immediately before writing into it, for both the per-client binary fields and the terminal path field; the explicit per-client "Detect" buttons don't need the same re-check, since overwriting is exactly what clicking one asks for. Proven with a new `DelayedBackgroundTaskRunner` test fake (runs `backgroundWork` eagerly but defers `onDone`/`onError` until the test calls `completeAll()`, simulating the real gap a background thread + `invokeLater` leaves open) and a new test that types into the Codex field during that gap and asserts the typed value survives; each binary field also gained a stable `.name` (matching `launchButton`'s existing precedent) so the test can locate it.
+- **Review round 7 (assistant profile):** The launch workspace is a purpose-built project context, so it now carries a shared bookkeeping-assistant profile as well as the MCP skill. Task 5 bundles `skill/assistant-profile.md`; Task 8 adds `assistantProfileFile(...)`; and Task 13 writes it as Claude's root `CLAUDE.md` while prepending it to the `AGENTS.md` skill document for Codex, Kimi, and Vibe. The profile defines the assistant's role, requires explicit assumptions and confirmation before changes, and directs uncertain or jurisdiction-specific advice to the authoritative web resources named by the skill. Tests pin both composition modes and Task 22 adds real-client confirmation.
 
 ---
 

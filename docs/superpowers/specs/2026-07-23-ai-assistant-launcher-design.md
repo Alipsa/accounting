@@ -17,7 +17,7 @@ This spec adds a "Launch AI Assistant" feature to the Settings UI: pick a client
 ## Scope
 
 - New workspace concept living at a fixed OS-default per-user location (`AppPaths`) — deliberately independent of the app's existing, possibly shared/custom, data home (see Workspace layout below).
-- Bundling `skill/accounting-mcp.md` as a runtime-readable classpath resource (see Runtime skill source below) — a build-config change, not just a packaging one.
+- Bundling `skill/accounting-mcp.md` and a shared `skill/assistant-profile.md` as runtime-readable classpath resources (see Runtime skill source below) — a build-config change, not just a packaging one.
 - New `domain/AiClient.groovy` enum (plain value type, no Swing/service dependency — same rationale as other domain enums like `VoucherStatus`).
 - New `service/AiWorkspaceService.groovy` (config/instructions writers, permission tightening, detection abstractions) and `service/AiAssistantLauncher.groovy` (terminal adapters, wrapper-script generation, process spawn) — pure file I/O and process management, no Swing dependency, so `service/` rather than `ui/`.
 - `McpSettingsSection.groovy` UI additions: client dropdown, Launch button, per-client binary-path field, a terminal-adapter-type selector + terminal-executable-path field (see Terminal adapters below — a path alone can't determine invocation conventions), each with a "Detect" button.
@@ -39,11 +39,11 @@ Instead, the app writes each client's config file directly, in a workspace direc
 
 ---
 
-## Runtime skill source (fixes: bundled skill has no reliable runtime source)
+## Runtime instruction sources (fixes: bundled instructions have no reliable runtime source)
 
 Today `skill/accounting-mcp.md` is only added to the distribution via the `distributions { main { contents { from(rootProject.file('skill')) ... } } }` block in `app/build.gradle:55-62` — a sibling file in the release zip/tar, **not** part of the application's own classpath/resources. It is not embedded in any jpackage app image. A running instance of the app therefore has no reliable way to locate it on disk (install layout varies by platform and by how the user extracted/moved the release).
 
-Fix: add the skill directory as a resources source in `app/build.gradle`:
+Fix: add the skill directory as a resources source in `app/build.gradle`. It contains both the existing `accounting-mcp.md` operational skill and the new `assistant-profile.md` that establishes the bookkeeping-assistant role, requires clear assumptions and confirmation before record changes, and directs the assistant to consult the skill's authoritative web sources for uncertain or jurisdiction-specific guidance:
 
 ```groovy
 sourceSets {
@@ -55,7 +55,7 @@ sourceSets {
 }
 ```
 
-This compiles `accounting-mcp.md` onto the runtime classpath (e.g. readable via `AiWorkspaceService.class.getResourceAsStream('/accounting-mcp.md')`), independent of packaging/install method. The existing `distributions{}` block is unaffected and can stay (it's still useful for users who want to read the skill file without running the app). `AiWorkspaceService` reads the skill content from this classpath resource — never from a sibling-file lookup on disk.
+This compiles both files onto the runtime classpath (e.g. readable via `AiWorkspaceService.class.getResourceAsStream('/accounting-mcp.md')`), independent of packaging/install method. The existing `distributions{}` block is unaffected and can stay (it's still useful for users who want to read the files without running the app). `AiWorkspaceService` reads the instruction content from these classpath resources — never from a sibling-file lookup on disk.
 
 ---
 
@@ -71,16 +71,16 @@ This removes the shared/hostile-mount threat model for this directory specifical
 
 **Test isolation (fixes: ignoring `HOME_OVERRIDE_PROPERTY` means tests, or any future headless verification/smoke-test entry point, would create/refresh/purge secrets in the real user's actual workspace, not a sandbox).** Because `aiWorkspaceDirectory()` deliberately does *not* honor the general `HOME_OVERRIDE_PROPERTY` (that's the whole point of the fix above), it needs its own, separate override: a new `AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY` system property that, when set, replaces the OS-default resolution for `aiWorkspaceDirectory()` only — analogous to `HOME_OVERRIDE_PROPERTY` but AI-workspace-specific, so setting it for a test never accidentally re-opens the general data-home override this design intentionally closed off. Integration tests set this property to a `@TempDir` in `@BeforeEach`/clear it in `@AfterEach`, the same pattern `VoucherBalanceCachePreloaderTest` already uses for `HOME_OVERRIDE_PROPERTY`. Any manual or automated verification/smoke-test harness added later for this feature (e.g. a headless launch-verification mode) must set this property too, and must never be run against the real default location.
 
-This directory is **fully app-managed** — nothing else should write user content there. Each client's own config + instructions file is refreshed whenever *that* client is launched, to keep its endpoint/token current (see Secret lifecycle below for exactly what gets touched, and when a broader all-clients purge happens instead). It contains, per client:
+This directory is **fully app-managed** — nothing else should write user content there. Each client's own config, accounting skill, and assistant profile are refreshed whenever *that* client is launched, to keep its endpoint/token current (see Secret lifecycle below for exactly what gets touched, and when a broader all-clients purge happens instead). It contains, per client:
 
-| Client | Config file (relative to workspace) | Format | Instructions file |
+| Client | Config file (relative to workspace) | Format | Project instructions |
 |---|---|---|---|
-| Claude Code | `.mcp.json` | JSON | `.claude/skills/accounting/accounting-mcp.md` (file copy) |
-| Codex | `.codex/config.toml` | TOML | `AGENTS.md` (file copy) |
-| Kimi | `.kimi-code/mcp.json` | JSON | `AGENTS.md` (file copy) — **experimental**, see Client verification status below |
-| Vibe | `.vibe/config.toml` | TOML | `AGENTS.md` (file copy) — **experimental**, see Client verification status below |
+| Claude Code | `.mcp.json` | JSON | `CLAUDE.md` (assistant profile) plus `.claude/skills/accounting/accounting-mcp.md` (skill copy) |
+| Codex | `.codex/config.toml` | TOML | `AGENTS.md` (assistant profile followed by skill copy) |
+| Kimi | `.kimi-code/mcp.json` | JSON | `AGENTS.md` (assistant profile followed by skill copy) — **experimental**, see Client verification status below |
+| Vibe | `.vibe/config.toml` | TOML | `AGENTS.md` (assistant profile followed by skill copy) — **experimental**, see Client verification status below |
 
-All instructions files are plain copies of the classpath skill resource — **no symlinks anywhere** (see Skill file: copy, not symlink below).
+All profile and skill files are plain copies or a deterministic profile-plus-skill composition of the classpath resources — **no symlinks anywhere** (see Skill file: copy, not symlink below). The profile is not a substitute for the skill: it directs the client to use the skill and adds the shared bookkeeping role and advice-safety baseline.
 
 Claude Code's config carries a literal `Authorization: Bearer <token>` header; same for Kimi and Vibe. Codex's config references only the env-var *name* `ACCOUNTING_MCP_TOKEN` (never the value); the value is set inside Codex's generated launch wrapper script only (see Launch wrapper script below), never in the user's shell profile or any long-lived environment. **The token therefore appears as literal text in exactly two kinds of file** — the Claude/Kimi/Vibe config files, and *only Codex's* wrapper script (Claude/Kimi/Vibe wrappers contain no secret at all — just `cd` + invocation, see Launch wrapper script) — both treated as the "secret set" with the same permission and cleanup guarantees (see Secret lifecycle below).
 
@@ -94,7 +94,7 @@ TOML is written by hand with simple string formatting (the schema needed is a sm
 
 - **`"posix"` supported** (Linux, macOS): create with owner-only permissions **set at creation time** via `PosixFilePermissions.asFileAttribute(...)` passed directly to `Files.createDirectory`/`Files.createFile` — never create-with-default-permissions-then-chmod-after, which leaves a window where the file is briefly more permissive than intended. The exact mode differs by what the path is, since wrapper scripts must be *executable* to be invoked directly by a terminal adapter (`xterm -e script`/`gnome-terminal -- script` perform an `execve` on the script itself, which requires the execute bit regardless of its `#!` shebang line — a generic 0600 would make every launch fail with "permission denied"):
   - `ai-workspace/` and its subdirectories (`.codex/`, `.claude/skills/accounting/`, `.kimi-code/`, `.vibe/`): **0700** (execute needed for traversal).
-  - Config files and instructions files (`.mcp.json`, `config.toml`, `mcp.json`, `AGENTS.md`, skill copies): **0600** (read/write only, never executed).
+  - Config files and instructions files (`.mcp.json`, `config.toml`, `mcp.json`, `AGENTS.md`, `CLAUDE.md`, skill copies): **0600** (read/write only, never executed).
   - Unix wrapper scripts (`.launch-<client>-<uuid>.sh`): **0700** (must be executable).
   - Immediately after creation, **and again after every atomic move into place** (see Secret lifecycle below — a temp file's mode should survive a POSIX rename, but this is verified rather than assumed), **read back** `Files.getPosixFilePermissions` on the final destination path and verify it matches the expected mode for that path's kind.
 - **`"acl"` supported, `"posix"` not** (Windows/NTFS): after creating the file/directory (Java's ACL API only applies to an existing path — there is no creation-time ACL attribute equivalent to `PosixFilePermissions.asFileAttribute`), resolve the file's own owner via `Files.getOwner(path)` (not a separate `user.name`-based lookup through `path.getFileSystem().getUserPrincipalLookupService()`, which can mismatch in domain-account setups) and replace the ACL via `Files.getFileAttributeView(path, AclFileAttributeView)` with a single ACE granting only that owner full control, removing inherited/broader ACEs (e.g. built-in `Users`/`Everyone`). Read the ACL back afterward (and again after every atomic move) and verify it contains only that one owner ACE. There is an inherent brief window between file creation and ACL replacement where the file may carry the parent directory's inherited permissions — this is a known limitation of the JDK's ACL API (no atomic "create with this ACL" primitive), accepted here given the location change above already keeps this directory off any shared/custom mount, so the parent (`%APPDATA%\Alipsa\Accounting\ai-workspace`) is already a normal, non-shared per-user profile directory on every shipped Windows configuration.
@@ -110,9 +110,9 @@ Checking `Files.isSymbolicLink()` on only the final file (e.g. `ai-workspace/.co
 
 **Ordering matters, not just coverage**: this check must run *before* any directory is created/traversed or has its permissions changed, and again immediately before the actual write/move — not only "somewhere before the final leaf write." `Files.isDirectory()`, which directory-creation logic uses to decide "does this already exist," *follows* symlinks, so treating "isDirectory() == true" as "safe to chmod/ACL" without an explicit no-follow symlink check first would let a symlinked directory redirect a permission change to its target. Directory creation/permission-tightening (`AiWorkspacePermissions.ensureDirectory(root, dir)`) therefore checks `Files.isSymbolicLink` on its own target first, before doing anything else, and re-checks every ancestor **within the workspace subtree** on every call rather than skipping already-existing ones — bounded by an explicit `root` argument, so this never recurses (or mutates permissions) above the workspace root itself. An earlier draft recursed unconditionally up the real parent chain to guarantee this fresh-check property, which meant a normal call would also try to chmod/ACL the application data home, the user's home directory, and beyond — failing outright for a normal user and dangerously over-restricting shared system directories if ever run with elevated privileges. `root`'s own parent (the application data home) is only ever read-checked (exists? symlink?); creating and restricting it is the existing `AppPaths.ensureDirectoryStructure()`'s job, not this one's. The atomic writer (`AtomicSecretFileWriter`) re-verifies the whole chain both before creating its temp file and again immediately before the atomic move, since the move is the real commit point. `purgeAllSecrets()` applies the same discipline to every deletion (see Secret lifecycle below) — including refusing to even open a directory listing on the workspace root if the root itself is a symlink, since listing a symlinked directory follows it.
 
-### Skill file: copy, not symlink (fixes: symlink is non-portable and update-fragile)
+### Profile and skill files: copy, not symlink (fixes: symlink is non-portable and update-fragile)
 
-Symlinking (the original plan for Claude Code specifically) requires elevated privileges/developer mode on Windows and breaks if the app's install path changes. Since each client's own instructions file is refreshed on every launch of that client anyway, and the skill content is now a small classpath resource (see above), every client gets a plain file **copy** of that resource content — uniform across all four clients, no platform-specific symlink logic needed at all.
+Symlinking (the original plan for Claude Code specifically) requires elevated privileges/developer mode on Windows and breaks if the app's install path changes. Since each client's instructions are refreshed on every launch of that client anyway, and both sources are small classpath resources (see above), every client gets a plain file **copy** or deterministic combined file — uniform across all four clients, no platform-specific symlink logic needed at all.
 
 ---
 
@@ -278,7 +278,7 @@ This ordering means a purge failure never results in "new token active while old
 - **Claude Code, Codex**: config schema and CLI behavior confirmed via research against current documentation; still needs one real-client manual smoke test per platform before release, but treated as the supported baseline.
 - **Kimi, Vibe**: `AGENTS.md` as the instructions-file convention is unconfirmed for Vibe, and only informally confirmed for Kimi (not independently verified against a real Kimi install in this research). Both are marked `EXPERIMENTAL` in the `AiClient` enum and in the UI (e.g. a small "experimental" label next to their dropdown entry). Promoting either to `SUPPORTED` requires one real-client smoke test confirming the instructions file is actually picked up.
   - **Vibe's config schema** is confirmed against Mistral's own docs (docs.mistral.ai/vibe/code/cli/mcp-servers) to be an array-of-tables `[[mcp_servers]]` entry with `name`/`transport`/`url`/`headers` fields — an earlier draft of this spec used the wrong `[mcp_servers.<name>]` table form (Codex's shape, not Vibe's); the implementation plan uses the corrected schema.
-  - **Vibe's config discovery** (project-local `cwd`-relative vs. a `VIBE_HOME` environment variable) is not clarified by Mistral's docs either way. The launch wrapper therefore sets `VIBE_HOME` to the same `.vibe` directory the workspace already writes `config.toml` into, so whichever mechanism Vibe actually uses, it finds the same file — belt-and-suspenders rather than a guess at one mechanism.
+  - **Vibe's config discovery** is project-local from the launch workspace, so the generated `.vibe/config.toml` is found without setting `VIBE_HOME`. The wrapper must not set `VIBE_HOME`: it relocates the user's entire Vibe profile, including credentials and other state, rather than only its MCP configuration.
 
 ### Compatibility fixtures (fixes: hand-written config needs explicit compatibility evidence)
 
