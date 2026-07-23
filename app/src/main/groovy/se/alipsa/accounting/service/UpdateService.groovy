@@ -10,6 +10,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -257,6 +258,9 @@ final class UpdateService {
     Path backupDir = installDir.resolve('.update-backup')
     String newMainJar = mainJarFileName(extractedDir) ?: ''
     String newVersion = versionFromMainJar(newMainJar) ?: ''
+    Map<Path, Path> configUpdates = newMainJar.isEmpty()
+        ? [:]
+        : prepareUpdatedConfigs(installDir, extractedDir, stagingDir, newVersion)
     UpdaterScriptContext context = new UpdaterScriptContext(
         stagingDir,
         extractedDir,
@@ -265,7 +269,8 @@ final class UpdateService {
         backupDir,
         launcherCommand,
         newMainJar,
-        newVersion
+        newVersion,
+        configUpdates
     )
 
     Path script
@@ -281,13 +286,18 @@ final class UpdateService {
   }
 
   private static String windowsUpdaterScript(UpdaterScriptContext context) {
+    // Redirection is applied to a single ( ... ) block rather than via "call :main >> log"
+    // followed by a separate "exit /b" line. The call/label form requires cmd.exe to seek
+    // back into this file to read the line after the call once :main returns; if anything
+    // (antivirus scanning, disk latency) makes the file briefly unreadable at that exact
+    // moment, cmd.exe fails with "The batch file cannot be found" and drops into an
+    // interactive prompt instead of exiting, leaving a stray window behind. Wrapping the
+    // whole body in one redirected block avoids that second read entirely - once the block
+    // finishes there is nothing left to seek back for.
     """\
 @echo off
 set "LOG_FILE=${context.updaterLog}"
-call :main >> "%LOG_FILE%" 2>&1
-exit /b %ERRORLEVEL%
-
-:main
+(
 echo [%DATE% %TIME%] Starting update.
 echo [%DATE% %TIME%] Install dir: ${context.installDir}
 echo [%DATE% %TIME%] Extracted dir: ${context.extractedDir}
@@ -312,20 +322,18 @@ if errorlevel 1 (
   for %%f in ("${context.backupDir}\\*.jar") do move "%%f" "${context.installDir}\\"
   rd /s /q "${context.backupDir}"
   echo [%DATE% %TIME%] Update failed. Please try again.
-  pause
   exit /b 1
 )
 echo [%DATE% %TIME%] Updating launcher configuration.
-${context.newMainJar.isEmpty() ? '' : windowsConfigUpdateCommand(context.installDir, context.newMainJar, context.newVersion)}
-echo [%DATE% %TIME%] Cleaning update staging files.
+${windowsConfigCopyCommands(context.configUpdates)}echo [%DATE% %TIME%] Cleaning update staging files.
 rd /s /q "${context.backupDir}"
 rd /s /q "${context.extractedDir}"
 del "${context.stagingDir}\\*.zip"
+del "${context.stagingDir}\\*.cfg.new" 2>nul
 echo [%DATE% %TIME%] Launching application.
 ${context.launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${context.launcherCommand}"}
 echo [%DATE% %TIME%] Update script finished.
-rem Keep this script until the next update. Deleting it here prevents cmd.exe
-rem from returning from the call to :main and leaves a "batch file cannot be found" window.
+) >> "%LOG_FILE%" 2>&1
 """.stripIndent()
   }
 
@@ -367,11 +375,11 @@ if ! cp "${context.extractedDir}/"*.jar "${context.installDir}/"; then
   fail "Update failed. Please try again."
 fi
 log "Updating launcher configuration."
-${context.newMainJar.isEmpty() ? '' : unixConfigUpdateCommand(context.installDir, context.newMainJar, context.newVersion)}
-log "Cleaning update staging files."
+${unixConfigCopyCommands(context.configUpdates)}log "Cleaning update staging files."
 rm -rf "${context.backupDir}"
 rm -rf "${context.extractedDir}"
 rm -f "${context.stagingDir}/"*.zip
+rm -f "${context.stagingDir}/"*.cfg.new
 log "Launching application."
 ${context.launcherCommand.isEmpty() ? 'echo "Update complete."' : "${context.launcherCommand} &"}
 log "Update script finished."
@@ -398,29 +406,87 @@ rm -f "\$0"
     matcher.matches() ? matcher.group(1) : null
   }
 
-  private static String unixConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
-    String versionCommand = newVersion.isEmpty()
-        ? ''
-        : "  sed -i.bak \"s#^java-options=-Djpackage.app-version=.*#java-options=-Djpackage.app-version=${newVersion}#\" \"\$cfg\"\n"
-    """\
-for cfg in "${installDir}/"*.cfg; do
-  [ -f "\$cfg" ] || continue
-  sed -i.bak "s#^app.classpath=\\\$APPDIR/app-.*\\.jar#app.classpath=\\\$APPDIR/${newMainJar}#" "\$cfg"
-${versionCommand}  rm -f "\$cfg.bak"
-done
-""".stripIndent()
+  /**
+   * Regenerates each *.cfg file's app.classpath block from the jars actually present in
+   * the extracted update, rather than only patching the main app-*.jar entry. Dependency
+   * jars whose filename changes between releases (e.g. a version bump) would otherwise be
+   * left as dangling classpath entries pointing at a jar the update just deleted.
+   */
+  private static Map<Path, Path> prepareUpdatedConfigs(Path installDir, Path extractedDir, Path stagingDir, String newVersion) {
+    Map<Path, Path> updates = [:]
+    if (!Files.isDirectory(installDir) || !Files.isDirectory(extractedDir)) {
+      return updates
+    }
+    List<String> newJarNames = jarFileNames(extractedDir)
+    if (newJarNames.isEmpty()) {
+      return updates
+    }
+    List<Path> cfgFiles
+    Files.list(installDir).withCloseable { stream ->
+      cfgFiles = stream.findAll { Path path ->
+        Files.isRegularFile(path) && path.fileName.toString().endsWith('.cfg')
+      }
+    }
+    cfgFiles.each { Path cfgPath ->
+      List<String> lines = Files.readAllLines(cfgPath, StandardCharsets.UTF_8)
+      List<String> updatedLines = []
+      boolean classpathInserted = false
+      lines.each { String line ->
+        if (line.startsWith('app.classpath=')) {
+          if (!classpathInserted) {
+            newJarNames.each { String jarName -> updatedLines << "app.classpath=\$APPDIR/${jarName}".toString() }
+            classpathInserted = true
+          }
+          return
+        }
+        if (!newVersion.isEmpty() && line.startsWith('java-options=-Djpackage.app-version=')) {
+          updatedLines << "java-options=-Djpackage.app-version=${newVersion}".toString()
+          return
+        }
+        updatedLines << line
+      }
+      Path newCfgPath = stagingDir.resolve("${cfgPath.fileName}.new")
+      Files.write(newCfgPath, updatedLines, StandardCharsets.UTF_8)
+      updates[cfgPath] = newCfgPath
+    }
+    updates
   }
 
- private static String windowsConfigUpdateCommand(Path installDir, String newMainJar, String newVersion) {
-    String mainJarUpdateCommand =
-        "  \$lines = Get-Content -LiteralPath \$cfg.FullName; \$updatedLines = \$lines | ForEach-Object { if (\$_.StartsWith('app.classpath=') -and \$_ -match '[\\\\/]app-') { 'app.classpath=\$APPDIR/${newMainJar}' } else { \$_ } }; \$updatedLines | Set-Content -LiteralPath \$cfg.FullName"
-   String escapedInstallDir = installDir.toString().replace('\\', '\\\\')
-    String versionCommand = newVersion.isEmpty()
-        ? ''
-        : "  (Get-Content -LiteralPath \$cfg.FullName) -replace '^java-options=-Djpackage.app-version=.*', 'java-options=-Djpackage.app-version=${newVersion}' | Set-Content -LiteralPath \$cfg.FullName\n"
-    """\
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '${escapedInstallDir}' -Filter '*.cfg' | ForEach-Object { \$cfg = \$_; ${mainJarUpdateCommand}; ${versionCommand.trim()} }"
-""".stripIndent()
+  private static List<String> jarFileNames(Path directory) {
+    if (!Files.isDirectory(directory)) {
+      return []
+    }
+    List<String> names
+    Files.list(directory).withCloseable { stream ->
+      names = stream
+          .map { Path path -> path.fileName.toString() }
+          .findAll { String fileName -> fileName.endsWith('.jar') }
+    }
+    names.sort(String.CASE_INSENSITIVE_ORDER)
+    String mainJar = names.find { String name -> name ==~ /app-\d+(\.\d+)*\.jar/ }
+    if (mainJar != null) {
+      names.remove(mainJar)
+      names.add(0, mainJar)
+    }
+    names
+  }
+
+  private static String unixConfigCopyCommands(Map<Path, Path> configUpdates) {
+    if (configUpdates.isEmpty()) {
+      return ''
+    }
+    configUpdates.collect { Path original, Path staged ->
+      "cp \"${staged}\" \"${original}\" || fail \"Failed to update launcher configuration ${original}.\""
+    }.join('\n') + '\n'
+  }
+
+  private static String windowsConfigCopyCommands(Map<Path, Path> configUpdates) {
+    if (configUpdates.isEmpty()) {
+      return ''
+    }
+    configUpdates.collect { Path original, Path staged ->
+      "copy /y \"${staged}\" \"${original}\"\nif errorlevel 1 (\n  echo [%DATE% %TIME%] Failed to update launcher configuration ${original}.\n  exit /b 1\n)"
+    }.join('\n') + '\n'
   }
 
   private static void launchUpdaterAndExit(Path updaterScript) {
@@ -502,6 +568,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPa
     final String launcherCommand
     final String newMainJar
     final String newVersion
+    final Map<Path, Path> configUpdates
 
     private UpdaterScriptContext(
         Path stagingDir,
@@ -511,7 +578,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPa
         Path backupDir,
         String launcherCommand,
         String newMainJar,
-        String newVersion) {
+        String newVersion,
+        Map<Path, Path> configUpdates) {
       this.stagingDir = stagingDir
       this.extractedDir = extractedDir
       this.installDir = installDir
@@ -520,6 +588,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPa
       this.launcherCommand = launcherCommand
       this.newMainJar = newMainJar
       this.newVersion = newVersion
+      this.configUpdates = configUpdates
     }
   }
 
