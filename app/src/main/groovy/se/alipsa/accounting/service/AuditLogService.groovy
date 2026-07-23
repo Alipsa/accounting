@@ -157,8 +157,15 @@ final class AuditLogService {
 
   private static List<String> validateIntegrityForCompany(Sql sql, long companyId) {
     List<String> problems = []
+    // Archiving a fiscal year (see FiscalYearReplacementService.archiveFiscalYearAuditLogRows)
+    // resets the chain head to the latest *live* row so the next insert skips over the rows
+    // being archived, rather than chaining off them. So the row immediately following an
+    // archival deliberately does not continue the raw by-id sequence; it jumps back to the
+    // last live row instead. expectedPreviousHash tracks the raw sequence (what a row chains
+    // from under normal, non-archival inserts); expectedLastLiveHash tracks that skip target.
     String expectedPreviousHash = null
-    String actualLastHash = null
+    String expectedLastLiveHash = null
+    String actualLastLiveHash = null
     sql.rows('''
         select id,
                event_type as eventType,
@@ -172,13 +179,15 @@ final class AuditLogService {
                details,
                previous_hash as previousHash,
                entry_hash as entryHash,
-               created_at as createdAt
+               created_at as createdAt,
+               archived
           from audit_log
          where company_id = ?
          order by id
     ''', [companyId]).each { GroovyRowResult row ->
       AuditLogEntry entry = mapEntry(row)
-      if (entry.previousHash != expectedPreviousHash) {
+      boolean archived = row.get('archived') as Boolean
+      if (entry.previousHash != expectedPreviousHash && entry.previousHash != expectedLastLiveHash) {
         problems << ("Auditlogg ${entry.id} har fel föregående hash." as String)
       }
       String calculated = calculateHash(new AuditEntrySeed(
@@ -198,12 +207,15 @@ final class AuditLogService {
         problems << ("Auditlogg ${entry.id} har ogiltig hash." as String)
       }
       expectedPreviousHash = entry.entryHash
-      actualLastHash = entry.entryHash
+      if (!archived) {
+        expectedLastLiveHash = entry.entryHash
+        actualLastLiveHash = entry.entryHash
+      }
     }
     AuditChainHead chainHead = loadChainHead(sql, companyId)
     if (chainHead == null) {
       problems << 'Auditloggkedjans huvud saknas.'
-    } else if (chainHead.lastEntryHash != actualLastHash) {
+    } else if (chainHead.lastEntryHash != actualLastLiveHash) {
       problems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
     }
     problems
@@ -451,7 +463,10 @@ final class AuditLogService {
 
   @PackageScope
   static void rebuildIntegrityChain(Sql sql, long companyId) {
-    String previousHash = null
+    // The chain head must point at the latest *live* row's hash, matching recordEvent()'s
+    // and archiveFiscalYearAuditLogRows()'s behavior - not simply the last row by id, which
+    // could be an archived row left over from an earlier fiscal-year replacement.
+    String lastLiveHash = null
     sql.withBatch('''
         update audit_log
            set previous_hash = ?,
@@ -459,6 +474,7 @@ final class AuditLogService {
          where id = ?
     ''') { groovy.sql.BatchingPreparedStatementWrapper statement ->
       String batchPreviousHash = null
+      String batchLastLiveHash = null
       sql.rows('''
           select id,
                  event_type as eventType,
@@ -470,7 +486,8 @@ final class AuditLogService {
                  actor,
                  summary,
                  details,
-                 created_at as createdAt
+                 created_at as createdAt,
+                 archived
             from audit_log
            where company_id = ?
            order by id
@@ -490,10 +507,13 @@ final class AuditLogService {
         ))
         statement.addBatch([batchPreviousHash, entryHash, row.get('id')])
         batchPreviousHash = entryHash
+        if (!(row.get('archived') as Boolean)) {
+          batchLastLiveHash = entryHash
+        }
       }
-      previousHash = batchPreviousHash
+      lastLiveHash = batchLastLiveHash
     }
-    updateChainHead(sql, companyId, previousHash)
+    updateChainHead(sql, companyId, lastLiveHash)
   }
 
   private AuditLogEntry recordStandaloneEvent(String eventType, String summary, String details, long companyId) {

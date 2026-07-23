@@ -50,7 +50,8 @@ final class DatabaseService {
       new MigrationDefinition(23, 'V23__attachment_status.sql', '/db/migrations/V23__attachment_status.sql'),
       new MigrationDefinition(24, 'V24__voucher_navigation_index.sql', '/db/migrations/V24__voucher_navigation_index.sql'),
       new MigrationDefinition(25, 'V25__company_accounting_method.sql', '/db/migrations/V25__company_accounting_method.sql'),
-      new MigrationDefinition(26, 'V26__accounting_instructions.sql', '/db/migrations/V26__accounting_instructions.sql')
+      new MigrationDefinition(26, 'V26__accounting_instructions.sql', '/db/migrations/V26__accounting_instructions.sql'),
+      new MigrationDefinition(27, 'V27__audit_log_decouple_references.sql', '/db/migrations/V27__audit_log_decouple_references.sql')
   ]
 
   static DatabaseService newForTesting() {
