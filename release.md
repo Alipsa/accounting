@@ -1,14 +1,13 @@
 # Alipsa Accounting, Release History
 
-## v1.6.1, In progress
+## v1.6.1, 2026-07-23
 
 ### Improvements
 - **Optional voucher auto-advance** — Voucher entry now includes a checked-by-default “New voucher after save” option. Clear it to remain on the saved voucher for printing or duplication.
 
 ### Bugfixes
 - **Locale-change listener leak** — Seven panels (`FiscalYearPanel`, `ChartOfAccountsPanel`, `ReportPanel`, `MainFrame`, `VatPeriodPanel`, `VoucherPanel`, `SystemDocumentationPanel`) registered for locale-change and active-company notifications but never unregistered, leaking a listener on every panel construction. Panels now register/unregister via `addNotify`/`removeNotify` (or on shutdown for `MainFrame`), matching the pattern already used by `CompanyDialog` and `OverviewPanel`.
-- Fixed the historic voucher balance calculation. It now subtracts the current voucher and all later vouchers from the fiscal-year ending balance, so “Saldo före” reflects the balance at that historical voucher. “Saldo efter” follows
-  from that correctly.
+- Fixed historic voucher balances. “Saldo före” now excludes the current voucher and every later voucher, including fallback lookups for accounts added while editing an older voucher. “Saldo efter” follows from that correctly.
 - Fixed “Saldo efter” showing the wrong sign for credit-normal accounts (e.g. VAT/liability accounts) when browsing a saved voucher. The row's normal balance side was never populated on load, so the calculation silently fell back to the debit-side formula. Only debit-normal accounts happened to display correctly before this fix.
 
 ## v1.6.0, 2026-07-22
