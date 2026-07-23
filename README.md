@@ -18,7 +18,7 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 - **Flerföretagsstöd** — skapa och växla mellan flera företag i samma installation. Varje företag har egen kontoplan, egna räkenskapsår, nummerserier, hashkedjor och rapportarkiv. Data isoleras fullständigt via `company_id` i datamodellen.
 - **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering. Kontoplanen är företagsspecifik — två företag kan ha samma BAS-kontonummer utan konflikt.
 - **Räkenskapsår och perioder** — skapa år, dela in i perioder och lås perioder när de är klara.
-- **Verifikationer** — registrera, bokför och korrigera verifikationer med bilagor.
+- **Verifikationer** — registrera, bokför, korrigera, duplicera och navigera mellan verifikationer med bilagor. Efter sparning öppnas nästa utkast automatiskt, eller så kan du stanna kvar på den sparade verifikationen för utskrift eller duplicering.
 - **Moms** — beräkna, rapportera och bokför momsöverföring per period. Stöder månads-, kvartals- och årsmoms.
 - **Rapporter** — generera verifikationslista, huvudbok, provbalans, resultat- och balansrapport, transaktionsrapport och momsrapport som PDF eller CSV. Rapporter arkiveras med checksumma.
 - **SIE4** — importera och exportera bokföringsdata via SIE4 med dubblettskydd, automatisk import/ersätt-logik och integritetskontroll.
