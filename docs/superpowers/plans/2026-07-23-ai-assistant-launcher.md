@@ -45,6 +45,7 @@
 - `service/ExecutableProbe.groovy` — interface wrapping filesystem executable checks.
 - `service/FileSystemExecutableProbe.groovy` — real implementation.
 - `service/PathBinaryResolver.groovy` — scans `PATH` for a named binary using the two seams above.
+- `service/FileDeleter.groovy` — interface seam around `Files.deleteIfExists`, for selective purge-failure tests.
 - `service/PurgeResult.groovy` — outcome of a `purgeAllSecrets()` sweep.
 - `service/AiWorkspaceService.groovy` — orchestrator: ensure/refresh/purge/detect.
 - `service/ProcessRunner.groovy` — interface wrapping `ProcessBuilder.start()`.
@@ -631,6 +632,20 @@ class AiWorkspacePermissionsTest {
   }
 
   @Test
+  void ensureDirectoryRefusesWhenTheTargetItselfIsASymlink() {
+    assumePosixSupported()
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    Path realDir = tempDir.resolve('real-dir')
+    Files.createDirectories(realDir)
+    Path linked = tempDir.resolve('linked-workspace')
+    Files.createSymbolicLink(linked, realDir)
+
+    assertThrows(IllegalStateException) {
+      permissions.ensureDirectory(linked)
+    }
+  }
+
+  @Test
   void createFileWithPermissionsSetsExecutableModeForWrapperScripts() {
     assumePosixSupported()
     Path file = tempDir.resolve('.launch-codex-abc.sh')
@@ -831,12 +846,24 @@ final class AiWorkspacePermissions {
   }
 
   void ensureDirectory(Path dir) {
+    // Check symlink-ness BEFORE anything else, with no-follow semantics: Files.isDirectory()
+    // below follows symlinks, so treating "isDirectory() == true" as "safe to chmod/ACL" without
+    // this check first would let a symlinked dir redirect the permission change to its target.
+    if (Files.isSymbolicLink(dir)) {
+      throw new IllegalStateException("Refusing to operate through a symlink at ${dir}.")
+    }
     if (Files.isDirectory(dir)) {
       applyAndVerify(dir, SecretFileKind.EXECUTABLE)
       return
     }
+    if (Files.exists(dir)) {
+      throw new IllegalStateException("${dir} exists but is not a directory.")
+    }
+    // Always recurse into the parent, even if it already exists as a directory: this guarantees
+    // every ancestor gets a fresh symlink check on every call, rather than skipping the check for
+    // an already-existing parent (which would reopen the same TOCTOU window this method exists to close).
     Path parent = dir.parent
-    if (parent != null && !Files.isDirectory(parent)) {
+    if (parent != null) {
       ensureDirectory(parent)
     }
     createDirectory(dir)
@@ -931,7 +958,7 @@ final class AiWorkspacePermissions {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspacePermissionsTest"`
-Expected: PASS (8 tests; the symlink test is skipped via `assumeTrue` on a Windows runner, if ever run there)
+Expected: PASS (9 tests; the two symlink tests are skipped via `assumeTrue` on a Windows runner, if ever run there)
 
 - [ ] **Step 5: Commit**
 
@@ -955,8 +982,8 @@ git commit -m "lägger till AiWorkspacePermissions (fail-closed rättighetshante
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/service/AtomicSecretFileWriterTest.groovy`
 
 **Interfaces:**
-- Consumes: `AiWorkspacePermissions` (Task 6), `SecretFileKind` (Task 6).
-- Produces: `interface SecretFileWriter { void write(Path target, byte[] content, SecretFileKind kind) }`, real implementation `AtomicSecretFileWriter` with a no-arg constructor and a `(AiWorkspacePermissions, FileMover)` constructor for tests. Later tasks (`AiWorkspaceService`, `AiAssistantLauncher`) construct `new AtomicSecretFileWriter()` and depend on the `SecretFileWriter.write(...)` signature.
+- Consumes: `AiWorkspacePermissions` (Task 6, specifically `verifyNoSymlinksInPath`), `SecretFileKind` (Task 6).
+- Produces: `interface SecretFileWriter { void write(Path root, Path target, byte[] content, SecretFileKind kind) }` — `root` is the AI workspace boundary, so the writer itself (not just its callers) verifies the whole path is symlink-free, immediately before creating the temp file *and* again immediately before the atomic move (the move is the actual commit point, so it gets its own fresh check). Real implementation `AtomicSecretFileWriter` with a no-arg constructor and a `(AiWorkspacePermissions, FileMover)` constructor for tests. Later tasks (`AiWorkspaceService`, `AiAssistantLauncher`) construct `new AtomicSecretFileWriter()` and depend on the `SecretFileWriter.write(root, target, ...)` signature.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -988,7 +1015,7 @@ class AtomicSecretFileWriterTest {
     AtomicSecretFileWriter writer = new AtomicSecretFileWriter()
     Path target = tempDir.resolve('.mcp.json')
 
-    writer.write(target, 'hello'.getBytes('UTF-8'), SecretFileKind.DATA)
+    writer.write(tempDir, target, 'hello'.getBytes('UTF-8'), SecretFileKind.DATA)
 
     assertArrayEquals('hello'.getBytes('UTF-8'), Files.readAllBytes(target))
     assertEquals(PosixFilePermissions.fromString('rw-------'), Files.getPosixFilePermissions(target))
@@ -1002,7 +1029,7 @@ class AtomicSecretFileWriterTest {
     AtomicSecretFileWriter writer = new AtomicSecretFileWriter(new AiWorkspacePermissions(), failingMover)
 
     assertThrows(java.io.IOException) {
-      writer.write(target, 'new content'.getBytes('UTF-8'), SecretFileKind.DATA)
+      writer.write(tempDir, target, 'new content'.getBytes('UTF-8'), SecretFileKind.DATA)
     }
 
     assertArrayEquals('original'.getBytes('UTF-8'), Files.readAllBytes(target))
@@ -1020,8 +1047,23 @@ class AtomicSecretFileWriterTest {
     Path target = tempDir.resolve('.mcp.json')
 
     assertThrows(IllegalStateException) {
-      writer.write(target, 'content'.getBytes('UTF-8'), SecretFileKind.DATA)
+      writer.write(tempDir, target, 'content'.getBytes('UTF-8'), SecretFileKind.DATA)
     }
+  }
+
+  @Test
+  void refusesToWriteThroughASymlinkedTarget() {
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    Path outside = tempDir.resolve('outside.json')
+    Path linkedTarget = tempDir.resolve('.mcp.json')
+    Files.createSymbolicLink(linkedTarget, outside)
+    AtomicSecretFileWriter writer = new AtomicSecretFileWriter()
+
+    assertThrows(IllegalStateException) {
+      writer.write(tempDir, linkedTarget, 'content'.getBytes('UTF-8'), SecretFileKind.DATA)
+    }
+
+    assert !Files.exists(outside)
   }
 }
 ```
@@ -1039,9 +1081,9 @@ package se.alipsa.accounting.service
 
 import java.nio.file.Path
 
-/** Writes a secret-bearing file atomically, with the correct permissions for its kind. */
+/** Writes a secret-bearing file atomically, with the correct permissions for its kind. `root` is the AI workspace boundary. */
 interface SecretFileWriter {
-  void write(Path target, byte[] content, SecretFileKind kind)
+  void write(Path root, Path target, byte[] content, SecretFileKind kind)
 }
 ```
 
@@ -1066,7 +1108,13 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
-/** Writes secret-bearing files via temp-file-then-atomic-move, with fail-closed permission verification. */
+/**
+ * Writes secret-bearing files via temp-file-then-atomic-move, with fail-closed
+ * permission verification and a symlink-chain check both before the temp
+ * file is created and again immediately before the atomic move (the move is
+ * the real commit point, so it gets its own fresh check rather than relying
+ * solely on the earlier one).
+ */
 final class AtomicSecretFileWriter implements SecretFileWriter {
 
   private final AiWorkspacePermissions permissions
@@ -1084,11 +1132,13 @@ final class AtomicSecretFileWriter implements SecretFileWriter {
   }
 
   @Override
-  void write(Path target, byte[] content, SecretFileKind kind) {
+  void write(Path root, Path target, byte[] content, SecretFileKind kind) {
+    permissions.verifyNoSymlinksInPath(root, target)
     Path tempFile = target.parent.resolve("${target.fileName}.tmp-${UUID.randomUUID()}")
     try {
       permissions.createFileWithPermissions(tempFile, kind)
       Files.write(tempFile, content)
+      permissions.verifyNoSymlinksInPath(root, target)
       try {
         fileMover.move(tempFile, target)
       } catch (AtomicMoveNotSupportedException exception) {
@@ -1106,7 +1156,7 @@ final class AtomicSecretFileWriter implements SecretFileWriter {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AtomicSecretFileWriterTest"`
-Expected: PASS (3 tests)
+Expected: PASS (4 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1257,9 +1307,11 @@ url = "http://127.0.0.1:48652/mcp"
 bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"
 ```
 
-`app/src/test/resources/ai-launcher/vibe-config.toml`:
+`app/src/test/resources/ai-launcher/vibe-config.toml` (array-of-tables `[[mcp_servers]]` with `name`/`transport`/`url` — confirmed against Mistral's own Vibe MCP docs at https://docs.mistral.ai/vibe/code/cli/mcp-servers; an earlier draft used the wrong `[mcp_servers.accounting]` table form, which Vibe does not recognize):
 ```
-[mcp_servers.accounting]
+[[mcp_servers]]
+name = "accounting"
+transport = "http"
 url = "http://127.0.0.1:48652/mcp"
 headers = { Authorization = "Bearer test-token-123" }
 ```
@@ -1339,7 +1391,7 @@ final class AiClientConfigWriter {
       case AiClient.CODEX:
         return codexToml(endpoint)
       case AiClient.VIBE:
-        return bearerToml(endpoint, token)
+        return vibeToml(endpoint, token)
       default:
         throw new IllegalArgumentException("Unknown AI client: ${client}")
     }
@@ -1365,8 +1417,12 @@ bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"
 """.toString()
   }
 
-  private static String bearerToml(String endpoint, String token) {
-    """[mcp_servers.accounting]
+  private static String vibeToml(String endpoint, String token) {
+    // Array-of-tables [[mcp_servers]] with name/transport/url is Vibe's documented schema
+    // (docs.mistral.ai/vibe/code/cli/mcp-servers) — distinct from Codex's [mcp_servers.<name>] table form.
+    """[[mcp_servers]]
+name = "accounting"
+transport = "http"
 url = "${endpoint}"
 headers = { Authorization = "Bearer ${token}" }
 """.toString()
@@ -1528,7 +1584,7 @@ git commit -m "lägger till TerminalCommandBuilder"
 
 **Interfaces:**
 - Consumes: `ProcessArgumentEscaping` (Task 3).
-- Produces: `static String unixContent(Path workspace, Path binaryPath, String tokenOrNull)`, `static String windowsContent(Path workspace, Path binaryPath, String tokenOrNull)`. `tokenOrNull == null` means the non-Codex variant (no export/set line).
+- Produces: `static String unixContent(Path workspace, Path binaryPath, Map<String, String> envVars)`, `static String windowsContent(Path workspace, Path binaryPath, Map<String, String> envVars)`. `envVars` is an ordered map of extra environment variables to `export`/`set` before the `cd`/invocation lines — empty for Claude/Kimi (no secret, no extra var), `[ACCOUNTING_MCP_TOKEN: token]` for Codex, `[VIBE_HOME: workspace/.vibe path]` for Vibe (see Task 14 — Vibe's config discovery mechanism is unconfirmed by Mistral's own docs as project-local-vs-home, so the wrapper sets `VIBE_HOME` pointing at the same `.vibe/config.toml` we already write, covering both possible discovery mechanisms at once). A generic map (not a single `tokenOrNull`) is used because more than one client can need an env var, and some of those aren't secrets.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1550,8 +1606,8 @@ class LaunchWrapperScriptTest {
   private final Path binaryPath = Paths.get('/usr/local/bin/codex')
 
   @Test
-  void unixCodexWrapperExportsTokenAndUsesSingleQuoting() {
-    String content = LaunchWrapperScript.unixContent(workspace, binaryPath, 'secret-token')
+  void unixWrapperExportsAGivenEnvVarAndUsesSingleQuoting() {
+    String content = LaunchWrapperScript.unixContent(workspace, binaryPath, [ACCOUNTING_MCP_TOKEN: 'secret-token'])
 
     String expected = '#!/bin/sh\n' +
         "export ACCOUNTING_MCP_TOKEN='secret-token'\n" +
@@ -1561,8 +1617,8 @@ class LaunchWrapperScriptTest {
   }
 
   @Test
-  void unixNonCodexWrapperHasNoExportLine() {
-    String content = LaunchWrapperScript.unixContent(workspace, binaryPath, null)
+  void unixWrapperWithNoEnvVarsHasNoExportLine() {
+    String content = LaunchWrapperScript.unixContent(workspace, binaryPath, [:])
 
     assertFalse(content.contains('export'))
     String expected = '#!/bin/sh\n' +
@@ -1572,19 +1628,31 @@ class LaunchWrapperScriptTest {
   }
 
   @Test
+  void unixWrapperSupportsMultipleEnvVarsInInsertionOrder() {
+    Map<String, String> envVars = new LinkedHashMap<>()
+    envVars.VIBE_HOME = '/home/per/.local/share/alipsa-accounting/ai-workspace/.vibe'
+    envVars.OTHER_VAR = 'value'
+    String content = LaunchWrapperScript.unixContent(workspace, binaryPath, envVars)
+    List<String> lines = content.split('\n', -1) as List<String>
+
+    assertEquals("export VIBE_HOME='/home/per/.local/share/alipsa-accounting/ai-workspace/.vibe'".toString(), lines[1])
+    assertEquals("export OTHER_VAR='value'".toString(), lines[2])
+  }
+
+  @Test
   void unixWrapperNeutralizesCommandSubstitutionInBinaryPath() {
     Path malicious = Paths.get('/tmp/$(rm -rf ~)')
-    String content = LaunchWrapperScript.unixContent(workspace, malicious, null)
+    String content = LaunchWrapperScript.unixContent(workspace, malicious, [:])
 
     assertTrue(content.contains("'" + malicious.toString() + "'"))
   }
 
   @Test
-  void windowsCodexWrapperMatchesExactTemplateOrdering() {
+  void windowsWrapperMatchesExactTemplateOrdering() {
     Path winWorkspace = Paths.get('C:\\Users\\per\\AppData\\Roaming\\Alipsa\\Accounting\\ai-workspace')
     Path winBinary = Paths.get('C:\\Program Files\\codex\\codex.cmd')
 
-    String content = LaunchWrapperScript.windowsContent(winWorkspace, winBinary, 'secret-token')
+    String content = LaunchWrapperScript.windowsContent(winWorkspace, winBinary, [ACCOUNTING_MCP_TOKEN: 'secret-token'])
     List<String> lines = content.split('\r\n', -1) as List<String>
 
     assertEquals('@echo off', lines[0])
@@ -1596,18 +1664,18 @@ class LaunchWrapperScriptTest {
   }
 
   @Test
-  void windowsNonCodexWrapperHasNoSetLine() {
+  void windowsWrapperWithNoEnvVarsHasNoSetLine() {
     Path winWorkspace = Paths.get('C:\\Users\\per\\AppData\\Roaming\\Alipsa\\Accounting\\ai-workspace')
     Path winBinary = Paths.get('C:\\Program Files\\claude\\claude.cmd')
 
-    String content = LaunchWrapperScript.windowsContent(winWorkspace, winBinary, null)
+    String content = LaunchWrapperScript.windowsContent(winWorkspace, winBinary, [:])
     List<String> lines = content.split('\r\n', -1) as List<String>
 
     assertEquals('@echo off', lines[0])
     assertEquals('setlocal DisableDelayedExpansion', lines[1])
     assertEquals("cd /d \"${winWorkspace}\"".toString(), lines[2])
     assertEquals("\"${winBinary}\"".toString(), lines[3])
-    assertFalse(content.contains('set "ACCOUNTING_MCP_TOKEN'))
+    assertFalse(content.contains('set "'))
     assertFalse(content.contains('call '))
   }
 
@@ -1616,7 +1684,7 @@ class LaunchWrapperScriptTest {
     Path winWorkspace = Paths.get('C:\\Users\\per\\AppData\\Roaming\\Alipsa\\Accounting\\ai-workspace')
     Path variableShapedBinary = Paths.get('C:\\Program Files\\%SOMEVAR%\\tool.cmd')
 
-    String content = LaunchWrapperScript.windowsContent(winWorkspace, variableShapedBinary, null)
+    String content = LaunchWrapperScript.windowsContent(winWorkspace, variableShapedBinary, [:])
 
     assertTrue(content.contains('%%SOMEVAR%%'))
     assertFalse(content.contains('call '))
@@ -1649,21 +1717,21 @@ final class LaunchWrapperScript {
   private LaunchWrapperScript() {
   }
 
-  static String unixContent(Path workspace, Path binaryPath, String tokenOrNull) {
+  static String unixContent(Path workspace, Path binaryPath, Map<String, String> envVars) {
     StringBuilder content = new StringBuilder('#!/bin/sh\n')
-    if (tokenOrNull != null) {
-      content << "export ACCOUNTING_MCP_TOKEN=${ProcessArgumentEscaping.shellQuoteSingle(tokenOrNull)}\n"
+    envVars.each { String name, String value ->
+      content << "export ${name}=${ProcessArgumentEscaping.shellQuoteSingle(value)}\n"
     }
     content << "cd ${ProcessArgumentEscaping.shellQuoteSingle(workspace.toString())}\n"
     content << "exec ${ProcessArgumentEscaping.shellQuoteSingle(binaryPath.toString())}\n"
     content.toString()
   }
 
-  static String windowsContent(Path workspace, Path binaryPath, String tokenOrNull) {
+  static String windowsContent(Path workspace, Path binaryPath, Map<String, String> envVars) {
     StringBuilder content = new StringBuilder('@echo off\r\n')
     content << 'setlocal DisableDelayedExpansion\r\n'
-    if (tokenOrNull != null) {
-      content << "set \"ACCOUNTING_MCP_TOKEN=${ProcessArgumentEscaping.escapeForCmdScript(tokenOrNull)}\"\r\n"
+    envVars.each { String name, String value ->
+      content << "set \"${name}=${ProcessArgumentEscaping.escapeForCmdScript(value)}\"\r\n"
     }
     content << "cd /d \"${ProcessArgumentEscaping.escapeForCmdScript(workspace.toString())}\"\r\n"
     content << "\"${ProcessArgumentEscaping.escapeForCmdScript(binaryPath.toString())}\"\r\n"
@@ -1675,7 +1743,7 @@ final class LaunchWrapperScript {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.LaunchWrapperScriptTest"`
-Expected: PASS (6 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1844,13 +1912,14 @@ git commit -m "lägger till PathBinaryResolver"
 ## Task 13: `PurgeResult` + `AiWorkspaceService`
 
 **Files:**
+- Create: `app/src/main/groovy/se/alipsa/accounting/service/FileDeleter.groovy`
 - Create: `app/src/main/groovy/se/alipsa/accounting/service/PurgeResult.groovy`
 - Create: `app/src/main/groovy/se/alipsa/accounting/service/AiWorkspaceService.groovy`
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/service/AiWorkspaceServiceTest.groovy`
 
 **Interfaces:**
-- Consumes: `AiClient` (Task 1), `TerminalAdapterKind` (Task 2), `AppPaths.aiWorkspaceDirectory()`/`AI_WORKSPACE_HOME_OVERRIDE_PROPERTY` (Task 4), `AiWorkspacePermissions` (Task 6), `SecretFileWriter`/`AtomicSecretFileWriter` (Task 7), `AiWorkspacePaths` (Task 8), `AiClientConfigWriter` (Task 9), `PathBinaryResolver`/`EnvironmentLookup`/`ExecutableProbe`/`FileSystemExecutableProbe` (Task 12).
-- Produces: `class PurgeResult { List<Path> removed; List<Path> failed; boolean isComplete() }`. `class AiWorkspaceService` with a no-arg constructor (real collaborators) and a `(AiWorkspacePermissions, SecretFileWriter, PathBinaryResolver)` constructor for tests, methods: `void ensureWorkspace()`, `void refreshClientFiles(AiClient client, String endpoint, String token)`, `PurgeResult purgeAllSecrets()`, `Path detectBinaryPath(AiClient client)`, `Tuple2<TerminalAdapterKind, Path> detectTerminalAdapter()`. This is what `McpSettingsSection`, `McpServerLifecycle`, and `AiAssistantLauncherSection` (later tasks) all depend on.
+- Consumes: `AiClient` (Task 1), `TerminalAdapterKind` (Task 2), `AppPaths.aiWorkspaceDirectory()`/`AI_WORKSPACE_HOME_OVERRIDE_PROPERTY` (Task 4), `AiWorkspacePermissions` (Task 6, including `verifyNoSymlinksInPath`), `SecretFileWriter`/`AtomicSecretFileWriter` (Task 7 — note the `write(root, target, ...)` signature), `AiWorkspacePaths` (Task 8), `AiClientConfigWriter` (Task 9), `EnvironmentLookup`/`ExecutableProbe`/`FileSystemExecutableProbe`/`PathBinaryResolver` (Task 12).
+- Produces: `interface FileDeleter { boolean deleteIfExists(Path path) }` — a seam around `Files.deleteIfExists`, so a test can make exactly one path's deletion fail without touching the real filesystem. `class PurgeResult { List<Path> removed; List<Path> failed; boolean isComplete() }`. `class AiWorkspaceService` with a no-arg constructor (real collaborators) and a `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` constructor for tests — note this is a different shape than the `PathBinaryResolver`-based one sketched in Task 12's interface note; `AiWorkspaceService` builds its own `PathBinaryResolver` internally from the injected `ExecutableProbe`/`EnvironmentLookup`, because it also needs the bare `ExecutableProbe` directly for `isValidExecutable`. Methods: `void ensureWorkspace()`, `void refreshClientFiles(AiClient client, String endpoint, String token)`, `PurgeResult purgeAllSecrets()`, `Path detectBinaryPath(AiClient client)`, `Tuple2<TerminalAdapterKind, Path> detectTerminalAdapter()`, `boolean isValidExecutable(Path candidate)`. This is what `McpSettingsSection`, `McpServerLifecycle`, and `AiAssistantLauncherSection` (later tasks) all depend on.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1956,11 +2025,42 @@ class AiWorkspaceServiceTest {
   }
 
   @Test
+  void purgeAllSecretsReportsOnlyTheOneFileThatFailedToDelete() {
+    AiWorkspaceService fixtureService = new AiWorkspaceService()
+    fixtureService.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:48652/mcp', 'token-1')
+    fixtureService.refreshClientFiles(AiClient.CODEX, 'http://127.0.0.1:48652/mcp', 'unused')
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    Path codexConfig = workspace.resolve('.codex/config.toml')
+
+    FileDeleter flakyDeleter = { Path path ->
+      if (path == codexConfig) {
+        throw new java.io.IOException('simulated delete failure')
+      }
+      Files.deleteIfExists(path)
+    } as FileDeleter
+    AiWorkspaceService service = new AiWorkspaceService(
+        new AiWorkspacePermissions(),
+        new AtomicSecretFileWriter(),
+        new FileSystemExecutableProbe(),
+        { String name -> System.getenv(name) } as EnvironmentLookup,
+        flakyDeleter)
+
+    PurgeResult result = service.purgeAllSecrets()
+
+    assertFalse(result.complete)
+    assertEquals([codexConfig], result.failed)
+    assertTrue(result.removed.contains(workspace.resolve('.mcp.json')))
+    assertEquals(true, Files.exists(codexConfig))
+  }
+
+  @Test
   void detectBinaryPathReturnsNullWhenNothingOnPathMatches() {
     AiWorkspaceService service = new AiWorkspaceService(
         new AiWorkspacePermissions(),
         new AtomicSecretFileWriter(),
-        new PathBinaryResolver({ String name -> '' } as EnvironmentLookup, new FileSystemExecutableProbe()))
+        new FileSystemExecutableProbe(),
+        { String name -> '' } as EnvironmentLookup,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     assertNull(service.detectBinaryPath(AiClient.CODEX))
   }
@@ -1974,15 +2074,29 @@ class AiWorkspaceServiceTest {
     AiWorkspaceService service = new AiWorkspaceService(
         new AiWorkspacePermissions(),
         new AtomicSecretFileWriter(),
-        new PathBinaryResolver(env, new FileSystemExecutableProbe()))
+        new FileSystemExecutableProbe(),
+        env,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     Tuple2<TerminalAdapterKind, Path> detected = service.detectTerminalAdapter()
 
     assertEquals(TerminalAdapterKind.GNOME_TERMINAL, detected.v1)
     assertEquals(fakeGnomeTerminal.toAbsolutePath().normalize(), detected.v2)
   }
+
+  @Test
+  void isValidExecutableReflectsWhetherTheCandidateIsARealExecutableFile() {
+    Path notExecutable = tempDir.resolve('not-executable')
+    Files.createFile(notExecutable)
+    AiWorkspaceService service = new AiWorkspaceService()
+
+    assertFalse(service.isValidExecutable(tempDir.resolve('does-not-exist')))
+    assertFalse(service.isValidExecutable(notExecutable))
+  }
 }
 ```
+
+(Add `import static org.junit.jupiter.api.Assertions.assertFalse` to the existing static-import list at the top of this test class.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1990,6 +2104,18 @@ Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspaceServiceTes
 Expected: FAIL — classes not found. This is also the first real exercise of Task 5's classpath-resource change: if `accounting-mcp.md` weren't on the classpath, `refreshClientFilesWritesConfigAndCopiesSkillInstructions` would fail with `IllegalStateException` from the resource-missing check below, not just a missing-class error.
 
 - [ ] **Step 3: Write the implementation**
+
+```groovy
+// app/src/main/groovy/se/alipsa/accounting/service/FileDeleter.groovy
+package se.alipsa.accounting.service
+
+import java.nio.file.Path
+
+/** Seam around Files.deleteIfExists, so a test can make exactly one path's deletion fail. */
+interface FileDeleter {
+  boolean deleteIfExists(Path path)
+}
+```
 
 ```groovy
 // app/src/main/groovy/se/alipsa/accounting/service/PurgeResult.groovy
@@ -2023,6 +2149,7 @@ import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -2030,7 +2157,10 @@ import java.util.logging.Logger
 /**
  * Owns the AI workspace directory: config/instructions writing, PATH-based
  * detection, and secret cleanup. See design spec, "Workspace layout" and
- * "Secret lifecycle".
+ * "Secret lifecycle". Every write and delete is preceded by a symlink-chain
+ * check against the workspace root — directory creation/permission changes
+ * and deletions never happen before that check, since doing so could
+ * traverse or mutate through an attacker-planted symlink.
  */
 final class AiWorkspaceService {
 
@@ -2038,20 +2168,32 @@ final class AiWorkspaceService {
 
   private final AiWorkspacePermissions permissions
   private final SecretFileWriter secretFileWriter
+  private final ExecutableProbe executableProbe
   private final PathBinaryResolver pathBinaryResolver
+  private final FileDeleter fileDeleter
 
   AiWorkspaceService() {
     this(
         new AiWorkspacePermissions(),
         new AtomicSecretFileWriter(),
-        new PathBinaryResolver({ String name -> System.getenv(name) } as EnvironmentLookup, new FileSystemExecutableProbe())
+        new FileSystemExecutableProbe(),
+        { String name -> System.getenv(name) } as EnvironmentLookup,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter
     )
   }
 
-  AiWorkspaceService(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, PathBinaryResolver pathBinaryResolver) {
+  AiWorkspaceService(
+      AiWorkspacePermissions permissions,
+      SecretFileWriter secretFileWriter,
+      ExecutableProbe executableProbe,
+      EnvironmentLookup environmentLookup,
+      FileDeleter fileDeleter
+  ) {
     this.permissions = permissions
     this.secretFileWriter = secretFileWriter
-    this.pathBinaryResolver = pathBinaryResolver
+    this.executableProbe = executableProbe
+    this.pathBinaryResolver = new PathBinaryResolver(environmentLookup, executableProbe)
+    this.fileDeleter = fileDeleter
   }
 
   void ensureWorkspace() {
@@ -2059,19 +2201,24 @@ final class AiWorkspaceService {
   }
 
   void refreshClientFiles(AiClient client, String endpoint, String token) {
-    ensureWorkspace()
     Path workspace = AppPaths.aiWorkspaceDirectory()
+    ensureWorkspace()
 
     Path configFile = AiWorkspacePaths.configFile(workspace, client)
+    // Verify BEFORE creating/traversing the parent chain, and again right before the write
+    // (AtomicSecretFileWriter.write also re-checks immediately before its own atomic move —
+    // see Task 7 — so this is deliberate, cheap, layered defense, not redundant by accident).
+    permissions.verifyNoSymlinksInPath(workspace, configFile)
     permissions.ensureDirectory(configFile.parent)
     permissions.verifyNoSymlinksInPath(workspace, configFile)
     String configText = AiClientConfigWriter.configContent(client, endpoint, token)
-    secretFileWriter.write(configFile, configText.getBytes('UTF-8'), SecretFileKind.DATA)
+    secretFileWriter.write(workspace, configFile, configText.getBytes('UTF-8'), SecretFileKind.DATA)
 
     Path instructionsFile = AiWorkspacePaths.instructionsFile(workspace, client)
+    permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
     permissions.ensureDirectory(instructionsFile.parent)
     permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
-    secretFileWriter.write(instructionsFile, skillResourceBytes(), SecretFileKind.DATA)
+    secretFileWriter.write(workspace, instructionsFile, skillResourceBytes(), SecretFileKind.DATA)
   }
 
   private static byte[] skillResourceBytes() {
@@ -2090,18 +2237,33 @@ final class AiWorkspaceService {
     Path workspace = AppPaths.aiWorkspaceDirectory()
     List<Path> removed = []
     List<Path> failed = []
+    if (Files.isSymbolicLink(workspace)) {
+      // Never open a directory stream on the workspace root itself without checking this first —
+      // newDirectoryStream() follows a symlinked directory and would list/delete through it.
+      failed << workspace
+      return new PurgeResult(removed, failed)
+    }
     if (Files.isDirectory(workspace)) {
-      AiClient.values().each { AiClient client -> deleteIfPresent(workspace.resolve(client.configRelativePath), removed, failed) }
-      Files.newDirectoryStream(workspace, '.launch-*').withCloseable { stream ->
-        stream.each { Path wrapper -> deleteIfPresent(wrapper, removed, failed) }
+      AiClient.values().each { AiClient client -> deleteIfSafe(workspace, workspace.resolve(client.configRelativePath), removed, failed) }
+      try {
+        Files.newDirectoryStream(workspace, '.launch-*').withCloseable { stream ->
+          stream.each { Path wrapper -> deleteIfSafe(workspace, wrapper, removed, failed) }
+        }
+      } catch (Exception exception) {
+        log.log(Level.WARNING, "Could not list wrapper scripts in ${workspace}", exception)
+        failed << workspace.resolve('.launch-*')
       }
     }
     new PurgeResult(removed, failed)
   }
 
-  private static void deleteIfPresent(Path path, List<Path> removed, List<Path> failed) {
+  private void deleteIfSafe(Path root, Path path, List<Path> removed, List<Path> failed) {
     try {
-      if (Files.deleteIfExists(path)) {
+      if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+        return
+      }
+      permissions.verifyNoSymlinksInPath(root, path)
+      if (fileDeleter.deleteIfExists(path)) {
         removed << path
       }
     } catch (Exception exception) {
@@ -2123,18 +2285,23 @@ final class AiWorkspaceService {
     }
     null
   }
+
+  boolean isValidExecutable(Path candidate) {
+    candidate != null && executableProbe.isExecutableFile(candidate)
+  }
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspaceServiceTest"`
-Expected: PASS (6 tests, on a Linux CI runner; the OS-name assumptions skip the suite cleanly elsewhere)
+Expected: PASS (8 tests, on a Linux CI runner; the OS-name assumptions skip the suite cleanly elsewhere)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/groovy/se/alipsa/accounting/service/PurgeResult.groovy \
+git add app/src/main/groovy/se/alipsa/accounting/service/FileDeleter.groovy \
+        app/src/main/groovy/se/alipsa/accounting/service/PurgeResult.groovy \
         app/src/main/groovy/se/alipsa/accounting/service/AiWorkspaceService.groovy \
         app/src/test/groovy/unit/se/alipsa/accounting/service/AiWorkspaceServiceTest.groovy
 git commit -m "lägger till AiWorkspaceService"
@@ -2150,8 +2317,8 @@ git commit -m "lägger till AiWorkspaceService"
 - Test: `app/src/test/groovy/unit/se/alipsa/accounting/service/AiAssistantLauncherTest.groovy`
 
 **Interfaces:**
-- Consumes: `AiClient` (Task 1), `TerminalAdapterKind` (Task 2), `AppPaths.aiWorkspaceDirectory()` (Task 4), `AiWorkspacePermissions`/`SecretFileKind` (Task 6), `SecretFileWriter`/`AtomicSecretFileWriter` (Task 7), `AiWorkspacePaths` (Task 8), `TerminalCommandBuilder` (Task 10), `LaunchWrapperScript` (Task 11).
-- Produces: `interface ProcessRunner { Process run(List<String> command, Path workingDirectory) }`. `class AiAssistantLauncher` with a no-arg constructor and a `(AiWorkspacePermissions, SecretFileWriter, ProcessRunner)` constructor, method `void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token)`. `AiAssistantLauncherSection` (Task 17) depends on this exact `launch(...)` signature.
+- Consumes: `AiClient` (Task 1), `TerminalAdapterKind` (Task 2), `AppPaths.aiWorkspaceDirectory()` (Task 4), `AiWorkspacePermissions`/`SecretFileKind` (Task 6), `SecretFileWriter`/`AtomicSecretFileWriter` (Task 7 — note `write(root, target, ...)`), `AiWorkspacePaths` (Task 8), `TerminalCommandBuilder` (Task 10), `LaunchWrapperScript` (Task 11 — note `Map<String,String> envVars`, not `tokenOrNull`), `ExecutableProbe`/`FileSystemExecutableProbe` (Task 12).
+- Produces: `interface ProcessRunner { Process run(List<String> command, Path workingDirectory) }`. `class AiAssistantLauncher` with a no-arg constructor and a `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` constructor, method `void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token)` — this now validates both `binaryPath` and `adapterExecutable` are real executable files *before* writing the wrapper or spawning anything, throwing `IllegalArgumentException` if not (this is the authoritative check; `AiWorkspaceService.isValidExecutable`, Task 13, additionally lets the UI, Task 17, give a friendlier per-field error before even calling `launch`). `AiAssistantLauncherSection` (Task 17) depends on this exact `launch(...)` signature.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2184,6 +2351,7 @@ class AiAssistantLauncherTest {
   Path tempDir
 
   private String previousOverride
+  private final ExecutableProbe alwaysExecutable = { Path candidate -> true } as ExecutableProbe
 
   @BeforeEach
   void redirectWorkspaceToTempDir() {
@@ -2210,7 +2378,8 @@ class AiAssistantLauncherTest {
       recordedCommands << command
       new ProcessBuilder(['true']).start()
     } as ProcessRunner
-    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), fakeRunner)
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, fakeRunner)
     Path binaryPath = Paths.get('/usr/local/bin/codex')
 
     launcher.launch(AiClient.CODEX, binaryPath, TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), 'secret-token')
@@ -2225,13 +2394,33 @@ class AiAssistantLauncherTest {
   }
 
   @Test
+  void launchForVibeSetsVibeHomeInsteadOfTheAccountingToken() {
+    List<List<String>> recordedCommands = []
+    ProcessRunner fakeRunner = { List<String> command, Path dir ->
+      recordedCommands << command
+      new ProcessBuilder(['true']).start()
+    } as ProcessRunner
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, fakeRunner)
+    Path binaryPath = Paths.get('/usr/local/bin/vibe')
+
+    launcher.launch(AiClient.VIBE, binaryPath, TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), 'secret-token')
+
+    Path writtenScript = Paths.get(recordedCommands[0][2])
+    String content = writtenScript.text
+    assertTrue(content.contains('export VIBE_HOME='))
+    assertFalse(content.contains('ACCOUNTING_MCP_TOKEN'))
+  }
+
+  @Test
   void twoLaunchesOfTheSameClientProduceDistinctWrapperFilenames() {
     List<List<String>> recordedCommands = []
     ProcessRunner fakeRunner = { List<String> command, Path dir ->
       recordedCommands << command
       new ProcessBuilder(['true']).start()
     } as ProcessRunner
-    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), fakeRunner)
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, fakeRunner)
     Path binaryPath = Paths.get('/usr/local/bin/claude')
 
     launcher.launch(AiClient.CLAUDE, binaryPath, TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), null)
@@ -2248,7 +2437,8 @@ class AiAssistantLauncherTest {
     ProcessRunner failingRunner = { List<String> command, Path dir ->
       throw new java.io.IOException('simulated terminal-not-found failure')
     } as ProcessRunner
-    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), failingRunner)
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), alwaysExecutable, failingRunner)
     Path binaryPath = Paths.get('/usr/local/bin/claude')
 
     assertThrows(java.io.IOException) {
@@ -2258,6 +2448,20 @@ class AiAssistantLauncherTest {
     Path workspace = AppPaths.aiWorkspaceDirectory()
     Files.newDirectoryStream(workspace, '.launch-claude-*').withCloseable { stream ->
       assertFalse(stream.iterator().hasNext())
+    }
+  }
+
+  @Test
+  void launchRejectsANonExecutableBinaryPathBeforeWritingOrSpawningAnything() {
+    ExecutableProbe rejectAll = { Path candidate -> false } as ExecutableProbe
+    ProcessRunner runnerThatShouldNeverBeCalled = { List<String> command, Path dir ->
+      throw new AssertionError('ProcessRunner should not be invoked when the binary path is invalid')
+    } as ProcessRunner
+    AiAssistantLauncher launcher =
+        new AiAssistantLauncher(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), rejectAll, runnerThatShouldNeverBeCalled)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.launch(AiClient.CLAUDE, Paths.get('/does/not/exist'), TerminalAdapterKind.XTERM, Paths.get('/usr/bin/xterm'), null)
     }
   }
 }
@@ -2298,7 +2502,9 @@ import java.util.logging.Logger
 /**
  * Writes a per-launch wrapper script and spawns the chosen terminal to run
  * it. See design spec, "Launch wrapper script" and "Wrapper naming and
- * cleanup timing".
+ * cleanup timing". Validates both paths it's given are real executable
+ * files *before* writing anything or spawning — a stale/malicious path must
+ * never silently "succeed" by opening a terminal that then fails inside.
  */
 final class AiAssistantLauncher {
 
@@ -2306,34 +2512,57 @@ final class AiAssistantLauncher {
 
   private final AiWorkspacePermissions permissions
   private final SecretFileWriter secretFileWriter
+  private final ExecutableProbe executableProbe
   private final ProcessRunner processRunner
 
   AiAssistantLauncher() {
     this(
         new AiWorkspacePermissions(),
         new AtomicSecretFileWriter(),
+        new FileSystemExecutableProbe(),
         { List<String> command, Path dir -> new ProcessBuilder(command).directory(dir.toFile()).start() } as ProcessRunner
     )
   }
 
-  AiAssistantLauncher(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ProcessRunner processRunner) {
+  AiAssistantLauncher(
+      AiWorkspacePermissions permissions,
+      SecretFileWriter secretFileWriter,
+      ExecutableProbe executableProbe,
+      ProcessRunner processRunner
+  ) {
     this.permissions = permissions
     this.secretFileWriter = secretFileWriter
+    this.executableProbe = executableProbe
     this.processRunner = processRunner
   }
 
   void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token) {
+    if (!executableProbe.isExecutableFile(binaryPath)) {
+      throw new IllegalArgumentException("${binaryPath} is not an executable file.")
+    }
+    if (!executableProbe.isExecutableFile(adapterExecutable)) {
+      throw new IllegalArgumentException("${adapterExecutable} is not an executable file.")
+    }
+
     Path workspace = AppPaths.aiWorkspaceDirectory()
     boolean windows = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL
     String launchId = UUID.randomUUID().toString()
     Path script = AiWorkspacePaths.wrapperScript(workspace, client, launchId, windows)
     permissions.verifyNoSymlinksInPath(workspace, script)
 
-    String tokenOrNull = client == AiClient.CODEX ? token : null
+    Map<String, String> envVars = new LinkedHashMap<>()
+    if (client == AiClient.CODEX) {
+      envVars.ACCOUNTING_MCP_TOKEN = token
+    } else if (client == AiClient.VIBE) {
+      // Belt-and-suspenders for Vibe's unconfirmed project-local-vs-VIBE_HOME config discovery
+      // (see design spec / Task 9) — VIBE_HOME points at the same .vibe/config.toml we already
+      // write, so whichever mechanism Vibe actually uses, it finds the right file.
+      envVars.VIBE_HOME = workspace.resolve('.vibe').toString()
+    }
     String content = windows
-        ? LaunchWrapperScript.windowsContent(workspace, binaryPath, tokenOrNull)
-        : LaunchWrapperScript.unixContent(workspace, binaryPath, tokenOrNull)
-    secretFileWriter.write(script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
+        ? LaunchWrapperScript.windowsContent(workspace, binaryPath, envVars)
+        : LaunchWrapperScript.unixContent(workspace, binaryPath, envVars)
+    secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
 
     List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
     try {
@@ -2357,7 +2586,7 @@ final class AiAssistantLauncher {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiAssistantLauncherTest"`
-Expected: PASS (3 tests)
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -2553,6 +2782,8 @@ aiLauncher.error.title=AI assistant launch failed
 aiLauncher.error.mcpNotRunning=The local MCP server is not running, so the assistant would be unable to connect. Start Alipsa Accounting normally and try again.
 aiLauncher.error.binaryMissing=Could not find a binary for {0}. Fill in or detect the path first.
 aiLauncher.error.terminalAdapterMissing=Pick a terminal and its path before launching \u2014 a path alone is not enough.
+aiLauncher.error.binaryNotExecutable={0}''s configured path ({1}) is not an executable file. Fix or re-detect the path first.
+aiLauncher.error.terminalNotExecutable=The configured terminal path ({0}) is not an executable file. Fix or re-detect the path first.
 aiLauncher.error.launchFailed=Could not launch the AI assistant: {0}
 ```
 
@@ -2575,6 +2806,8 @@ aiLauncher.error.title=Det gick inte att starta AI-assistenten
 aiLauncher.error.mcpNotRunning=Den lokala MCP-servern körs inte, så assistenten skulle inte kunna ansluta. Starta Alipsa Bokf\u00f6ring normalt och f\u00f6rs\u00f6k igen.
 aiLauncher.error.binaryMissing=Hittade ingen bin\u00e4r f\u00f6r {0}. Fyll i eller hitta s\u00f6kv\u00e4gen f\u00f6rst.
 aiLauncher.error.terminalAdapterMissing=V\u00e4lj en terminal och dess s\u00f6kv\u00e4g innan du startar \u2014 enbart en s\u00f6kv\u00e4g r\u00e4cker inte.
+aiLauncher.error.binaryNotExecutable=Den angivna s\u00f6kv\u00e4gen f\u00f6r {0} ({1}) \u00e4r inte en k\u00f6rbar fil. \u00c5tg\u00e4rda eller hitta s\u00f6kv\u00e4gen p\u00e5 nytt.
+aiLauncher.error.terminalNotExecutable=Den angivna terminals\u00f6kv\u00e4gen ({0}) \u00e4r inte en k\u00f6rbar fil. \u00c5tg\u00e4rda eller hitta s\u00f6kv\u00e4gen p\u00e5 nytt.
 aiLauncher.error.launchFailed=Det gick inte att starta AI-assistenten: {0}
 ```
 
@@ -2870,6 +3103,16 @@ final class AiAssistantLauncherSection {
       showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing'))
       return
     }
+    Path binaryPathCandidate = Paths.get(binaryPathText)
+    if (!aiWorkspaceService.isValidExecutable(binaryPathCandidate)) {
+      showError(I18n.instance.format('aiLauncher.error.binaryNotExecutable', I18n.instance.getString("aiClient.${client.name()}"), binaryPathText))
+      return
+    }
+    Path terminalPathCandidate = Paths.get(terminalPathText)
+    if (!aiWorkspaceService.isValidExecutable(terminalPathCandidate)) {
+      showError(I18n.instance.format('aiLauncher.error.terminalNotExecutable', terminalPathText))
+      return
+    }
     userPreferencesService.setAiBinaryPath(client, binaryPathText)
     userPreferencesService.terminalAdapterKind = adapterKind
     userPreferencesService.terminalPath = terminalPathText
@@ -2920,19 +3163,33 @@ package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNotEquals
+import static org.junit.jupiter.api.Assumptions.assumeTrue
 
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.service.AiWorkspaceService
 import se.alipsa.accounting.service.UserPreferencesService
+import se.alipsa.accounting.support.AppPaths
 
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.prefs.Preferences
 
 class McpSettingsSectionTest {
 
+  @TempDir
+  Path tempDir
+
   @Test
   void regenerateTokenPurgesWorkspaceSecretsBeforeRotating() {
+    // Never let this test (or any test) touch the real user's AI workspace — always redirect
+    // via the dedicated test-only override, exactly like AiWorkspaceServiceTest/AiAssistantLauncherTest.
+    assumeTrue(FileSystems.default.supportedFileAttributeViews().contains('posix'))
+    String previousOverride = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.toString())
     Preferences node = Preferences.userRoot().node("alipsa-accounting-test-${UUID.randomUUID()}")
     try {
       UserPreferencesService userPreferencesService = new UserPreferencesService(node)
@@ -2944,9 +3201,14 @@ class McpSettingsSectionTest {
       section.regenerateToken()
 
       assertNotEquals(originalToken, userPreferencesService.ensureMcpToken())
-      assertEquals(false, java.nio.file.Files.exists(se.alipsa.accounting.support.AppPaths.aiWorkspaceDirectory().resolve('.mcp.json')))
+      assertEquals(false, Files.exists(AppPaths.aiWorkspaceDirectory().resolve('.mcp.json')))
     } finally {
       node.removeNode()
+      if (previousOverride == null) {
+        System.clearProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+      } else {
+        System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, previousOverride)
+      }
     }
   }
 }
@@ -3254,9 +3516,9 @@ These are exactly the gaps the design spec's Testing section flags as impossible
 
 ## Self-Review Notes
 
-- **Spec coverage:** Runtime skill source (Task 5), fixed-location workspace + test isolation override (Task 4), fail-closed POSIX/ACL permissions + symlink chain (Task 6), atomic writes + AtomicMoveNotSupportedException handling (Task 7), per-client config content + fixtures (Task 9), terminal adapters incl. dropped `cmd`/`start` fallback and explicit `wt.exe`/`cmd.exe /v:off` (Task 10), wrapper script templates incl. no-`call`/forced-off-delayed-expansion/double-expansion regression (Task 11), PATH detection via injectable seams (Task 12), workspace orchestration + narrow-scope refresh + purge (Task 13), launcher + spawn-failure cleanup + unique wrapper naming (Task 14), preferences (Task 15), i18n (Task 16), UI incl. typed terminal-adapter override and MCP-availability gating (Task 17), rotation reordered to purge-then-rotate with honest partial-failure reporting (Task 18), lifecycle wiring for availability + shutdown purge (Task 19-20), release notes (Task 21), full-suite + manual verification (Task 22). All spec sections have a corresponding task.
+- **Spec coverage:** Runtime skill source (Task 5), fixed-location workspace + test isolation override (Task 4), fail-closed POSIX/ACL permissions + symlink chain, including symlink checks *before* any traversal/permission mutation, not after (Task 6), atomic writes + AtomicMoveNotSupportedException handling + a symlink re-check immediately before both the temp-file create and the move (Task 7), per-client config content + fixtures, including the confirmed-correct Vibe `[[mcp_servers]]` array-of-tables schema (Task 9), terminal adapters incl. dropped `cmd`/`start` fallback and explicit `wt.exe`/`cmd.exe /v:off` (Task 10), wrapper script templates incl. no-`call`/forced-off-delayed-expansion/double-expansion regression/generalized env-var map for Vibe's `VIBE_HOME` (Task 11), PATH detection via injectable seams (Task 12), workspace orchestration + narrow-scope refresh + symlink-safe purge with directory-stream failures captured in `PurgeResult` rather than escaping + `isValidExecutable` (Task 13), launcher + spawn-failure cleanup + unique wrapper naming + Vibe's `VIBE_HOME` env var + pre-launch executable validation (Task 14), preferences (Task 15), i18n (Task 16), UI incl. typed terminal-adapter override, MCP-availability gating, and executable-path validation before writing/spawning anything (Task 17), rotation reordered to purge-then-rotate with honest partial-failure reporting and correct test isolation (Task 18), lifecycle wiring for availability + shutdown purge (Task 19-20), release notes (Task 21), full-suite + manual verification (Task 22). All spec sections have a corresponding task.
 - **Placeholder scan:** no TBD/TODO markers; every step has complete, runnable code.
-- **Type consistency:** `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17).
+- **Type consistency:** `SecretFileWriter.write(Path root, Path target, byte[], SecretFileKind)` takes the workspace root as its first argument everywhere it's called (Tasks 7, 13, 14). `LaunchWrapperScript.unixContent`/`windowsContent` take a `Map<String, String> envVars`, not a `tokenOrNull`, everywhere (Tasks 11, 14). `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17). `AiWorkspaceService`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` consistently across Task 13's own tests and nowhere else constructed directly. `AiAssistantLauncher`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` consistently across Task 14's tests.
 
 ---
 
