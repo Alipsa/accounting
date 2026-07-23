@@ -63,7 +63,7 @@ This compiles `accounting-mcp.md` onto the runtime classpath (e.g. readable via 
 
 New directory: `AppPaths.applicationHome().resolve('ai-workspace')` (mirrors the existing `dataDirectory()`/`attachmentsDirectory()` pattern in `AppPaths.groovy`; add `aiWorkspaceDirectory()` alongside them and register it in `ensureDirectoryStructure()`).
 
-This directory is **fully app-managed** — nothing else should write user content there, so files inside it are always overwritten on each launch to keep the endpoint/token current. It contains, per client:
+This directory is **fully app-managed** — nothing else should write user content there. Each client's own config + instructions file is refreshed whenever *that* client is launched, to keep its endpoint/token current (see Secret lifecycle below for exactly what gets touched, and when a broader all-clients purge happens instead). It contains, per client:
 
 | Client | Config file (relative to workspace) | Format | Instructions file |
 |---|---|---|---|
@@ -78,18 +78,26 @@ Claude Code's config carries a literal `Authorization: Bearer <token>` header; s
 
 TOML is written by hand with simple string formatting (the schema needed is a small fixed `[mcp_servers.accounting]` table) — no new TOML library dependency.
 
-### Workspace and file permissions (fixes: plaintext bearer tokens in potentially shared storage; must fail closed, not best-effort)
+### Workspace and file permissions (fixes: plaintext bearer tokens in potentially shared storage; must fail closed, not best-effort; must not treat Windows as unsupported)
 
 `AppPaths.ensureDirectoryStructure()` deliberately does **not** tighten permissions when `applicationHome()` is a user-selected/shared location (see the comment at `AppPaths.groovy:112-116`), and even where it does try, `tightenPermissions()` only logs a warning and continues if the attempt fails (`AppPaths.groovy:139-166`). That best-effort behavior is correct for shared accounting data, but wrong for a directory holding bearer-token secrets — and `applicationHome()` can itself be a user-configured location (the existing configurable-data-location feature), so the workspace path cannot be assumed to be a "safe," attacker-free filesystem location.
 
-`AiWorkspaceService` therefore treats permissioning as **fail-closed**, not best-effort:
-- On `ensureWorkspace()`, create the directory (and any secret-bearing file within it) with owner-only permissions **set at creation time** via `PosixFilePermissions.asFileAttribute(...)` passed directly to `Files.createDirectory`/`Files.createFile` — never create-with-default-permissions-then-chmod-after, which leaves a window where the file is briefly more permissive than intended.
-- Immediately after creation (and before every write of secret content), **read back** the actual permissions (`Files.getPosixFilePermissions`) and verify they are owner-only. If verification fails — non-POSIX filesystem, a hostile shared mount, anything — refuse to write the credential-bearing file and surface an error rather than silently proceeding with weaker protection.
-- Before writing to any path in the workspace, check `Files.isSymbolicLink(path)`. If the target is (or has become) a symlink, refuse to write through it and surface an error — this guards against another party on a shared/custom-location filesystem pre-planting a symlink to redirect our write elsewhere (a classic shared-directory symlink attack).
+`AiWorkspaceService` therefore treats permissioning as **fail-closed**, not best-effort — but "fail closed" must mean *per-platform mechanism fails*, not *non-POSIX filesystem detected*, since Windows is a supported platform and NTFS has no POSIX permission bits at all (`Files.getPosixFilePermissions` throws `UnsupportedOperationException` there unconditionally, which would make the naive fail-closed check refuse Windows outright). The service picks its restriction mechanism from `Path.getFileSystem().supportedFileAttributeViews()`:
+- **`"posix"` supported** (Linux, macOS): create the directory/file with owner-only permissions **set at creation time** via `PosixFilePermissions.asFileAttribute(...)` passed directly to `Files.createDirectory`/`Files.createFile` — never create-with-default-permissions-then-chmod-after, which leaves a window where the file is briefly more permissive than intended. Immediately after creation (and before every write of secret content), **read back** `Files.getPosixFilePermissions` and verify owner-only.
+- **`"acl"` supported, `"posix"` not** (Windows/NTFS): use `Files.getFileAttributeView(path, AclFileAttributeView)` to replace the file/directory's ACL with a single ACE granting only the current OS user (resolved via the file store's `UserPrincipalLookupService`) full control, removing any inherited/broader ACEs (e.g. built-in `Users`/`Everyone`). Immediately after, read the ACL back via the same view and verify it contains only that one owner ACE.
+- **Neither supported**: refuse — this is the only case treated as an unsupported filesystem, and it is not expected on any of the three shipped platforms.
+
+In all cases, if the platform-appropriate verification step fails, refuse to write the credential-bearing file and surface an error rather than silently proceeding with weaker protection.
+
+Before writing to any path in the workspace, verify no symlink exists anywhere along the path — see Symlink checks below (a single final-target check is not sufficient).
+
+### Symlink checks cover every path component (fixes: checking only the final target misses a symlinked parent)
+
+Checking `Files.isSymbolicLink()` on only the final file (e.g. `ai-workspace/.codex/config.toml`) does not protect against an *ancestor* directory — `ai-workspace` itself, or `.codex`, or `.claude/skills` — having been replaced with a symlink; a write would then land wherever that parent link points, following it transparently. `AiWorkspaceService` therefore has a `verifyNoSymlinksInPath(Path candidate)` helper that walks every path segment from the `ai-workspace` root down to (and including) `candidate`, checking each with `Files.isSymbolicLink` (which does not follow links), and refuses the operation if any segment — intermediate directory or final file — is a symlink. This check runs before every create, write, move, and delete inside the workspace, not just before the final leaf write.
 
 ### Skill file: copy, not symlink (fixes: symlink is non-portable and update-fragile)
 
-Symlinking (the original plan for Claude Code specifically) requires elevated privileges/developer mode on Windows and breaks if the app's install path changes. Since the workspace is refreshed on every launch anyway, and the skill content is now a small classpath resource (see above), every client gets a plain file **copy** of that resource content — uniform across all four clients, no platform-specific symlink logic needed at all.
+Symlinking (the original plan for Claude Code specifically) requires elevated privileges/developer mode on Windows and breaks if the app's install path changes. Since each client's own instructions file is refreshed on every launch of that client anyway, and the skill content is now a small classpath resource (see above), every client gets a plain file **copy** of that resource content — uniform across all four clients, no platform-specific symlink logic needed at all.
 
 ---
 
@@ -109,28 +117,38 @@ A free-text "terminal command" string cannot be safely combined with per-platfor
 
 `ProcessBuilder.environment()` only reliably applies to the process we directly spawn. Terminal emulators that fork/exec a shell normally propagate environment down the process tree, but macOS app launches via `open`/`osascript`/LaunchServices are a documented exception — they do **not** reliably inherit the launching process's environment. Relying on env-var inheritance through an arbitrary terminal emulator is therefore fragile across platforms, not just macOS.
 
-Fix: `AiAssistantLauncher` writes a small **per-launch wrapper script** into the workspace (`ai-workspace/.launch-<client>.sh` on Unix, `.launch-<client>.cmd` on Windows), regenerated on every launch:
+Fix: `AiAssistantLauncher` writes a small **per-launch wrapper script** into the workspace, with a unique name per invocation of Launch — `ai-workspace/.launch-<client>-<uuid>.sh` on Unix, `.launch-<client>-<uuid>.cmd` on Windows (the uuid suffix is what resolves the cross-launch race described in Wrapper naming and cleanup timing below). Every terminal adapter is only ever told to run this wrapper script's path — the token never appears in a terminal command line, an AppleScript string, or a process argument list.
+
+The wrapper's own content is itself shell/batch source and therefore just as injectable as any other generated script if paths are substituted in naively with double quotes — `"$( ... )"` and `` `...` `` still execute inside double-quoted strings in `sh`. The Unix wrapper therefore uses the same `shellQuoteSingle()` helper defined for the macOS terminal adapter (see Terminal adapters above) for **every** substituted value, not double quotes:
 
 ```sh
 #!/bin/sh
-export ACCOUNTING_MCP_TOKEN="<token>"
-cd "<workspace>"
-exec "<binaryPath>"
+export ACCOUNTING_MCP_TOKEN='<token, single-quote-escaped>'
+cd '<workspace, single-quote-escaped>'
+exec '<binaryPath, single-quote-escaped>'
 ```
 
-(Non-Codex clients don't need the exported var, but get the same wrapper shape for consistency — `cd` + `exec` only.) Every terminal adapter is only ever told to run this wrapper script's path — the token never appears in a terminal command line, an AppleScript string, or a process argument list.
+The Windows `.cmd` wrapper is a different scripting language with its own escaping rules (`%`/`!` variable expansion, `&`, `^`, quote handling — distinct from the `cmd /c start` command-line quoting already covered by `escapeForCmd` in Terminal adapters above). It gets its own dedicated, separately unit-tested `escapeForCmdScript(String)` helper for values substituted into `.cmd` file content. If any value contains a character that `escapeForCmdScript` cannot represent safely, `AiWorkspaceService` refuses to write the wrapper and surfaces an error rather than emitting an unsafe script.
 
-### Secret lifecycle: atomic writes and unified cleanup (fixes: wrapper/config secret model was inconsistent and incomplete; atomic-write and cleanup policy was missing)
+(Non-Codex clients don't need the exported var, but get the same wrapper shape for consistency — `cd` + `exec` only.)
 
-The "secret set" for a given refresh is: the current client's config file (Claude/Kimi/Vibe carry a literal token; Codex's config only carries the env-var name) and that client's wrapper script (always carries the token, all clients). Two rules apply uniformly to every file in this set:
+### Secret lifecycle: atomic writes and cleanup (fixes: wrapper/config secret model was inconsistent and incomplete; atomic-write and cleanup policy was missing; purge-on-every-launch raced with in-flight launches)
 
-1. **Atomic, permission-safe writes.** Never write a secret-bearing file in place. Write to a sibling temp file in the same directory (e.g. `.mcp.json.tmp-<random>`), created with owner-only permissions from the start (same `PosixFilePermissions.asFileAttribute` approach as directory creation, not chmod-after), then `Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)`. This means a crash mid-write never leaves a partially written config or wrapper behind — the target either has the old complete content or the new complete content, never a fragment.
-2. **One unified cleanup operation.** `AiWorkspaceService.purgeAllSecrets()` deletes every config file and every wrapper script for **all four clients** in one pass (not just the one client currently being refreshed) — the earlier plan of only deleting "config files" for the one active client left stale wrapper scripts (and other clients' configs) holding the old token indefinitely. This single operation is called:
-   - Immediately after a token regeneration (see UserPreferencesService additions below — invoked by a higher-level coordinator, not by `UserPreferencesService` itself).
-   - On application shutdown (hooked into the same lifecycle that already stops `LoopbackMcpServer`).
-   - As the first step of every `refreshClientFiles`/launch cycle for consistency, immediately followed by writing the fresh files for the client being launched — so at any point in time the only secret-bearing files that can exist are the ones for the client most recently launched or refreshed.
+The "secret set" is: every client's config file (Claude/Kimi/Vibe carry a literal token; Codex's config only carries the env-var name) and every wrapper script (always carries the token, all clients). Rules:
 
-A wrapper script therefore has a bounded lifetime: it exists from one launch/rotation until the next launch, rotation, or app shutdown — never indefinitely, even though (unlike a config file) it can't be deleted the instant the spawned terminal starts, since the terminal's shell needs to read and `exec` it first and we have no reliable cross-platform hook for "the shell has finished reading the script."
+1. **Atomic, permission-safe writes.** Never write a secret-bearing file in place. Write to a sibling temp file in the same directory (e.g. `.mcp.json.tmp-<random>`), created with owner-only permissions from the start (same platform-appropriate mechanism as directory creation, not chmod/ACL-after), then `Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)`. This means a crash mid-write never leaves a partially written config or wrapper behind — the target either has the old complete content or the new complete content, never a fragment. If the filesystem doesn't support atomic move (`Files.move` throws `AtomicMoveNotSupportedException` — possible on some network/custom mounts), that is treated as a **launch-blocking error**, surfaced to the user; it never silently falls back to a non-atomic copy-then-replace, which would reintroduce the partial-write risk this rule exists to prevent.
+2. **`refreshClientFiles(client, ...)` only touches that one client's own config + instructions file** — it does not purge or touch any other client's files, and (per Wrapper naming and cleanup timing below) it does not delete any existing wrapper scripts either. This is a deliberate change from an earlier draft that purged every client's files on every single launch: that made launching client B delete client A's still-in-use wrapper script out from under a terminal session that hadn't finished starting yet.
+3. **`AiWorkspaceService.purgeAllSecrets()`** deletes every config file for every client and every wrapper script (regardless of client or uuid) in one pass. This broader, "invalidate everything" operation is called only from two deliberate, infrequent events, not from routine launches:
+   - The token-rotation coordinator, **before** rotating the token (see Rotation ordering under UserPreferencesService additions below).
+   - Application shutdown (hooked into the same lifecycle that already stops `LoopbackMcpServer`).
+
+### Wrapper naming and cleanup timing (fixes: purging on every launch races with a previously opened terminal that hasn't yet read its wrapper)
+
+If wrapper scripts shared one fixed name per client and every launch purged-then-rewrote them, launching client B while client A's terminal was still starting (its shell hadn't yet read/`exec`'d the wrapper) could delete client A's wrapper file out from under it, intermittently breaking that launch based on timing. Since we don't have a cross-platform hook for "the shell has finished reading the script," the fix is to make each wrapper's filename unique per launch (`.launch-<client>-<uuid>.*`, see Launch wrapper script above) rather than trying to time its deletion precisely:
+- Concurrent launches (same client or different clients) never collide or delete each other's wrapper, because each gets its own filename.
+- Wrapper files are only swept away in bulk by `purgeAllSecrets()`, i.e. at token rotation or app shutdown — both are already-accepted "invalidate active AI sessions" moments (rotation explicitly tells the user this; shutdown is self-evident), so deleting an in-flight wrapper at those moments is intended behavior, not a bug.
+- This does still leave one narrow, accepted residual case: rotating the token (or shutting down) at the exact moment a *different* launch's wrapper is mid-read is possible in principle, but both trigger events are rare, deliberate, user-initiated actions where "any AI session that was still starting may need to be relaunched" is a reasonable, documented consequence — unlike the previous per-launch purge, which made the race an incidental side effect of routine, frequent use.
+- Config files are a narrower case than wrappers here: their filenames (`.mcp.json`, `.codex/config.toml`, etc.) are dictated by each CLI's own discovery convention and can't be made unique per launch, so the same narrow rotation-time race in principle applies to them too. This is accepted as a documented limitation rather than solved, since renaming them isn't an option.
 
 ---
 
@@ -146,12 +164,12 @@ One entry per client (`CLAUDE, CODEX, KIMI, VIBE`), each knowing:
 
 ### `AiWorkspaceService` (new, `service/AiWorkspaceService.groovy`)
 - `ensureWorkspace()` — creates the directory if missing, with owner-only permissions set at creation time; verifies (reads back) that they took effect and fails closed (throws, does not warn-and-continue) if not.
-- `purgeAllSecrets()` — deletes every client's config file and wrapper script in one pass (see Secret lifecycle above).
-- `refreshClientFiles(AiClient client, String endpoint, String token)` — calls `purgeAllSecrets()`, then atomically writes (temp file + `ATOMIC_MOVE`) that client's config + instructions file, rejecting the write if the target path is a symlink.
+- `purgeAllSecrets()` — deletes every client's config file and every wrapper script in one pass; called only at token rotation (before rotating, see Rotation ordering below) and app shutdown, never from a routine launch (see Wrapper naming and cleanup timing above).
+- `refreshClientFiles(AiClient client, String endpoint, String token)` — atomically writes (temp file + `ATOMIC_MOVE`) only that one client's config + instructions file, rejecting the write if any path component is a symlink (`verifyNoSymlinksInPath`).
 - `detectBinaryPath(AiClient client)` / `detectTerminalAdapter()` — resolution logic depends only on the injected `EnvironmentLookup` and `ExecutableProbe` (see Testing), not directly on `System.getenv`.
 
 ### `AiAssistantLauncher` (new, `service/AiAssistantLauncher.groovy`)
-- `launch(AiClient client, Path binaryPath, TerminalAdapter adapter, Path workspace, String token)` — writes the launch wrapper script (atomically, owner-only permissions — same discipline as `AiWorkspaceService`'s config writes, see Secret lifecycle), builds the adapter's `List<String>` command targeting that script, and spawns it via the injected `ProcessRunner` (see Testing) with `directory(workspace.toFile())`.
+- `launch(AiClient client, Path binaryPath, TerminalAdapter adapter, Path workspace, String token)` — generates a fresh uuid-suffixed wrapper filename, writes it atomically with owner-only permissions (same discipline and symlink checks as `AiWorkspaceService`'s config writes, see Secret lifecycle), builds the adapter's `List<String>` command targeting that script, and spawns it via the injected `ProcessRunner` (see Testing) with `directory(workspace.toFile())`.
 - Surfaces failures (binary not found, no terminal adapter found, spawn `IOException`) to the caller rather than swallowing them.
 - Before doing any of this, requires the caller to have already confirmed the MCP server is running (see Flow below) — it does not perform that check itself, to keep it a pure launch mechanism.
 
@@ -168,7 +186,15 @@ New keys, same pattern as `MCP_TOKEN_KEY`:
 
 Simple `getAiBinaryPath(AiClient)/setAiBinaryPath(AiClient, String)` and `getTerminalPath()/setTerminalPath(String)` accessors.
 
-`UserPreferencesService.regenerateMcpToken()` itself is **not** changed to touch the filesystem — it stays a pure preferences operation, keeping the preferences store decoupled from workspace file lifecycle (mixing the two would make error handling/atomicity of the combined operation unclear: what should happen to the returned token if the filesystem cleanup half fails?). Instead, `McpSettingsSection`'s existing "regenerate token" button handler — a UI-level coordinator that already has access to both collaborators — calls `userPreferencesService.regenerateMcpToken()` and then, as a second explicit step, `aiWorkspaceService.purgeAllSecrets()` (see Secret lifecycle above), reporting any failure of the second step to the user distinctly from the first.
+`UserPreferencesService.regenerateMcpToken()` itself is **not** changed to touch the filesystem — it stays a pure preferences operation, keeping the preferences store decoupled from workspace file lifecycle. Instead, `McpSettingsSection`'s existing "regenerate token" button handler — a UI-level coordinator that already has access to both collaborators — orchestrates the two steps.
+
+### Rotation ordering (fixes: rotating first and purging second can leave stale plaintext behind indefinitely if the purge fails)
+
+The coordinator **purges before rotating**, not after:
+1. `aiWorkspaceService.purgeAllSecrets()` — if this throws, the handler stops here: it reports the error and does **not** call `regenerateMcpToken()`. The old token remains the active one and no workspace files were left in an inconsistent state — the user can retry.
+2. Only if step 1 succeeds: `userPreferencesService.regenerateMcpToken()`, returning the new token to display in the UI.
+
+This ordering means the only failure mode is "old token still active, purge didn't happen, nothing rotated" (safe, retryable) — never "new token active while old plaintext secrets linger on disk with no path back to cleaning them up," which was the risk with the reverse order.
 
 ---
 
@@ -211,8 +237,12 @@ A hand-written config that's syntactically valid but silently ignored by the tar
 - Unit tests per `AiClient` config writer: verify exact file contents and paths for each of the 4 formats (no real CLI needed) — e.g. assert the JSON/TOML written matches expected structure given a fake endpoint/token.
 - `EnvironmentLookup`, `ExecutableProbe`, and `ProcessRunner` are small injectable interfaces (real implementations wrap `System.getenv`, filesystem executable checks, and `ProcessBuilder.start()` respectively). Tests inject fakes: a fake `EnvironmentLookup` with a controlled `PATH`, a fake `ExecutableProbe` backed by a `@TempDir`, and a fake `ProcessRunner` that records the constructed `List<String>` command instead of actually spawning a terminal.
 - This makes `detectBinaryPath`/`detectTerminalAdapter` deterministic, and lets tests assert the exact command list built for each terminal adapter (including that no secret ever appears in it) without opening a real GUI terminal.
-- `escapeForCmd`, `shellQuoteSingle`, and `appleScriptEscape` each get unit tests with adversarial inputs (spaces, single quotes, double quotes, backslashes, a combination of all four) asserting the exact escaped output.
-- `AiWorkspaceService` permission handling: a test that simulates permission-verification failure (e.g. a fake permission-check abstraction returning "not owner-only") asserts the service throws/refuses rather than warning-and-continuing; a test asserts writing to a path that `Files.isSymbolicLink` reports as a symlink is refused.
-- Atomic-write behavior: a test asserts `refreshClientFiles` leaves either the old complete file or the new complete file in place, never a partial one (simulate by injecting a `ProcessRunner`-style seam that fails the move step and asserting the original file is untouched).
-- `purgeAllSecrets()`: a test populates config + wrapper files for multiple clients in a temp workspace and asserts all of them are gone after one call, including files for clients other than the one just launched.
+- `escapeForCmd`, `escapeForCmdScript`, `shellQuoteSingle`, and `appleScriptEscape` each get unit tests with adversarial inputs (spaces, single/double quotes, backslashes, `$(...)`, backticks, `%`, `!`, `&`, `^`, a combination of all of the above) asserting the exact escaped output.
+- **Wrapper-content tests, not just adapter-command tests**: render the actual wrapper script text (both `.sh` and `.cmd` variants) using adversarial workspace/binary paths and tokens (e.g. containing `` $(rm -rf ~) ``, `` `whoami` ``, `; echo pwned`, `%PATH%`, `^&`) and assert the rendered file content is the correctly-escaped literal (single-quoted / cmd-escaped) text — the adapter-command tests only check the `List<String>` passed to `ProcessBuilder`, which is a separate concern from whether the wrapper's own textual content is safe.
+- `AiWorkspaceService` permission handling, per platform: a POSIX-path test simulates permission-verification failure and asserts the service throws/refuses; an ACL-path test (using a fake `AclFileAttributeView`-backed abstraction, since real Windows ACLs aren't exercisable in a Linux CI runner) asserts the same fail-closed behavior via the Windows branch; a test asserts `supportedFileAttributeViews()` reporting neither `posix` nor `acl` is refused.
+- `verifyNoSymlinksInPath`: a test creates a real symlink at an *intermediate* directory (e.g. workspace-root's child) in a `@TempDir` and asserts a write to a file two levels below it is refused — not just a test of the final-leaf-is-a-symlink case.
+- Atomic-write behavior: a test asserts `refreshClientFiles` leaves either the old complete file or the new complete file in place, never a partial one (simulate by injecting a seam that fails the move step and asserting the original file is untouched); a separate test simulates `AtomicMoveNotSupportedException` and asserts the operation fails loudly rather than falling back to a non-atomic replace.
+- `purgeAllSecrets()`: a test populates config + wrapper files for multiple clients in a temp workspace and asserts all of them are gone after one call.
+- Rotation ordering: a test simulates `purgeAllSecrets()` failing and asserts `regenerateMcpToken()` is never called in that case (old token/preferences untouched).
+- Wrapper-naming/no-cross-launch-race: a test launches (against fakes) the same and different clients twice in a row and asserts each produces a distinct wrapper filename, and that `refreshClientFiles` for one client never deletes another client's existing wrapper or config file.
 - Terminal-spawn itself (the real `ProcessRunner` actually opening a GUI terminal) is not realistically unit-testable/CI-friendly — note as a manual verification step per platform in the PR description, per project convention for Swing/desktop-integration changes. This is also where the Claude/Codex smoke test and any Kimi/Vibe promotion smoke test happen.
