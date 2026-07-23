@@ -3,7 +3,6 @@ package se.alipsa.accounting.ui
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
-import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.I18n
 
 import java.time.LocalDate
@@ -13,8 +12,8 @@ import java.util.function.Supplier
 /** Performs save and correction actions using state supplied by the voucher editor. */
 final class VoucherEditorActions {
 
-  private final VoucherService voucherService
-  private final ActiveCompanyManager activeCompanyManager
+  private final VoucherOperations voucherOperations
+  private final Supplier<FiscalYear> fiscalYearSupplier
   private final Supplier<LocalDate> dateSupplier
   private final Supplier<String> descriptionSupplier
   private final Supplier<List<VoucherLine>> linesSupplier
@@ -25,8 +24,8 @@ final class VoucherEditorActions {
   private final Consumer<Voucher> savedConsumer
 
   VoucherEditorActions(
-      VoucherService voucherService,
-      ActiveCompanyManager activeCompanyManager,
+      VoucherOperations voucherOperations,
+      Supplier<FiscalYear> fiscalYearSupplier,
       Supplier<LocalDate> dateSupplier,
       Supplier<String> descriptionSupplier,
       Supplier<List<VoucherLine>> linesSupplier,
@@ -36,8 +35,8 @@ final class VoucherEditorActions {
       Consumer<String> errorConsumer,
       Consumer<Voucher> savedConsumer
   ) {
-    this.voucherService = voucherService
-    this.activeCompanyManager = activeCompanyManager
+    this.voucherOperations = voucherOperations
+    this.fiscalYearSupplier = fiscalYearSupplier
     this.dateSupplier = dateSupplier
     this.descriptionSupplier = descriptionSupplier
     this.linesSupplier = linesSupplier
@@ -49,7 +48,7 @@ final class VoucherEditorActions {
   }
 
   Voucher save() {
-    FiscalYear fiscalYear = activeCompanyManager.fiscalYear
+    FiscalYear fiscalYear = fiscalYearSupplier.get()
     if (fiscalYear == null) {
       errorConsumer.accept(I18n.instance.getString('voucherPanel.error.noFiscalYear'))
       return null
@@ -64,7 +63,8 @@ final class VoucherEditorActions {
         errorConsumer.accept(I18n.instance.getString('voucherPanel.error.existingVoucherReadOnly'))
         return null
       }
-      Voucher saved = voucherService.createVoucher(fiscalYear.id, seriesSupplier.get(), date, descriptionSupplier.get(), linesSupplier.get())
+      Voucher saved = voucherOperations.createVoucher(
+          fiscalYear.id, seriesSupplier.get(), date, descriptionSupplier.get(), linesSupplier.get())
       infoConsumer.accept(I18n.instance.getString('voucherPanel.message.saved').replace('{0}', saved.voucherNumber ?: ''))
       savedConsumer.accept(saved)
       return saved
@@ -79,7 +79,7 @@ final class VoucherEditorActions {
       return null
     }
     try {
-      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+      Voucher correction = voucherOperations.createCorrectionVoucher(currentVoucher.id, null)
       infoConsumer.accept(I18n.instance.format('voucherPanel.message.correctionCreated', correction.voucherNumber ?: ''))
       return correction
     } catch (Exception exception) {

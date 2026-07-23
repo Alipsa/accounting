@@ -8,6 +8,7 @@ import groovy.transform.PackageScope
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.OpeningBalance
 import se.alipsa.accounting.domain.VatCode
+import se.alipsa.accounting.domain.Voucher
 
 import java.math.RoundingMode
 
@@ -382,6 +383,50 @@ final class AccountService {
     }
   }
 
+  BigDecimal calculateAccountBalanceBeforeVoucher(
+      long companyId,
+      long fiscalYearId,
+      String accountNumber,
+      Voucher voucher
+  ) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult accountRow = sql.firstRow('''
+          select id, normal_balance_side as normalBalanceSide
+            from account
+           where company_id = ?
+             and account_number = ?
+      ''', [companyId, normalized]) as GroovyRowResult
+      if (accountRow == null) {
+        return BigDecimal.ZERO.setScale(2)
+      }
+      long accountId = ((Number) accountRow.get('id')).longValue()
+      String normalSide = accountRow.get('normalBalanceSide') as String
+      BigDecimal opening = openingBalance(sql, fiscalYearId, accountId)
+      GroovyRowResult transactionRow = sql.firstRow('''
+          select coalesce(sum(vl.debit_amount), 0) as totalDebit,
+                 coalesce(sum(vl.credit_amount), 0) as totalCredit
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id = ?
+             and v.fiscal_year_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+             and (v.accounting_date < ?
+                  or (v.accounting_date = ? and
+                      (coalesce(v.running_number, 2147483647) < ?
+                       or (coalesce(v.running_number, 2147483647) = ? and v.id < ?))))
+      ''', [accountId, fiscalYearId, voucher.accountingDate, voucher.accountingDate,
+             voucher.runningNumber ?: Integer.MAX_VALUE, voucher.runningNumber ?: Integer.MAX_VALUE, voucher.id]) as GroovyRowResult
+      BigDecimal totalDebit = new BigDecimal(transactionRow.get('totalDebit').toString())
+      BigDecimal totalCredit = new BigDecimal(transactionRow.get('totalCredit').toString())
+      BigDecimal net = normalSide == 'CREDIT'
+          ? totalCredit.subtract(totalDebit)
+          : totalDebit.subtract(totalCredit)
+      opening.add(net).setScale(2)
+    }
+  }
+
   Map<String, BigDecimal> calculateAccountBalances(
       long companyId,
       long fiscalYearId,
@@ -462,6 +507,99 @@ final class AccountService {
       }
     }
     balances
+  }
+
+  Map<String, BigDecimal> calculateAccountBalancesBeforeVoucher(
+      long companyId,
+      long fiscalYearId,
+      Collection<String> accountNumbers,
+      Voucher voucher
+  ) {
+    CompanyService.requireValidCompanyId(companyId)
+    Set<String> normalizedAccounts = new LinkedHashSet<>()
+    accountNumbers.each { String accountNumber ->
+      if (accountNumber?.trim()) {
+        normalizedAccounts << normalizeAccountNumber(accountNumber)
+      }
+    }
+    if (normalizedAccounts.isEmpty()) {
+      return [:]
+    }
+
+    String accountPlaceholders = normalizedAccounts.collect { '?' }.join(', ')
+    Map<String, BigDecimal> balances = [:]
+    databaseService.withSql { Sql sql ->
+      List<Object> accountParams = [fiscalYearId, companyId]
+      accountParams.addAll(normalizedAccounts)
+      List<GroovyRowResult> accounts = sql.rows("""
+          select a.id,
+                 a.account_number as accountNumber,
+                 a.normal_balance_side as normalBalanceSide,
+                 coalesce(ob.amount, 0) as openingAmount
+            from account a
+            left join opening_balance ob
+              on ob.account_id = a.id
+             and ob.fiscal_year_id = ?
+           where a.company_id = ?
+             and a.account_number in (${accountPlaceholders})
+      """, accountParams) as List<GroovyRowResult>
+      if (accounts.isEmpty()) {
+        return
+      }
+
+      String transactionPlaceholders = accounts.collect { '?' }.join(', ')
+      List<Object> transactionParams = accounts.collect { GroovyRowResult row ->
+        ((Number) row.get('id')).longValue()
+      } as List<Object>
+      transactionParams.addAll([fiscalYearId, voucher.accountingDate, voucher.accountingDate,
+                                voucher.runningNumber ?: Integer.MAX_VALUE, voucher.runningNumber ?: Integer.MAX_VALUE, voucher.id])
+      List<GroovyRowResult> transactions = sql.rows("""
+          select vl.account_id as accountId,
+                 coalesce(sum(vl.debit_amount), 0) as totalDebit,
+                 coalesce(sum(vl.credit_amount), 0) as totalCredit
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id in (${transactionPlaceholders})
+             and v.fiscal_year_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+             and (v.accounting_date < ?
+                  or (v.accounting_date = ? and
+                      (coalesce(v.running_number, 2147483647) < ?
+                       or (coalesce(v.running_number, 2147483647) = ? and v.id < ?))))
+           group by vl.account_id
+      """, transactionParams) as List<GroovyRowResult>
+      Map<Long, GroovyRowResult> transactionsByAccountId = [:]
+      transactions.each { GroovyRowResult row ->
+        transactionsByAccountId[((Number) row.get('accountId')).longValue()] = row
+      }
+
+      accounts.each { GroovyRowResult account ->
+        long accountId = ((Number) account.get('id')).longValue()
+        GroovyRowResult transaction = transactionsByAccountId[accountId]
+        BigDecimal totalDebit = transaction == null
+            ? BigDecimal.ZERO
+            : new BigDecimal(transaction.get('totalDebit').toString())
+        BigDecimal totalCredit = transaction == null
+            ? BigDecimal.ZERO
+            : new BigDecimal(transaction.get('totalCredit').toString())
+        BigDecimal net = account.get('normalBalanceSide') == 'CREDIT'
+            ? totalCredit.subtract(totalDebit)
+            : totalDebit.subtract(totalCredit)
+        balances[account.get('accountNumber') as String] = new BigDecimal(
+            account.get('openingAmount').toString()).add(net).setScale(2)
+      }
+    }
+    balances
+  }
+
+  private static BigDecimal openingBalance(Sql sql, long fiscalYearId, long accountId) {
+    GroovyRowResult openingRow = sql.firstRow('''
+        select coalesce(amount, 0) as amount
+          from opening_balance
+         where fiscal_year_id = ?
+           and account_id = ?
+    ''', [fiscalYearId, accountId]) as GroovyRowResult
+    openingRow == null ? BigDecimal.ZERO : new BigDecimal(openingRow.get('amount').toString())
   }
 
   Map<String, String> normalBalanceSides(long companyId, Collection<String> accountNumbers) {

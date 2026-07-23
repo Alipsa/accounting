@@ -150,7 +150,19 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     registerListenersOnce()
     buildUi()
     mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
-    voucherEditorActions = new VoucherEditorActions(voucherService, activeCompanyManager, { datePicker.date },
+    VoucherOperations voucherOperations = new VoucherOperations() {
+      @Override
+      Voucher createVoucher(long fiscalYearId, String seriesCode, LocalDate accountingDate,
+                            String description, List<VoucherLine> lines) {
+        voucherService.createVoucher(fiscalYearId, seriesCode, accountingDate, description, lines)
+      }
+
+      @Override
+      Voucher createCorrectionVoucher(long originalVoucherId, String description) {
+        voucherService.createCorrectionVoucher(originalVoucherId, description)
+      }
+    }
+    voucherEditorActions = new VoucherEditorActions(voucherOperations, { activeCompanyManager.fiscalYear }, { datePicker.date },
         { descriptionField.text?.trim() }, { lineTableModel.toVoucherLines() }, { currentVoucher },
         { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::handleSavedVoucher)
     reloadVoucherList()
@@ -1049,8 +1061,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         balance = BigDecimal.ZERO
       } else {
         try {
-          balance = accountService.calculateAccountBalance(
-              activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher?.id)
+          balance = currentVoucher == null
+              ? accountService.calculateAccountBalance(activeCompanyManager.companyId, fy.id, entry.accountNumber, null)
+              : accountService.calculateAccountBalanceBeforeVoucher(
+                  activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher)
         } catch (Exception ignored) {
           balance = BigDecimal.ZERO
         }
@@ -1071,8 +1085,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (fy != null) {
       try {
         if (!missingAccounts.isEmpty()) {
-          Map<String, BigDecimal> balances = accountService.calculateAccountBalances(
-              activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher?.id)
+          Map<String, BigDecimal> balances = currentVoucher == null
+              ? accountService.calculateAccountBalances(activeCompanyManager.companyId, fy.id, missingAccounts, null)
+              : accountService.calculateAccountBalancesBeforeVoucher(
+                  activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher)
           balanceCache.putAll(balances)
         }
       } catch (Exception ignored) {
