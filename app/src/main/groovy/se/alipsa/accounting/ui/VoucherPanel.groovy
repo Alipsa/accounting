@@ -1062,7 +1062,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       } else {
         try {
           balance = currentVoucher == null
-              ? accountService.calculateAccountBalance(activeCompanyManager.companyId, fy.id, entry.accountNumber, null)
+              ? accountService.calculateAccountBalance(activeCompanyManager.companyId, fy.id, entry.accountNumber)
               : accountService.calculateAccountBalanceBeforeVoucher(
                   activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher)
         } catch (Exception ignored) {
@@ -1086,7 +1086,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       try {
         if (!missingAccounts.isEmpty()) {
           Map<String, BigDecimal> balances = currentVoucher == null
-              ? accountService.calculateAccountBalances(activeCompanyManager.companyId, fy.id, missingAccounts, null)
+              ? accountService.calculateAccountBalances(activeCompanyManager.companyId, fy.id, missingAccounts)
               : accountService.calculateAccountBalancesBeforeVoucher(
                   activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher)
           balanceCache.putAll(balances)

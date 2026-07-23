@@ -332,7 +332,7 @@ final class AccountService {
     }
   }
 
-  BigDecimal calculateAccountBalance(long companyId, long fiscalYearId, String accountNumber, Long excludeVoucherId) {
+  BigDecimal calculateAccountBalance(long companyId, long fiscalYearId, String accountNumber) {
     CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withSql { Sql sql ->
@@ -358,7 +358,7 @@ final class AccountService {
           ? BigDecimal.ZERO
           : new BigDecimal(openingRow.get('amount').toString())
 
-      StringBuilder query = new StringBuilder('''
+      GroovyRowResult transactionRow = sql.firstRow('''
           select coalesce(sum(vl.debit_amount), 0) as totalDebit,
                  coalesce(sum(vl.credit_amount), 0) as totalCredit
             from voucher_line vl
@@ -366,13 +366,7 @@ final class AccountService {
            where vl.account_id = ?
              and v.fiscal_year_id = ?
              and v.status in ('ACTIVE', 'CORRECTION')
-      ''')
-      List<Object> params = [accountId, fiscalYearId]
-      if (excludeVoucherId != null) {
-        query.append(' and v.id != ?')
-        params << excludeVoucherId
-      }
-      GroovyRowResult transactionRow = sql.firstRow(query.toString(), params) as GroovyRowResult
+      ''', [accountId, fiscalYearId]) as GroovyRowResult
       BigDecimal totalDebit = new BigDecimal(transactionRow.get('totalDebit').toString())
       BigDecimal totalCredit = new BigDecimal(transactionRow.get('totalCredit').toString())
 
@@ -430,8 +424,7 @@ final class AccountService {
   Map<String, BigDecimal> calculateAccountBalances(
       long companyId,
       long fiscalYearId,
-      Collection<String> accountNumbers,
-      Long excludeVoucherId
+      Collection<String> accountNumbers
   ) {
     CompanyService.requireValidCompanyId(companyId)
     Set<String> normalizedAccounts = new LinkedHashSet<>()
@@ -470,9 +463,6 @@ final class AccountService {
         ((Number) row.get('id')).longValue()
       } as List<Object>
       transactionParams << fiscalYearId
-      if (excludeVoucherId != null) {
-        transactionParams << excludeVoucherId
-      }
       List<GroovyRowResult> transactions = sql.rows("""
           select vl.account_id as accountId,
                  coalesce(sum(vl.debit_amount), 0) as totalDebit,
@@ -482,7 +472,6 @@ final class AccountService {
            where vl.account_id in (${transactionPlaceholders})
              and v.fiscal_year_id = ?
              and v.status in ('ACTIVE', 'CORRECTION')
-             ${excludeVoucherId == null ? '' : 'and v.id != ?'}
            group by vl.account_id
       """, transactionParams) as List<GroovyRowResult>
       Map<Long, GroovyRowResult> transactionsByAccountId = [:]

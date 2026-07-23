@@ -41,7 +41,7 @@ final class VoucherBalanceCachePreloader {
       @Override
       protected Map<Long, Map<String, BigDecimal>> doInBackground() {
         Map<String, BigDecimal> endingBalances = accountService.calculateAccountBalances(
-            companyId, fiscalYearId, accountNumbers, null)
+            companyId, fiscalYearId, accountNumbers)
         Map<String, String> normalBalanceSides = accountService.normalBalanceSides(companyId, accountNumbers)
         Map<Long, Map<String, BigDecimal>> preloadedBalances = [:]
         Map<String, BigDecimal> laterVoucherChanges = [:]
