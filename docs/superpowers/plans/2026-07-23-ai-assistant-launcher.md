@@ -593,7 +593,7 @@ git commit -m "bundlar skill/ som en classpath-resurs"
 
 **Interfaces:**
 - Consumes: nothing new (pure `java.nio.file`).
-- Produces: `enum SecretFileKind { EXECUTABLE, DATA }`. `interface AclPermissionAdapter { void applyOwnerOnly(Path); void verifyOwnerOnly(Path) }`. `class AiWorkspacePermissions` with a no-arg constructor (real ACL adapter) and a `(AclPermissionAdapter)` constructor (for tests), and methods: `void ensureDirectory(Path dir)`, `void createFileWithPermissions(Path path, SecretFileKind kind)`, `void createFileWithPermissions(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void applyAndVerify(Path path, SecretFileKind kind)`, `void applyAndVerify(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void verifyNoSymlinksInPath(Path root, Path candidate)`. Later tasks (`AtomicSecretFileWriter`, `AiWorkspaceService`, `AiAssistantLauncher`) depend on exactly these method names/signatures.
+- Produces: `enum SecretFileKind { EXECUTABLE, DATA }`. `interface AclPermissionAdapter { void applyOwnerOnly(Path); void verifyOwnerOnly(Path) }`. `class AiWorkspacePermissions` with a no-arg constructor (real ACL adapter) and a `(AclPermissionAdapter)` constructor (for tests), and methods: **`void ensureDirectory(Path root, Path dir)`** — `root` is the AI workspace boundary; permission mutation and directory creation are strictly confined to `root` and its descendants, and `root`'s own parent is only ever read-checked (exists? symlink?), never created or chmod'd/ACL'd, since that parent (the application data home) is the existing `AppPaths.ensureDirectoryStructure()`'s responsibility, not this class's — `void createFileWithPermissions(Path path, SecretFileKind kind)`, `void createFileWithPermissions(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void applyAndVerify(Path path, SecretFileKind kind)`, `void applyAndVerify(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void verifyNoSymlinksInPath(Path root, Path candidate)`. Later tasks (`AtomicSecretFileWriter`, `AiWorkspaceService`, `AiAssistantLauncher`) depend on exactly these method names/signatures.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -622,13 +622,26 @@ class AiWorkspacePermissionsTest {
   @Test
   void ensureDirectoryCreatesOwnerOnlyPermissionsRecursively() {
     assumePosixSupported()
-    Path nested = tempDir.resolve('ai-workspace').resolve('.codex')
+    Path root = tempDir.resolve('ai-workspace')
+    Path nested = root.resolve('.codex')
 
-    permissions.ensureDirectory(nested)
+    permissions.ensureDirectory(root, nested)
 
     Set expected = PosixFilePermissions.fromString('rwx------')
     assertEquals(expected, Files.getPosixFilePermissions(nested))
-    assertEquals(expected, Files.getPosixFilePermissions(nested.parent))
+    assertEquals(expected, Files.getPosixFilePermissions(root))
+  }
+
+  @Test
+  void ensureDirectoryNeverTouchesPermissionsAboveTheWorkspaceRoot() {
+    assumePosixSupported()
+    Set<PosixFilePermission> beforeParent = Files.getPosixFilePermissions(tempDir)
+    Path root = tempDir.resolve('ai-workspace')
+
+    permissions.ensureDirectory(root, root.resolve('.codex'))
+
+    assertEquals(beforeParent, Files.getPosixFilePermissions(tempDir))
+    assertEquals(PosixFilePermissions.fromString('rwx------'), Files.getPosixFilePermissions(root))
   }
 
   @Test
@@ -641,7 +654,7 @@ class AiWorkspacePermissionsTest {
     Files.createSymbolicLink(linked, realDir)
 
     assertThrows(IllegalStateException) {
-      permissions.ensureDirectory(linked)
+      permissions.ensureDirectory(linked, linked)
     }
   }
 
@@ -845,7 +858,26 @@ final class AiWorkspacePermissions {
     this.aclAdapter = aclAdapter
   }
 
-  void ensureDirectory(Path dir) {
+  /**
+   * Creates {@code dir} (and any missing intermediate levels) with owner-only
+   * permissions, but ONLY within the {@code root} subtree. {@code root}'s own
+   * parent — the application data home — is only ever read-checked (does it
+   * exist? is it a symlink?), never created or chmod'd/ACL'd: that directory
+   * is the existing {@code AppPaths.ensureDirectoryStructure()}'s
+   * responsibility. Without this boundary, recursing unconditionally up the
+   * parent chain to guarantee a fresh symlink check at every level (see
+   * below) would also try to chmod the user's home directory and beyond.
+   */
+  void ensureDirectory(Path root, Path dir) {
+    Path normalizedRoot = root.toAbsolutePath().normalize()
+    Path normalizedDir = dir.toAbsolutePath().normalize()
+    if (normalizedDir != normalizedRoot && !normalizedDir.startsWith(normalizedRoot)) {
+      throw new IllegalArgumentException("${dir} is not the workspace root ${root} or inside it.")
+    }
+    ensureWithinRoot(normalizedRoot, normalizedDir)
+  }
+
+  private void ensureWithinRoot(Path root, Path dir) {
     // Check symlink-ness BEFORE anything else, with no-follow semantics: Files.isDirectory()
     // below follows symlinks, so treating "isDirectory() == true" as "safe to chmod/ACL" without
     // this check first would let a symlinked dir redirect the permission change to its target.
@@ -859,12 +891,22 @@ final class AiWorkspacePermissions {
     if (Files.exists(dir)) {
       throw new IllegalStateException("${dir} exists but is not a directory.")
     }
-    // Always recurse into the parent, even if it already exists as a directory: this guarantees
-    // every ancestor gets a fresh symlink check on every call, rather than skipping the check for
-    // an already-existing parent (which would reopen the same TOCTOU window this method exists to close).
-    Path parent = dir.parent
-    if (parent != null) {
-      ensureDirectory(parent)
+    if (dir == root) {
+      // At the workspace root: its parent must already exist. We never create or touch
+      // permissions on it — only confirm it's real and not a symlink before creating root itself.
+      Path parent = dir.parent
+      if (parent == null || !Files.isDirectory(parent)) {
+        throw new IllegalStateException(
+            "${parent} does not exist; the application data home must already exist before the AI workspace can be created.")
+      }
+      if (Files.isSymbolicLink(parent)) {
+        throw new IllegalStateException("Refusing to operate through a symlink at ${parent}.")
+      }
+    } else {
+      // Still inside the workspace subtree (dir != root, and dir startsWith root per the public
+      // method's check) — safe to recurse and create/verify intermediate levels ourselves, with a
+      // fresh symlink check at every level rather than skipping already-existing ones.
+      ensureWithinRoot(root, dir.parent)
     }
     createDirectory(dir)
     applyAndVerify(dir, SecretFileKind.EXECUTABLE)
@@ -958,7 +1000,7 @@ final class AiWorkspacePermissions {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.AiWorkspacePermissionsTest"`
-Expected: PASS (9 tests; the two symlink tests are skipped via `assumeTrue` on a Windows runner, if ever run there)
+Expected: PASS (10 tests; the two Unix-only symlink tests are skipped via `assumeTrue` on a Windows runner, if ever run there)
 
 - [ ] **Step 5: Commit**
 
@@ -2197,7 +2239,8 @@ final class AiWorkspaceService {
   }
 
   void ensureWorkspace() {
-    permissions.ensureDirectory(AppPaths.aiWorkspaceDirectory())
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    permissions.ensureDirectory(workspace, workspace)
   }
 
   void refreshClientFiles(AiClient client, String endpoint, String token) {
@@ -2209,14 +2252,14 @@ final class AiWorkspaceService {
     // (AtomicSecretFileWriter.write also re-checks immediately before its own atomic move —
     // see Task 7 — so this is deliberate, cheap, layered defense, not redundant by accident).
     permissions.verifyNoSymlinksInPath(workspace, configFile)
-    permissions.ensureDirectory(configFile.parent)
+    permissions.ensureDirectory(workspace, configFile.parent)
     permissions.verifyNoSymlinksInPath(workspace, configFile)
     String configText = AiClientConfigWriter.configContent(client, endpoint, token)
     secretFileWriter.write(workspace, configFile, configText.getBytes('UTF-8'), SecretFileKind.DATA)
 
     Path instructionsFile = AiWorkspacePaths.instructionsFile(workspace, client)
     permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
-    permissions.ensureDirectory(instructionsFile.parent)
+    permissions.ensureDirectory(workspace, instructionsFile.parent)
     permissions.verifyNoSymlinksInPath(workspace, instructionsFile)
     secretFileWriter.write(workspace, instructionsFile, skillResourceBytes(), SecretFileKind.DATA)
   }
@@ -2359,7 +2402,8 @@ class AiAssistantLauncherTest {
     assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
     previousOverride = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.toString())
-    new AiWorkspacePermissions().ensureDirectory(AppPaths.aiWorkspaceDirectory())
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    new AiWorkspacePermissions().ensureDirectory(workspace, workspace)
   }
 
   @AfterEach
@@ -3518,7 +3562,7 @@ These are exactly the gaps the design spec's Testing section flags as impossible
 
 - **Spec coverage:** Runtime skill source (Task 5), fixed-location workspace + test isolation override (Task 4), fail-closed POSIX/ACL permissions + symlink chain, including symlink checks *before* any traversal/permission mutation, not after (Task 6), atomic writes + AtomicMoveNotSupportedException handling + a symlink re-check immediately before both the temp-file create and the move (Task 7), per-client config content + fixtures, including the confirmed-correct Vibe `[[mcp_servers]]` array-of-tables schema (Task 9), terminal adapters incl. dropped `cmd`/`start` fallback and explicit `wt.exe`/`cmd.exe /v:off` (Task 10), wrapper script templates incl. no-`call`/forced-off-delayed-expansion/double-expansion regression/generalized env-var map for Vibe's `VIBE_HOME` (Task 11), PATH detection via injectable seams (Task 12), workspace orchestration + narrow-scope refresh + symlink-safe purge with directory-stream failures captured in `PurgeResult` rather than escaping + `isValidExecutable` (Task 13), launcher + spawn-failure cleanup + unique wrapper naming + Vibe's `VIBE_HOME` env var + pre-launch executable validation (Task 14), preferences (Task 15), i18n (Task 16), UI incl. typed terminal-adapter override, MCP-availability gating, and executable-path validation before writing/spawning anything (Task 17), rotation reordered to purge-then-rotate with honest partial-failure reporting and correct test isolation (Task 18), lifecycle wiring for availability + shutdown purge (Task 19-20), release notes (Task 21), full-suite + manual verification (Task 22). All spec sections have a corresponding task.
 - **Placeholder scan:** no TBD/TODO markers; every step has complete, runnable code.
-- **Type consistency:** `SecretFileWriter.write(Path root, Path target, byte[], SecretFileKind)` takes the workspace root as its first argument everywhere it's called (Tasks 7, 13, 14). `LaunchWrapperScript.unixContent`/`windowsContent` take a `Map<String, String> envVars`, not a `tokenOrNull`, everywhere (Tasks 11, 14). `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17). `AiWorkspaceService`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` consistently across Task 13's own tests and nowhere else constructed directly. `AiAssistantLauncher`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` consistently across Task 14's tests.
+- **Type consistency:** `SecretFileWriter.write(Path root, Path target, byte[], SecretFileKind)` takes the workspace root as its first argument everywhere it's called (Tasks 7, 13, 14). `LaunchWrapperScript.unixContent`/`windowsContent` take a `Map<String, String> envVars`, not a `tokenOrNull`, everywhere (Tasks 11, 14). `AiWorkspaceService.refreshClientFiles(AiClient, String, String)` and `AiAssistantLauncher.launch(AiClient, Path, TerminalAdapterKind, Path, String)` are used with the same argument order and types everywhere they're called (Tasks 13, 14, 17, 18). `PurgeResult.isComplete()`/`.failed`/`.removed` are used consistently (Tasks 13, 18). `TerminalAdapterKind`/`Path` pairing is always `Tuple2<TerminalAdapterKind, Path>` with `.v1`/`.v2` accessors (Tasks 13, 17). `AiWorkspaceService`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, EnvironmentLookup, FileDeleter)` consistently across Task 13's own tests and nowhere else constructed directly. `AiAssistantLauncher`'s test constructor is `(AiWorkspacePermissions, SecretFileWriter, ExecutableProbe, ProcessRunner)` consistently across Task 14's tests. `AiWorkspacePermissions.ensureDirectory(Path root, Path dir)` always takes the workspace root as its first argument, everywhere it's called (Tasks 6, 13, 14) — never the old single-`Path` form, which would have recursed and mutated permissions all the way to the filesystem root.
 
 ---
 
