@@ -341,6 +341,35 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void savingWithDefaultAdvanceAfterSaveShowsANewBlankDraft() {
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
+      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    }
+    JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.unsaved')
+    }
+
+    onEdt {
+      description.text = 'Saved then advance'
+      panel.lineTableModel.rows[0].accountNumber = '1510'
+      panel.lineTableModel.rows[0].accountName = 'Kundfordringar'
+      panel.lineTableModel.rows[0].debit = '125'
+      panel.lineTableModel.rows[1].accountNumber = '3010'
+      panel.lineTableModel.rows[1].accountName = 'Försäljning'
+      panel.lineTableModel.rows[1].credit = '125'
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
+    }
+
+    assertTrue(onEdt { advanceAfterSave.selected })
+    assertEquals('A-2', onEdt { voucherJumpField.text })
+    assertEquals('', onEdt { description.text })
+    assertTrue(onEdt { unsaved.visible })
+    assertEquals(1, voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id).size())
+  }
+
+  @Test
   void savedVoucherIsNotExposedAsAnUnsavedDraft() {
     voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',

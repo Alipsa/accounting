@@ -612,7 +612,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showBlankVoucher()
     } else {
       Voucher listedVoucher = navigation.vouchers.find { Voucher voucher ->
-        voucher.voucherNumber == selectedVoucher.voucherNumber
+        voucher.id == selectedVoucher.id
       }
       if (listedVoucher == null) {
         showBlankVoucher()
