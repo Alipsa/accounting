@@ -41,10 +41,11 @@ final class VoucherBalanceCachePreloader {
       @Override
       protected Map<Long, Map<String, BigDecimal>> doInBackground() {
         Map<String, BigDecimal> endingBalances = accountService.calculateAccountBalances(
-            companyId, fiscalYearId, accountNumbers, null)
+            companyId, fiscalYearId, accountNumbers)
         Map<String, String> normalBalanceSides = accountService.normalBalanceSides(companyId, accountNumbers)
         Map<Long, Map<String, BigDecimal>> preloadedBalances = [:]
-        vouchers.each { Voucher voucher ->
+        Map<String, BigDecimal> laterVoucherChanges = [:]
+        vouchers.reverseEach { Voucher voucher ->
           Map<String, BigDecimal> voucherBalances = [:]
           Map<String, BigDecimal> voucherChanges = [:]
           if (voucher.status == VoucherStatus.ACTIVE || voucher.status == VoucherStatus.CORRECTION) {
@@ -60,11 +61,15 @@ final class VoucherBalanceCachePreloader {
           voucher.lines.each { VoucherLine line ->
             BigDecimal endingBalance = endingBalances[line.accountNumber]
             if (endingBalance != null) {
-              voucherBalances[line.accountNumber] = endingBalance.subtract(
-                  voucherChanges[line.accountNumber] ?: BigDecimal.ZERO)
+              voucherBalances[line.accountNumber] = endingBalance
+                  .subtract(laterVoucherChanges[line.accountNumber] ?: BigDecimal.ZERO)
+                  .subtract(voucherChanges[line.accountNumber] ?: BigDecimal.ZERO)
             }
           }
           preloadedBalances[voucher.id] = voucherBalances
+          voucherChanges.each { String accountNumber, BigDecimal change ->
+            laterVoucherChanges[accountNumber] = (laterVoucherChanges[accountNumber] ?: BigDecimal.ZERO).add(change)
+          }
         }
         preloadedBalances
       }

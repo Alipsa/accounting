@@ -45,6 +45,7 @@ import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
 import javax.swing.Icon
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JMenuItem
@@ -97,6 +98,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JLabel totalsLabel = new JLabel('')
   private final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
+  private final JCheckBox advanceAfterSaveCheckBox = new JCheckBox()
 
   private JButton prevButton
   private JButton nextButton
@@ -148,9 +150,21 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     registerListenersOnce()
     buildUi()
     mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
-    voucherEditorActions = new VoucherEditorActions(voucherService, activeCompanyManager, { datePicker.date },
+    VoucherOperations voucherOperations = new VoucherOperations() {
+      @Override
+      Voucher createVoucher(long fiscalYearId, String seriesCode, LocalDate accountingDate,
+                            String description, List<VoucherLine> lines) {
+        voucherService.createVoucher(fiscalYearId, seriesCode, accountingDate, description, lines)
+      }
+
+      @Override
+      Voucher createCorrectionVoucher(long originalVoucherId, String description) {
+        voucherService.createCorrectionVoucher(originalVoucherId, description)
+      }
+    }
+    voucherEditorActions = new VoucherEditorActions(voucherOperations, { activeCompanyManager.fiscalYear }, { datePicker.date },
         { descriptionField.text?.trim() }, { lineTableModel.toVoucherLines() }, { currentVoucher },
-        { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::reloadVoucherList)
+        { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::handleSavedVoucher)
     reloadVoucherList()
   }
 
@@ -248,11 +262,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     lastButton = navigationButton('\u23ED', 'voucherPanel.button.last') { navigateLast() }
     panel.add(lastButton)
 
-    saveButton = new JButton(SAVE_ICON)
-    saveButton.margin = new Insets(5, 6, 5, 6)
-    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
-    saveButton.addActionListener { voucherEditorActions.save() }
-    panel.add(saveButton)
+    addSaveControls(panel)
 
     printButton = new JButton('\u2399')
     printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
@@ -266,7 +276,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
     correctionButton = new JButton('\u270E')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
-    correctionButton.addActionListener { voucherEditorActions.createCorrection() }
+    correctionButton.addActionListener {
+      if (voucherEditorActions.createCorrection() != null) {
+        reloadVoucherList()
+      }
+    }
     panel.add(correctionButton)
 
     voidButton = new JButton('\u2716')
@@ -275,6 +289,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     panel.add(voidButton)
 
     panel
+  }
+
+  private void addSaveControls(JPanel panel) {
+    saveButton = new JButton(SAVE_ICON)
+    saveButton.margin = new Insets(5, 6, 5, 6)
+    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
+    saveButton.addActionListener { voucherEditorActions.save() }
+    panel.add(saveButton)
+
+    advanceAfterSaveCheckBox.text = I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    advanceAfterSaveCheckBox.selected = true
+    panel.add(advanceAfterSaveCheckBox)
   }
 
   private static JButton navigationButton(String symbol, String tooltipKey, Closure<Void> action) {
@@ -583,7 +609,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     panel
   }
 
-  private void reloadVoucherList() {
+  private void reloadVoucherList(Voucher selectedVoucher = null) {
     voucherBalanceCache.clear()
     voucherBalanceCacheGeneration++
     FiscalYear fy = activeCompanyManager.fiscalYear
@@ -594,7 +620,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
     // Reversed so navigatePrev() (which starts from the end) shows the most recent voucher first.
     navigation.reset(voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse())
-    showBlankVoucher()
+    if (selectedVoucher == null) {
+      showBlankVoucher()
+    } else {
+      Voucher listedVoucher = navigation.vouchers.find { Voucher voucher ->
+        voucher.id == selectedVoucher.id
+      }
+      if (listedVoucher == null) {
+        showBlankVoucher()
+      } else {
+        navigation.select(listedVoucher, this::showVoucher)
+      }
+    }
     voucherBalanceCachePreloader.preload(
         activeCompanyManager.companyId,
         fy.id,
@@ -605,6 +642,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         voucherBalanceCache.putAll(preloadedBalances)
       }
     }
+  }
+
+  private void handleSavedVoucher(Voucher savedVoucher) {
+    reloadVoucherList(advanceAfterSaveCheckBox.selected ? null : savedVoucher)
   }
 
   private void showVoucher(Voucher v) {
@@ -1020,8 +1061,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         balance = BigDecimal.ZERO
       } else {
         try {
-          balance = accountService.calculateAccountBalance(
-              activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher?.id)
+          balance = currentVoucher == null
+              ? accountService.calculateAccountBalance(activeCompanyManager.companyId, fy.id, entry.accountNumber)
+              : accountService.calculateAccountBalanceBeforeVoucher(
+                  activeCompanyManager.companyId, fy.id, entry.accountNumber, currentVoucher)
         } catch (Exception ignored) {
           balance = BigDecimal.ZERO
         }
@@ -1042,12 +1085,28 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (fy != null) {
       try {
         if (!missingAccounts.isEmpty()) {
-          Map<String, BigDecimal> balances = accountService.calculateAccountBalances(
-              activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher?.id)
+          Map<String, BigDecimal> balances = currentVoucher == null
+              ? accountService.calculateAccountBalances(activeCompanyManager.companyId, fy.id, missingAccounts)
+              : accountService.calculateAccountBalancesBeforeVoucher(
+                  activeCompanyManager.companyId, fy.id, missingAccounts, currentVoucher)
           balanceCache.putAll(balances)
         }
       } catch (Exception ignored) {
         // Individual balance lookups below retain the previous fallback behaviour.
+      }
+    }
+    if (!displayedAccounts.isEmpty()) {
+      try {
+        Map<String, String> normalBalanceSides = accountService.normalBalanceSides(
+            activeCompanyManager.companyId, displayedAccounts)
+        lineTableModel.rows.each { LineEntry entry ->
+          String side = normalBalanceSides[entry.accountNumber]
+          if (side != null) {
+            entry.normalBalanceSide = side
+          }
+        }
+      } catch (Exception ignored) {
+        // Rows loaded from account lookup already carry a normalBalanceSide; leave those be.
       }
     }
     lineTableModel.rows.each { LineEntry entry -> recalculateBalance(entry) }
@@ -1075,6 +1134,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     firstButton.toolTipText = I18n.instance.getString('voucherPanel.button.first')
     lastButton.toolTipText = I18n.instance.getString('voucherPanel.button.last')
     saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
+    advanceAfterSaveCheckBox.text = I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
     printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')

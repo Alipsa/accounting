@@ -35,6 +35,7 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
 
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
@@ -271,16 +272,21 @@ final class VoucherPanelNavigationTest {
     assertEquals('Försäljning', onEdt { panel.lineTableModel.rows[1].accountName })
     assertEquals('Rad två', onEdt { panel.lineTableModel.rows[1].description })
 
+    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
+      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    }
+    assertTrue(onEdt { advanceAfterSave.selected })
     onEdt {
+      advanceAfterSave.selected = false
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
     }
 
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
-    assertEquals('A-1', onEdt { voucherJumpField.text })
+    assertEquals('B-2', onEdt { voucherJumpField.text })
     onEdt {
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
     }
-    assertEquals('B-2', onEdt { voucherJumpField.text })
+    assertEquals('B-1', onEdt { voucherJumpField.text })
 
     List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
     assertEquals(2, vouchers.size())
@@ -335,6 +341,35 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void savingWithDefaultAdvanceAfterSaveShowsANewBlankDraft() {
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
+      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    }
+    JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.unsaved')
+    }
+
+    onEdt {
+      description.text = 'Saved then advance'
+      panel.lineTableModel.rows[0].accountNumber = '1510'
+      panel.lineTableModel.rows[0].accountName = 'Kundfordringar'
+      panel.lineTableModel.rows[0].debit = '125'
+      panel.lineTableModel.rows[1].accountNumber = '3010'
+      panel.lineTableModel.rows[1].accountName = 'Försäljning'
+      panel.lineTableModel.rows[1].credit = '125'
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
+    }
+
+    assertTrue(onEdt { advanceAfterSave.selected })
+    assertEquals('A-2', onEdt { voucherJumpField.text })
+    assertEquals('', onEdt { description.text })
+    assertTrue(onEdt { unsaved.visible })
+    assertEquals(1, voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id).size())
+  }
+
+  @Test
   void savedVoucherIsNotExposedAsAnUnsavedDraft() {
     voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
@@ -377,6 +412,23 @@ final class VoucherPanelNavigationTest {
     assertEquals('250,00', onEdt { panel.lineTableModel.rows[0].debit })
     assertEquals('3010', onEdt { panel.lineTableModel.rows[1].accountNumber })
     assertEquals('250,00', onEdt { panel.lineTableModel.rows[1].credit })
+  }
+
+  @Test
+  void navigatingToASavedVoucherPopulatesNormalBalanceSideForEachLine() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    installPanelHooks()
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
+
+    assertEquals('DEBIT', onEdt { panel.lineTableModel.rows[0].normalBalanceSide })
+    assertEquals('CREDIT', onEdt { panel.lineTableModel.rows[1].normalBalanceSide })
   }
 
   @Test
