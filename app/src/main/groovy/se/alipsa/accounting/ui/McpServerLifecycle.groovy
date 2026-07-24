@@ -7,6 +7,7 @@ import se.alipsa.accounting.mcp.LoopbackMcpServer
 import se.alipsa.accounting.mcp.McpDispatcher
 import se.alipsa.accounting.mcp.McpUiGuard
 import se.alipsa.accounting.service.AiWorkspaceService
+import se.alipsa.accounting.service.PurgeResult
 import se.alipsa.accounting.service.UserPreferencesService
 
 import java.util.logging.Logger
@@ -48,6 +49,10 @@ final class McpServerLifecycle implements Closeable {
 
   void start() {
     try {
+      PurgeResult startupPurge = aiWorkspaceService.purgeAllSecrets()
+      if (!startupPurge.complete) {
+        log.warning("Could not remove stale AI workspace secrets at startup: ${startupPurge.failed}")
+      }
       AccountingMcpTools tools = new AccountingMcpTools()
       tools.setVoucherDraftAccess(voucherPanel.mcpVoucherDraftAccess)
       tools.setActiveContextProvider {
