@@ -36,7 +36,8 @@ class TerminalCommandBuilderTest {
 
   @Test
   void createsTerminalAppCommand() {
-    String script = "tell application \"Terminal\" to do script \"'${SCRIPT}'\""
+    String escapedScriptPath = SCRIPT.toString().replace('\\', '\\\\')
+    String script = "tell application \"Terminal\" to do script \"'${escapedScriptPath}'\""
     assertEquals([EXECUTABLE.toString(), '-e', script.toString()],
         TerminalCommandBuilder.commandFor(TerminalAdapterKind.TERMINAL_APP, EXECUTABLE, WORKSPACE, SCRIPT))
   }
