@@ -61,9 +61,10 @@ class AuditLogServiceTest {
   @Test
   void validateIntegrityDetectsTamperedAuditRow() {
     auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long rowId = idOfRow(databaseService, "summary = 'Importerade SIE'")
 
     databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate("update audit_log set summary = 'tampered' where id = 1")
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered', rowId])
     }
 
     List<String> problems = auditLogService.validateIntegrity()
@@ -95,6 +96,30 @@ class AuditLogServiceTest {
         'The documented exception must still be visible, just not critical')
     assertTrue(critical.isEmpty(),
         'The remediation entry itself, and everything else, must still form a valid chain')
+  }
+
+  @Test
+  void recordIntegrityRemediationDoesNotMaskALaterDifferentTamperOfTheSameRow() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long rowId = idOfRow(databaseService, "summary = 'Importerade SIE'")
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered once', rowId])
+    }
+    auditLogService.recordIntegrityRemediation(companyId, rowId, 'Rättad efter felsökning av det första felet.')
+    assertTrue(auditLogService.validateIntegrity(companyId).isEmpty(),
+        'Sanity check: the first anomaly must be documented before the real assertion below')
+
+    // A second, unrelated change to the very same row - the remediation above explained the
+    // *first* anomaly, not a blanket exemption for this row forever.
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered twice, differently', rowId])
+    }
+
+    List<String> critical = auditLogService.validateIntegrity(companyId)
+    assertTrue(critical.any { String problem -> problem.contains("Auditlogg ${rowId} ") },
+        'A second, different tamper of an already-remediated row must NOT be silently masked by the earlier remediation')
   }
 
   @Test

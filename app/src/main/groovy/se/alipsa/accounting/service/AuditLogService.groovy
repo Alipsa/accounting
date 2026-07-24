@@ -184,18 +184,40 @@ final class AuditLogService {
    * This deliberately never touches the broken row's own entry_hash/previous_hash: doing so
    * would mean the chain no longer commits to what actually happened, which is the entire
    * point of keeping it append-only. It appends a new, normally-chained
-   * {@link #INTEGRITY_REMEDIATION} entry instead, pointing at the row it explains. The
-   * target row must currently have an integrity problem - this is for documenting real,
+   * {@link #INTEGRITY_REMEDIATION} entry instead, capturing the row's exact anomalous state
+   * (its stored entry_hash and previous_hash, plus what entry_hash should be given its
+   * current content) at the moment it is explained. Suppression in
+   * {@link #checkIntegrityForCompany} only ever applies while the row still matches that
+   * exact captured state - if the row changes again afterwards, by any means, none of those
+   * three values will still match and it reverts to critical. Without this, one remediation
+   * would permanently silence *any* future tampering of the same row, not just the anomaly
+   * it was written to explain.
+   *
+   * The target row must currently have an integrity problem - this is for documenting real,
    * already-diagnosed anomalies, not for pre-emptively annotating healthy rows.
    */
   AuditLogEntry recordIntegrityRemediation(long companyId, long remediatedAuditLogId, String reason) {
     CompanyService.requireValidCompanyId(companyId)
     String safeReason = requireText(reason, 'Anledning')
     databaseService.withTransaction { Sql sql ->
-      GroovyRowResult target = sql.firstRow(
-          'select id from audit_log where id = ? and company_id = ?',
-          [remediatedAuditLogId, companyId]
-      ) as GroovyRowResult
+      GroovyRowResult target = sql.firstRow('''
+          select id,
+                 event_type as eventType,
+                 voucher_id as voucherId,
+                 attachment_id as attachmentId,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
+                 actor,
+                 summary,
+                 details,
+                 previous_hash as previousHash,
+                 entry_hash as entryHash,
+                 created_at as createdAt
+            from audit_log
+           where id = ?
+             and company_id = ?
+      ''', [remediatedAuditLogId, companyId]) as GroovyRowResult
       if (target == null) {
         throw new IllegalArgumentException("Auditlogg ${remediatedAuditLogId} finns inte för detta företag.")
       }
@@ -208,8 +230,11 @@ final class AuditLogService {
       recordEvent(sql, INTEGRITY_REMEDIATION, AuditReferences.EMPTY,
           "Manuell rättelse dokumenterad för auditlogg ${remediatedAuditLogId}",
           formatDetails([
-              remediatesAuditLogId: remediatedAuditLogId,
-              reason              : safeReason
+              remediatesAuditLogId   : remediatedAuditLogId,
+              remediatedEntryHash    : target.get('entryHash'),
+              remediatedPreviousHash : target.get('previousHash'),
+              remediatedContentHash  : calculatedHashOfRow(target),
+              reason                 : safeReason
           ]), companyId)
     }
   }
@@ -247,9 +272,6 @@ final class AuditLogService {
     ''', [companyId]).each { GroovyRowResult row ->
       AuditLogEntry entry = mapEntry(row)
       boolean archived = row.get('archived') as Boolean
-      if (entry.previousHash != expectedPreviousHash && entry.previousHash != expectedLastLiveHash) {
-        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har fel föregående hash." as String)
-      }
       String calculated = calculateHash(new AuditEntrySeed(
           eventType: entry.eventType,
           voucherId: entry.voucherId,
@@ -263,8 +285,12 @@ final class AuditLogService {
           previousHash: entry.previousHash,
           createdAt: entry.createdAt
       ))
+      String signature = integritySignature(entry.entryHash, entry.previousHash, calculated)
+      if (entry.previousHash != expectedPreviousHash && entry.previousHash != expectedLastLiveHash) {
+        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har fel föregående hash." as String, signature)
+      }
       if (entry.entryHash != calculated) {
-        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har ogiltig hash." as String)
+        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har ogiltig hash." as String, signature)
       }
       expectedPreviousHash = entry.entryHash
       if (!archived) {
@@ -279,12 +305,13 @@ final class AuditLogService {
       structuralProblems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
     }
 
-    Set<Long> remediatedIds = loadRemediatedAuditLogIds(sql, companyId)
+    Map<Long, Set<String>> remediatedSignatures = loadRemediationSignatures(sql, companyId)
     List<String> critical = []
     List<String> documented = []
     Set<Long> criticalIds = [] as Set
     rowProblems.each { RowProblem problem ->
-      if (remediatedIds.contains(problem.auditLogId)) {
+      Set<String> signaturesForRow = remediatedSignatures[problem.auditLogId]
+      if (signaturesForRow?.contains(problem.signature)) {
         documented << problem.message
       } else {
         critical << problem.message
@@ -297,19 +324,49 @@ final class AuditLogService {
     new IntegrityCheckResult(critical, documented, criticalIds)
   }
 
-  private static Set<Long> loadRemediatedAuditLogIds(Sql sql, long companyId) {
-    Set<Long> ids = [] as Set
+  /**
+   * For each remediated row id, the set of exact anomalous states (entry_hash|previous_hash|
+   * calculated-content-hash) that have been explained for it. A row problem only gets
+   * suppressed when its *current* state matches one of these exactly - see
+   * {@link #recordIntegrityRemediation} for why.
+   */
+  private static Map<Long, Set<String>> loadRemediationSignatures(Sql sql, long companyId) {
+    Map<Long, Set<String>> signatures = [:]
     sql.rows(
         'select details from audit_log where company_id = ? and event_type = ?',
         [companyId, INTEGRITY_REMEDIATION]
     ).each { GroovyRowResult row ->
       Map<String, String> parsed = parseDetails(SqlValueMapper.toClob(row.get('details')))
       Long remediatedId = longOrNull(parsed.remediatesAuditLogId)
-      if (remediatedId != null) {
-        ids << remediatedId
+      if (remediatedId == null) {
+        return
       }
+      String signature = integritySignature(
+          parsed.remediatedEntryHash, parsed.remediatedPreviousHash, parsed.remediatedContentHash
+      )
+      signatures.computeIfAbsent(remediatedId) { [] as Set<String> } << signature
     }
-    ids
+    signatures
+  }
+
+  private static String integritySignature(String storedEntryHash, String storedPreviousHash, String calculatedContentHash) {
+    "${storedEntryHash ?: ''}|${storedPreviousHash ?: ''}|${calculatedContentHash ?: ''}"
+  }
+
+  private static String calculatedHashOfRow(GroovyRowResult row) {
+    calculateHash(new AuditEntrySeed(
+        eventType: row.get('eventType') as String,
+        voucherId: longOrNull(row.get('voucherId')),
+        attachmentId: longOrNull(row.get('attachmentId')),
+        fiscalYearId: longOrNull(row.get('fiscalYearId')),
+        accountingPeriodId: longOrNull(row.get('accountingPeriodId')),
+        vatPeriodId: longOrNull(row.get('vatPeriodId')),
+        actor: row.get('actor') as String,
+        summary: row.get('summary') as String,
+        details: SqlValueMapper.toClob(row.get('details')),
+        previousHash: row.get('previousHash') as String,
+        createdAt: SqlValueMapper.toLocalDateTime(row.get('createdAt'))
+    ))
   }
 
   AuditLogEntry logImport(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
@@ -897,10 +954,12 @@ final class AuditLogService {
 
     final long auditLogId
     final String message
+    final String signature
 
-    private RowProblem(long auditLogId, String message) {
+    private RowProblem(long auditLogId, String message, String signature) {
       this.auditLogId = auditLogId
       this.message = message
+      this.signature = signature
     }
   }
 
