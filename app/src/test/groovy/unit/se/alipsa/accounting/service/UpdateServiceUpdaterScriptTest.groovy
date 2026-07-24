@@ -86,7 +86,9 @@ final class UpdateServiceUpdaterScriptTest {
     assertTrue(content.contains('Update failed while copying files, restoring backup'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Updating launcher configuration.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Launching application.'))
-    assertTrue(content.contains("copy /y \"${fixture.stagingDir}\\app.cfg.new\" \"${fixture.installDir}\\app.cfg\""))
+    Path stagedCfgPath = fixture.stagingDir.resolve('app.cfg.new')
+    Path installedCfgPath = fixture.installDir.resolve('app.cfg')
+    assertTrue(content.contains("copy /y \"${stagedCfgPath}\" \"${installedCfgPath}\""))
     assertFalse(content.contains('del "%~f0"'))
 
     // the regenerated config staged for copy must list every jar from the new
