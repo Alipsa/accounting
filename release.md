@@ -1,8 +1,15 @@
 # Alipsa Accounting, Release History
 
-## v1.7.0, 2026-07-24
+## v1.7.0, 2026-07-25
 
-- Ny inställning under "AI / MCP": "Starta AI-assistent" skriver en projekt-scopad MCP-konfiguration och instruktionsfil åt vald AI-klient (Claude Code, Codex, Kimi, Vibe) till en dedikerad arbetsyta och öppnar en terminal där — MCP-registreringen syns då bara i det sammanhanget, inte i klientens globala konfiguration.
+### Förbättringar
+
+- **AI-assistent** — Den nya fliken "AI-assistent" samlar start och MCP-inställningar. "Starta AI-assistent" skapar en projekt-scopad MCP-konfiguration och instruktionsfil för vald klient (Claude Code, Codex, Kimi eller Vibe) i en dedikerad arbetsyta och öppnar en terminal där. Konfigurationen gäller endast arbetsytan, inte klientens globala inställningar.
+
+### Buggfixar
+
+- **Tillförlitligare uppdateringar** — Uppdateraren bygger nu om startprogrammets klassväg från alla JAR-filer i uppdateringen, så att beroenden med nytt versionsnummer inte lämnas kvar som brutna sökvägar. Windows-uppdateringar lämnar inte längre ett kommandofönster med felet "The batch file cannot be found" efter en lyckad uppdatering.
+- **Säker SIE-ersättningsimport** — Att ersätta eller importera om ett räkenskapsår via SIE skadar inte längre auditloggens hashkedja. Befintliga databaser som drabbats av det tidigare felet repareras automatiskt vid migrering till V27, så att integritetsvarningar inte felaktigt blockerar känsliga operationer.
 
 ## v1.6.1, 2026-07-23
 
