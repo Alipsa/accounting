@@ -22,10 +22,12 @@ class AiWorkspaceServiceTest {
   Path tempDir
 
   private String previousWorkspaceHome
+  private String previousUserHome
 
   @BeforeEach
   void captureWorkspaceHome() {
     previousWorkspaceHome = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+    previousUserHome = System.getProperty('user.home')
     System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('home').toString())
   }
 
@@ -36,6 +38,7 @@ class AiWorkspaceServiceTest {
     } else {
       System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, previousWorkspaceHome)
     }
+    System.setProperty('user.home', previousUserHome)
   }
 
   @Test
@@ -45,6 +48,16 @@ class AiWorkspaceServiceTest {
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     assertEquals(expected, service.detectBinaryPath(AiClient.CODEX))
+  }
+
+  @Test
+  void detectsKimiFromItsStandardUserDirectoryWhenItIsAbsentFromPath() {
+    System.setProperty('user.home', tempDir.toString())
+    Path expected = tempDir.resolve('.kimi-code').resolve('bin').resolve('kimi').toAbsolutePath().normalize()
+    AiWorkspaceService service = service([:], { Path path -> path == expected } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertEquals(expected, service.detectBinaryPath(AiClient.KIMI))
   }
 
   @Test

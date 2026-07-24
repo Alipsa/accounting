@@ -27,6 +27,7 @@ final class UserPreferencesService {
   private static final String LAST_SIE_IMPORT_DIRECTORY_KEY = 'sie.import.lastDirectory'
   private static final String MCP_TOKEN_KEY = 'mcp.token'
   private static final String AI_BINARY_KEY_PREFIX = 'ai.launcher.binary.'
+  private static final String AI_CLIENT_KEY = 'ai.launcher.client'
   private static final String AI_TERMINAL_ADAPTER_KIND_KEY = 'ai.launcher.terminalAdapterKind'
   private static final String AI_TERMINAL_PATH_KEY = 'ai.launcher.terminalPath'
 
@@ -187,6 +188,15 @@ final class UserPreferencesService {
   void setAiBinaryPath(AiClient client, String path) {
     String key = AI_BINARY_KEY_PREFIX + client.name().toLowerCase(Locale.ROOT)
     if (path?.trim()) { preferences.put(key, path) } else { preferences.remove(key) }
+  }
+
+  AiClient getAiClient() {
+    String name = preferences.get(AI_CLIENT_KEY, null)
+    AiClient.values().find { AiClient client -> client.name() == name }
+  }
+
+  void setAiClient(AiClient client) {
+    if (client == null) { preferences.remove(AI_CLIENT_KEY) } else { preferences.put(AI_CLIENT_KEY, client.name()) }
   }
 
   TerminalAdapterKind getTerminalAdapterKind() {

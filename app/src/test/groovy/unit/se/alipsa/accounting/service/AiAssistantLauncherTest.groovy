@@ -1,8 +1,8 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertThrows
+import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -40,14 +40,13 @@ class AiAssistantLauncherTest {
   }
 
   @Test
-  void deletesTokenBearingWrapperAfterSuccessfulLaunch() {
+  void keepsWrapperUntilTheWorkspaceIsPurgedAfterSuccessfulLaunch() {
     List<Path> deleted = []
     AiAssistantLauncher launcher = newLauncher({ List<String> command, Path workspace -> null } as ProcessRunner, deleted)
 
     launcher.launch(AiClient.CODEX, Path.of('/bin/codex'), TerminalAdapterKind.XTERM, Path.of('/bin/xterm'), 'token-value')
 
-    assertEquals(1, deleted.size())
-    assertFalse(Files.exists(deleted.first()))
+    assertTrue(deleted.isEmpty())
   }
 
   @Test
@@ -63,7 +62,7 @@ class AiAssistantLauncherTest {
 
     assertEquals(IOException, exception.cause.class)
     assertEquals(1, deleted.size())
-    assertFalse(Files.exists(deleted.first()))
+    assertTrue(Files.notExists(deleted.first()))
   }
 
   private static AiAssistantLauncher newLauncher(ProcessRunner runner, List<Path> deleted) {

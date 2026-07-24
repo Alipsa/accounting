@@ -6,13 +6,10 @@ import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.logging.Level
-import java.util.logging.Logger
 
 /** Writes a unique launch wrapper and opens it in the configured terminal. */
 final class AiAssistantLauncher {
 
-  private static final Logger log = Logger.getLogger(AiAssistantLauncher.name)
   private final AiWorkspacePermissions permissions
   private final SecretFileWriter secretFileWriter
   private final ExecutableProbe executableProbe
@@ -49,11 +46,16 @@ final class AiAssistantLauncher {
     String content = windows ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env) :
         LaunchWrapperScript.unixContent(workspace, binaryPath, env)
     secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
-    try { processRunner.run(command, workspace) } finally { deleteScript(script) }
-  }
-
-  private void deleteScript(Path script) {
-    try { fileDeleter.deleteIfExists(script) } catch (Exception cleanup) { log.log(Level.WARNING, "Could not delete ${script}", cleanup) }
+    try {
+      processRunner.run(command, workspace)
+    } catch (Exception exception) {
+      // ProcessBuilder only returns after it has handed the wrapper to the terminal.  If that
+      // hand-off itself fails, the script was never usable and can be removed immediately.
+      fileDeleter.deleteIfExists(script)
+      throw exception
+    }
+    // A terminal may not open its command until after ProcessBuilder returns. Keep this
+    // token-bearing wrapper until the normal workspace purge at application exit/startup.
   }
 
   void validatePreflight(TerminalAdapterKind adapterKind) {

@@ -33,9 +33,9 @@ final class AiAssistantLauncherSection {
   private final BackgroundTaskRunner tasks
   private final JPanel panel = new JPanel()
   private final TitledBorder border = BorderFactory.createTitledBorder('')
-  private final Map<AiClient, JLabel> binaryLabels = [:]
-  private final Map<AiClient, JTextField> binaryFields = [:]
-  private final Map<AiClient, JButton> detectBinaryButtons = [:]
+  private final JLabel binaryLabel = new JLabel()
+  private final JTextField binaryField = new JTextField(24)
+  private final JButton detectBinary = new JButton()
   private final JLabel terminalLabel = new JLabel()
   private final JComboBox<TerminalAdapterKind> terminalKind = new JComboBox<>(TerminalAdapterKind.forCurrentOs() as TerminalAdapterKind[])
   private final JTextField terminalPath = new JTextField(24)
@@ -58,6 +58,8 @@ final class AiAssistantLauncherSection {
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     panel.border = border
     launchButton.name = 'aiLauncher.launchButton'
+    AiClient storedClient = preferences.aiClient
+    if (storedClient != null) { client.selectedItem = storedClient }
     buildRows()
     autoDetectBlankFields()
     applyLocale()
@@ -70,10 +72,8 @@ final class AiAssistantLauncherSection {
 
   void applyLocale() {
     border.title = I18n.instance.getString('aiLauncher.section.title')
-    AiClient.values().each { AiClient value ->
-      binaryLabels[value].text = I18n.instance.format('aiLauncher.label.binaryPath', displayName(value))
-      detectBinaryButtons[value].text = I18n.instance.getString('aiLauncher.button.detect')
-    }
+    updateSelectedClientFields()
+    detectBinary.text = I18n.instance.getString('aiLauncher.button.detect')
     terminalLabel.text = I18n.instance.getString('aiLauncher.label.terminalAdapter')
     detectTerminal.text = I18n.instance.getString('aiLauncher.button.detect')
     clientLabel.text = I18n.instance.getString('aiLauncher.label.client')
@@ -86,18 +86,16 @@ final class AiAssistantLauncherSection {
   }
 
   private void buildRows() {
-    AiClient.values().each { AiClient value ->
-      JLabel label = new JLabel(); binaryLabels[value] = label
-      JTextField field = new JTextField(preferences.getAiBinaryPath(value) ?: '', 24)
-      field.name = "aiLauncher.binaryField.${value.name()}"; binaryFields[value] = field
-      JButton detect = new JButton(); detectBinaryButtons[value] = detect
-      detect.addActionListener {
-        tasks.run({ workspaceService.detectBinaryPath(value) }, { Path found ->
-          if (found != null) { field.text = found.toString(); preferences.setAiBinaryPath(value, found.toString()) }
-        }, this.&showDetectionError)
-      }
-      JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); row.add(label); row.add(field); row.add(detect); panel.add(row)
+    client.addActionListener { updateSelectedClientFields() }
+    JPanel clientRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); clientRow.add(clientLabel); clientRow.add(client); panel.add(clientRow)
+    binaryField.name = 'aiLauncher.binaryField'
+    detectBinary.addActionListener {
+      AiClient selected = client.selectedItem as AiClient
+      tasks.run({ workspaceService.detectBinaryPath(selected) }, { Path found ->
+        if (found != null) { binaryField.text = found.toString(); preferences.setAiBinaryPath(selected, found.toString()) }
+      }, this.&showDetectionError)
     }
+    JPanel binaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); binaryRow.add(binaryLabel); binaryRow.add(binaryField); binaryRow.add(detectBinary); panel.add(binaryRow)
     TerminalAdapterKind stored = preferences.terminalAdapterKind
     if (stored != null && TerminalAdapterKind.forCurrentOs().contains(stored)) { terminalKind.selectedItem = stored }
     terminalPath.text = preferences.terminalPath ?: ''
@@ -108,18 +106,19 @@ final class AiAssistantLauncherSection {
     }
     JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); panel.add(terminalRow)
     launchButton.addActionListener { onLaunch() }
-    JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); launchRow.add(clientLabel); launchRow.add(client); launchRow.add(launchButton); panel.add(launchRow)
+    JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); launchRow.add(launchButton); panel.add(launchRow)
   }
 
   private void autoDetectBlankFields() {
-    List<AiClient> blank = AiClient.values().findAll { AiClient value -> !binaryFields[value].text?.trim() }
+    List<AiClient> blank = AiClient.values().findAll { AiClient value -> !preferences.getAiBinaryPath(value)?.trim() }
     boolean blankTerminal = !terminalPath.text?.trim()
     tasks.run({
       Map<AiClient, Path> binaries = [:]
       blank.each { AiClient value -> Path found = workspaceService.detectBinaryPath(value); if (found != null) { binaries[value] = found } }
       new Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>>(binaries, blankTerminal ? workspaceService.detectTerminalAdapter() : null)
     }, { Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>> found ->
-      found.v1.each { AiClient value, Path path -> if (!binaryFields[value].text?.trim()) { binaryFields[value].text = path.toString(); preferences.setAiBinaryPath(value, path.toString()) } }
+      found.v1.each { AiClient value, Path path -> if (!preferences.getAiBinaryPath(value)?.trim()) { preferences.setAiBinaryPath(value, path.toString()) } }
+      updateSelectedClientFields()
       if (found.v2 != null && !terminalPath.text?.trim()) { terminalKind.selectedItem = found.v2.v1; terminalPath.text = found.v2.v2.toString(); preferences.terminalAdapterKind = found.v2.v1; preferences.terminalPath = found.v2.v2.toString() }
     }, this.&showDetectionError)
   }
@@ -132,7 +131,7 @@ final class AiAssistantLauncherSection {
   private void onLaunch() {
     if (!mcpAvailable) { showError(I18n.instance.getString('aiLauncher.error.mcpNotRunning')); return }
     AiClient selected = client.selectedItem as AiClient
-    String binary = binaryFields[selected].text?.trim()
+    String binary = binaryField.text?.trim()
     TerminalAdapterKind adapter = terminalKind.selectedItem as TerminalAdapterKind
     String terminal = terminalPath.text?.trim()
     if (!binary) { showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(selected))); return }
@@ -154,9 +153,17 @@ final class AiAssistantLauncherSection {
     preferences.setAiBinaryPath(selected, binary); preferences.terminalAdapterKind = adapter; preferences.terminalPath = terminal
     workspaceService.refreshClientFiles(selected, LoopbackMcpServer.ENDPOINT, token)
     launcher.launch(selected, binaryPath, adapter, terminalExecutable, token)
+    preferences.aiClient = selected
     null
   }
 
   private void showDetectionError(Exception exception) { showError(I18n.instance.format('aiLauncher.error.detectionFailed', exception.message ?: exception.class.simpleName)) }
   private void showError(String text) { JOptionPane.showMessageDialog(panel, text, I18n.instance.getString('aiLauncher.error.title'), JOptionPane.ERROR_MESSAGE) }
+
+  private void updateSelectedClientFields() {
+    AiClient selected = client.selectedItem as AiClient
+    if (selected == null) { return }
+    binaryLabel.text = I18n.instance.format('aiLauncher.label.binaryPath', displayName(selected))
+    binaryField.text = preferences.getAiBinaryPath(selected) ?: ''
+  }
 }

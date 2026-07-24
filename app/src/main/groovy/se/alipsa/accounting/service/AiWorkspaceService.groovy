@@ -100,7 +100,15 @@ final class AiWorkspaceService {
     }
   }
 
-  Path detectBinaryPath(AiClient client) { pathBinaryResolver.resolve(client.binaryName) }
+  Path detectBinaryPath(AiClient client) {
+    Path fromPath = pathBinaryResolver.resolve(client.binaryName)
+    if (fromPath != null) { return fromPath }
+    if (client == AiClient.KIMI) {
+      Path kimiDefault = Path.of(System.getProperty('user.home'), '.kimi-code', 'bin', client.binaryName)
+      if (executableProbe.isExecutableFile(kimiDefault)) { return kimiDefault.toAbsolutePath().normalize() }
+    }
+    null
+  }
 
   Tuple2<TerminalAdapterKind, Path> detectTerminalAdapter() {
     for (TerminalAdapterKind kind : TerminalAdapterKind.forCurrentOs()) {
