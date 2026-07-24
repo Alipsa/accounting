@@ -334,6 +334,11 @@ echo [%DATE% %TIME%] Launching application.
 ${context.launcherCommand.isEmpty() ? 'echo Update complete.' : "start \"\" ${context.launcherCommand}"}
 echo [%DATE% %TIME%] Update script finished.
 ) >> "%LOG_FILE%" 2>&1
+rem Unlike the Unix script, this one deliberately does not delete itself (no "del %~f0").
+rem cmd.exe reads a running batch file from disk as it goes; deleting it out from under
+rem itself risks the same "file cannot be found" failure the block redirection above
+rem already works around. The leftover updater.bat in the staging directory is expected -
+rem the next update overwrites it in place.
 """.stripIndent()
   }
 

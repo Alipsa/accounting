@@ -463,9 +463,14 @@ final class AuditLogService {
 
   @PackageScope
   static void rebuildIntegrityChain(Sql sql, long companyId) {
-    // The chain head must point at the latest *live* row's hash, matching recordEvent()'s
-    // and archiveFiscalYearAuditLogRows()'s behavior - not simply the last row by id, which
-    // could be an archived row left over from an earlier fiscal-year replacement.
+    // Mirrors the live write path (see validateIntegrityForCompany): a live row chains from
+    // the latest *live* row, skipping over any archived rows in between - the same skip that
+    // archiveFiscalYearAuditLogRows()'s chain-head reset produces on insert. An archived row
+    // chains from whichever row immediately precedes it, since that is what it actually
+    // chained from back when it was itself still live. Collapsing both cases onto a single
+    // "previous row by id" chain (as an earlier version of this method did) makes a live row
+    // downstream of an archived block chain through it, which validateIntegrityForCompany
+    // does not treat as equivalent to a real chain-head-reset skip.
     String lastLiveHash = null
     sql.withBatch('''
         update audit_log
@@ -473,8 +478,8 @@ final class AuditLogService {
                entry_hash = ?
          where id = ?
     ''') { groovy.sql.BatchingPreparedStatementWrapper statement ->
-      String batchPreviousHash = null
-      String batchLastLiveHash = null
+      String rawPreviousHash = null
+      String liveHash = null
       sql.rows('''
           select id,
                  event_type as eventType,
@@ -492,6 +497,8 @@ final class AuditLogService {
            where company_id = ?
            order by id
       ''', [companyId]).each { GroovyRowResult row ->
+        boolean archived = row.get('archived') as Boolean
+        String previousHash = archived ? rawPreviousHash : liveHash
         String entryHash = calculateHash(new AuditEntrySeed(
             eventType: row.get('eventType') as String,
             voucherId: longOrNull(row.get('voucherId')),
@@ -502,18 +509,94 @@ final class AuditLogService {
             actor: row.get('actor') as String,
             summary: row.get('summary') as String,
             details: SqlValueMapper.toClob(row.get('details')),
-            previousHash: batchPreviousHash,
+            previousHash: previousHash,
             createdAt: SqlValueMapper.toLocalDateTime(row.get('createdAt'))
         ))
-        statement.addBatch([batchPreviousHash, entryHash, row.get('id')])
-        batchPreviousHash = entryHash
-        if (!(row.get('archived') as Boolean)) {
-          batchLastLiveHash = entryHash
+        statement.addBatch([previousHash, entryHash, row.get('id')])
+        rawPreviousHash = entryHash
+        if (!archived) {
+          liveHash = entryHash
         }
       }
-      lastLiveHash = batchLastLiveHash
+      lastLiveHash = liveHash
     }
     updateChainHead(sql, companyId, lastLiveHash)
+  }
+
+  /**
+   * One-time repair for databases affected by the pre-V27 archival bug (see
+   * V27__audit_log_decouple_references.sql): archiving used to null out all five reference
+   * columns without recalculating entry_hash. Best-effort restores whatever is recoverable
+   * from each row's own (untouched) details text, then rebuilds the hash chain for any
+   * company that still fails validation afterwards - closing out rows where the original
+   * value isn't recoverable (e.g. CANCEL_VOUCHER/CORRECTION_VOUCHER never recorded
+   * fiscalYearId in details in the first place).
+   */
+  @PackageScope
+  static void repairIntegrityForAllCompanies(Sql sql) {
+    repairArchivedReferencesFromDetails(sql)
+    sql.rows('select distinct company_id as companyId from audit_log').each { GroovyRowResult row ->
+      long companyId = ((Number) row.get('companyId')).longValue()
+      if (!validateIntegrityForCompany(sql, companyId).isEmpty()) {
+        rebuildIntegrityChain(sql, companyId)
+      }
+    }
+  }
+
+  @PackageScope
+  static void repairArchivedReferencesFromDetails(Sql sql) {
+    sql.rows('''
+        select id,
+               voucher_id as voucherId,
+               attachment_id as attachmentId,
+               fiscal_year_id as fiscalYearId,
+               accounting_period_id as accountingPeriodId,
+               vat_period_id as vatPeriodId,
+               details
+          from audit_log
+         where archived = true
+           and details is not null
+           and (voucher_id is null
+                or attachment_id is null
+                or fiscal_year_id is null
+                or accounting_period_id is null
+                or vat_period_id is null)
+    ''').each { GroovyRowResult row ->
+      Map<String, String> parsed = parseDetails(SqlValueMapper.toClob(row.get('details')))
+      if (parsed.isEmpty()) {
+        return
+      }
+      // transferVoucherId is VAT_PERIOD_LOCKED's name for what recordEvent() stored as
+      // voucher_id - see recordVatPeriodLocked().
+      Long voucherId = longOrNull(row.get('voucherId')) ?: longOrNull(parsed.voucherId) ?: longOrNull(parsed.transferVoucherId)
+      Long attachmentId = longOrNull(row.get('attachmentId')) ?: longOrNull(parsed.attachmentId)
+      Long fiscalYearId = longOrNull(row.get('fiscalYearId')) ?: longOrNull(parsed.fiscalYearId)
+      Long accountingPeriodId = longOrNull(row.get('accountingPeriodId')) ?: longOrNull(parsed.accountingPeriodId)
+      Long vatPeriodId = longOrNull(row.get('vatPeriodId')) ?: longOrNull(parsed.vatPeriodId)
+      sql.executeUpdate('''
+          update audit_log
+             set voucher_id = ?,
+                 attachment_id = ?,
+                 fiscal_year_id = ?,
+                 accounting_period_id = ?,
+                 vat_period_id = ?
+           where id = ?
+      ''', [voucherId, attachmentId, fiscalYearId, accountingPeriodId, vatPeriodId, row.get('id')])
+    }
+  }
+
+  private static Map<String, String> parseDetails(String details) {
+    Map<String, String> parsed = [:]
+    if (!details) {
+      return parsed
+    }
+    details.split('\n').each { String line ->
+      int separatorIndex = line.indexOf('=')
+      if (separatorIndex > 0) {
+        parsed[line.substring(0, separatorIndex)] = line.substring(separatorIndex + 1)
+      }
+    }
+    parsed
   }
 
   private AuditLogEntry recordStandaloneEvent(String eventType, String summary, String details, long companyId) {

@@ -8,26 +8,18 @@
 -- validateIntegrity() afterwards. Dropping the restrictive foreign keys lets archived rows
 -- keep pointing at (now possibly deleted) records instead, so they no longer need to be
 -- nulled out.
+--
+-- Repairing rows already corrupted by the old nulling behavior happens in Groovy
+-- (AuditLogService.repairIntegrityForAllCompanies, invoked from DatabaseService right after
+-- this migration applies) rather than here: reconstructing the five reference columns needs
+-- per-event-type knowledge of which key each was recorded under in the details text (they
+-- don't all use the same key names - VAT_PERIOD_LOCKED's voucher_id, for instance, was
+-- recorded as transferVoucherId), and not every field is recoverable that way. Whatever
+-- can't be recovered is closed out by rebuilding that company's hash chain from its current
+-- (already-archived, un-nullable-further) state, which is easier to get right and test as
+-- Groovy than as a wall of per-field regexes.
 alter table audit_log drop constraint if exists fk_audit_log_voucher;
 alter table audit_log drop constraint if exists fk_audit_log_attachment;
 alter table audit_log drop constraint if exists fk_audit_log_fiscal_year;
 alter table audit_log drop constraint if exists fk_audit_log_period;
 alter table audit_log drop constraint if exists fk_audit_log_vat_period;
-
--- Self-heal rows already corrupted by the old nulling behavior: the original voucher_id
--- and fiscal_year_id are still recoverable from the human-readable details text that was
--- captured at the same time and was never touched, so entry_hash matches again once they
--- are restored.
-update audit_log
-   set voucher_id = cast(regexp_replace(details, '(?s).*(?:^|\n)voucherId=(\d+)(?:\n.*|$)', '$1') as bigint)
- where archived = true
-   and voucher_id is null
-   and details is not null
-   and regexp_like(details, '(?s).*(?:^|\n)voucherId=(\d+)(?:\n.*|$)');
-
-update audit_log
-   set fiscal_year_id = cast(regexp_replace(details, '(?s).*(?:^|\n)fiscalYearId=(\d+)(?:\n.*|$)', '$1') as bigint)
- where archived = true
-   and fiscal_year_id is null
-   and details is not null
-   and regexp_like(details, '(?s).*(?:^|\n)fiscalYearId=(\d+)(?:\n.*|$)');
