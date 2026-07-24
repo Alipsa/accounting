@@ -2,6 +2,8 @@
 
 ## v1.7.0, in progress
 
+- Ny inställning under "AI / MCP": "Starta AI-assistent" skriver en projekt-scopad MCP-konfiguration och instruktionsfil åt vald AI-klient (Claude Code, Codex, Kimi, Vibe) till en dedikerad arbetsyta och öppnar en terminal där — MCP-registreringen syns då bara i det sammanhanget, inte i klientens globala konfiguration.
+
 ## v1.6.1, 2026-07-23
 
 ### Improvements

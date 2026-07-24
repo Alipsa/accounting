@@ -13,6 +13,7 @@ import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.AiWorkspaceService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.BackupResult
@@ -74,7 +75,6 @@ import javax.swing.border.TitledBorder
  */
 @CompileDynamic
 final class MainFrame implements PropertyChangeListener {
-
   private static final Logger log = Logger.getLogger(MainFrame.name)
   private static final List<String> ICON_PATHS = [
       '/icons/logo16.png',
@@ -90,6 +90,7 @@ final class MainFrame implements PropertyChangeListener {
       new NavigationIcon(NavigationIcon.Type.REPORTS),
       new NavigationIcon(NavigationIcon.Type.ACCOUNTS),
       new NavigationIcon(NavigationIcon.Type.FISCAL_YEARS),
+      new NavigationIcon(NavigationIcon.Type.SETTINGS),
       new NavigationIcon(NavigationIcon.Type.SETTINGS)
   ]
 
@@ -221,22 +222,24 @@ final class MainFrame implements PropertyChangeListener {
   private TitledBorder applicationPreferencesSectionBorder
   private TitledBorder relatedConfigurationSectionBorder
   private McpSettingsSection mcpSettingsSection
+  private AiAssistantLauncherSection aiLauncherSection
   private JTabbedPane tabbedPane
   private VoucherPanel voucherPanel
   private McpServerLifecycle mcpServerLifecycle
+  private final AiWorkspaceService aiWorkspaceService = new AiWorkspaceService()
   private JPanel mcpGlassPane
   private JLabel mcpGlassPaneLabel
   private final AtomicBoolean shuttingDown = new AtomicBoolean(false)
   private final UpdateService updateService = new UpdateService()
   private UpdateInfo pendingUpdate
   private final JFrame frame
-
   MainFrame() {
     I18n.instance.addLocaleChangeListener(this)
     activeCompanyManager.addPropertyChangeListener(this)
     frame = buildFrame()
     mcpServerLifecycle = new McpServerLifecycle(
-        userPreferencesService, activeCompanyManager, voucherPanel, mcpSettingsSection, mcpGlassPane)
+        userPreferencesService, activeCompanyManager, voucherPanel, mcpSettingsSection, mcpGlassPane,
+        aiWorkspaceService, aiLauncherSection)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
@@ -322,8 +325,7 @@ final class MainFrame implements PropertyChangeListener {
     companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
     applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
     relatedConfigurationSectionBorder.title = I18n.instance.getString('settings.section.relatedConfiguration')
-    mcpSettingsSection.applyLocale()
-    mcpGlassPaneLabel.text = I18n.instance.getString('mainFrame.mcp.working')
+    applyMcpLocale()
     companyProfileEditButton.text = I18n.instance.getString('mainFrame.button.editCompanySettings')
     vatCodesLinkButton.text = I18n.instance.getString('settings.crossLink.vatCodes')
     vatPeriodsLinkButton.text = I18n.instance.getString('settings.crossLink.vatPeriods')
@@ -332,6 +334,11 @@ final class MainFrame implements PropertyChangeListener {
     if (pendingUpdate != null) {
       updateNotificationButton.text = I18n.instance.format('mainFrame.button.updateVersion', pendingUpdate.availableVersion)
     }
+  }
+  private void applyMcpLocale() {
+    mcpSettingsSection.applyLocale()
+    aiLauncherSection?.applyLocale()
+    mcpGlassPaneLabel.text = I18n.instance.getString('mainFrame.mcp.working')
   }
 
   private void applyMenuLocale() {
@@ -362,14 +369,16 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setTitleAt(3, I18n.instance.getString('mainFrame.tab.reports'))
     tabbedPane.setTitleAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts'))
     tabbedPane.setTitleAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears'))
-    tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.settings'))
+    tabbedPane.setTitleAt(6, I18n.instance.getString('mainFrame.tab.aiAssistant'))
+    tabbedPane.setTitleAt(7, I18n.instance.getString('mainFrame.tab.settings'))
     tabbedPane.setToolTipTextAt(0, I18n.instance.getString('mainFrame.tab.overview.tooltip'))
     tabbedPane.setToolTipTextAt(1, I18n.instance.getString('mainFrame.tab.vouchers.tooltip'))
     tabbedPane.setToolTipTextAt(2, I18n.instance.getString('mainFrame.tab.vat.tooltip'))
     tabbedPane.setToolTipTextAt(3, I18n.instance.getString('mainFrame.tab.reports.tooltip'))
     tabbedPane.setToolTipTextAt(4, I18n.instance.getString('mainFrame.tab.chartOfAccounts.tooltip'))
     tabbedPane.setToolTipTextAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears.tooltip'))
-    tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
+    tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.aiAssistant.tooltip'))
+    tabbedPane.setToolTipTextAt(7, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
     NAVIGATION_ICONS.eachWithIndex { NavigationIcon icon, int index ->
       tabbedPane.setIconAt(index, icon)
     }
@@ -461,23 +470,25 @@ final class MainFrame implements PropertyChangeListener {
     JPanel companyProfileSection = buildCompanyProfileSection()
     JPanel applicationPreferencesSection = buildApplicationPreferencesSection()
     JPanel relatedConfigurationSection = buildRelatedConfigurationSection()
-    mcpSettingsSection = new McpSettingsSection(userPreferencesService)
-    JPanel mcpSection = mcpSettingsSection.panel
     companyProfileSection.alignmentX = Component.LEFT_ALIGNMENT
     applicationPreferencesSection.alignmentX = Component.LEFT_ALIGNMENT
     relatedConfigurationSection.alignmentX = Component.LEFT_ALIGNMENT
-    mcpSection.alignmentX = Component.LEFT_ALIGNMENT
 
     panel.add(companyProfileSection)
     panel.add(Box.createVerticalStrut(12))
     panel.add(applicationPreferencesSection)
     panel.add(Box.createVerticalStrut(12))
     panel.add(relatedConfigurationSection)
-    panel.add(Box.createVerticalStrut(12))
-    panel.add(mcpSection)
     panel.add(Box.createVerticalGlue())
 
     panel
+  }
+
+  private JPanel buildAiAssistantPanel() {
+    AiAssistantPanel aiAssistantPanel = new AiAssistantPanel(userPreferencesService, aiWorkspaceService)
+    aiLauncherSection = aiAssistantPanel.launcherSection
+    mcpSettingsSection = aiAssistantPanel.mcpSettingsSection
+    aiAssistantPanel.panel
   }
 
   private JPanel buildCompanyProfileSection() {
@@ -856,6 +867,7 @@ final class MainFrame implements PropertyChangeListener {
         )],
         [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.aiAssistant'), component: buildAiAssistantPanel()],
         [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildSettingsPanel()]
     ]
   }

@@ -52,6 +52,14 @@ tasks.named('distTar', Tar) {
   archiveBaseName = 'app'
 }
 
+sourceSets {
+  main {
+    resources {
+      srcDir rootProject.file('skill')
+    }
+  }
+}
+
 distributions {
   main {
     contents {

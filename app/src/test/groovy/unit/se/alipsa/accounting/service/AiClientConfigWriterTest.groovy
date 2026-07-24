@@ -1,0 +1,31 @@
+package se.alipsa.accounting.service
+
+import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertTrue
+
+import org.junit.jupiter.api.Test
+
+import se.alipsa.accounting.domain.AiClient
+
+class AiClientConfigWriterTest {
+
+  private static final String ENDPOINT = 'http://127.0.0.1:48652/mcp'
+  private static final String TOKEN = 'test-token'
+
+  @Test
+  void writesExpectedConfigForEveryClient() {
+    String claude = AiClientConfigWriter.configContent(AiClient.CLAUDE, ENDPOINT, TOKEN)
+    String codex = AiClientConfigWriter.configContent(AiClient.CODEX, ENDPOINT, TOKEN)
+    String kimi = AiClientConfigWriter.configContent(AiClient.KIMI, ENDPOINT, TOKEN)
+    String vibe = AiClientConfigWriter.configContent(AiClient.VIBE, ENDPOINT, TOKEN)
+
+    assertTrue(claude.contains('"mcpServers"'))
+    assertTrue(claude.contains('Bearer test-token'))
+    assertTrue(kimi.contains('Bearer test-token'))
+    assertTrue(codex.contains('[mcp_servers.accounting]'))
+    assertTrue(codex.contains('bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"'))
+    assertFalse(codex.contains(TOKEN))
+    assertTrue(vibe.contains('[[mcp_servers]]'))
+    assertTrue(vibe.contains('headers = { Authorization = "Bearer test-token" }'))
+  }
+}

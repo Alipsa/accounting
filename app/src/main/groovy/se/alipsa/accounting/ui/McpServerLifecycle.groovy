@@ -6,6 +6,8 @@ import se.alipsa.accounting.mcp.AccountingMcpTools
 import se.alipsa.accounting.mcp.LoopbackMcpServer
 import se.alipsa.accounting.mcp.McpDispatcher
 import se.alipsa.accounting.mcp.McpUiGuard
+import se.alipsa.accounting.service.AiWorkspaceService
+import se.alipsa.accounting.service.PurgeResult
 import se.alipsa.accounting.service.UserPreferencesService
 
 import java.util.logging.Logger
@@ -23,6 +25,8 @@ final class McpServerLifecycle implements Closeable {
   private final VoucherPanel voucherPanel
   private final McpSettingsSection settingsSection
   private final JPanel glassPane
+  private final AiWorkspaceService aiWorkspaceService
+  private final AiAssistantLauncherSection aiLauncherSection
   private LoopbackMcpServer server
 
   McpServerLifecycle(
@@ -30,17 +34,25 @@ final class McpServerLifecycle implements Closeable {
       ActiveCompanyManager activeCompanyManager,
       VoucherPanel voucherPanel,
       McpSettingsSection settingsSection,
-      JPanel glassPane
+      JPanel glassPane,
+      AiWorkspaceService aiWorkspaceService,
+      AiAssistantLauncherSection aiLauncherSection
   ) {
     this.userPreferencesService = userPreferencesService
     this.activeCompanyManager = activeCompanyManager
     this.voucherPanel = voucherPanel
     this.settingsSection = settingsSection
     this.glassPane = glassPane
+    this.aiWorkspaceService = aiWorkspaceService
+    this.aiLauncherSection = aiLauncherSection
   }
 
   void start() {
     try {
+      PurgeResult startupPurge = aiWorkspaceService.purgeAllSecrets()
+      if (!startupPurge.complete) {
+        log.warning("Could not remove stale AI workspace secrets at startup: ${startupPurge.failed}")
+      }
       AccountingMcpTools tools = new AccountingMcpTools()
       tools.setVoucherDraftAccess(voucherPanel.mcpVoucherDraftAccess)
       tools.setActiveContextProvider {
@@ -65,16 +77,23 @@ final class McpServerLifecycle implements Closeable {
       server = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools), uiGuard())
       server.start()
       settingsSection.setRunning()
+      aiLauncherSection.setMcpAvailable(true)
       log.info("Local MCP server available at ${LoopbackMcpServer.ENDPOINT}")
     } catch (Exception exception) {
       log.warning("Could not start local MCP server: ${exception.message}")
       settingsSection.setUnavailable(exception.message)
+      aiLauncherSection.setMcpAvailable(false)
     }
   }
 
   @Override
   void close() {
     server?.close()
+    try {
+      aiWorkspaceService.purgeAllSecrets()
+    } catch (Exception exception) {
+      log.warning("Could not purge AI workspace secrets on shutdown: ${exception.message}")
+    }
   }
 
   private McpUiGuard uiGuard() {

@@ -1,5 +1,7 @@
 package se.alipsa.accounting.service
 
+import se.alipsa.accounting.domain.AiClient
+import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.domain.ThemeMode
 
 import java.security.SecureRandom
@@ -24,6 +26,10 @@ final class UserPreferencesService {
   private static final String PENDING_MIGRATION_MOVE_KEY = 'data.pendingMigrationMove'
   private static final String LAST_SIE_IMPORT_DIRECTORY_KEY = 'sie.import.lastDirectory'
   private static final String MCP_TOKEN_KEY = 'mcp.token'
+  private static final String AI_BINARY_KEY_PREFIX = 'ai.launcher.binary.'
+  private static final String AI_CLIENT_KEY = 'ai.launcher.client'
+  private static final String AI_TERMINAL_ADAPTER_KIND_KEY = 'ai.launcher.terminalAdapterKind'
+  private static final String AI_TERMINAL_PATH_KEY = 'ai.launcher.terminalPath'
 
   private final Preferences preferences
 
@@ -173,5 +179,38 @@ final class UserPreferencesService {
     String token = bytes.encodeBase64Url().toString().replace('=', '')
     preferences.put(MCP_TOKEN_KEY, token)
     token
+  }
+
+  String getAiBinaryPath(AiClient client) {
+    preferences.get(AI_BINARY_KEY_PREFIX + client.name().toLowerCase(Locale.ROOT), null)
+  }
+
+  void setAiBinaryPath(AiClient client, String path) {
+    String key = AI_BINARY_KEY_PREFIX + client.name().toLowerCase(Locale.ROOT)
+    if (path?.trim()) { preferences.put(key, path) } else { preferences.remove(key) }
+  }
+
+  AiClient getAiClient() {
+    String name = preferences.get(AI_CLIENT_KEY, null)
+    AiClient.values().find { AiClient client -> client.name() == name }
+  }
+
+  void setAiClient(AiClient client) {
+    if (client == null) { preferences.remove(AI_CLIENT_KEY) } else { preferences.put(AI_CLIENT_KEY, client.name()) }
+  }
+
+  TerminalAdapterKind getTerminalAdapterKind() {
+    String name = preferences.get(AI_TERMINAL_ADAPTER_KIND_KEY, null)
+    name ? TerminalAdapterKind.valueOf(name) : null
+  }
+
+  void setTerminalAdapterKind(TerminalAdapterKind kind) {
+    if (kind == null) { preferences.remove(AI_TERMINAL_ADAPTER_KIND_KEY) } else { preferences.put(AI_TERMINAL_ADAPTER_KIND_KEY, kind.name()) }
+  }
+
+  String getTerminalPath() { preferences.get(AI_TERMINAL_PATH_KEY, null) }
+
+  void setTerminalPath(String path) {
+    if (path?.trim()) { preferences.put(AI_TERMINAL_PATH_KEY, path) } else { preferences.remove(AI_TERMINAL_PATH_KEY) }
   }
 }
