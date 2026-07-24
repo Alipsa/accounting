@@ -475,11 +475,11 @@ git commit -m "lägger till ProcessArgumentEscaping"
 - Modify: `app/src/test/groovy/unit/se/alipsa/accounting/support/AppPathsTest.groovy`
 
 **Interfaces:**
-- Produces: `AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY` (String constant), `static Path AppPaths.aiWorkspaceDirectory()`.
+- Produces: `AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY` (String constant), `static Path AppPaths.aiWorkspaceDirectory()`, and `static void AppPaths.ensureAiWorkspaceHome()`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `AppPathsTest.groovy` (extend the existing `@BeforeEach`/`@AfterEach` to also capture/restore the new property, and add two new `@Test` methods):
+Add to `AppPathsTest.groovy` (extend the existing `@BeforeEach`/`@AfterEach` to also capture/restore the new property, and add three new `@Test` methods):
 
 ```groovy
   private String previousAiWorkspaceOverride
@@ -518,9 +518,22 @@ Add to `AppPathsTest.groovy` (extend the existing `@BeforeEach`/`@AfterEach` to 
 
     assertEquals(overrideHome.toAbsolutePath().normalize().resolve('ai-workspace'), AppPaths.aiWorkspaceDirectory())
   }
+
+  @Test
+  void ensureAiWorkspaceHomeCreatesTheFixedWorkspaceParentWhenItIsMissing() {
+    Path missingHome = tempDir.resolve('missing-ai-workspace-home')
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, missingHome.toString())
+
+    AppPaths.ensureAiWorkspaceHome()
+
+    assertTrue(Files.isDirectory(missingHome))
+    assertFalse(Files.isSymbolicLink(missingHome))
+  }
 ```
 
 (Replace the existing `previousOsName`/`previousUserHome`/`previousHomeOverride` field declarations and `@BeforeEach`/`@AfterEach` methods with the versions above — they're additive, just add the one new field/line to each.)
+
+Also add static imports for `assertTrue` and `assertFalse`; `AppPathsTest` already imports `Files`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -535,7 +548,7 @@ In `AppPaths.groovy`, add the constant next to `HOME_OVERRIDE_PROPERTY` (~line 1
   static final String AI_WORKSPACE_HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.aiWorkspace.home'
 ```
 
-Add the method right after `osDefaultApplicationHome()` (it deliberately calls that same private method directly, rather than `applicationHome()`, so it never picks up `HOME_OVERRIDE_PROPERTY` or a user-configured custom/shared data location — see the design spec's "Workspace layout" section for why):
+Add the methods right after `osDefaultApplicationHome()` (they deliberately call that same private method directly, rather than `applicationHome()`, so they never pick up `HOME_OVERRIDE_PROPERTY` or a user-configured custom/shared data location — see the design spec's "Workspace layout" section for why). `ensureAiWorkspaceHome()` is required because the normal startup `ensureDirectoryStructure()` creates only `applicationHome()`; when that has been redirected to a custom/shared location, the fixed OS-default parent of `ai-workspace` may not exist at all:
 
 ```groovy
   /**
@@ -546,9 +559,23 @@ Add the method right after `osDefaultApplicationHome()` (it deliberately calls t
    * reachable via a shared mount.
    */
   static Path aiWorkspaceDirectory() {
+    aiWorkspaceHome().resolve('ai-workspace')
+  }
+
+  static void ensureAiWorkspaceHome() {
+    Path home = aiWorkspaceHome()
+    if (Files.isSymbolicLink(home)) {
+      throw new IllegalStateException("Refusing to create the AI workspace below symlinked home ${home}.")
+    }
+    Files.createDirectories(home)
+    if (Files.isSymbolicLink(home) || !Files.isDirectory(home)) {
+      throw new IllegalStateException("AI workspace home ${home} is not a real directory.")
+    }
+  }
+
+  private static Path aiWorkspaceHome() {
     String override = System.getProperty(AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, '').trim()
-    Path home = override ? Paths.get(override).toAbsolutePath().normalize() : osDefaultApplicationHome()
-    home.resolve('ai-workspace')
+    override ? Paths.get(override).toAbsolutePath().normalize() : osDefaultApplicationHome()
   }
 ```
 
@@ -644,7 +671,7 @@ git commit -m "lägger till assistentprofil för AI-launcher"
 
 **Interfaces:**
 - Consumes: nothing new (pure `java.nio.file`).
-- Produces: `enum SecretFileKind { EXECUTABLE, DATA }`. `interface AclPermissionAdapter { void applyOwnerOnly(Path); void verifyOwnerOnly(Path) }`. `class AiWorkspacePermissions` with a no-arg constructor (real ACL adapter) and a `(AclPermissionAdapter)` constructor (for tests), and methods: **`void ensureDirectory(Path root, Path dir)`** — `root` is the AI workspace boundary; permission mutation and directory creation are strictly confined to `root` and its descendants, and `root`'s own parent is only ever read-checked (exists? symlink?), never created or chmod'd/ACL'd, since that parent (the application data home) is the existing `AppPaths.ensureDirectoryStructure()`'s responsibility, not this class's — `void createFileWithPermissions(Path path, SecretFileKind kind)`, `void createFileWithPermissions(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void applyAndVerify(Path path, SecretFileKind kind)`, `void applyAndVerify(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void verifyNoSymlinksInPath(Path root, Path candidate)`. Later tasks (`AtomicSecretFileWriter`, `AiWorkspaceService`, `AiAssistantLauncher`) depend on exactly these method names/signatures.
+- Produces: `enum SecretFileKind { EXECUTABLE, DATA }`. `interface AclPermissionAdapter { void applyOwnerOnly(Path); void verifyOwnerOnly(Path) }`. `class AiWorkspacePermissions` with a no-arg constructor (real ACL adapter) and a `(AclPermissionAdapter)` constructor (for tests), and methods: **`void ensureDirectory(Path root, Path dir)`** — `root` is the AI workspace boundary; permission mutation and directory creation are strictly confined to `root` and its descendants, and `root`'s own parent is only ever read-checked (exists? symlink?) here, never chmod'd/ACL'd. `AppPaths.ensureAiWorkspaceHome()` creates that fixed, non-shared parent before this class is called; `AiWorkspacePermissions` must not recurse above the workspace root — `void createFileWithPermissions(Path path, SecretFileKind kind)`, `void createFileWithPermissions(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void applyAndVerify(Path path, SecretFileKind kind)`, `void applyAndVerify(Path path, SecretFileKind kind, Set<String> supportedViews)`, `void verifyNoSymlinksInPath(Path root, Path candidate)`. Later tasks (`AtomicSecretFileWriter`, `AiWorkspaceService`, `AiAssistantLauncher`) depend on exactly these method names/signatures.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -913,10 +940,9 @@ final class AiWorkspacePermissions {
   /**
    * Creates {@code dir} (and any missing intermediate levels) with owner-only
    * permissions, but ONLY within the {@code root} subtree. {@code root}'s own
-   * parent — the application data home — is only ever read-checked (does it
-   * exist? is it a symlink?), never created or chmod'd/ACL'd: that directory
-   * is the existing {@code AppPaths.ensureDirectoryStructure()}'s
-   * responsibility. Without this boundary, recursing unconditionally up the
+   * parent is only ever read-checked (does it exist? is it a symlink?), never
+   * created or chmod'd/ACL'd here: {@code AppPaths.ensureAiWorkspaceHome()}
+   * creates the fixed workspace parent separately. Without this boundary, recursing unconditionally up the
    * parent chain to guarantee a fresh symlink check at every level (see
    * below) would also try to chmod the user's home directory and beyond.
    */
@@ -944,12 +970,12 @@ final class AiWorkspacePermissions {
       throw new IllegalStateException("${dir} exists but is not a directory.")
     }
     if (dir == root) {
-      // At the workspace root: its parent must already exist. We never create or touch
-      // permissions on it — only confirm it's real and not a symlink before creating root itself.
+      // At the workspace root: its fixed parent is created by ensureAiWorkspaceHome(). We
+      // never create or touch permissions on it here — only confirm it is real and not a symlink.
       Path parent = dir.parent
       if (parent == null || !Files.isDirectory(parent)) {
         throw new IllegalStateException(
-            "${parent} does not exist; the application data home must already exist before the AI workspace can be created.")
+            "${parent} does not exist; ensureAiWorkspaceHome() must run before the AI workspace is created.")
       }
       if (Files.isSymbolicLink(parent)) {
         throw new IllegalStateException("Refusing to operate through a symlink at ${parent}.")
@@ -2558,6 +2584,7 @@ final class AiWorkspaceService {
   }
 
   void ensureWorkspace() {
+    AppPaths.ensureAiWorkspaceHome()
     Path workspace = AppPaths.aiWorkspaceDirectory()
     permissions.ensureDirectory(workspace, workspace)
   }
@@ -2849,13 +2876,10 @@ class AiAssistantLauncherTest {
   void launchCreatesTheWorkspaceDirectoryWhenItDoesNotAlreadyExist() {
     // Deliberately does NOT rely on the shared @BeforeEach's pre-created workspace — this proves
     // launch() is self-sufficient and doesn't assume a prior refreshClientFiles() call already
-    // created the directory (see AiAssistantLauncher's class doc comment). Only the workspace
-    // ROOT itself is left uncreated: freshHome (its parent) is created first, because
-    // AiWorkspacePermissions.ensureDirectory() (Task 6) requires the workspace root's parent to
-    // already exist — this class creates the workspace root and everything below it, never
-    // anything above it, matching AppPaths.ensureDirectoryStructure()'s separate responsibility.
+    // created the directory (see AiAssistantLauncher's class doc comment). Both the fixed
+    // workspace parent and the workspace root start absent; launch() must arrange the former
+    // through AppPaths.ensureAiWorkspaceHome() before AiWorkspacePermissions creates the latter.
     Path freshHome = tempDir.resolve('fresh-home')
-    Files.createDirectories(freshHome)
     System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, freshHome.toString())
     List<List<String>> recordedCommands = []
     ProcessRunner fakeRunner = { List<String> command, Path dir ->
@@ -3018,6 +3042,7 @@ final class AiAssistantLauncher {
       throw new IllegalArgumentException("${adapterExecutable} is not an executable file.")
     }
 
+    AppPaths.ensureAiWorkspaceHome()
     Path workspace = AppPaths.aiWorkspaceDirectory()
     permissions.ensureDirectory(workspace, workspace)
     boolean windows = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL
@@ -4416,6 +4441,7 @@ These are exactly the gaps the design spec's Testing section flags as impossible
 - **Review round 5 (two high, one medium, from a fifth review):** (1+3) Setting `VIBE_HOME` to the AI workspace (added in round 1 as "belt-and-suspenders" for an *unconfirmed* Vibe config-discovery mechanism) was wrong, not just unnecessary: `VIBE_HOME` relocates a Vibe installation's *entire* profile — config, `.env` credentials, agents, logs, skills — not just MCP server config, so every launch would have silently hidden the user's existing Vibe setup behind an empty one, likely forcing re-setup or breaking Vibe outright. Per Mistral's own configuration docs, the generated `.vibe/config.toml` is already discovered project-locally without any env var, which also resolves a design inconsistency the same round's findings pointed out: writing `AGENTS.md` at the workspace root (correct for Vibe's *project-level* instructions) while also pointing `VIBE_HOME` at that same workspace (which implies *user-level* state) were two contradictory assumptions about where Vibe should look. Fixed by deleting the `VIBE_HOME` branch from `AiAssistantLauncher.launch()` (Task 14) entirely — Vibe now gets the same empty `envVars` as Claude/Kimi — and replacing the test that asserted `VIBE_HOME` was set with `launchForVibeSetsNoEnvironmentVariablesAtAll`, a regression test asserting the Vibe wrapper contains no `export`/`VIBE_HOME` at all. (2) `binaryPath` — user-configurable, typed into Settings or PATH-detected — was rendered into the `.cmd` wrapper's `cd`/exec lines via `escapeForCmdScript()` (Task 3), which only rejected embedded `"` and doubled `%`; it did not reject `&`, `|`, `<`, `>`, `^`, the same characters `TerminalCommandBuilder` (Task 10) already fails closed on for the *outer* `cmd.exe /c` invocation — and quoting does not neutralize them on an ordinary line *inside* a batch script file either, since cmd.exe uses the identical grammar there. Fixed at the single choke point all three embedded values (workspace, binary path, every `envVars` value) already pass through: `escapeForCmdScript()` now rejects all five characters via a new shared `ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS` constant, which `TerminalCommandBuilder` was also switched to reference instead of keeping its own separate copy of the same five characters. New tests cover the escaping utility directly (`escapeForCmdScriptRejectsEveryUnsafeCmdMetacharacter`) and `LaunchWrapperScript.windowsContent()`'s actual production code path for both an unsafe `binaryPath` and an unsafe env var value.
 - **Review round 6 (one high, one medium, from a sixth review):** (1) `PathBinaryResolver` (Task 12) only ever probed the bare `<PATH entry>/<binaryName>` — but every `AiClient.binaryName` (`claude`, `codex`, `kimi`, `vibe`) is extensionless, and real Windows installs never expose a literal extensionless file, only `*.exe`/`*.cmd`/`*.bat`, so PATH-based auto-detection could never find anything on Windows at all. Fixed by having `resolve(...)` also try each extension from the `PATHEXT` environment variable (read through the same `EnvironmentLookup` seam already injected for `PATH` — no separate "is this Windows" check or seam needed, since `PATHEXT` is simply unset on Linux/macOS, which is what keeps this fully testable off Windows too), trying the bare name first as requested. New tests cover PATHEXT-based resolution, bare-name-first ordering when both would match, and that an unset `PATHEXT` behaves exactly as before. (2) `autoDetectBlankFields()` (Task 17) snapshotted which fields were blank before dispatching a background PATH scan, but its `onDone` callback then wrote detected values into those fields unconditionally — so a user who typed a custom binary or terminal path during the (automatic, EDT-blocking-avoidance-motivated) scan could have that input silently overwritten and persisted the moment the stale result arrived. Fixed by re-checking each field is *still* blank inside `onDone`, immediately before writing into it, for both the per-client binary fields and the terminal path field; the explicit per-client "Detect" buttons don't need the same re-check, since overwriting is exactly what clicking one asks for. Proven with a new `DelayedBackgroundTaskRunner` test fake (runs `backgroundWork` eagerly but defers `onDone`/`onError` until the test calls `completeAll()`, simulating the real gap a background thread + `invokeLater` leaves open) and a new test that types into the Codex field during that gap and asserts the typed value survives; each binary field also gained a stable `.name` (matching `launchButton`'s existing precedent) so the test can locate it.
 - **Review round 7 (assistant profile):** The launch workspace is a purpose-built project context, so it now carries a shared bookkeeping-assistant profile as well as the MCP skill. Task 5 bundles `skill/assistant-profile.md`; Task 8 adds `assistantProfileFile(...)`; and Task 13 writes it as Claude's root `CLAUDE.md` while prepending it to the `AGENTS.md` skill document for Codex, Kimi, and Vibe. The profile defines the assistant's role, requires explicit assumptions and confirmation before changes, and directs uncertain or jurisdiction-specific advice to the authoritative web resources named by the skill. Tests pin both composition modes and Task 22 adds real-client confirmation.
+- **Review round 8 (custom data-home launch blocker):** `aiWorkspaceDirectory()` intentionally bypasses `applicationHome()` so token-bearing files never land on a user-configured shared mount. That also means `AppPaths.ensureDirectoryStructure()` no longer guarantees that the fixed OS-default parent exists: it creates the custom `applicationHome()` instead. `AiWorkspacePermissions.ensureDirectory()` correctly refuses to create anything above the workspace root, so the first launch would fail whenever the fixed parent had never otherwise been created. Fixed with `AppPaths.ensureAiWorkspaceHome()`, called by both `AiWorkspaceService.ensureWorkspace()` and the launcher's self-sufficient `launch()` path before `AiWorkspacePermissions` runs. The new AppPaths test and the strengthened launcher test both start with that parent missing.
 
 ---
 
