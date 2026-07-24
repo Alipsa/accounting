@@ -50,7 +50,8 @@ final class DatabaseService {
       new MigrationDefinition(23, 'V23__attachment_status.sql', '/db/migrations/V23__attachment_status.sql'),
       new MigrationDefinition(24, 'V24__voucher_navigation_index.sql', '/db/migrations/V24__voucher_navigation_index.sql'),
       new MigrationDefinition(25, 'V25__company_accounting_method.sql', '/db/migrations/V25__company_accounting_method.sql'),
-      new MigrationDefinition(26, 'V26__accounting_instructions.sql', '/db/migrations/V26__accounting_instructions.sql')
+      new MigrationDefinition(26, 'V26__accounting_instructions.sql', '/db/migrations/V26__accounting_instructions.sql'),
+      new MigrationDefinition(27, 'V27__audit_log_decouple_references.sql', '/db/migrations/V27__audit_log_decouple_references.sql')
   ]
 
   static DatabaseService newForTesting() {
@@ -86,8 +87,16 @@ final class DatabaseService {
     AppPaths.ensureDirectoryStructure()
     withTransaction { Sql sql ->
       ensureSchemaVersionTable(sql)
-      applyPendingMigrations(sql)
+      List<Integer> appliedVersions = applyPendingMigrations(sql)
       applyIndexes(sql)
+      // V27 stopped the archival bug that nulled out audit_log's reference columns without
+      // recalculating entry_hash, but couldn't itself repair rows already corrupted by it.
+      // Runs exactly once, right when a database first crosses V27, never again afterwards -
+      // this must stay a one-time migration step, not a general "if hash invalid, fix it"
+      // runtime behavior, or it would silently mask real tampering after this point too.
+      if (appliedVersions.contains(27)) {
+        AuditLogService.repairIntegrityForAllCompanies(sql)
+      }
     }
     log.info("Database initialized at ${AppPaths.databaseBasePath()}.mv.db")
   }
@@ -178,7 +187,7 @@ final class DatabaseService {
     ((Number) row.total).intValue() == 1
   }
 
-  private void applyPendingMigrations(Sql sql) {
+  private List<Integer> applyPendingMigrations(Sql sql) {
     int currentVersion = currentSchemaVersion(sql)
     List<MigrationDefinition> pending = MIGRATIONS.findAll { MigrationDefinition migration ->
       migration.version > currentVersion
@@ -194,6 +203,7 @@ final class DatabaseService {
       )
       log.info("Applied migration ${migration.name}.")
     }
+    pending.collect { MigrationDefinition migration -> migration.version }
   }
 
   private int currentSchemaVersion(Sql sql) {
