@@ -53,7 +53,14 @@ final class UpdateServiceUpdaterScriptTest {
     assertTrue(content.contains('log "Update failed while copying files, restoring backup..."'))
     assertTrue(content.contains('log "Updating launcher configuration."'))
     assertTrue(content.contains('log "Launching application."'))
-    assertTrue(content.contains('app-1.4.0.jar'))
+    Path stagedCfgPath = fixture.stagingDir.resolve('app.cfg.new')
+    Path installedCfgPath = fixture.installDir.resolve('app.cfg')
+    assertTrue(content.contains("cp \"${stagedCfgPath}\" \"${installedCfgPath}\" || fail"))
+
+    String stagedCfg = Files.readString(fixture.stagingDir.resolve('app.cfg.new'))
+    assertTrue(stagedCfg.contains('app.classpath=$APPDIR/app-1.4.0.jar'))
+    assertTrue(stagedCfg.contains('app.classpath=$APPDIR/widgets-1.1.2.jar'))
+    assertFalse(stagedCfg.contains('widgets-1.1.1.jar'))
   }
 
   @Test
@@ -67,17 +74,31 @@ final class UpdateServiceUpdaterScriptTest {
 
     assertEquals('updater.bat', script.fileName.toString())
     assertTrue(content.contains("set \"LOG_FILE=${fixture.updaterLog}\""))
-    assertTrue(content.contains('call :main >> "%LOG_FILE%" 2>&1'))
+    assertTrue(content.contains(') >> "%LOG_FILE%" 2>&1'))
+    assertFalse(
+        content.contains('call :main'),
+        'The call/:main/exit-after-return pattern is what causes the "batch file cannot ' +
+            'be found" stray window - the whole body must be redirected as one block instead'
+    )
     assertTrue(content.contains('echo [%DATE% %TIME%] Starting update.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Backing up current JAR files.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Copying updated JAR files.'))
     assertTrue(content.contains('Update failed while copying files, restoring backup'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Updating launcher configuration.'))
     assertTrue(content.contains('echo [%DATE% %TIME%] Launching application.'))
-   assertTrue(content.contains('app-1.4.0.jar'))
-   assertTrue(content.contains("'app.classpath=\$APPDIR/app-1.4.0.jar'"))
-    assertTrue(content.contains("\$_.StartsWith('app.classpath=')"))
-   assertFalse(content.contains('del "%~f0"'))
+    Path stagedCfgPath = fixture.stagingDir.resolve('app.cfg.new')
+    Path installedCfgPath = fixture.installDir.resolve('app.cfg')
+    assertTrue(content.contains("copy /y \"${stagedCfgPath}\" \"${installedCfgPath}\""))
+    assertFalse(content.contains('del "%~f0"'))
+
+    // the regenerated config staged for copy must list every jar from the new
+    // release, not just the main app-*.jar (this is what broke in production:
+    // a dependency jar's version changed and its classpath entry went stale).
+    String stagedCfg = Files.readString(fixture.stagingDir.resolve('app.cfg.new'))
+    assertTrue(stagedCfg.contains('app.classpath=$APPDIR/app-1.4.0.jar'))
+    assertTrue(stagedCfg.contains('app.classpath=$APPDIR/widgets-1.1.2.jar'))
+    assertFalse(stagedCfg.contains('widgets-1.1.1.jar'))
+    assertTrue(stagedCfg.contains('java-options=-Djpackage.app-version=1.4.0'))
   }
 
   @Test
@@ -103,10 +124,53 @@ final class UpdateServiceUpdaterScriptTest {
     assertEquals(0, process.exitValue())
     assertFalse(Files.exists(fixture.installDir.resolve('app-1.2.0.jar')))
     assertTrue(Files.isRegularFile(fixture.installDir.resolve('app-1.4.0.jar')))
+    assertFalse(Files.exists(fixture.installDir.resolve('widgets-1.1.1.jar')))
+    assertTrue(Files.isRegularFile(fixture.installDir.resolve('widgets-1.1.2.jar')))
     assertFalse(Files.exists(script))
 
     String cfg = Files.readString(fixture.installDir.resolve('app.cfg'))
     assertTrue(cfg.contains('app.classpath=$APPDIR/app-1.4.0.jar'))
+    assertTrue(cfg.contains('app.classpath=$APPDIR/widgets-1.1.2.jar'))
+    assertFalse(cfg.contains('widgets-1.1.1.jar'))
+    assertTrue(cfg.contains('java-options=-Djpackage.app-version=1.4.0'))
+
+    String log = Files.readString(fixture.updaterLog)
+    assertTrue(log.contains('Starting update.'))
+    assertTrue(log.contains('Backing up current JAR files.'))
+    assertTrue(log.contains('Copying updated JAR files.'))
+    assertTrue(log.contains('Updating launcher configuration.'))
+    assertTrue(log.contains('Update script finished.'))
+  }
+
+  @Test
+  void windowsUpdaterScriptUpdatesFakeInstallDirectoryAndLogsProgress() {
+    assumeTrue(File.separatorChar == (char) '\\', 'Windows updater execution is only verified on Windows hosts.')
+
+    ScriptFixture fixture = createFixture()
+    System.setProperty('os.name', 'Windows 11')
+    Path script = new UpdateService().writeUpdaterScript(
+        fixture.stagingDir, fixture.extractedDir, fixture.installDir, fixture.updaterLog)
+    restoreProperty('os.name', previousOsName)
+
+    Process process = new ProcessBuilder('cmd', '/c', script.toString())
+        .directory(fixture.stagingDir.toFile())
+        .start()
+    boolean finished = process.waitFor(15, TimeUnit.SECONDS)
+    if (!finished) {
+      process.destroyForcibly()
+    }
+
+    assertTrue(finished, 'Updater script did not finish within the timeout.')
+    assertEquals(0, process.exitValue())
+    assertFalse(Files.exists(fixture.installDir.resolve('app-1.2.0.jar')))
+    assertTrue(Files.isRegularFile(fixture.installDir.resolve('app-1.4.0.jar')))
+    assertFalse(Files.exists(fixture.installDir.resolve('widgets-1.1.1.jar')))
+    assertTrue(Files.isRegularFile(fixture.installDir.resolve('widgets-1.1.2.jar')))
+
+    String cfg = Files.readString(fixture.installDir.resolve('app.cfg'))
+    assertTrue(cfg.contains('app.classpath=$APPDIR/app-1.4.0.jar'))
+    assertTrue(cfg.contains('app.classpath=$APPDIR/widgets-1.1.2.jar'))
+    assertFalse(cfg.contains('widgets-1.1.1.jar'))
     assertTrue(cfg.contains('java-options=-Djpackage.app-version=1.4.0'))
 
     String log = Files.readString(fixture.updaterLog)
@@ -128,8 +192,14 @@ final class UpdateServiceUpdaterScriptTest {
     Files.createDirectories(updaterLog.parent)
     Files.writeString(extractedDir.resolve('app-1.4.0.jar'), 'new jar')
     Files.writeString(installDir.resolve('app-1.2.0.jar'), 'old jar')
+    // a dependency jar whose version also changed between releases - this is what the
+    // updater used to leave stale in app.cfg, since it only ever rewrote the main jar line.
+    Files.writeString(extractedDir.resolve('widgets-1.1.2.jar'), 'new dependency jar')
+    Files.writeString(installDir.resolve('widgets-1.1.1.jar'), 'old dependency jar')
     Files.writeString(installDir.resolve('app.cfg'),
-        'app.classpath=$APPDIR/app-1.2.0.jar\njava-options=-Djpackage.app-version=1.2.0\n')
+        'app.classpath=$APPDIR/app-1.2.0.jar\n' +
+        'app.classpath=$APPDIR/widgets-1.1.1.jar\n' +
+        'java-options=-Djpackage.app-version=1.2.0\n')
 
     new ScriptFixture(stagingDir, extractedDir, installDir, updaterLog)
   }

@@ -160,14 +160,14 @@ final class FiscalYearReplacementService {
 
   @PackageScope
   static void archiveFiscalYearAuditLogRows(Sql sql, long companyId, long fiscalYearId) {
+    // Reference columns are deliberately left untouched: entry_hash was computed from them
+    // at insert time and must never change afterwards, since later rows chain off it via
+    // previous_hash. audit_log no longer has restrictive foreign keys to voucher/attachment/
+    // fiscal_year/accounting_period/vat_period (see V27), so these rows are free to keep
+    // pointing at records that the subsequent purge deletes.
     sql.executeUpdate('''
         update audit_log
-           set archived = true,
-               fiscal_year_id = null,
-               accounting_period_id = null,
-               vat_period_id = null,
-               voucher_id = null,
-               attachment_id = null
+           set archived = true
          where company_id = ?
            and archived = false
            and (
