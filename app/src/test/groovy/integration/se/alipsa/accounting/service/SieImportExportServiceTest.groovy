@@ -232,7 +232,30 @@ class SieImportExportServiceTest {
           chainHead?.get('lastEntryHash') as String,
           'Chain head must reference the latest live audit log entry after replacement'
       )
+
+      GroovyRowResult archivedVoucherRow = sql.firstRow('''
+          select voucher_id as voucherId, fiscal_year_id as fiscalYearId
+            from audit_log
+           where company_id = ?
+             and archived = true
+             and event_type = ?
+      ''', [CompanyService.LEGACY_COMPANY_ID, AuditLogService.CREATE_VOUCHER]) as GroovyRowResult
+      assertNotNull(archivedVoucherRow, 'The pre-existing voucher should have produced an archived CREATE_VOUCHER row')
+      assertNotNull(
+          archivedVoucherRow.get('voucherId'),
+          'Archiving must not null out voucher_id, or entry_hash (computed from it) can never be reproduced again'
+      )
+      assertNotNull(
+          archivedVoucherRow.get('fiscalYearId'),
+          'Archiving must not null out fiscal_year_id, or entry_hash (computed from it) can never be reproduced again'
+      )
     }
+
+    assertEquals(
+        [],
+        auditLogService.validateIntegrity(CompanyService.LEGACY_COMPANY_ID),
+        'Archiving audit rows during fiscal-year replacement must not break hash-chain integrity'
+    )
   }
 
   @Test
