@@ -41,6 +41,7 @@ final class AuditLogService {
   static final String DELETE_FISCAL_YEAR = 'DELETE_FISCAL_YEAR'
   static final String ARCHIVE_COMPANY = 'ARCHIVE_COMPANY'
   static final String UNARCHIVE_COMPANY = 'UNARCHIVE_COMPANY'
+  static final String INTEGRITY_REMEDIATION = 'INTEGRITY_REMEDIATION'
 
   private static final String DEFAULT_ACTOR = 'desktop-app'
   private static final DateTimeFormatter HASH_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSSSSSSSS")
@@ -137,12 +138,19 @@ final class AuditLogService {
     }
   }
 
+  /**
+   * Critical, unexplained integrity problems only. A row with a hash mismatch that has a
+   * matching {@link #recordIntegrityRemediation} entry is excluded here - see
+   * {@link #listDocumentedExceptions(long)} for those. This is the list report exports and
+   * other operations gate on (see ReportIntegrityService); a documented exception must not
+   * keep blocking business operations forever once it has been explained.
+   */
   List<String> validateIntegrity() {
     databaseService.withSql { Sql sql ->
       List<String> problems = []
       sql.rows('select distinct company_id as companyId from audit_log').each { GroovyRowResult companyRow ->
         long cid = ((Number) companyRow.get('companyId')).longValue()
-        problems.addAll(validateIntegrityForCompany(sql, cid))
+        problems.addAll(checkIntegrityForCompany(sql, cid).criticalProblems)
       }
       problems
     }
@@ -151,12 +159,89 @@ final class AuditLogService {
   List<String> validateIntegrity(long companyId) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
-      validateIntegrityForCompany(sql, companyId)
+      checkIntegrityForCompany(sql, companyId).criticalProblems
     }
   }
 
-  private static List<String> validateIntegrityForCompany(Sql sql, long companyId) {
-    List<String> problems = []
+  /**
+   * Hash mismatches that have a matching {@link #recordIntegrityRemediation} entry
+   * explaining them - visible for transparency, but excluded from
+   * {@link #validateIntegrity(long)} and therefore no longer blocking.
+   */
+  List<String> listDocumentedExceptions(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      checkIntegrityForCompany(sql, companyId).documentedExceptions
+    }
+  }
+
+  /**
+   * Documents that a hash mismatch on {@code remediatedAuditLogId} is a known, explained
+   * historical anomaly rather than undetected tampering - e.g. data corrupted by a bug that
+   * has since been fixed, where the underlying record was already corrected through its
+   * normal domain operation (which itself produced its own, properly-chained audit entry).
+   *
+   * This deliberately never touches the broken row's own entry_hash/previous_hash: doing so
+   * would mean the chain no longer commits to what actually happened, which is the entire
+   * point of keeping it append-only. It appends a new, normally-chained
+   * {@link #INTEGRITY_REMEDIATION} entry instead, capturing the row's exact anomalous state
+   * (its stored entry_hash and previous_hash, plus what entry_hash should be given its
+   * current content) at the moment it is explained. Suppression in
+   * {@link #checkIntegrityForCompany} only ever applies while the row still matches that
+   * exact captured state - if the row changes again afterwards, by any means, none of those
+   * three values will still match and it reverts to critical. Without this, one remediation
+   * would permanently silence *any* future tampering of the same row, not just the anomaly
+   * it was written to explain.
+   *
+   * The target row must currently have an integrity problem - this is for documenting real,
+   * already-diagnosed anomalies, not for pre-emptively annotating healthy rows.
+   */
+  AuditLogEntry recordIntegrityRemediation(long companyId, long remediatedAuditLogId, String reason) {
+    CompanyService.requireValidCompanyId(companyId)
+    String safeReason = requireText(reason, 'Anledning')
+    databaseService.withTransaction { Sql sql ->
+      GroovyRowResult target = sql.firstRow('''
+          select id,
+                 event_type as eventType,
+                 voucher_id as voucherId,
+                 attachment_id as attachmentId,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 vat_period_id as vatPeriodId,
+                 actor,
+                 summary,
+                 details,
+                 previous_hash as previousHash,
+                 entry_hash as entryHash,
+                 created_at as createdAt
+            from audit_log
+           where id = ?
+             and company_id = ?
+      ''', [remediatedAuditLogId, companyId]) as GroovyRowResult
+      if (target == null) {
+        throw new IllegalArgumentException("Auditlogg ${remediatedAuditLogId} finns inte för detta företag.")
+      }
+      IntegrityCheckResult current = checkIntegrityForCompany(sql, companyId)
+      if (!current.criticalAuditLogIds.contains(remediatedAuditLogId)) {
+        throw new IllegalStateException(
+            "Auditlogg ${remediatedAuditLogId} har inget odokumenterat integritetsproblem att förklara."
+        )
+      }
+      recordEvent(sql, INTEGRITY_REMEDIATION, AuditReferences.EMPTY,
+          "Manuell rättelse dokumenterad för auditlogg ${remediatedAuditLogId}",
+          formatDetails([
+              remediatesAuditLogId   : remediatedAuditLogId,
+              remediatedEntryHash    : target.get('entryHash'),
+              remediatedPreviousHash : target.get('previousHash'),
+              remediatedContentHash  : calculatedHashOfRow(target),
+              reason                 : safeReason
+          ]), companyId)
+    }
+  }
+
+  private static IntegrityCheckResult checkIntegrityForCompany(Sql sql, long companyId) {
+    List<RowProblem> rowProblems = []
+    List<String> structuralProblems = []
     // Archiving a fiscal year (see FiscalYearReplacementService.archiveFiscalYearAuditLogRows)
     // resets the chain head to the latest *live* row so the next insert skips over the rows
     // being archived, rather than chaining off them. So the row immediately following an
@@ -187,9 +272,6 @@ final class AuditLogService {
     ''', [companyId]).each { GroovyRowResult row ->
       AuditLogEntry entry = mapEntry(row)
       boolean archived = row.get('archived') as Boolean
-      if (entry.previousHash != expectedPreviousHash && entry.previousHash != expectedLastLiveHash) {
-        problems << ("Auditlogg ${entry.id} har fel föregående hash." as String)
-      }
       String calculated = calculateHash(new AuditEntrySeed(
           eventType: entry.eventType,
           voucherId: entry.voucherId,
@@ -203,8 +285,12 @@ final class AuditLogService {
           previousHash: entry.previousHash,
           createdAt: entry.createdAt
       ))
+      String signature = integritySignature(entry.entryHash, entry.previousHash, calculated)
+      if (entry.previousHash != expectedPreviousHash && entry.previousHash != expectedLastLiveHash) {
+        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har fel föregående hash." as String, signature)
+      }
       if (entry.entryHash != calculated) {
-        problems << ("Auditlogg ${entry.id} har ogiltig hash." as String)
+        rowProblems << new RowProblem(entry.id, "Auditlogg ${entry.id} har ogiltig hash." as String, signature)
       }
       expectedPreviousHash = entry.entryHash
       if (!archived) {
@@ -214,11 +300,73 @@ final class AuditLogService {
     }
     AuditChainHead chainHead = loadChainHead(sql, companyId)
     if (chainHead == null) {
-      problems << 'Auditloggkedjans huvud saknas.'
+      structuralProblems << 'Auditloggkedjans huvud saknas.'
     } else if (chainHead.lastEntryHash != actualLastLiveHash) {
-      problems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
+      structuralProblems << 'Auditloggkedjans huvud pekar inte på sista auditraden.'
     }
-    problems
+
+    Map<Long, Set<String>> remediatedSignatures = loadRemediationSignatures(sql, companyId)
+    List<String> critical = []
+    List<String> documented = []
+    Set<Long> criticalIds = [] as Set
+    rowProblems.each { RowProblem problem ->
+      Set<String> signaturesForRow = remediatedSignatures[problem.auditLogId]
+      if (signaturesForRow?.contains(problem.signature)) {
+        documented << problem.message
+      } else {
+        critical << problem.message
+        criticalIds << problem.auditLogId
+      }
+    }
+    // Structural problems (a missing/misdirected chain head) aren't tied to one explainable
+    // row, so a documented remediation can never resolve them - they always stay critical.
+    critical.addAll(structuralProblems)
+    new IntegrityCheckResult(critical, documented, criticalIds)
+  }
+
+  /**
+   * For each remediated row id, the set of exact anomalous states (entry_hash|previous_hash|
+   * calculated-content-hash) that have been explained for it. A row problem only gets
+   * suppressed when its *current* state matches one of these exactly - see
+   * {@link #recordIntegrityRemediation} for why.
+   */
+  private static Map<Long, Set<String>> loadRemediationSignatures(Sql sql, long companyId) {
+    Map<Long, Set<String>> signatures = [:]
+    sql.rows(
+        'select details from audit_log where company_id = ? and event_type = ?',
+        [companyId, INTEGRITY_REMEDIATION]
+    ).each { GroovyRowResult row ->
+      Map<String, String> parsed = parseDetails(SqlValueMapper.toClob(row.get('details')))
+      Long remediatedId = longOrNull(parsed.remediatesAuditLogId)
+      if (remediatedId == null) {
+        return
+      }
+      String signature = integritySignature(
+          parsed.remediatedEntryHash, parsed.remediatedPreviousHash, parsed.remediatedContentHash
+      )
+      signatures.computeIfAbsent(remediatedId) { [] as Set<String> } << signature
+    }
+    signatures
+  }
+
+  private static String integritySignature(String storedEntryHash, String storedPreviousHash, String calculatedContentHash) {
+    "${storedEntryHash ?: ''}|${storedPreviousHash ?: ''}|${calculatedContentHash ?: ''}"
+  }
+
+  private static String calculatedHashOfRow(GroovyRowResult row) {
+    calculateHash(new AuditEntrySeed(
+        eventType: row.get('eventType') as String,
+        voucherId: longOrNull(row.get('voucherId')),
+        attachmentId: longOrNull(row.get('attachmentId')),
+        fiscalYearId: longOrNull(row.get('fiscalYearId')),
+        accountingPeriodId: longOrNull(row.get('accountingPeriodId')),
+        vatPeriodId: longOrNull(row.get('vatPeriodId')),
+        actor: row.get('actor') as String,
+        summary: row.get('summary') as String,
+        details: SqlValueMapper.toClob(row.get('details')),
+        previousHash: row.get('previousHash') as String,
+        createdAt: SqlValueMapper.toLocalDateTime(row.get('createdAt'))
+    ))
   }
 
   AuditLogEntry logImport(String summary, String details = null, long companyId = CompanyService.LEGACY_COMPANY_ID) {
@@ -537,7 +685,7 @@ final class AuditLogService {
     repairArchivedReferencesFromDetails(sql)
     sql.rows('select distinct company_id as companyId from audit_log').each { GroovyRowResult row ->
       long companyId = ((Number) row.get('companyId')).longValue()
-      if (!validateIntegrityForCompany(sql, companyId).isEmpty()) {
+      if (!checkIntegrityForCompany(sql, companyId).criticalProblems.isEmpty()) {
         rebuildIntegrityChain(sql, companyId)
       }
     }
@@ -799,6 +947,32 @@ final class AuditLogService {
 
     private AuditChainHead(String lastEntryHash) {
       this.lastEntryHash = lastEntryHash
+    }
+  }
+
+  private static final class RowProblem {
+
+    final long auditLogId
+    final String message
+    final String signature
+
+    private RowProblem(long auditLogId, String message, String signature) {
+      this.auditLogId = auditLogId
+      this.message = message
+      this.signature = signature
+    }
+  }
+
+  private static final class IntegrityCheckResult {
+
+    final List<String> criticalProblems
+    final List<String> documentedExceptions
+    final Set<Long> criticalAuditLogIds
+
+    private IntegrityCheckResult(List<String> criticalProblems, List<String> documentedExceptions, Set<Long> criticalAuditLogIds) {
+      this.criticalProblems = criticalProblems
+      this.documentedExceptions = documentedExceptions
+      this.criticalAuditLogIds = criticalAuditLogIds
     }
   }
 }

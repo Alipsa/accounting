@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import groovy.sql.GroovyRowResult
@@ -60,15 +61,102 @@ class AuditLogServiceTest {
   @Test
   void validateIntegrityDetectsTamperedAuditRow() {
     auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long rowId = idOfRow(databaseService, "summary = 'Importerade SIE'")
 
     databaseService.withTransaction { Sql sql ->
-      sql.executeUpdate("update audit_log set summary = 'tampered' where id = 1")
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered', rowId])
     }
 
     List<String> problems = auditLogService.validateIntegrity()
 
     assertFalse(problems.isEmpty())
     assertTrue(problems.any { String problem -> problem.contains('ogiltig hash') })
+  }
+
+  @Test
+  void recordIntegrityRemediationMovesRowFromCriticalToDocumented() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long tamperedId = idOfRow(databaseService, "summary = 'Importerade SIE'")
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered', tamperedId])
+    }
+    assertTrue(auditLogService.validateIntegrity(companyId).any { String problem -> problem.contains("Auditlogg ${tamperedId} ") })
+
+    auditLogService.recordIntegrityRemediation(
+        companyId, tamperedId, 'Rättad efter felsökning: fel bugg orsakade nollställd summary.'
+    )
+
+    List<String> critical = auditLogService.validateIntegrity(companyId)
+    assertFalse(critical.any { String problem -> problem.contains("Auditlogg ${tamperedId} ") },
+        'A documented, explained mismatch must no longer block operations as a critical problem')
+    List<String> documented = auditLogService.listDocumentedExceptions(companyId)
+    assertTrue(documented.any { String problem -> problem.contains("Auditlogg ${tamperedId} ") },
+        'The documented exception must still be visible, just not critical')
+    assertTrue(critical.isEmpty(),
+        'The remediation entry itself, and everything else, must still form a valid chain')
+  }
+
+  @Test
+  void recordIntegrityRemediationDoesNotMaskALaterDifferentTamperOfTheSameRow() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long rowId = idOfRow(databaseService, "summary = 'Importerade SIE'")
+
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered once', rowId])
+    }
+    auditLogService.recordIntegrityRemediation(companyId, rowId, 'Rättad efter felsökning av det första felet.')
+    assertTrue(auditLogService.validateIntegrity(companyId).isEmpty(),
+        'Sanity check: the first anomaly must be documented before the real assertion below')
+
+    // A second, unrelated change to the very same row - the remediation above explained the
+    // *first* anomaly, not a blanket exemption for this row forever.
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered twice, differently', rowId])
+    }
+
+    List<String> critical = auditLogService.validateIntegrity(companyId)
+    assertTrue(critical.any { String problem -> problem.contains("Auditlogg ${rowId} ") },
+        'A second, different tamper of an already-remediated row must NOT be silently masked by the earlier remediation')
+  }
+
+  @Test
+  void recordIntegrityRemediationRejectsARowWithNoIntegrityProblem() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long healthyId = idOfRow(databaseService, "summary = 'Importerade SIE'")
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      auditLogService.recordIntegrityRemediation(companyId, healthyId, 'Ingen anledning egentligen')
+    }
+    assertTrue(exception.message.contains('inget odokumenterat integritetsproblem'))
+  }
+
+  @Test
+  void recordIntegrityRemediationRejectsUnknownAuditLogId() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      auditLogService.recordIntegrityRemediation(companyId, 999999L, 'Motivering')
+    }
+    assertTrue(exception.message.contains('finns inte'))
+  }
+
+  @Test
+  void recordIntegrityRemediationRequiresAReason() {
+    long companyId = CompanyService.LEGACY_COMPANY_ID
+    auditLogService.logImport('Importerade SIE', 'jobId=1')
+    long tamperedId = idOfRow(databaseService, "summary = 'Importerade SIE'")
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('update audit_log set summary = ? where id = ?', ['tampered', tamperedId])
+    }
+
+    assertThrows(IllegalArgumentException) {
+      auditLogService.recordIntegrityRemediation(companyId, tamperedId, '   ')
+    }
   }
 
   @Test
@@ -167,6 +255,15 @@ class AuditLogServiceTest {
         "select ${column} as columnValue from audit_log where ${whereClause}".toString()
     ) as GroovyRowResult
     row.get('columnValue') as String
+  }
+
+  private static long idOfRow(DatabaseService databaseService, String whereClause) {
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          "select id from audit_log where ${whereClause}".toString()
+      ) as GroovyRowResult
+      ((Number) row.get('id')).longValue()
+    }
   }
 
   private static void restoreProperty(String name, String value) {
