@@ -1,6 +1,8 @@
 package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.mcp.LoopbackMcpServer
+import se.alipsa.accounting.service.AiWorkspaceService
+import se.alipsa.accounting.service.PurgeResult
 import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.support.I18n
 
@@ -18,6 +20,8 @@ import javax.swing.border.TitledBorder
 final class McpSettingsSection {
 
   private final UserPreferencesService userPreferencesService
+  private final AiWorkspaceService aiWorkspaceService
+  private final BackgroundTaskRunner backgroundTaskRunner
   private final JPanel panel = new JPanel()
   private final TitledBorder border
   private final JLabel endpointLabel = new JLabel()
@@ -30,8 +34,15 @@ final class McpSettingsSection {
   private Status status = Status.STARTING
   private String unavailableDetail
 
-  McpSettingsSection(UserPreferencesService userPreferencesService) {
+  McpSettingsSection(UserPreferencesService userPreferencesService, AiWorkspaceService aiWorkspaceService) {
+    this(userPreferencesService, aiWorkspaceService, new SwingBackgroundTaskRunner())
+  }
+
+  McpSettingsSection(UserPreferencesService userPreferencesService, AiWorkspaceService aiWorkspaceService,
+      BackgroundTaskRunner backgroundTaskRunner) {
     this.userPreferencesService = userPreferencesService
+    this.aiWorkspaceService = aiWorkspaceService
+    this.backgroundTaskRunner = backgroundTaskRunner
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     border = BorderFactory.createTitledBorder('')
     panel.border = border
@@ -75,7 +86,7 @@ final class McpSettingsSection {
     JPanel tokenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     tokenRow.add(tokenLabel)
     tokenRow.add(tokenField)
-    regenerateButton.addActionListener { tokenField.text = userPreferencesService.regenerateMcpToken() }
+    regenerateButton.addActionListener { regenerateToken() }
     tokenRow.add(regenerateButton)
 
     JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
@@ -85,6 +96,22 @@ final class McpSettingsSection {
     panel.add(endpointRow)
     panel.add(tokenRow)
     panel.add(statusRow)
+  }
+
+  void regenerateToken() {
+    backgroundTaskRunner.run({ aiWorkspaceService.purgeAllSecrets() }, { PurgeResult result ->
+      if (!result.complete) {
+        javax.swing.JOptionPane.showMessageDialog(panel,
+            I18n.instance.format('settings.mcp.rotateFailed', result.failed.join(', ')),
+            I18n.instance.getString('settings.mcp.rotateFailedTitle'), javax.swing.JOptionPane.ERROR_MESSAGE)
+        return
+      }
+      tokenField.text = userPreferencesService.regenerateMcpToken()
+    }) { Exception exception ->
+      javax.swing.JOptionPane.showMessageDialog(panel,
+          I18n.instance.format('settings.mcp.rotateError', exception.message ?: exception.class.simpleName),
+          I18n.instance.getString('settings.mcp.rotateFailedTitle'), javax.swing.JOptionPane.ERROR_MESSAGE)
+    }
   }
 
   private void updateStatusText() {

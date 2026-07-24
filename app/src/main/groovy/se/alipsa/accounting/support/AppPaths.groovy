@@ -15,6 +15,7 @@ final class AppPaths {
   private static final Logger log = Logger.getLogger(AppPaths.name)
 
   static final String HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.home'
+  static final String AI_WORKSPACE_HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.aiWorkspace.home'
   static final String DATABASE_URL_PROPERTY = 'alipsa.accounting.db.url'
 
   private AppPaths() {
@@ -39,6 +40,27 @@ final class AppPaths {
       return Paths.get(userHome, 'Library', 'Application Support', 'AlipsaAccounting')
     }
     Paths.get(userHome, '.local', 'share', 'alipsa-accounting')
+  }
+
+  /** A fixed per-user workspace, independent of the configurable data home. */
+  static Path aiWorkspaceDirectory() {
+    aiWorkspaceHome().resolve('ai-workspace')
+  }
+
+  static void ensureAiWorkspaceHome() {
+    Path home = aiWorkspaceHome()
+    if (Files.isSymbolicLink(home)) {
+      throw new IllegalStateException("Refusing to create the AI workspace below symlinked home ${home}.")
+    }
+    Files.createDirectories(home)
+    if (Files.isSymbolicLink(home) || !Files.isDirectory(home)) {
+      throw new IllegalStateException("AI workspace home ${home} is not a real directory.")
+    }
+  }
+
+  private static Path aiWorkspaceHome() {
+    String override = System.getProperty(AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, '').trim()
+    override ? Paths.get(override).toAbsolutePath().normalize() : osDefaultApplicationHome()
   }
 
   static Path dataDirectory() {
