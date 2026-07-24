@@ -147,6 +147,8 @@ Alipsa Accounting kombinerar en vanlig desktopapp med en lokal AI-arbetsyta: AI-
 
 När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
 
+Under **Inställningar → AI / MCP** skapar **Starta AI-assistent** en separat, projekt-scopad arbetsyta för vald klient och öppnar en terminal där. MCP-konfigurationen och instruktionerna gäller då endast den arbetsytan, inte klientens globala konfiguration.
+
 Servern använder samma lokala H2-databas, valideringar och affärsregler som desktopappen. Den är endast åtkomlig från den egna datorn och slutar svara när appen stängs; ett anslutningsfel i AI-klienten då är förväntat och ofarligt. Äldre stdio-konfigurationer med `--mode=mcp` stöds inte längre och måste ersättas med HTTP-konfigurationen.
 
 AI:n kan lägga ett förslag i den osparade verifikationsvyn, men kan aldrig spara det. Användaren granskar och trycker själv på Spara i desktopappen.
