@@ -10,7 +10,7 @@ class ProcessArgumentEscapingTest {
   @Test
   void safelyQuotesUnixShellValues() {
     assertEquals("'it'\\''s'", ProcessArgumentEscaping.shellQuoteSingle("it's"))
-    assertEquals("'" + '$' + "(whoami)'", ProcessArgumentEscaping.shellQuoteSingle('$(whoami)'))
+    assertEquals('\'$(whoami)\'', ProcessArgumentEscaping.shellQuoteSingle('$(whoami)'))
   }
 
   @Test
