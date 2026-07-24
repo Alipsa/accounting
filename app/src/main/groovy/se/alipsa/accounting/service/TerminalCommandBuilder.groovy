@@ -21,7 +21,7 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.WINDOWS_TERMINAL:
         rejectUnsafeCmdCharacters(workspace)
         rejectUnsafeCmdCharacters(script)
-        return [executable.toString(), '-d', quoteForCmd(workspace), 'cmd.exe', '/v:off', '/c', quoteForCmd(script)]
+        return [executable.toString(), '-d', workspace.toString(), 'cmd.exe', '/v:off', '/c', script.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +
@@ -40,6 +40,4 @@ final class TerminalCommandBuilder {
       }
     }
   }
-
-  private static String quoteForCmd(Path path) { '"' + path + '"' }
 }

@@ -17,18 +17,21 @@ final class AiAssistantLauncher {
   private final SecretFileWriter secretFileWriter
   private final ExecutableProbe executableProbe
   private final ProcessRunner processRunner
+  private final FileDeleter fileDeleter
 
   AiAssistantLauncher() {
     this(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), new FileSystemExecutableProbe(),
-        { List<String> command, Path dir -> new ProcessBuilder(command).directory(dir.toFile()).start() } as ProcessRunner)
+        { List<String> command, Path dir -> new ProcessBuilder(command).directory(dir.toFile()).start() } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
   }
 
   AiAssistantLauncher(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ExecutableProbe executableProbe,
-      ProcessRunner processRunner) {
+      ProcessRunner processRunner, FileDeleter fileDeleter) {
     this.permissions = permissions
     this.secretFileWriter = secretFileWriter
     this.executableProbe = executableProbe
     this.processRunner = processRunner
+    this.fileDeleter = fileDeleter
   }
 
   void launch(AiClient client, Path binaryPath, TerminalAdapterKind adapterKind, Path adapterExecutable, String token) {
@@ -46,12 +49,11 @@ final class AiAssistantLauncher {
     String content = windows ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env) :
         LaunchWrapperScript.unixContent(workspace, binaryPath, env)
     secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
-    try {
-      processRunner.run(command, workspace)
-    } catch (Exception exception) {
-      try { Files.deleteIfExists(script) } catch (Exception cleanup) { log.log(Level.WARNING, "Could not delete ${script}", cleanup) }
-      throw exception
-    }
+    try { processRunner.run(command, workspace) } finally { deleteScript(script) }
+  }
+
+  private void deleteScript(Path script) {
+    try { fileDeleter.deleteIfExists(script) } catch (Exception cleanup) { log.log(Level.WARNING, "Could not delete ${script}", cleanup) }
   }
 
   void validatePreflight(TerminalAdapterKind adapterKind) {
