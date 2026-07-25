@@ -48,10 +48,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
   private final JTable fiscalYearTable = new JTable(fiscalYearTableModel)
   private final JTable periodTable = new JTable(periodTableModel)
 
-  private JLabel nameLabel
-  private JLabel startDateLabel
-  private JLabel endDateLabel
   private JButton createButton
+  private JButton closeFiscalYearButton
   private JButton closeButton
   private JButton reopenButton
   private JButton openingBalancesButton
@@ -110,12 +108,10 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
   }
 
   private void applyLocale() {
-    nameLabel.text = I18n.instance.getString('fiscalYearPanel.label.name')
-    startDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.startDate')
-    endDateLabel.text = I18n.instance.getString('fiscalYearPanel.label.endDate')
     startDatePicker.locale = I18n.instance.locale
     endDatePicker.locale = I18n.instance.locale
     createButton.text = I18n.instance.getString('fiscalYearPanel.button.create')
+    closeFiscalYearButton.text = I18n.instance.getString('fiscalYearPanel.button.close')
     closeButton.text = I18n.instance.getString('fiscalYearPanel.button.yearEndClosing')
     reopenButton.text = I18n.instance.getString('fiscalYearPanel.button.reopen')
     openingBalancesButton.text = I18n.instance.getString('fiscalYearPanel.button.openingBalances')
@@ -140,12 +136,11 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
   }
 
   private JPanel buildFormPanel() {
-    JPanel panel = new JPanel(new BorderLayout(12, 12))
-    panel.add(buildInputGrid(), BorderLayout.CENTER)
-
     JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     createButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.create'))
     createButton.addActionListener { createFiscalYearRequested() }
+    closeFiscalYearButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.close'))
+    closeFiscalYearButton.addActionListener { closeFiscalYearRequested() }
     closeButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.yearEndClosing'))
     closeButton.addActionListener { closeSelectedFiscalYear() }
     reopenButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.reopen'))
@@ -155,13 +150,12 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
     deleteButton = new JButton(I18n.instance.getString('fiscalYearPanel.button.delete'))
     deleteButton.addActionListener { deleteSelectedFiscalYear() }
     actionPanel.add(createButton)
+    actionPanel.add(closeFiscalYearButton)
     actionPanel.add(closeButton)
     actionPanel.add(reopenButton)
     actionPanel.add(openingBalancesButton)
     actionPanel.add(deleteButton)
-    panel.add(actionPanel, BorderLayout.SOUTH)
-
-    panel
+    actionPanel
   }
 
   private JPanel buildInputGrid() {
@@ -182,7 +176,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
         new Insets(0, 0, 0, 0), 0, 0
     )
 
-    nameLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.name'))
+    JLabel nameLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.name'))
     panel.add(nameLabel, labelConstraints)
     panel.add(nameField, fieldConstraints)
     panel.add(new JLabel(), fillerConstraints)
@@ -190,7 +184,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
     labelConstraints.gridy = 1
     fieldConstraints.gridy = 1
     fillerConstraints.gridy = 1
-    startDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.startDate'))
+    JLabel startDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.startDate'))
     panel.add(startDateLabel, labelConstraints)
     panel.add(startDatePicker, fieldConstraints)
     panel.add(new JLabel(), fillerConstraints)
@@ -198,7 +192,7 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
     labelConstraints.gridy = 2
     fieldConstraints.gridy = 2
     fillerConstraints.gridy = 2
-    endDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.endDate'))
+    JLabel endDateLabel = new JLabel(I18n.instance.getString('fiscalYearPanel.label.endDate'))
     panel.add(endDateLabel, labelConstraints)
     panel.add(endDatePicker, fieldConstraints)
     panel.add(new JLabel(), fillerConstraints)
@@ -229,6 +223,9 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
   }
 
   private void createFiscalYearRequested() {
+    if (!showCreateFiscalYearDialog()) {
+      return
+    }
     List<ValidationMessage> messages = []
     LocalDate startDate = startDatePicker.date
     LocalDate endDate = endDatePicker.date
@@ -249,6 +246,16 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
       return
     }
 
+    FiscalYear previousYear = fiscalYearService.listFiscalYears(activeCompanyManager.companyId)
+        .findAll { FiscalYear year -> year.endDate.isBefore(startDate) }
+        .max { FiscalYear first, FiscalYear second -> first.endDate <=> second.endDate }
+    if (previousYear != null && !previousYear.closed) {
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.format('fiscalYearPanel.error.previousFiscalYearOpen', previousYear.name)
+      )])
+      return
+    }
+
     try {
       FiscalYear year = fiscalYearService.createFiscalYear(activeCompanyManager.companyId, nameField.text, startDate, endDate)
       clearInputs()
@@ -260,6 +267,50 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
     } catch (IllegalArgumentException exception) {
       showValidation([ValidationSupport.fieldError('', exception.message)])
     }
+  }
+
+  private boolean showCreateFiscalYearDialog() {
+    clearInputs()
+    startDatePicker.locale = I18n.instance.locale
+    endDatePicker.locale = I18n.instance.locale
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        buildInputGrid(),
+        I18n.instance.getString('fiscalYearPanel.createDialog.title'),
+        JOptionPane.OK_CANCEL_OPTION,
+        JOptionPane.PLAIN_MESSAGE
+    )
+    choice == JOptionPane.OK_OPTION
+  }
+
+  private void closeFiscalYearRequested() {
+    FiscalYear year = selectedFiscalYear()
+    if (year == null) {
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.getString('fiscalYearPanel.error.selectFiscalYear')
+      )])
+      return
+    }
+    if (year.closed) {
+      showValidation([ValidationSupport.fieldError(
+          '', I18n.instance.format('fiscalYearPanel.error.fiscalYearAlreadyClosed', year.name)
+      )])
+      return
+    }
+    int choice = JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('fiscalYearPanel.confirm.closeFiscalYear', year.name),
+        I18n.instance.getString('fiscalYearPanel.confirm.closeTitle'),
+        JOptionPane.YES_NO_OPTION
+    )
+    if (choice != JOptionPane.YES_OPTION) {
+      return
+    }
+    FiscalYear closed = fiscalYearService.closeFiscalYear(year.id)
+    activeCompanyManager.reloadFiscalYears()
+    reloadData()
+    selectFiscalYear(closed.id)
+    showInfo(I18n.instance.format('fiscalYearPanel.message.closedSimply', closed.name))
   }
 
   private void closeSelectedFiscalYear() {
