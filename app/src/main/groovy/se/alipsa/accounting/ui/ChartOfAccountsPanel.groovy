@@ -16,6 +16,8 @@ import java.awt.FlowLayout
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.nio.file.Path
@@ -44,6 +46,8 @@ import javax.swing.table.AbstractTableModel
 final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(ChartOfAccountsPanel.name)
+  private static final List<String> ACCOUNT_CLASSES = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE']
+  private static final List<String> NORMAL_BALANCE_SIDES = ['DEBIT', 'CREDIT']
 
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
@@ -127,6 +131,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     toggleActiveButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.toggleActive')
     setVatCodeButton.text = I18n.instance.getString('chartOfAccountsPanel.button.setVatCode')
     setVatCodeButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.setVatCode')
+    accountTable.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.doubleClickToClassify')
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
     refreshOverview()
@@ -136,11 +141,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private void rebuildClassFilter() {
     int selectedIndex = classFilter.selectedIndex
     classFilter.removeAllItems()
-    String allLabel = I18n.instance.getString('chartOfAccountsPanel.filter.all')
-    String reviewLabel = I18n.instance.getString('chartOfAccountsPanel.filter.reviewRequired')
-    [allLabel, 'ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE', reviewLabel].each { String item ->
-      classFilter.addItem(item)
-    }
+    classFilter.addItem(allFilterLabel())
+    ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
+    classFilter.addItem(reviewFilterLabel())
     if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
       classFilter.selectedIndex = selectedIndex
     }
@@ -163,11 +166,24 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     add(buildFooter(), BorderLayout.SOUTH)
 
     accountTable.selectionMode = ListSelectionModel.SINGLE_SELECTION
+    accountTable.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.doubleClickToClassify')
     accountTable.selectionModel.addListSelectionListener { ListSelectionEvent event ->
       if (!event.valueIsAdjusting) {
         refreshSelectedAccountDetails()
       }
     }
+    accountTable.addMouseListener(new MouseAdapter() {
+      @Override
+      void mouseClicked(MouseEvent event) {
+        if (event.clickCount == 2) {
+          int row = accountTable.rowAtPoint(event.point)
+          if (row >= 0) {
+            accountTable.setRowSelectionInterval(row, row)
+            editSelectedAccountClassification()
+          }
+        }
+      }
+    })
   }
 
   private JPanel buildToolbar() {
@@ -254,9 +270,10 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       accountTableModel.setRows([])
       return
     }
-    String selectedClass = classFilter.selectedItem as String
-    boolean manualReviewOnly = selectedClass == reviewFilterLabel()
-    String accountClass = selectedClass in [null, allFilterLabel(), reviewFilterLabel()] ? '' : selectedClass
+    int selectedFilterIndex = classFilter.selectedIndex
+    boolean manualReviewOnly = selectedFilterIndex == classFilter.itemCount - 1
+    boolean classSelected = selectedFilterIndex >= 1 && selectedFilterIndex <= ACCOUNT_CLASSES.size()
+    String accountClass = classSelected ? ACCOUNT_CLASSES[selectedFilterIndex - 1] : ''
 
     List<Account> accounts = accountService.searchAccounts(
         activeCompanyManager.companyId,
@@ -296,9 +313,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     String no = I18n.instance.getString('chartOfAccountsPanel.details.no')
     String notClassified = I18n.instance.getString('chartOfAccountsPanel.details.notClassified')
     String classValue = I18n.instance.format('chartOfAccountsPanel.details.class',
-        account.accountClass ?: notClassified)
+        account.accountClass ? displayAccountClass(account.accountClass) : notClassified)
     String normalSide = I18n.instance.format('chartOfAccountsPanel.details.normalSide',
-        account.normalBalanceSide ?: notClassified)
+        account.normalBalanceSide ? displayNormalBalanceSide(account.normalBalanceSide) : notClassified)
     String active = I18n.instance.format('chartOfAccountsPanel.details.active', account.active ? yes : no)
     String manualReview = I18n.instance.format('chartOfAccountsPanel.details.manualReview',
         account.manualReviewRequired ? yes : no)
@@ -414,6 +431,72 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     }
   }
 
+  @SuppressWarnings('CatchRuntimeException')
+  private void editSelectedAccountClassification() {
+    Account account = selectedAccount()
+    if (account == null) {
+      showError(I18n.instance.getString('chartOfAccountsPanel.error.selectAccount'))
+      return
+    }
+
+    JComboBox<String> classCombo = new JComboBox<>(ACCOUNT_CLASSES.collect { String accountClass ->
+      displayAccountClass(accountClass)
+    } as String[])
+    JComboBox<String> sideCombo = new JComboBox<>(NORMAL_BALANCE_SIDES.collect { String side ->
+      displayNormalBalanceSide(side)
+    } as String[])
+    classCombo.selectedIndex = Math.max(0, ACCOUNT_CLASSES.indexOf(account.accountClass))
+    sideCombo.selectedIndex = Math.max(0, NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide))
+
+    JPanel editorPanel = buildClassificationEditorPanel(classCombo, sideCombo)
+    int result = JOptionPane.showConfirmDialog(
+        this,
+        editorPanel,
+        I18n.instance.format('chartOfAccountsPanel.classify.title', account.accountNumber),
+        JOptionPane.OK_CANCEL_OPTION,
+        JOptionPane.PLAIN_MESSAGE
+    )
+    if (result != JOptionPane.OK_OPTION) {
+      return
+    }
+
+    try {
+      accountService.setAccountClassification(
+          activeCompanyManager.companyId,
+          account.accountNumber,
+          ACCOUNT_CLASSES[classCombo.selectedIndex],
+          NORMAL_BALANCE_SIDES[sideCombo.selectedIndex]
+      )
+      reloadAccounts()
+      selectAccount(account.accountNumber)
+      showInfo(I18n.instance.format('chartOfAccountsPanel.message.classified', account.accountNumber))
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, "Kunde inte klassificera konto ${account.accountNumber}.", exception)
+      showError(I18n.instance.getString('chartOfAccountsPanel.error.unexpected'))
+    }
+  }
+
+  private JPanel buildClassificationEditorPanel(JComboBox<String> classCombo, JComboBox<String> sideCombo) {
+    JPanel editorPanel = new JPanel(new GridBagLayout())
+    GridBagConstraints labelConstraints = new GridBagConstraints(
+        0, 0, 1, 1, 0.0d, 0.0d,
+        GridBagConstraints.WEST, GridBagConstraints.NONE,
+        new Insets(4, 4, 4, 8), 0, 0
+    )
+    GridBagConstraints fieldConstraints = new GridBagConstraints(
+        1, 0, 1, 1, 1.0d, 0.0d,
+        GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
+        new Insets(4, 0, 4, 4), 0, 0
+    )
+    editorPanel.add(new JLabel(I18n.instance.getString('chartOfAccountsPanel.table.class')), labelConstraints)
+    editorPanel.add(classCombo, fieldConstraints)
+    labelConstraints.gridy = 1
+    fieldConstraints.gridy = 1
+    editorPanel.add(new JLabel(I18n.instance.getString('chartOfAccountsPanel.table.normal')), labelConstraints)
+    editorPanel.add(sideCombo, fieldConstraints)
+    editorPanel
+  }
+
   private void resetFilters() {
     searchField.text = ''
     classFilter.selectedItem = allFilterLabel()
@@ -459,6 +542,14 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
   private static String displayVatCode(String value) {
     VatCode.fromDatabaseValue(value)?.displayName ?: ''
+  }
+
+  private static String displayAccountClass(String accountClass) {
+    accountClass ? I18n.instance.getString("accountClass.${accountClass}") : ''
+  }
+
+  private static String displayNormalBalanceSide(String normalBalanceSide) {
+    normalBalanceSide ? I18n.instance.getString("normalBalanceSide.${normalBalanceSide}") : ''
   }
 
   private static final class VatCodeOption {
@@ -528,9 +619,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         case 1:
           return account.accountName
         case 2:
-          return account.accountClass ?: ''
+          return displayAccountClass(account.accountClass)
         case 3:
-          return account.normalBalanceSide ?: ''
+          return displayNormalBalanceSide(account.normalBalanceSide)
         case 4:
           return displayVatCode(account.vatCode)
         case 5:

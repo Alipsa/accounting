@@ -150,6 +150,60 @@ class AccountServiceTest {
   }
 
   @Test
+  void setAccountClassificationAssignsClassAndClearsManualReview() {
+    accountService.setAccountClassification(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'INCOME', 'CREDIT')
+
+    Account updated = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314')
+    assertEquals('INCOME', updated.accountClass)
+    assertEquals('CREDIT', updated.normalBalanceSide)
+    assertFalse(updated.manualReviewRequired)
+    assertNull(updated.classificationNote)
+  }
+
+  @Test
+  void setAccountClassificationCanOverwriteExistingClassification() {
+    accountService.setAccountClassification(
+        CompanyService.LEGACY_COMPANY_ID, '1510', 'LIABILITY', 'CREDIT')
+
+    Account updated = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510')
+    assertEquals('LIABILITY', updated.accountClass)
+    assertEquals('CREDIT', updated.normalBalanceSide)
+  }
+
+  @Test
+  void setAccountClassificationRejectsUnknownClass() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountClassification(
+          CompanyService.LEGACY_COMPANY_ID, '8314', 'NOT_A_CLASS', 'CREDIT')
+    }
+
+    assertTrue(exception.message.contains('NOT_A_CLASS'))
+  }
+
+  @Test
+  void setAccountClassificationRejectsUnknownNormalBalanceSide() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountClassification(
+          CompanyService.LEGACY_COMPANY_ID, '8314', 'INCOME', 'SIDEWAYS')
+    }
+
+    assertTrue(exception.message.contains('SIDEWAYS'))
+  }
+
+  @Test
+  void setAccountClassificationRejectsUnknownAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.setAccountClassification(
+          CompanyService.LEGACY_COMPANY_ID, '9999', 'INCOME', 'CREDIT')
+    }
+
+    assertTrue(exception.message.contains(AccountService.UNKNOWN_ACCOUNT_MESSAGE_PREFIX))
+  }
+
+  @Test
   void compatibleVatCodesFiltersByAccountClass() {
     Account asset = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '1510')
@@ -233,9 +287,18 @@ class AccountServiceTest {
           insert into account (
               company_id, account_number, account_name,
               account_class, normal_balance_side, active,
-              manual_review_required, created_at, updated_at
+              manual_review_required, classification_note, created_at, updated_at
           ) values (?, '4010', 'Varuinköp', 'EXPENSE', 'DEBIT',
-              true, false, current_timestamp, current_timestamp)
+              true, false, null, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, classification_note, created_at, updated_at
+          ) values (?, '8314', 'Resultat från övriga värdepapper', null, null,
+              true, true, 'Kontot kunde inte klassificeras automatiskt från BAS-importen.',
+              current_timestamp, current_timestamp)
       ''', [CompanyService.LEGACY_COMPANY_ID])
     }
   }
