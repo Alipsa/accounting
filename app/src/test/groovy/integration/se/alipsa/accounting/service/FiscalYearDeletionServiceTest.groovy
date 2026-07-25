@@ -326,6 +326,30 @@ class FiscalYearDeletionServiceTest {
   }
 
   @Test
+  void deleteFiscalYearWithCorrectionVoucherSucceeds() {
+    FiscalYear year = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020',
+        LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31)
+    )
+    seedAccount(CompanyService.LEGACY_COMPANY_ID)
+    Voucher original = voucherService.createVoucher(
+        year.id, 'A', LocalDate.of(2020, 3, 15), 'Original voucher',
+        [
+            new VoucherLine(null, null, 0, null, '1910', null, null, 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, null, 0.00G, 100.00G)
+        ]
+    )
+    voucherService.createCorrectionVoucher(original.id, 'Correction of original')
+
+    deletionService.deleteFiscalYear(year.id)
+
+    assertNull(fiscalYearService.findById(year.id))
+    databaseService.withSql { Sql sql ->
+      assertEquals(0, countRows(sql, 'voucher', 'fiscal_year_id', year.id))
+    }
+  }
+
+  @Test
   void companyDeletionSucceedsAfterAllFiscalYearsAreDeleted() {
     CompanyService companyService = new CompanyService(databaseService, auditLogService)
     Company company = companyService.save(

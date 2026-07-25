@@ -21,6 +21,7 @@ import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherSeries
+import se.alipsa.accounting.domain.VoucherSortOrder
 import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.support.AppPaths
 
@@ -95,6 +96,75 @@ class VoucherServiceTest {
       item.seriesCode == 'A'
     }
     assertEquals(3, series.nextRunningNumber)
+  }
+
+  @Test
+  void listVouchersDefaultsToOrderingByVoucherNumberNotAccountingDate() {
+    Voucher first = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 15),
+        'Ordinarie verifikation',
+        balancedLines(100.00G)
+    )
+    Voucher backdated = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 1),
+        'Efterbokad verifikation med tidigt datum',
+        balancedLines(50.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
+
+    assertEquals(backdated.id, vouchers[0].id)
+    assertEquals(first.id, vouchers[1].id)
+  }
+
+  @Test
+  void listVouchersGroupsByVoucherNumberAcrossSeriesRatherThanCreationOrder() {
+    Voucher firstInSeriesA = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2026, 1, 10), 'A1', balancedLines(10.00G)
+    )
+    Voucher firstInSeriesB = voucherService.createVoucher(
+        fiscalYear.id, 'B', LocalDate.of(2026, 2, 10), 'B1', balancedLines(20.00G)
+    )
+    Voucher secondInSeriesA = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2026, 3, 10), 'A2', balancedLines(30.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
+
+    // Series are grouped by series code (B sorts after A, so it's listed first in this
+    // descending order), even though secondInSeriesA was created last (highest id).
+    assertEquals(firstInSeriesB.id, vouchers[0].id)
+    assertEquals(secondInSeriesA.id, vouchers[1].id)
+    assertEquals(firstInSeriesA.id, vouchers[2].id)
+  }
+
+  @Test
+  void listVouchersCanBeOrderedByAccountingDate() {
+    Voucher first = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 15),
+        'Ordinarie verifikation',
+        balancedLines(100.00G)
+    )
+    Voucher backdated = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 1),
+        'Efterbokad verifikation med tidigt datum',
+        balancedLines(50.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(
+        CompanyService.LEGACY_COMPANY_ID, fiscalYear.id, null, null, VoucherSortOrder.BY_ACCOUNTING_DATE
+    )
+
+    assertEquals(first.id, vouchers[0].id)
+    assertEquals(backdated.id, vouchers[1].id)
   }
 
   @Test

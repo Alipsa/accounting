@@ -32,6 +32,19 @@ final class AccountService {
   @PackageScope
   static final String ACCOUNT_CLASS_LIABILITY = 'LIABILITY'
 
+  @PackageScope
+  static final String ACCOUNT_CLASS_EQUITY = 'EQUITY'
+
+  private static final Set<String> VALID_ACCOUNT_CLASSES = [
+      ACCOUNT_CLASS_ASSET,
+      ACCOUNT_CLASS_LIABILITY,
+      ACCOUNT_CLASS_EQUITY,
+      ACCOUNT_CLASS_INCOME,
+      ACCOUNT_CLASS_EXPENSE
+  ] as Set<String>
+
+  private static final Set<String> VALID_NORMAL_BALANCE_SIDES = ['DEBIT', 'CREDIT'] as Set<String>
+
   private final DatabaseService databaseService
 
   AccountService(DatabaseService databaseService = DatabaseService.instance) {
@@ -151,6 +164,56 @@ final class AccountService {
            where company_id = ?
              and account_number = ?
       ''', [active, companyId, normalized])
+      if (updated != 1) {
+        throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      }
+    }
+  }
+
+  void updateAccount(
+      long companyId,
+      String accountNumber,
+      String accountName,
+      String accountClass,
+      String normalBalanceSide,
+      VatCode vatCode,
+      boolean active,
+      boolean manualReviewRequired
+  ) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalizedName = accountName?.trim()
+    if (!normalizedName) {
+      throw new IllegalArgumentException('Kontots namn får inte vara tomt.')
+    }
+    if (!(accountClass in VALID_ACCOUNT_CLASSES)) {
+      throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
+    }
+    if (!(normalBalanceSide in VALID_NORMAL_BALANCE_SIDES)) {
+      throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
+    }
+    if (vatCode != null && !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
+      throw new IllegalArgumentException(
+          "Kontoklass ${accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
+      )
+    }
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withTransaction { Sql sql ->
+      int updated = sql.executeUpdate('''
+          update account
+             set account_name = ?,
+                 account_class = ?,
+                 normal_balance_side = ?,
+                 vat_code = ?,
+                 active = ?,
+                 manual_review_required = ?,
+                 classification_note = null,
+                 updated_at = current_timestamp
+           where company_id = ?
+             and account_number = ?
+      ''', [
+          normalizedName, accountClass, normalBalanceSide, vatCode?.name(),
+          active, manualReviewRequired, companyId, normalized
+      ])
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }

@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.mcp.AccountingMcpTools
@@ -7,6 +9,7 @@ import se.alipsa.accounting.mcp.LoopbackMcpServer
 import se.alipsa.accounting.mcp.McpDispatcher
 import se.alipsa.accounting.mcp.McpUiGuard
 import se.alipsa.accounting.service.AiWorkspaceService
+import se.alipsa.accounting.service.FiscalYearService
 import se.alipsa.accounting.service.PurgeResult
 import se.alipsa.accounting.service.UserPreferencesService
 
@@ -27,6 +30,7 @@ final class McpServerLifecycle implements Closeable {
   private final JPanel glassPane
   private final AiWorkspaceService aiWorkspaceService
   private final AiAssistantLauncherSection aiLauncherSection
+  private final FiscalYearService fiscalYearService
   private LoopbackMcpServer server
 
   McpServerLifecycle(
@@ -36,7 +40,8 @@ final class McpServerLifecycle implements Closeable {
       McpSettingsSection settingsSection,
       JPanel glassPane,
       AiWorkspaceService aiWorkspaceService,
-      AiAssistantLauncherSection aiLauncherSection
+      AiAssistantLauncherSection aiLauncherSection,
+      FiscalYearService fiscalYearService
   ) {
     this.userPreferencesService = userPreferencesService
     this.activeCompanyManager = activeCompanyManager
@@ -45,6 +50,7 @@ final class McpServerLifecycle implements Closeable {
     this.glassPane = glassPane
     this.aiWorkspaceService = aiWorkspaceService
     this.aiLauncherSection = aiLauncherSection
+    this.fiscalYearService = fiscalYearService
   }
 
   void start() {
@@ -56,23 +62,7 @@ final class McpServerLifecycle implements Closeable {
       AccountingMcpTools tools = new AccountingMcpTools()
       tools.setVoucherDraftAccess(voucherPanel.mcpVoucherDraftAccess)
       tools.setActiveContextProvider {
-        Map<String, Object> context = [:]
-        Company company = activeCompanyManager.activeCompany
-        FiscalYear fiscalYear = activeCompanyManager.fiscalYear
-        if (company == null || fiscalYear == null) {
-          context.ok = false
-          context.error = 'No active company or fiscal year is selected.'
-          return context
-        }
-        context.ok = true
-        context.company_id = company.id
-        context.company_name = company.companyName
-        context.fiscal_year_id = fiscalYear.id
-        context.fiscal_year_name = fiscalYear.name
-        context.fiscal_year_start = fiscalYear.startDate?.toString()
-        context.fiscal_year_end = fiscalYear.endDate?.toString()
-        context.fiscal_year_closed = fiscalYear.closed
-        context
+        buildActiveContext(fiscalYearService, activeCompanyManager.activeCompany, activeCompanyManager.fiscalYear)
       }
       server = new LoopbackMcpServer(userPreferencesService, new McpDispatcher(tools), uiGuard())
       server.start()
@@ -94,6 +84,30 @@ final class McpServerLifecycle implements Closeable {
     } catch (Exception exception) {
       log.warning("Could not purge AI workspace secrets on shutdown: ${exception.message}")
     }
+  }
+
+  // Re-reads the fiscal year fresh by id rather than trusting cachedFiscalYear's own fields:
+  // MCP write tools (e.g. close_fiscal_year) mutate the database directly through backend
+  // services and never touch ActiveCompanyManager's cached object, so cachedFiscalYear.closed
+  // can be stale until the user reselects the year in the desktop UI.
+  @PackageScope
+  static Map<String, Object> buildActiveContext(
+      FiscalYearService fiscalYearService, Company company, FiscalYear cachedFiscalYear
+  ) {
+    if (company == null || cachedFiscalYear == null) {
+      return [ok: false, error: 'No active company or fiscal year is selected.']
+    }
+    FiscalYear fiscalYear = fiscalYearService.findById(cachedFiscalYear.id) ?: cachedFiscalYear
+    [
+        ok: true,
+        company_id: company.id,
+        company_name: company.companyName,
+        fiscal_year_id: fiscalYear.id,
+        fiscal_year_name: fiscalYear.name,
+        fiscal_year_start: fiscalYear.startDate?.toString(),
+        fiscal_year_end: fiscalYear.endDate?.toString(),
+        fiscal_year_closed: fiscalYear.closed
+    ]
   }
 
   private McpUiGuard uiGuard() {

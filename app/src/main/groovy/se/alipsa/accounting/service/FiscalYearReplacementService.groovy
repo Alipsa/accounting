@@ -37,6 +37,7 @@ final class FiscalYearReplacementService {
          )
     ''', [fiscalYear.id])
     sql.executeUpdate('delete from opening_balance where fiscal_year_id = ?', [fiscalYear.id])
+    sql.executeUpdate('update voucher set original_voucher_id = null where fiscal_year_id = ?', [fiscalYear.id])
     sql.executeUpdate('delete from voucher where fiscal_year_id = ?', [fiscalYear.id])
     sql.executeUpdate('delete from voucher_series where fiscal_year_id = ?', [fiscalYear.id])
     sql.executeUpdate('''

@@ -10,7 +10,6 @@ import com.formdev.flatlaf.util.UIScale
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
-import se.alipsa.accounting.domain.ThemeMode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AiWorkspaceService
@@ -206,14 +205,12 @@ final class MainFrame implements PropertyChangeListener {
   private JButton englishButton
   private JButton swedishButton
   private JLabel languageLabel
-  private JLabel themeLabel
   private JCheckBox automaticUpdateCheckBox
   private JLabel dataLocationLabel
   private JLabel dataLocationValueLabel
   private JButton dataLocationChangeButton
-  private JRadioButton themeSystemButton
-  private JRadioButton themeLightButton
-  private JRadioButton themeDarkButton
+  private ThemeSection themeSection
+  private VoucherSortOrderSection voucherSortOrderSection
   private JLabel companyProfileSummaryLabel
   private JButton companyProfileEditButton
   private JButton vatCodesLinkButton
@@ -239,7 +236,7 @@ final class MainFrame implements PropertyChangeListener {
     frame = buildFrame()
     mcpServerLifecycle = new McpServerLifecycle(
         userPreferencesService, activeCompanyManager, voucherPanel, mcpSettingsSection, mcpGlassPane,
-        aiWorkspaceService, aiLauncherSection)
+        aiWorkspaceService, aiLauncherSection, fiscalYearService)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
@@ -318,9 +315,8 @@ final class MainFrame implements PropertyChangeListener {
     automaticUpdateCheckBox.text = I18n.instance.getString('settings.label.automaticUpdateCheck')
     dataLocationLabel.text = I18n.instance.getString('settings.label.dataLocation')
     dataLocationChangeButton.text = I18n.instance.getString('settings.button.changeDataLocation')
-    themeSystemButton.text = I18n.instance.getString('settings.theme.system')
-    themeLightButton.text = I18n.instance.getString('settings.theme.light')
-    themeDarkButton.text = I18n.instance.getString('settings.theme.dark')
+    themeSection.applyLocale()
+    voucherSortOrderSection.applyLocale()
     updateLanguageButtonBorders()
     companyProfileSectionBorder.title = I18n.instance.getString('settings.section.companyProfile')
     applicationPreferencesSectionBorder.title = I18n.instance.getString('settings.section.applicationPreferences')
@@ -557,8 +553,11 @@ final class MainFrame implements PropertyChangeListener {
     languageRow.add(englishButton)
     languageRow.add(swedishButton)
 
+    themeSection = new ThemeSection(userPreferencesService, this::onThemeChanged)
+    voucherSortOrderSection = new VoucherSortOrderSection(userPreferencesService, this::onVoucherSortOrderChanged)
     section.add(languageRow)
-    section.add(buildThemeRow())
+    section.add(themeSection.panel)
+    section.add(voucherSortOrderSection.panel)
     section.add(buildUpdateRow())
     section.add(buildDataLocationRow())
     section
@@ -594,27 +593,6 @@ final class MainFrame implements PropertyChangeListener {
     )
   }
 
-  private JPanel buildThemeRow() {
-    JPanel themeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
-    themeLabel = new JLabel(I18n.instance.getString('settings.label.theme'))
-    themeSystemButton = new JRadioButton(I18n.instance.getString('settings.theme.system'))
-    themeLightButton = new JRadioButton(I18n.instance.getString('settings.theme.light'))
-    themeDarkButton = new JRadioButton(I18n.instance.getString('settings.theme.dark'))
-    ButtonGroup themeGroup = new ButtonGroup()
-    themeGroup.add(themeSystemButton)
-    themeGroup.add(themeLightButton)
-    themeGroup.add(themeDarkButton)
-    selectThemeButton(userPreferencesService.getTheme())
-    themeSystemButton.addActionListener { switchTheme(ThemeMode.SYSTEM) }
-    themeLightButton.addActionListener { switchTheme(ThemeMode.LIGHT) }
-    themeDarkButton.addActionListener { switchTheme(ThemeMode.DARK) }
-    themeRow.add(themeLabel)
-    themeRow.add(themeSystemButton)
-    themeRow.add(themeLightButton)
-    themeRow.add(themeDarkButton)
-    themeRow
-  }
-
   private JPanel buildUpdateRow() {
     JPanel updateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
     automaticUpdateCheckBox = new JCheckBox(I18n.instance.getString('settings.label.automaticUpdateCheck'))
@@ -648,10 +626,13 @@ final class MainFrame implements PropertyChangeListener {
     }
   }
 
-  private void switchTheme(ThemeMode mode) {
-    userPreferencesService.setTheme(mode)
-    ThemeApplier.applyAndUpdateUI(mode)
+  private void onThemeChanged() {
     setStatus(I18n.instance.getString('settings.status.themeChanged'))
+  }
+
+  private void onVoucherSortOrderChanged() {
+    voucherPanel.applyVoucherSortOrderPreference()
+    setStatus(I18n.instance.getString('settings.status.voucherSortOrderChanged'))
   }
 
   private void toggleAutomaticUpdateCheck() {
@@ -665,20 +646,6 @@ final class MainFrame implements PropertyChangeListener {
     }
     setStatus(I18n.instance.getString('settings.status.automaticUpdateCheckEnabled'))
     checkForUpdateInBackground()
-  }
-
-  private void selectThemeButton(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.LIGHT:
-        themeLightButton.selected = true
-        break
-      case ThemeMode.DARK:
-        themeDarkButton.selected = true
-        break
-      default:
-        themeSystemButton.selected = true
-        break
-    }
   }
 
   private void updateLanguageButtonBorders() {
@@ -853,7 +820,7 @@ final class MainFrame implements PropertyChangeListener {
   private List<Map<String, Object>> buildMainTabs() {
     [
         [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager, userPreferencesService)],
         [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
         [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
             reportDataService,
