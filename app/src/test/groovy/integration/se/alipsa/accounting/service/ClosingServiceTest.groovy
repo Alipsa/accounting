@@ -144,6 +144,34 @@ class ClosingServiceTest {
   }
 
   @Test
+  void previewBlocksWhenAnAccountWithActivityIsUnclassified() {
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '8314', 'Resultat från övriga värdepapper', null, null)
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 3, 1),
+        'Oklassificerad post',
+        [
+            new VoucherLine(null, null, 0, null, '1930', null, 'Bank', 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '8314', null, 'Oklassificerat', 0.00G, 100.00G)
+        ]
+    )
+
+    def preview = closingService.previewClosing(fiscalYear.id)
+
+    assertTrue(preview.blockingIssues.any { String issue -> issue.contains('8314') })
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      closingService.closeFiscalYear(fiscalYear.id)
+    }
+    assertTrue(exception.message.contains('8314'))
+  }
+
+  @Test
   void reClosingAnAlreadyClosedYearIsBlocked() {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()

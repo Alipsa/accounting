@@ -209,6 +209,8 @@ final class ClosingService {
       }
     }
 
+    appendUnclassifiedAccountBlocker(sql, fiscalYear.id, blockers)
+
     Map<String, ResultAccountBalance> resultBalances = loadResultBalances(sql, fiscalYear.id)
     BigDecimal incomeTotal = resultBalances.values()
         .findAll { ResultAccountBalance balance -> balance.accountClass == 'INCOME' }
@@ -422,6 +424,31 @@ final class ClosingService {
       created++
     }
     created
+  }
+
+  private static void appendUnclassifiedAccountBlocker(Sql sql, long fiscalYearId, List<String> blockers) {
+    List<String> unclassifiedAccounts = listUnclassifiedAccountsWithActivity(sql, fiscalYearId)
+    if (unclassifiedAccounts.isEmpty()) {
+      return
+    }
+    blockers << ("Följande konton har bokförda transaktioner men saknar kontoklass eller normalsida och måste " +
+        "klassificeras i kontoplanen innan bokslut kan göras: ${unclassifiedAccounts.join(', ')}" as String)
+  }
+
+  private static List<String> listUnclassifiedAccountsWithActivity(Sql sql, long fiscalYearId) {
+    sql.rows('''
+        select distinct vl.account_number as accountNumber,
+               a.account_name as accountName
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+           and (a.account_class is null or a.normal_balance_side is null)
+         order by vl.account_number
+    ''', [fiscalYearId]).collect { GroovyRowResult row ->
+      "${row.get('accountNumber')} ${row.get('accountName')}" as String
+    }
   }
 
   private static Map<String, ResultAccountBalance> loadResultBalances(Sql sql, long fiscalYearId) {
