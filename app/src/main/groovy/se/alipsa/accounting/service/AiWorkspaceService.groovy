@@ -52,6 +52,11 @@ final class AiWorkspaceService {
     if (client == AiClient.CLAUDE) {
       writeDataFile(workspace, instructions, skill)
       writeDataFile(workspace, AiWorkspacePaths.assistantProfileFile(workspace, client), profile)
+      Path settingsLocal = AiWorkspacePaths.settingsLocalFile(workspace)
+      permissions.verifyNoSymlinksInPath(workspace, settingsLocal)
+      String existingSettings = Files.exists(settingsLocal) ? Files.readString(settingsLocal) : null
+      String mergedSettings = AiWorkspaceMcpSettings.mergeSettingsLocal(existingSettings)
+      writeDataFile(workspace, settingsLocal, mergedSettings.getBytes('UTF-8'))
     } else {
       writeDataFile(workspace, instructions, (new String(profile, 'UTF-8') + '\n\n' + new String(skill, 'UTF-8')).getBytes('UTF-8'))
     }

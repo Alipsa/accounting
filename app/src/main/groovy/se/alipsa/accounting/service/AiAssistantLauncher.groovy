@@ -1,5 +1,7 @@
 package se.alipsa.accounting.service
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
@@ -9,6 +11,9 @@ import java.nio.file.Path
 
 /** Writes a unique launch wrapper and opens it in the configured terminal. */
 final class AiAssistantLauncher {
+
+  @PackageScope
+  static final String ASSISTANT_SESSION_NAME = 'Alipsa Accounting AI Assistant'
 
   private final AiWorkspacePermissions permissions
   private final SecretFileWriter secretFileWriter
@@ -43,8 +48,9 @@ final class AiAssistantLauncher {
     List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
     Map<String, String> env = [:]
     if (client == AiClient.CODEX) { env.ACCOUNTING_MCP_TOKEN = token }
-    String content = windows ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env) :
-        LaunchWrapperScript.unixContent(workspace, binaryPath, env)
+    List<String> arguments = client == AiClient.CLAUDE ? ['--name', ASSISTANT_SESSION_NAME] : []
+    String content = windows ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env, arguments) :
+        LaunchWrapperScript.unixContent(workspace, binaryPath, env, arguments)
     secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
     try {
       processRunner.run(command, workspace)

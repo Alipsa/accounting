@@ -65,6 +65,22 @@ class AiAssistantLauncherTest {
     assertTrue(Files.notExists(deleted.first()))
   }
 
+  @Test
+  void launchesClaudeWithTheAssistantSessionName() {
+    Map<Path, String> writtenScripts = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      writtenScripts[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    launcher.launch(AiClient.CLAUDE, Path.of('/bin/claude'), TerminalAdapterKind.XTERM, Path.of('/bin/xterm'), 'token-value')
+
+    assertTrue(writtenScripts.values().first().contains("'--name' 'Alipsa Accounting AI Assistant'"))
+  }
+
   private static AiAssistantLauncher newLauncher(ProcessRunner runner, List<Path> deleted) {
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
       Files.write(target, content)

@@ -1,6 +1,8 @@
 package se.alipsa.accounting.support
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
 
 import org.junit.jupiter.api.AfterEach
@@ -26,12 +28,14 @@ class AppPathsTest {
   private String previousOsName
   private String previousUserHome
   private String previousHomeOverride
+  private String previousAiWorkspaceHomeOverride
 
   @BeforeEach
   void captureSystemProperties() {
     previousOsName = System.getProperty('os.name')
     previousUserHome = System.getProperty('user.home')
     previousHomeOverride = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    previousAiWorkspaceHomeOverride = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
   }
 
   @AfterEach
@@ -39,6 +43,7 @@ class AppPathsTest {
     restoreProperty('os.name', previousOsName)
     restoreProperty('user.home', previousUserHome)
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHomeOverride)
+    restoreProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, previousAiWorkspaceHomeOverride)
   }
 
   @Test
@@ -80,6 +85,23 @@ class AppPathsTest {
     assertEquals(home.resolve('reports'), AppPaths.reportsDirectory())
     assertEquals(home.resolve('backups'), AppPaths.backupsDirectory())
     assertEquals(home.resolve('docs'), AppPaths.docsDirectory())
+  }
+
+  @Test
+  void migratesLegacyAiWorkspaceToTheAssistantNamedDirectory() {
+    Path workspaceHome = tempDir.resolve('ai-home')
+    Path legacyWorkspace = workspaceHome.resolve('ai-workspace')
+    Files.createDirectories(legacyWorkspace)
+    Files.writeString(legacyWorkspace.resolve('CLAUDE.md'), 'existing assistant instructions')
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, workspaceHome.toString())
+
+    AppPaths.ensureAiWorkspaceHome()
+
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertEquals(workspaceHome.resolve('alipsa-accounting-ai-assistant'), workspace)
+    assertTrue(Files.isDirectory(workspace))
+    assertEquals('existing assistant instructions', Files.readString(workspace.resolve('CLAUDE.md')))
+    assertFalse(Files.exists(legacyWorkspace))
   }
 
   @Test

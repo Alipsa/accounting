@@ -18,6 +18,10 @@ final class AiWorkspacePaths {
     client == AiClient.CLAUDE ? workspace.resolve('CLAUDE.md') : instructionsFile(workspace, client)
   }
 
+  static Path settingsLocalFile(Path workspace) {
+    workspace.resolve('.claude/settings.local.json')
+  }
+
   static Path wrapperScript(Path workspace, AiClient client, String launchId, boolean windows) {
     workspace.resolve(".launch-${client.binaryName}-${launchId}.${windows ? 'cmd' : 'sh'}")
   }

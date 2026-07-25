@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
 
@@ -77,6 +78,86 @@ class AiWorkspaceServiceTest {
     assertTrue(config.contains('bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"'))
     assertFalse(config.contains('token-value'))
     assertTrue(files[AiWorkspacePaths.instructionsFile(workspace, AiClient.CODEX)].contains('Accounting MCP'))
+  }
+
+  @Test
+  void refreshingClaudeClientFilesSeedsReadOnlyMcpPermissions() {
+    Map<Path, String> files = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      files[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    EnvironmentLookup lookup = { String name -> null } as EnvironmentLookup
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(), writer,
+        { Path path -> false } as ExecutableProbe, lookup, { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    service.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:8080/mcp', 'token-value')
+
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    String settingsLocal = files[AiWorkspacePaths.settingsLocalFile(workspace)]
+    assertTrue(settingsLocal.contains('mcp__accounting__list_accounts'))
+    assertTrue(settingsLocal.contains('mcp__accounting__get_active_context'))
+    assertFalse(settingsLocal.contains('mcp__accounting__import_sie'))
+  }
+
+  @Test
+  void refreshingClaudeClientFilesPreservesManuallyApprovedPermissionsOnRelaunch() {
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    Path settingsLocal = AiWorkspacePaths.settingsLocalFile(workspace)
+    Files.createDirectories(settingsLocal.parent)
+    Files.writeString(settingsLocal, '{"permissions": {"allow": ["mcp__accounting__close_fiscal_year", "Bash(pandoc *)"]}}')
+    Map<Path, String> files = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      files[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    EnvironmentLookup lookup = { String name -> null } as EnvironmentLookup
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(), writer,
+        { Path path -> false } as ExecutableProbe, lookup, { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    service.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:8080/mcp', 'token-value')
+
+    String settingsContent = files[settingsLocal]
+    assertTrue(settingsContent.contains('mcp__accounting__close_fiscal_year'))
+    assertTrue(settingsContent.contains('Bash(pandoc *)'))
+    assertTrue(settingsContent.contains('mcp__accounting__list_accounts'))
+  }
+
+  @Test
+  void refreshingNonClaudeClientFilesDoesNotWriteClaudeSettings() {
+    Map<Path, String> files = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      files[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    EnvironmentLookup lookup = { String name -> null } as EnvironmentLookup
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(), writer,
+        { Path path -> false } as ExecutableProbe, lookup, { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    service.refreshClientFiles(AiClient.CODEX, 'http://127.0.0.1:8080/mcp', 'token-value')
+
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertFalse(files.containsKey(AiWorkspacePaths.settingsLocalFile(workspace)))
+  }
+
+  @Test
+  void refusesToReadClaudeSettingsThroughASymlink() {
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    Path settingsLocal = AiWorkspacePaths.settingsLocalFile(workspace)
+    Path outside = tempDir.resolve('outside-settings')
+    Files.createDirectories(settingsLocal.parent)
+    Files.createDirectories(outside)
+    Files.createSymbolicLink(settingsLocal, outside)
+    Map<Path, String> files = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      files[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    EnvironmentLookup lookup = { String name -> null } as EnvironmentLookup
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(), writer,
+        { Path path -> false } as ExecutableProbe, lookup, { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalStateException) {
+      service.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:8080/mcp', 'token-value')
+    }
+    assertFalse(files.containsKey(settingsLocal))
   }
 
   @Test
