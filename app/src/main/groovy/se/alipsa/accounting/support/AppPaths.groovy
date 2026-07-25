@@ -1,8 +1,11 @@
 package se.alipsa.accounting.support
 
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -17,6 +20,8 @@ final class AppPaths {
   static final String HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.home'
   static final String AI_WORKSPACE_HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.aiWorkspace.home'
   static final String DATABASE_URL_PROPERTY = 'alipsa.accounting.db.url'
+  private static final String AI_WORKSPACE_DIRECTORY_NAME = 'alipsa-accounting-ai-assistant'
+  private static final String LEGACY_AI_WORKSPACE_DIRECTORY_NAME = 'ai-workspace'
 
   private AppPaths() {
   }
@@ -44,7 +49,7 @@ final class AppPaths {
 
   /** A fixed per-user workspace, independent of the configurable data home. */
   static Path aiWorkspaceDirectory() {
-    aiWorkspaceHome().resolve('ai-workspace')
+    aiWorkspaceHome().resolve(AI_WORKSPACE_DIRECTORY_NAME)
   }
 
   static void ensureAiWorkspaceHome() {
@@ -55,6 +60,23 @@ final class AppPaths {
     Files.createDirectories(home)
     if (Files.isSymbolicLink(home) || !Files.isDirectory(home)) {
       throw new IllegalStateException("AI workspace home ${home} is not a real directory.")
+    }
+    migrateLegacyAiWorkspace(home)
+  }
+
+  private static void migrateLegacyAiWorkspace(Path home) {
+    Path workspace = aiWorkspaceDirectory()
+    Path legacyWorkspace = home.resolve(LEGACY_AI_WORKSPACE_DIRECTORY_NAME)
+    if (Files.exists(workspace, LinkOption.NOFOLLOW_LINKS) || !Files.exists(legacyWorkspace, LinkOption.NOFOLLOW_LINKS)) {
+      return
+    }
+    if (Files.isSymbolicLink(legacyWorkspace) || !Files.isDirectory(legacyWorkspace, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IllegalStateException("Legacy AI workspace ${legacyWorkspace} is not a real directory.")
+    }
+    try {
+      Files.move(legacyWorkspace, workspace, StandardCopyOption.ATOMIC_MOVE)
+    } catch (AtomicMoveNotSupportedException ignored) {
+      Files.move(legacyWorkspace, workspace)
     }
   }
 
