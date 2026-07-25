@@ -122,6 +122,27 @@ class VoucherServiceTest {
   }
 
   @Test
+  void listVouchersGroupsByVoucherNumberAcrossSeriesRatherThanCreationOrder() {
+    Voucher firstInSeriesA = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2026, 1, 10), 'A1', balancedLines(10.00G)
+    )
+    Voucher firstInSeriesB = voucherService.createVoucher(
+        fiscalYear.id, 'B', LocalDate.of(2026, 2, 10), 'B1', balancedLines(20.00G)
+    )
+    Voucher secondInSeriesA = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2026, 3, 10), 'A2', balancedLines(30.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
+
+    // Series are grouped by series code (B sorts after A, so it's listed first in this
+    // descending order), even though secondInSeriesA was created last (highest id).
+    assertEquals(firstInSeriesB.id, vouchers[0].id)
+    assertEquals(secondInSeriesA.id, vouchers[1].id)
+    assertEquals(firstInSeriesA.id, vouchers[2].id)
+  }
+
+  @Test
   void listVouchersCanBeOrderedByAccountingDate() {
     Voucher first = voucherService.createVoucher(
         fiscalYear.id,

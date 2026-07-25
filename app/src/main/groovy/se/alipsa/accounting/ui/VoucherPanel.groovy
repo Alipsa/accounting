@@ -626,7 +626,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showBlankVoucher()
       return
     }
-    // Reversed so navigatePrev() (which starts from the end) shows the most recently added voucher first.
+    // Reversed so navigatePrev() (which starts from the end) shows the last voucher in sort order first.
     navigation.reset(voucherService.listVouchers(
         activeCompanyManager.companyId, fy.id, null, null, userPreferencesService.voucherSortOrder
     ).reverse())

@@ -223,7 +223,9 @@ final class VoucherService {
         ''')
       } else {
         query.append('''
-             order by v.id desc
+             order by s.series_code desc,
+                      coalesce(v.running_number, 2147483647) desc,
+                      v.id desc
              limit ?
         ''')
       }
