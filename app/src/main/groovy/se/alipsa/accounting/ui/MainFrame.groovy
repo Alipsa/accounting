@@ -236,7 +236,7 @@ final class MainFrame implements PropertyChangeListener {
     frame = buildFrame()
     mcpServerLifecycle = new McpServerLifecycle(
         userPreferencesService, activeCompanyManager, voucherPanel, mcpSettingsSection, mcpGlassPane,
-        aiWorkspaceService, aiLauncherSection)
+        aiWorkspaceService, aiLauncherSection, fiscalYearService)
     applyIcons()
     refreshTitle()
     setStatus(I18n.instance.getString('mainFrame.status.started'))
