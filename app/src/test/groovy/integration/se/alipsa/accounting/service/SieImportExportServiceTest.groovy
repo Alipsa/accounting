@@ -259,6 +259,33 @@ class SieImportExportServiceTest {
   }
 
   @Test
+  void replaceFiscalYearWithCorrectionVoucherInTargetSucceeds() {
+    Path exportPath = tempDir.resolve('replace-year-correction.sie')
+    ExportFixture fixture = createExportFixture(tempDir.resolve('source-db-correction'), exportPath)
+
+    switchHome(tempDir.resolve('replace-target-correction-db'))
+    DatabaseService targetDatabaseService = DatabaseService.newForTesting()
+    targetDatabaseService.initialize()
+    seedReplaceTargetEnvironment(targetDatabaseService)
+    AuditLogService auditLogService = new AuditLogService(targetDatabaseService)
+    VoucherService voucherService = new VoucherService(targetDatabaseService, auditLogService)
+    long originalVoucherId = targetDatabaseService.withSql { Sql sql ->
+      sql.firstRow(
+          'select id from voucher where description = ?',
+          ['Lokal testverifikation']
+      ).get('id') as long
+    }
+    voucherService.createCorrectionVoucher(originalVoucherId, 'Korrigering av lokal testverifikation')
+    SieImportExportService targetService = createSieService(targetDatabaseService)
+
+    SieImportResult result = targetService.replaceFiscalYear(CompanyService.LEGACY_COMPANY_ID, exportPath)
+
+    assertFalse(result.duplicate)
+    assertEquals(ImportJobStatus.SUCCESS, result.job.status)
+    assertEquals(fixture.voucherCount, countRows(targetDatabaseService, 'voucher'))
+  }
+
+  @Test
   void replaceFiscalYearWithClosingEntriesIsRejectedAndRecordedAsFailedJob() {
     Path exportPath = tempDir.resolve('replace-with-closing.sie')
     createExportFixture(tempDir.resolve('replace-with-closing-source-db'), exportPath)
