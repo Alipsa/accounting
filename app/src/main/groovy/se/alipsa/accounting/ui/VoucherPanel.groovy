@@ -16,6 +16,7 @@ import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
@@ -81,6 +82,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final AttachmentService attachmentService
   private final AuditLogService auditLogService
   private final ActiveCompanyManager activeCompanyManager
+  private final UserPreferencesService userPreferencesService
   private final VoucherBalanceCachePreloader voucherBalanceCachePreloader
 
   @PackageScope
@@ -136,7 +138,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       AccountingPeriodService accountingPeriodService,
       AttachmentService attachmentService,
       AuditLogService auditLogService,
-      ActiveCompanyManager activeCompanyManager
+      ActiveCompanyManager activeCompanyManager,
+      UserPreferencesService userPreferencesService = new UserPreferencesService()
   ) {
     this.voucherService = voucherService
     this.accountService = accountService
@@ -144,6 +147,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     this.attachmentService = attachmentService
     this.auditLogService = auditLogService
     this.activeCompanyManager = activeCompanyManager
+    this.userPreferencesService = userPreferencesService
     this.voucherBalanceCachePreloader = new VoucherBalanceCachePreloader(accountService)
     lineTableModel = new LineTableModel()
     lineTable = new JTable(lineTableModel)
@@ -166,6 +170,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         { descriptionField.text?.trim() }, { lineTableModel.toVoucherLines() }, { currentVoucher },
         { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::handleSavedVoucher)
     reloadVoucherList()
+  }
+
+  void applyVoucherSortOrderPreference() {
+    reloadVoucherList(currentVoucher)
   }
 
   VoucherDraftEditorAccess getMcpVoucherDraftAccess() {
@@ -618,8 +626,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showBlankVoucher()
       return
     }
-    // Reversed so navigatePrev() (which starts from the end) shows the most recent voucher first.
-    navigation.reset(voucherService.listVouchers(activeCompanyManager.companyId, fy.id).reverse())
+    // Reversed so navigatePrev() (which starts from the end) shows the most recently added voucher first.
+    navigation.reset(voucherService.listVouchers(
+        activeCompanyManager.companyId, fy.id, null, null, userPreferencesService.voucherSortOrder
+    ).reverse())
     if (selectedVoucher == null) {
       showBlankVoucher()
     } else {

@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.domain.ThemeMode
+import se.alipsa.accounting.domain.VoucherSortOrder
 
 import java.security.SecureRandom
 import java.util.logging.Level
@@ -18,6 +19,7 @@ final class UserPreferencesService {
   private static final Logger log = Logger.getLogger(UserPreferencesService.name)
   private static final String LANGUAGE_KEY = 'ui.language'
   private static final String THEME_KEY = 'ui.theme'
+  private static final String VOUCHER_SORT_ORDER_KEY = 'voucher.sortOrder'
   private static final String UPDATE_CHECK_ENABLED_KEY = 'update.autoCheckEnabled'
   private static final String LAST_ACTIVE_COMPANY_ID_KEY = 'company.lastActiveId'
   private static final String LAST_ACTIVE_FISCAL_YEAR_ID_KEY = 'fiscalYear.lastActiveId'
@@ -65,6 +67,18 @@ final class UserPreferencesService {
       preferences.remove(THEME_KEY)
     } else {
       preferences.put(THEME_KEY, mode.name())
+    }
+  }
+
+  VoucherSortOrder getVoucherSortOrder() {
+    VoucherSortOrder.fromName(preferences.get(VOUCHER_SORT_ORDER_KEY, null))
+  }
+
+  void setVoucherSortOrder(VoucherSortOrder sortOrder) {
+    if (sortOrder == null || sortOrder == VoucherSortOrder.BY_VOUCHER_NUMBER) {
+      preferences.remove(VOUCHER_SORT_ORDER_KEY)
+    } else {
+      preferences.put(VOUCHER_SORT_ORDER_KEY, sortOrder.name())
     }
   }
 

@@ -22,6 +22,7 @@ import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.UserPreferencesService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
@@ -33,6 +34,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicReference
+import java.util.prefs.Preferences
 
 import javax.swing.JButton
 import javax.swing.JCheckBox
@@ -60,6 +62,8 @@ final class VoucherPanelNavigationTest {
   private VoucherPanel panel
   private List<List<Integer>> moves
   private int dateFocusRequests
+  private Preferences userPreferencesNode
+  private UserPreferencesService userPreferencesService
 
   @BeforeEach
   void setUp() {
@@ -80,6 +84,8 @@ final class VoucherPanelNavigationTest {
     )
     insertTestAccounts()
     activeCompanyManager = new ActiveCompanyManager(new CompanyService(databaseService), fiscalYearService)
+    userPreferencesNode = Preferences.userRoot().node("accounting-test-${UUID.randomUUID()}")
+    userPreferencesService = new UserPreferencesService(userPreferencesNode)
     moves = []
     dateFocusRequests = 0
     panel = buildPanel()
@@ -93,6 +99,7 @@ final class VoucherPanelNavigationTest {
       onEdt { null }
     }
     databaseService?.shutdown()
+    userPreferencesNode?.removeNode()
     if (previousHome == null) {
       System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     } else {
@@ -545,7 +552,8 @@ final class VoucherPanelNavigationTest {
         accountingPeriodService,
         attachmentService,
         auditLogService,
-        activeCompanyManager
+        activeCompanyManager,
+        userPreferencesService
     )
   }
 

@@ -6,6 +6,7 @@ import groovy.sql.Sql
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherSeries
+import se.alipsa.accounting.domain.VoucherSortOrder
 import se.alipsa.accounting.domain.VoucherStatus
 
 import java.math.RoundingMode
@@ -170,7 +171,13 @@ final class VoucherService {
     }
   }
 
-  List<Voucher> listVouchers(long companyId, Long fiscalYearId = null, VoucherStatus status = null, String queryText = null) {
+  List<Voucher> listVouchers(
+      long companyId,
+      Long fiscalYearId = null,
+      VoucherStatus status = null,
+      String queryText = null,
+      VoucherSortOrder sortOrder = VoucherSortOrder.BY_VOUCHER_NUMBER
+  ) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
       StringBuilder query = new StringBuilder('''
@@ -207,12 +214,19 @@ final class VoucherService {
         params << pattern
       }
 
-      query.append('''
-           order by v.accounting_date desc,
-                    coalesce(v.running_number, 2147483647) desc,
-                    v.id desc
-           limit ?
-      ''')
+      if (sortOrder == VoucherSortOrder.BY_ACCOUNTING_DATE) {
+        query.append('''
+             order by v.accounting_date desc,
+                      coalesce(v.running_number, 2147483647) desc,
+                      v.id desc
+             limit ?
+        ''')
+      } else {
+        query.append('''
+             order by v.id desc
+             limit ?
+        ''')
+      }
       params << DEFAULT_SEARCH_LIMIT
 
       sql.rows(query.toString(), params).collect { GroovyRowResult row ->

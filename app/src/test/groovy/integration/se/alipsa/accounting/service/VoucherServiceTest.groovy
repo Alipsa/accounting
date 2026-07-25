@@ -21,6 +21,7 @@ import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherSeries
+import se.alipsa.accounting.domain.VoucherSortOrder
 import se.alipsa.accounting.domain.VoucherStatus
 import se.alipsa.accounting.support.AppPaths
 
@@ -95,6 +96,54 @@ class VoucherServiceTest {
       item.seriesCode == 'A'
     }
     assertEquals(3, series.nextRunningNumber)
+  }
+
+  @Test
+  void listVouchersDefaultsToOrderingByVoucherNumberNotAccountingDate() {
+    Voucher first = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 15),
+        'Ordinarie verifikation',
+        balancedLines(100.00G)
+    )
+    Voucher backdated = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 1),
+        'Efterbokad verifikation med tidigt datum',
+        balancedLines(50.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
+
+    assertEquals(backdated.id, vouchers[0].id)
+    assertEquals(first.id, vouchers[1].id)
+  }
+
+  @Test
+  void listVouchersCanBeOrderedByAccountingDate() {
+    Voucher first = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 6, 15),
+        'Ordinarie verifikation',
+        balancedLines(100.00G)
+    )
+    Voucher backdated = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 1),
+        'Efterbokad verifikation med tidigt datum',
+        balancedLines(50.00G)
+    )
+
+    List<Voucher> vouchers = voucherService.listVouchers(
+        CompanyService.LEGACY_COMPANY_ID, fiscalYear.id, null, null, VoucherSortOrder.BY_ACCOUNTING_DATE
+    )
+
+    assertEquals(first.id, vouchers[0].id)
+    assertEquals(backdated.id, vouchers[1].id)
   }
 
   @Test
