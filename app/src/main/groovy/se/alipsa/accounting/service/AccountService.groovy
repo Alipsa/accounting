@@ -170,26 +170,50 @@ final class AccountService {
     }
   }
 
-  void setAccountClassification(long companyId, String accountNumber, String accountClass, String normalBalanceSide) {
+  void updateAccount(
+      long companyId,
+      String accountNumber,
+      String accountName,
+      String accountClass,
+      String normalBalanceSide,
+      VatCode vatCode,
+      boolean active,
+      boolean manualReviewRequired
+  ) {
     CompanyService.requireValidCompanyId(companyId)
+    String normalizedName = accountName?.trim()
+    if (!normalizedName) {
+      throw new IllegalArgumentException('Kontots namn får inte vara tomt.')
+    }
     if (!(accountClass in VALID_ACCOUNT_CLASSES)) {
       throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
     }
     if (!(normalBalanceSide in VALID_NORMAL_BALANCE_SIDES)) {
       throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
     }
+    if (vatCode != null && !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
+      throw new IllegalArgumentException(
+          "Kontoklass ${accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
+      )
+    }
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
       int updated = sql.executeUpdate('''
           update account
-             set account_class = ?,
+             set account_name = ?,
+                 account_class = ?,
                  normal_balance_side = ?,
-                 manual_review_required = false,
+                 vat_code = ?,
+                 active = ?,
+                 manual_review_required = ?,
                  classification_note = null,
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
-      ''', [accountClass, normalBalanceSide, companyId, normalized])
+      ''', [
+          normalizedName, accountClass, normalBalanceSide, vatCode?.name(),
+          active, manualReviewRequired, companyId, normalized
+      ])
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }

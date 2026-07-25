@@ -150,22 +150,52 @@ class AccountServiceTest {
   }
 
   @Test
-  void setAccountClassificationAssignsClassAndClearsManualReview() {
-    accountService.setAccountClassification(
-        CompanyService.LEGACY_COMPANY_ID, '8314', 'INCOME', 'CREDIT')
+  void updateAccountAssignsAllFieldsAndClearsClassificationNote() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false)
 
     Account updated = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '8314')
+    assertEquals('Resultat övriga värdepapper', updated.accountName)
     assertEquals('INCOME', updated.accountClass)
     assertEquals('CREDIT', updated.normalBalanceSide)
+    assertEquals(VatCode.OUTPUT_25.name(), updated.vatCode)
+    assertTrue(updated.active)
     assertFalse(updated.manualReviewRequired)
     assertNull(updated.classificationNote)
   }
 
   @Test
-  void setAccountClassificationCanOverwriteExistingClassification() {
-    accountService.setAccountClassification(
-        CompanyService.LEGACY_COMPANY_ID, '1510', 'LIABILITY', 'CREDIT')
+  void updateAccountCanFlagAccountForManualReview() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510', 'Kundfordringar',
+        'ASSET', 'DEBIT', null, true, true)
+
+    Account updated = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510')
+    assertTrue(updated.manualReviewRequired)
+  }
+
+  @Test
+  void updateAccountCanDeactivateAndClearVatCode() {
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.INPUT_25)
+
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510', 'Kundfordringar',
+        'ASSET', 'DEBIT', null, false, false)
+
+    Account updated = accountService.findAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510')
+    assertFalse(updated.active)
+    assertNull(updated.vatCode)
+  }
+
+  @Test
+  void updateAccountCanOverwriteExistingClassification() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510', 'Kundfordringar',
+        'LIABILITY', 'CREDIT', null, true, false)
 
     Account updated = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '1510')
@@ -174,30 +204,51 @@ class AccountServiceTest {
   }
 
   @Test
-  void setAccountClassificationRejectsUnknownClass() {
+  void updateAccountRejectsBlankName() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      accountService.setAccountClassification(
-          CompanyService.LEGACY_COMPANY_ID, '8314', 'NOT_A_CLASS', 'CREDIT')
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '8314', '  ', 'INCOME', 'CREDIT', null, true, false)
+    }
+
+    assertTrue(exception.message.contains('namn'))
+  }
+
+  @Test
+  void updateAccountRejectsUnknownClass() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat X', 'NOT_A_CLASS', 'CREDIT', null, true, false)
     }
 
     assertTrue(exception.message.contains('NOT_A_CLASS'))
   }
 
   @Test
-  void setAccountClassificationRejectsUnknownNormalBalanceSide() {
+  void updateAccountRejectsUnknownNormalBalanceSide() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      accountService.setAccountClassification(
-          CompanyService.LEGACY_COMPANY_ID, '8314', 'INCOME', 'SIDEWAYS')
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat X', 'INCOME', 'SIDEWAYS', null, true, false)
     }
 
     assertTrue(exception.message.contains('SIDEWAYS'))
   }
 
   @Test
-  void setAccountClassificationRejectsUnknownAccount() {
+  void updateAccountRejectsVatCodeIncompatibleWithNewClass() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
-      accountService.setAccountClassification(
-          CompanyService.LEGACY_COMPANY_ID, '9999', 'INCOME', 'CREDIT')
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '1510', 'Kundfordringar',
+          'ASSET', 'DEBIT', VatCode.OUTPUT_25, true, false)
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
+  }
+
+  @Test
+  void updateAccountRejectsUnknownAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '9999', 'Namn', 'INCOME', 'CREDIT', null, true, false)
     }
 
     assertTrue(exception.message.contains(AccountService.UNKNOWN_ACCOUNT_MESSAGE_PREFIX))
