@@ -23,7 +23,7 @@ final class VoucherBalanceCachePreloader {
     this.accountService = accountService
   }
 
-  void preload(
+  SwingWorker<Map<Long, Map<String, BigDecimal>>, Void> preload(
       long companyId,
       long fiscalYearId,
       List<Voucher> vouchers,
@@ -35,9 +35,9 @@ final class VoucherBalanceCachePreloader {
         .collect { VoucherLine line -> line.accountNumber }
         .findAll { String accountNumber -> hasText(accountNumber) } as Set<String>
     if (accountNumbers.isEmpty()) {
-      return
+      return null
     }
-    new SwingWorker<Map<Long, Map<String, BigDecimal>>, Void>() {
+    SwingWorker<Map<Long, Map<String, BigDecimal>>, Void> worker = new SwingWorker<Map<Long, Map<String, BigDecimal>>, Void>() {
       @Override
       protected Map<Long, Map<String, BigDecimal>> doInBackground() {
         Map<String, BigDecimal> endingBalances = accountService.calculateAccountBalances(
@@ -85,7 +85,9 @@ final class VoucherBalanceCachePreloader {
           log.fine("Could not pre-populate voucher balance cache: ${ex.message}")
         }
       }
-    }.execute()
+    }
+    worker.execute()
+    worker
   }
 
   private static boolean hasText(String value) {

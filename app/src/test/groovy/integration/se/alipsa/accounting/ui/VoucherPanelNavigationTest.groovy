@@ -33,6 +33,7 @@ import java.awt.Container
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 
@@ -374,6 +375,7 @@ final class VoucherPanelNavigationTest {
     assertEquals('', onEdt { description.text })
     assertTrue(onEdt { unsaved.visible })
     assertEquals(1, voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id).size())
+    panel.balancePreloadWorker?.get(5, TimeUnit.SECONDS)
   }
 
   @Test

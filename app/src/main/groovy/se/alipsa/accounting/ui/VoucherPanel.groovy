@@ -61,6 +61,7 @@ import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
 import javax.swing.Timer
 import javax.swing.event.TableModelEvent
 import javax.swing.table.AbstractTableModel
@@ -128,6 +129,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private boolean readOnly = false
   private final Map<String, BigDecimal> balanceCache = [:]
   private final Map<Long, Map<String, BigDecimal>> voucherBalanceCache = [:]
+
+  @PackageScope
+  SwingWorker<Map<Long, Map<String, BigDecimal>>, Void> balancePreloadWorker
   private int voucherBalanceCacheGeneration = 0
   private final VoucherDraftEditorAccess mcpVoucherDraftAccess
   private final VoucherEditorActions voucherEditorActions
@@ -200,6 +204,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   @Override
   void doUnregisterListeners() {
+    cancelBalancePreload()
     I18n.instance.removeLocaleChangeListener(this)
     activeCompanyManager.removePropertyChangeListener(this)
   }
@@ -618,6 +623,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void reloadVoucherList(Voucher selectedVoucher = null) {
+    cancelBalancePreload()
     voucherBalanceCache.clear()
     voucherBalanceCacheGeneration++
     FiscalYear fy = activeCompanyManager.fiscalYear
@@ -642,7 +648,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         navigation.select(listedVoucher, this::showVoucher)
       }
     }
-    voucherBalanceCachePreloader.preload(
+    balancePreloadWorker = voucherBalanceCachePreloader.preload(
         activeCompanyManager.companyId,
         fy.id,
         navigation.vouchers,
@@ -652,6 +658,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         voucherBalanceCache.putAll(preloadedBalances)
       }
     }
+  }
+
+  private void cancelBalancePreload() {
+    balancePreloadWorker?.cancel(true)
+    balancePreloadWorker = null
   }
 
   private void handleSavedVoucher(Voucher savedVoucher) {
