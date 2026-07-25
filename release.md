@@ -15,6 +15,7 @@
 - **Radering/ersättning av räkenskapsår med korrigeringsverifikationer** — Att radera eller ersätta (via SIE) ett räkenskapsår som innehöll en korrigeringsverifikation kunde krascha med ett databasfel (FK_VOUCHER_ORIGINAL), eftersom kopplingen till originalverifikationen inte nollställdes innan raderingen.
 - **Bokslut blockerar nu okvalificerade konton** — Årsbokslut kunde tidigare genomföras även om ett konto med bokförda transaktioner saknade kontoklass eller normalsida. Resultatberäkningen filtrerar på kontoklass, så sådana konton föll tyst bort ur resultatet utan någon varning. Bokslutet blockeras nu och listar exakt vilka konton som måste klassificeras i kontoplanen först.
 - **Kontoklass och normalsida visas nu på svenska** — Kontoplanens tabell, kontodetaljer och klassfilter visade tidigare oöversatta engelska värden (till exempel INCOME, CREDIT) trots svenska språkinställningar.
+- **AI-assistentens kontext visade felaktigt öppet räkenskapsår efter stängning** — `get_active_context` läste stängningsstatus från skrivbordsgränssnittets cachade räkenskapsår, som inte uppdateras av MCP-verktyget för årsstängning. Efter en AI-driven årsstängning kunde AI-assistenten därför fortsätta tro att räkenskapsåret var öppet. Statusen hämtas nu alltid färsk från databasen.
 
 ## v1.6.1, 2026-07-23
 
@@ -351,12 +352,12 @@ First release of Alipsa Accounting — a desktop bookkeeping application for sma
 
 ### Downloads
 
-| Platform | File |
-|----------|------|
-| Linux | `alipsa-accounting-1.0.0-linux.zip` |
-| Windows | `AlipsaAccounting-1.0.0.exe` |
-| macOS | `AlipsaAccounting-macos.zip` |
-| Universal (JVM) | `app-1.0.0.zip` |
+| Platform        | File                                |
+|-----------------|-------------------------------------|
+| Linux           | `alipsa-accounting-1.0.0-linux.zip` |
+| Windows         | `AlipsaAccounting-1.0.0.exe`        |
+| macOS           | `AlipsaAccounting-macos.zip`        |
+| Universal (JVM) | `app-1.0.0.zip`                     |
 
 All artifacts are signed with GPG. Verify with:
 ```
