@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
 
@@ -134,6 +135,29 @@ class AiWorkspaceServiceTest {
 
     Path workspace = AppPaths.aiWorkspaceDirectory()
     assertFalse(files.containsKey(AiWorkspacePaths.settingsLocalFile(workspace)))
+  }
+
+  @Test
+  void refusesToReadClaudeSettingsThroughASymlink() {
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    Path settingsLocal = AiWorkspacePaths.settingsLocalFile(workspace)
+    Path outside = tempDir.resolve('outside-settings')
+    Files.createDirectories(settingsLocal.parent)
+    Files.createDirectories(outside)
+    Files.createSymbolicLink(settingsLocal, outside)
+    Map<Path, String> files = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      files[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    EnvironmentLookup lookup = { String name -> null } as EnvironmentLookup
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(), writer,
+        { Path path -> false } as ExecutableProbe, lookup, { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalStateException) {
+      service.refreshClientFiles(AiClient.CLAUDE, 'http://127.0.0.1:8080/mcp', 'token-value')
+    }
+    assertFalse(files.containsKey(settingsLocal))
   }
 
   @Test

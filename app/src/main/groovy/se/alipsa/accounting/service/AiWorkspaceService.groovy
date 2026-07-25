@@ -53,6 +53,7 @@ final class AiWorkspaceService {
       writeDataFile(workspace, instructions, skill)
       writeDataFile(workspace, AiWorkspacePaths.assistantProfileFile(workspace, client), profile)
       Path settingsLocal = AiWorkspacePaths.settingsLocalFile(workspace)
+      permissions.verifyNoSymlinksInPath(workspace, settingsLocal)
       String existingSettings = Files.exists(settingsLocal) ? Files.readString(settingsLocal) : null
       String mergedSettings = AiWorkspaceMcpSettings.mergeSettingsLocal(existingSettings)
       writeDataFile(workspace, settingsLocal, mergedSettings.getBytes('UTF-8'))
