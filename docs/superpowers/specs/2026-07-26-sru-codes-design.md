@@ -45,7 +45,13 @@ LegalForm legalForm            // nullable — unset until user configures it
 boolean simplifiedAnnualReport = false   // only meaningful when legalForm == ENSKILD_FIRMA (K1 vs EJ_K1)
 ```
 
-New enum `LegalForm { AKTIEBOLAG, ENSKILD_FIRMA, HANDELSBOLAG_KB }`.
+New enum `LegalForm { AKTIEBOLAG, ENSKILD_FIRMA, HANDELSBOLAG_KB }` with a null-safe `fromDatabaseValue(String value)`. This must **not** follow the `AccountingMethod.fromDatabaseValue`/`VatPeriodicity.fromDatabaseValue` precedent of `normalized ? valueOf(normalized) : <DEFAULT>` — those fields are `NOT NULL` with a safe default; `legal_form` is deliberately nullable with no safe default (that's the entire reason §1 rejects guessing AKTIEBOLAG for existing companies). So:
+```groovy
+static LegalForm fromDatabaseValue(String value) {
+  String normalized = value?.trim()
+  normalized ? valueOf(normalized) : null
+}
+```
 
 Migration `V28__company_legal_form.sql` (**registered in `DatabaseService.MIGRATIONS` as version 28** — this list is the only thing that applies migrations, for both upgraded and brand-new databases; a new DB bootstraps by running every entry in `MIGRATIONS` from V1, there is no separate full-schema file to update):
 ```sql
@@ -62,7 +68,7 @@ No backfill — existing companies get `legal_form = null` (no suggestions shown
 
 Without all three, `legalForm` never round-trips — it'd stay `null` forever regardless of what the user picks in the dialog, and `SruSuggestionService` would never return a suggestion.
 
-Add a legal-form combo box + simplified-annual-report checkbox (enabled only when `ENSKILD_FIRMA` is selected) to `CompanyDialog.groovy`.
+Add a legal-form combo box + simplified-annual-report checkbox (enabled only when `ENSKILD_FIRMA` is selected) to `CompanyDialog.groovy`. Its save handler builds `Company` positionally (`Company toSave = new Company(company?.id, companyNameField.text.trim(), ...)`, 11 args currently) — the new combo/checkbox values must be appended as the last two arguments to that same call, or the dialog's selection is purely visual and every save persists `null`/`false` regardless of what the user picked. Test both create and edit through the dialog, not just through `CompanyService` directly.
 
 ---
 
@@ -81,7 +87,7 @@ alter table account add column sru_code2 varchar(10);
 `Account.groovy`: add `String sruCode`, `String sruCode2` **at the end** of the field list, for the same positional-constructor reason as `Company` above — `AccountService.mapAccount()` also builds `Account` via its all-args constructor.
 
 `AccountService`:
-- `updateAccount(...)` gains `sruCode`/`sruCode2` parameters. Validate: each is null/blank, or digits only (matches `Fält-kod` format, e.g. `7261`); reject anything else with `IllegalArgumentException`.
+- `updateAccount(...)` gains `sruCode`/`sruCode2` parameters. Each is normalized with `?.trim()` first; if the trimmed result is empty, it's persisted as `null` (a whitespace-only string must never reach the `account` table). After normalization: null is accepted, otherwise digits only (matches `Fält-kod` format, e.g. `7261`); reject anything else with `IllegalArgumentException`. The same trim-to-null normalization applies on the SIE-import insert path (§6) — a `#SRU` line's code shouldn't realistically be whitespace, but the rule is applied at every write site rather than assumed only at one.
 - `searchAccounts` / `findAccount` SELECT + `mapAccount` include `sru_code as sruCode, sru_code2 as sruCode2`, appended as the last two positional constructor arguments.
 
 `AccountEditorDialog`: add two SRU-code `JTextField`s (primary + secondary), following the existing `addRow(...)` pattern used for `name`/`class`/`normal`/`vatCode`/`active`/`review`. `AccountEditorResult` gains `sruCode`, `sruCode2`.
@@ -160,7 +166,7 @@ The secondary SRU code field has no suggestion hint (no source table, see §3) �
 
 `SieImportExportModels.AccountSeed` gains `String sruCode`, `String sruCode2`.
 `SieImportExportService.loadAccounts()` selects `sru_code as sruCode, sru_code2 as sruCode2`.
-`buildExportPayload()`: when building each `SieAccount`, call `account.setSRU([seed.sruCode, seed.sruCode2].findAll { it })` — emits 0, 1, or 2 `#SRU` lines depending on which are non-blank.
+`buildExportPayload()`: when building each `SieAccount`, call `account.setSRU([seed.sruCode, seed.sruCode2].findAll { it?.trim() })` — **not** `findAll { it }`, since a whitespace-only string is truthy in Groovy and would otherwise be written out as an invalid `#SRU` line. (Belt-and-suspenders: normalization at save time in §2 means `sru_code`/`sru_code2` should never actually contain whitespace-only values by the time export reads them, but the export code checks for it anyway rather than relying solely on the write-time guarantee.)
 
 ### 5a. Export-time warning for accounts missing an SRU code
 
@@ -176,7 +182,7 @@ Exporting today never fails and shouldn't start failing just because this featur
 - distinct `account_number` from `voucher_line` joined to `voucher` where `fiscal_year_id = ?` and `status in ('ACTIVE', 'CORRECTION')` (same scoping `loadBookedVouchers`/`loadClosingBalances` already use for booked activity), and
 - distinct `account_number` from `opening_balance` for that fiscal year (covers balance accounts with a carried-forward balance but no movement this year).
 
-`previewSieExport` computes this set, filters to accounts with a blank `sru_code`, and — only when `company.legalForm` is set (if unset, the app can't know which accounts need a code at all, so the list is left empty rather than flagging everything) — returns it as `accountsMissingSruCode`.
+`previewSieExport` computes this set, filters to accounts where `sru_code?.trim()` is blank (same trim-aware check as the export code, not a bare null/falsy check), and — only when `company.legalForm` is set (if unset, the app can't know which accounts need a code at all, so the list is left empty rather than flagging everything) — returns it as `accountsMissingSruCode`.
 
 ---
 
@@ -193,7 +199,8 @@ Exporting today never fails and shouldn't start failing just because this featur
 
 - `DatabaseServiceTest` (or wherever migration application is already covered): V28/V29 apply cleanly on top of V27, and a fresh database ends up with both new columns via the normal `MIGRATIONS` bootstrap path.
 - `CompanyServiceTest`: `legalForm`/`simplifiedAnnualReport` round-trip through `save()` (both create and update) and are visible via `findById()`, `listCompanies()`, and `listArchivedCompanies()` — this is the test that would have caught the missing `mapCompany`/`create`/`update`/listing wiring.
-- `AccountServiceTest`: `sruCode`/`sruCode2` validation (accepts digits/null, rejects non-digits) and persistence round-trip via `updateAccount`/`findAccount`.
+- `AccountServiceTest`: `sruCode`/`sruCode2` validation (accepts digits/null, rejects non-digits) including a whitespace-only input normalizing to stored `null`, and persistence round-trip via `updateAccount`/`findAccount`.
+- `CompanyDialogTest` (or equivalent UI test if one exists for this dialog): saving through the dialog with a legal form selected persists it via `CompanyService`, for both the create and edit path — not just a direct `CompanyService.save()` call.
 - `SruSuggestionParserTest` (unit-level, no spreadsheet needed): each parsing primitive from §3 point 1 individually — range, wildcard, wildcard-range, exclusion, per-segment sign tagging including the mid-list case.
 - `SruSuggestionServiceTest`: expected row count per generated CSV; CSV parser reproduces all 210 pairs in the real-export fixture (§3); sign-dependent account returns both candidates; unmapped account returns `[]`; `legalForm == null` returns `[]`; never suggests `sruCode2`.
 - `SieImportExportServiceTest`: export emits 0/1/2 `#SRU` lines depending on which of `sruCode`/`sruCode2` are set; `previewSieExport()` returns accounts missing a code only when they have voucher-line activity or an opening balance this year (including a result/expense account case, not just balance accounts) and only when `legalForm` is set; `exportFiscalYear()` itself does not compute or require this (pure file-writing behavior unchanged); import persists SRU codes on new accounts and leaves them untouched on existing accounts regardless of file content (mirrors existing `vat_code`-preservation tests if present); warns-and-truncates beyond two codes.
@@ -216,3 +223,6 @@ Exporting today never fails and shouldn't start failing just because this featur
 - The missing-SRU check runs via a new `previewSieExport()` called *before* `exportFiscalYear()` writes anything — `exportFiscalYear()` already writes the file before returning a result, so a field on its result object can't support a cancellable confirmation.
 - "Used this year" for the missing-SRU check is voucher-line activity (ACTIVE/CORRECTION) unioned with opening balances — not `closings`/`openings`, which structurally exclude income/expense accounts (`loadClosingBalances` filters to ASSET/LIABILITY/EQUITY only).
 - All three SELECTs feeding `CompanyService.mapCompany()` (`findById`, `listCompanies`, `listArchivedCompanies`) get the new columns, not just `findById`.
+- `sru_code`/`sru_code2` are trim-to-null normalized at every write site (`AccountService.updateAccount`, SIE import) — a whitespace-only string is truthy in Groovy and must never reach the `account` table or an exported `#SRU` line; export and `previewSieExport` both check `?.trim()`, not bare truthiness.
+- `CompanyDialog`'s save handler builds `Company` via its positional constructor — the legal-form combo/checkbox values must be appended as the last two constructor arguments there, or the dialog's selection never reaches `Company` at all.
+- `LegalForm.fromDatabaseValue` returns `null` on blank input, deliberately not following the `AccountingMethod`/`VatPeriodicity` precedent of defaulting to a concrete enum value — there is no safe default for legal form.
