@@ -30,7 +30,7 @@ Before finalizing this spec, a real SIE file exported from Björn Lundén's acco
 - `Account` + `AccountService` (searchAccounts/findAccount/mapAccount/updateAccount) — sru code fields, full persistence path
 - New bundled SRU suggestion data (parsed once from the xlsx files) + lookup service
 - `SieImportExportService` — export emits `#SRU` and warns about used-but-uncoded accounts, import persists `#SRU` on new accounts only
-- `AccountEditorDialog` / `ChartOfAccountsPanel` — SRU code fields + suggestion hint
+- `AccountEditorDialog` / `ChartOfAccountsPanel` (+ its `MainFrame` instantiation) — SRU code fields + suggestion hint, with `ChartOfAccountsPanel` resolving the active `Company` and calling `SruSuggestionService` so the dialog itself stays a plain, stateless view
 - `CompanyDialog` — legal form selector
 
 Out of scope: automatic resolution of sign-dependent SRU fields against actual account balances (suggestion shows both candidates, user picks); per-fiscal-year legal form history (legal form lives on `Company`, not versioned); any legal forms beyond AB/enskild firma/handelsbolag-KB; MCP tool surface (can be extended later if needed, not required for this fix); blocking export outright when SRU codes are missing (warn only, see §5a).
@@ -165,10 +165,16 @@ List<SruSuggestion> suggest(Company company, String accountNumber)
 
 ## 4. UI: showing suggestions
 
-In `AccountEditorDialog`, next to the primary SRU code field, show a suggestion hint when `SruSuggestionService.suggest(...)` returns matches:
+**Wiring — this is what makes §3's `suggest(...)` reachable from the dialog, not just described in prose.** `AccountEditorDialog` is a static-only, stateless utility today (`private AccountEditorDialog() {}`, no instance fields, no injected services — its one existing service touch, `AccountService.compatibleVatCodes(...)`, is a pure classification function with no DB/state dependency). Giving it a `SruSuggestionService` and a `Company` directly would be the first time this class depends on a stateful collaborator, and would need `ChartOfAccountsPanel` to resolve `activeCompanyManager.activeCompany` and pass it through anyway. Instead, keep the dialog exactly as decoupled as it is today: the caller resolves the suggestions and hands over a plain list.
+
+- `ChartOfAccountsPanel` gains a `SruSuggestionService` constructor parameter (defaulted like its existing collaborators, e.g. `new SruSuggestionService()`), and its instantiation in `MainFrame.groovy` (`new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)`) gets the new argument appended.
+- `SruSuggestionService.suggest(Company company, String accountNumber)` is null-safe on `company` — returns `[]` if `company == null` (in addition to the existing `legalForm == null` → `[]` rule from §3), even though in practice `editSelectedAccount()` can only run after `activeCompanyManager.hasActiveCompany()` has already gated the account list (lines 275/300 of `ChartOfAccountsPanel.groovy`), so `activeCompanyManager.activeCompany` will be non-null there.
+- `ChartOfAccountsPanel.editSelectedAccount()` computes `List<SruSuggestion> suggestions = sruSuggestionService.suggest(activeCompanyManager.activeCompany, account.accountNumber)` and calls `AccountEditorDialog.show(this, account, suggestions)` — a new third parameter, empty list when there's nothing to suggest. The dialog itself never touches `Company` or `SruSuggestionService`.
+
+In `AccountEditorDialog`, next to the primary SRU code field, show a suggestion hint driven by the passed-in `suggestions` list:
 - Single match, no sign condition: `Förslag: 7261 [Använd]` — button fills the text field.
 - Sign-dependent matches: both candidates shown with their condition label (e.g. "om nettobelopp +" / "om nettobelopp –"), each with its own `[Använd]`.
-- No match (legal form unset, or account not covered by the table): no hint shown, field behaves as plain manual entry — same as today.
+- Empty list (legal form unset, or account not covered by the table): no hint shown, field behaves as plain manual entry — same as today.
 
 The secondary SRU code field has no suggestion hint (no source table, see §3) — plain manual entry only.
 
@@ -214,7 +220,8 @@ Exporting today never fails and shouldn't start failing just because this featur
 - `AccountServiceTest`: `sruCode`/`sruCode2` validation (accepts digits/null, rejects non-digits) including a whitespace-only input normalizing to stored `null`, and persistence round-trip via `updateAccount`/`findAccount`.
 - `CompanyDialogTest` (or equivalent UI test if one exists for this dialog): saving through the dialog with a legal form selected persists it via `CompanyService`, for both the create and edit path — not just a direct `CompanyService.save()` call.
 - `SruSuggestionParserTest` (unit-level, no spreadsheet needed): each parsing primitive from §3 point 1 individually — range, wildcard, wildcard-range, exclusion, per-segment sign tagging including the mid-list case.
-- `SruSuggestionServiceTest`: expected row count per generated CSV; CSV parser reproduces all 208 pairs in the real-export fixture (§3); `8710`/`8750` explicitly return `[]` (known gap, not silently passing); sign-dependent account returns both candidates; unmapped account returns `[]`; `legalForm == null` returns `[]`; never suggests `sruCode2`.
+- `SruSuggestionServiceTest`: expected row count per generated CSV; CSV parser reproduces all 208 pairs in the real-export fixture (§3); `8710`/`8750` explicitly return `[]` (known gap, not silently passing); sign-dependent account returns both candidates; unmapped account returns `[]`; `legalForm == null` returns `[]`; `company == null` returns `[]`; never suggests `sruCode2`.
+- `ChartOfAccountsPanelTest` (or equivalent): `editSelectedAccount()` calls `sruSuggestionService.suggest(activeCompanyManager.activeCompany, ...)` and passes the result to `AccountEditorDialog.show(...)` — this is the test that would have caught the missing wiring between the service and the dialog.
 - `SieImportExportServiceTest`: export emits 0/1/2 `#SRU` lines depending on which of `sruCode`/`sruCode2` are set; `previewSieExport()` returns accounts missing a code only when they have voucher-line activity or an opening balance this year (including a result/expense account case, not just balance accounts) and only when `legalForm` is set; `exportFiscalYear()` itself does not compute or require this (pure file-writing behavior unchanged); import persists SRU codes on new accounts and leaves them untouched on existing accounts regardless of file content (mirrors existing `vat_code`-preservation tests if present); warns-and-truncates beyond two valid codes; a malformed code in the imported file is dropped with a warning rather than persisted or aborting the import.
 - `SieExchangeDialogTest.groovy`: update if it snapshots dialog fields affected by these changes; add coverage that `exportRequested()` calls `previewSieExport()` first and only proceeds to `exportFiscalYear()` when the list is empty or the user confirms.
 
@@ -240,3 +247,4 @@ Exporting today never fails and shouldn't start failing just because this featur
 - The parser's known gap (8710/8750 unmapped) and the fixture's expected match count must agree: the fixture holds only the 208 mappable pairs, and a separate test asserts the 2 gap accounts explicitly return no suggestion — a test can't simultaneously demand "matches all 210" and "2 of them have no mapping."
 - `CompanyDialog`'s save handler builds `Company` via its positional constructor — the legal-form combo/checkbox values must be appended as the last two constructor arguments there, or the dialog's selection never reaches `Company` at all.
 - `LegalForm.fromDatabaseValue` returns `null` on blank input, deliberately not following the `AccountingMethod`/`VatPeriodicity` precedent of defaulting to a concrete enum value — there is no safe default for legal form.
+- `AccountEditorDialog` stays a stateless, static-only utility with no `Company`/`SruSuggestionService` dependency of its own — `ChartOfAccountsPanel` resolves `activeCompanyManager.activeCompany`, calls `SruSuggestionService.suggest(...)` itself, and passes the resulting `List<SruSuggestion>` into a new third parameter on `AccountEditorDialog.show(...)`. This requires a constructor-parameter change on `ChartOfAccountsPanel` and its `MainFrame` instantiation, not just a change inside the dialog.
