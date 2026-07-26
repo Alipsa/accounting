@@ -459,7 +459,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
           edited.normalBalanceSide,
           edited.vatCode,
           edited.active,
-          edited.manualReviewRequired
+          edited.manualReviewRequired,
+          edited.sruCode,
+          edited.sruCode2
       )
       reloadAccounts()
       selectAccount(account.accountNumber)
@@ -570,7 +572,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     @Override
     @SuppressWarnings('GetterMethodCouldBeProperty')
     int getColumnCount() {
-      7
+      9
     }
 
     @Override
@@ -583,6 +585,8 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         case 4: return I18n.instance.getString('chartOfAccountsPanel.table.vatCode')
         case 5: return I18n.instance.getString('chartOfAccountsPanel.table.active')
         case 6: return I18n.instance.getString('chartOfAccountsPanel.table.review')
+        case 7: return I18n.instance.getString('chartOfAccountsPanel.table.sruCode')
+        case 8: return I18n.instance.getString('chartOfAccountsPanel.table.sruCode2')
         default: return ''
       }
     }
@@ -609,6 +613,10 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
           return account.manualReviewRequired
               ? I18n.instance.getString('chartOfAccountsPanel.details.yes')
               : I18n.instance.getString('chartOfAccountsPanel.details.no')
+        case 7:
+          return account.sruCode
+        case 8:
+          return account.sruCode2
         default:
           return ''
       }

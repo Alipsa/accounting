@@ -38,6 +38,8 @@ final class AccountEditorDialog {
     activeCheckBox.selected = account.active
     JCheckBox reviewCheckBox = new JCheckBox()
     reviewCheckBox.selected = account.manualReviewRequired
+    JTextField sruCodeField = new JTextField(account.sruCode, 10)
+    JTextField sruCode2Field = new JTextField(account.sruCode2, 10)
 
     classCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf(account.accountClass))
     sideCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide))
@@ -46,7 +48,8 @@ final class AccountEditorDialog {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
     }
 
-    JPanel editorPanel = buildEditorPanel(nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox)
+    JPanel editorPanel = buildEditorPanel(
+        nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox, sruCodeField, sruCode2Field)
     int result = JOptionPane.showConfirmDialog(
         parent,
         editorPanel,
@@ -65,7 +68,9 @@ final class AccountEditorDialog {
         ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[sideCombo.selectedIndex],
         selectedVatChoice?.vatCode,
         activeCheckBox.selected,
-        reviewCheckBox.selected
+        reviewCheckBox.selected,
+        sruCodeField.text,
+        sruCode2Field.text
     )
   }
 
@@ -94,7 +99,9 @@ final class AccountEditorDialog {
       JComboBox<String> sideCombo,
       JComboBox<VatCodeChoice> vatCombo,
       JCheckBox activeCheckBox,
-      JCheckBox reviewCheckBox
+      JCheckBox reviewCheckBox,
+      JTextField sruCodeField,
+      JTextField sruCode2Field
   ) {
     JPanel editorPanel = new JPanel(new GridBagLayout())
     GridBagConstraints labelConstraints = new GridBagConstraints(
@@ -113,9 +120,11 @@ final class AccountEditorDialog {
     addRow(editorPanel, labelConstraints, fieldConstraints, 3, 'vatCode', vatCombo)
     addRow(editorPanel, labelConstraints, fieldConstraints, 4, 'active', activeCheckBox)
     addRow(editorPanel, labelConstraints, fieldConstraints, 5, 'review', reviewCheckBox)
+    addRow(editorPanel, labelConstraints, fieldConstraints, 6, 'sruCode', sruCodeField)
+    addRow(editorPanel, labelConstraints, fieldConstraints, 7, 'sruCode2', sruCode2Field)
 
     GridBagConstraints legendConstraints = new GridBagConstraints(
-        0, 6, 2, 1, 1.0d, 0.0d,
+        0, 8, 2, 1, 1.0d, 0.0d,
         GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
         new Insets(12, 4, 4, 4), 0, 0
     )
@@ -142,7 +151,7 @@ final class AccountEditorDialog {
   }
 
   private static JLabel buildLegend() {
-    List<String> fieldKeys = ['name', 'class', 'normal', 'vatCode', 'active', 'review']
+    List<String> fieldKeys = ['name', 'class', 'normal', 'vatCode', 'active', 'review', 'sruCode', 'sruCode2']
     StringBuilder html = new StringBuilder('<html>')
     fieldKeys.each { String fieldKey ->
       String label = I18n.instance.getString("chartOfAccountsPanel.table.${fieldKey}")
@@ -180,6 +189,8 @@ final class AccountEditorDialog {
     final VatCode vatCode
     final boolean active
     final boolean manualReviewRequired
+    final String sruCode
+    final String sruCode2
 
     AccountEditorResult(
         String accountName,
@@ -187,7 +198,9 @@ final class AccountEditorDialog {
         String normalBalanceSide,
         VatCode vatCode,
         boolean active,
-        boolean manualReviewRequired
+        boolean manualReviewRequired,
+        String sruCode,
+        String sruCode2
     ) {
       this.accountName = accountName
       this.accountClass = accountClass
@@ -195,6 +208,8 @@ final class AccountEditorDialog {
       this.vatCode = vatCode
       this.active = active
       this.manualReviewRequired = manualReviewRequired
+      this.sruCode = sruCode
+      this.sruCode2 = sruCode2
     }
   }
 }
