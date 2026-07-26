@@ -140,6 +140,7 @@ Kör alla kommandon från rotmappen.
 
 - Fliken `System` visar diagnostik, backup/restore och inbyggd systemdokumentation.
 - Hjälpmenyn öppnar användarmanualen från `app/src/main/resources/docs/user-manual.md`.
+- [docs/ai-assistenten.md](docs/ai-assistenten.md) beskriver installation och konfiguration av AI-assistenten i detalj.
 
 ## AI-assisterad bokföring
 
@@ -154,6 +155,8 @@ Servern använder samma lokala H2-databas, valideringar och affärsregler som de
 AI:n kan lägga ett förslag i den osparade verifikationsvyn, men kan aldrig spara det. Användaren granskar och trycker själv på Spara i desktopappen.
 
 MCP-servern ger klienten verktygen. Skill-filen styr hur LLM:en bör använda verktygen. Skill-filen installeras inte automatiskt av Claude Code eller Codex; se releaseavsnittet nedan för hur den länkas eller kopieras till respektive klients skill-katalog.
+
+Se [docs/ai-assistenten.md](docs/ai-assistenten.md) för en fullständig genomgång av installation och konfiguration, inklusive hur den inbyggda launchern fungerar under huvan, manuell konfiguration för andra MCP-klienter och hur desktop-versioner (t.ex. Claude Desktop) skulle kunna anslutas.
 
 ## Release
 
