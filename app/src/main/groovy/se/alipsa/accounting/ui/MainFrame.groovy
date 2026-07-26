@@ -979,7 +979,7 @@ final class MainFrame implements PropertyChangeListener {
         reloadFiscalYearComboBox()
         activeCompanyManager.refreshFiscalYear()
       }
-    } as java.util.function.Consumer<Long>)
+    } as java.util.function.Consumer<Long>, activeCompanyManager.fiscalYear?.id)
     setStatus(I18n.instance.getString('mainFrame.status.sieExchangeClosed'))
   }
 
