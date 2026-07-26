@@ -58,7 +58,7 @@ No backfill — existing companies get `legal_form = null` (no suggestions shown
 **Full persistence path (this is the part that makes the field actually work, not just declared):**
 - `CompanyService.create()`: add `legal_form`, `simplified_annual_report` to the `insert into company (...)` column list and value list.
 - `CompanyService.update()`: add both columns to the `update company set ...` clause and value list.
-- `CompanyService.mapCompany()`: add `legal_form as legalForm, simplified_annual_report as simplifiedAnnualReport` to the `findById` SELECT, and append `LegalForm.fromDatabaseValue(row.get('legalForm') as String)` / `Boolean.TRUE == row.get('simplifiedAnnualReport')` as the last two positional constructor arguments (matching the appended field order above).
+- `CompanyService.mapCompany()` is fed by **three separate SELECTs**, all of which need `legal_form as legalForm, simplified_annual_report as simplifiedAnnualReport` added: the private `findById(Sql, long)`, `listCompanies()`, and `listArchivedCompanies()`. Missing any one of them means that view (e.g. the company picker list) silently shows `legalForm == null` even though the value is stored correctly. Append `LegalForm.fromDatabaseValue(row.get('legalForm') as String)` / `Boolean.TRUE == row.get('simplifiedAnnualReport')` as the last two positional constructor arguments in `mapCompany()` itself (matching the appended field order above) — since all three SELECTs funnel through this one mapping method, this part only needs doing once.
 
 Without all three, `legalForm` never round-trips — it'd stay `null` forever regardless of what the user picks in the dialog, and `SruSuggestionService` would never return a suggestion.
 
@@ -164,10 +164,19 @@ The secondary SRU code field has no suggestion hint (no source table, see §3) �
 
 ### 5a. Export-time warning for accounts missing an SRU code
 
-Exporting today never fails and shouldn't start failing just because this feature exists — but silently producing a file the tax software will reject again (this app's original problem) isn't acceptable either. `loadAccounts()` returns the **entire** company chart of accounts regardless of activity (dozens of dormant BAS accounts in a typical install), so checking all of them would be noisy; the original SRU-kontroll screenshot only flagged accounts with a nonzero `UB/Res`, i.e. exactly the accounts already present in `buildExportPayload()`'s `closings`/`openings` maps for that fiscal year.
+Exporting today never fails and shouldn't start failing just because this feature exists — but silently producing a file the tax software will reject again (this app's original problem) isn't acceptable either.
 
-- `SieExportResult` gains `List<String> accountsMissingSruCode` — account numbers present in `closings` or `openings` for the exported fiscal year whose `sru_code` is blank, when `company.legalForm` is set (if `legalForm` is unset, the app can't know which accounts need a code at all, so the list is left empty rather than flagging everything).
-- `SieExchangeDialog.exportRequested()` shows this list in a non-blocking confirmation (same UX family as the existing import-replace confirmations, e.g. `previewSieImport`) — "N accounts used this year have no SRU code: [list]. Export anyway?" — the user can proceed or cancel to go fix them first. Export is never hard-blocked.
+**Confirmation must happen before the file is written, not after.** `exportFiscalYear()` currently builds the payload, renders it, and calls `Files.write(...)` before constructing `SieExportResult` — by the time any result object exists, the file is already on disk, too late for a "Export anyway?" prompt to mean anything. This mirrors the import side's existing shape: `previewSieImport(...)` returns a `SieImportPreview` that the dialog inspects *before* calling the mutating `importFile(...)`/`replaceFiscalYear(...)`. Following that same pattern:
+
+- New `SieExportPreview` (in `SieImportExportModels.groovy`): `List<String> accountsMissingSruCode`.
+- New `SieImportExportService.previewSieExport(long fiscalYearId) -> SieExportPreview`: runs only the missing-code computation below, no file I/O.
+- `SieExchangeDialog.exportRequested()` calls `previewSieExport(...)` first. If `accountsMissingSruCode` is non-empty, show a confirmation ("N accounts used this year have no SRU code: [list]. Export anyway?"); only call `exportFiscalYear(...)` if the list is empty or the user confirms. Cancelling never reaches `exportFiscalYear()`, so no file is written. Export is never hard-blocked — the user can always proceed.
+
+**Defining "used this year" correctly.** `loadAccounts()` returns the entire company chart of accounts regardless of activity (dozens of dormant BAS accounts in a typical install), so checking all of them would be noisy — but the original draft's "present in `closings` or `openings`" is wrong: `loadClosingBalances()` explicitly filters `and a.account_class in ('ASSET', 'LIABILITY', 'EQUITY')`, so income/expense (result) accounts are never in `closings`, and `openings` (opening balances) is never populated for result accounts either, by definition of double-entry bookkeeping. That would silently miss exactly the kind of cost/expense accounts (5xxx-8xxx) that carried real SRU codes in the Björn Lundén validation file. The correct "used this year" set is the union of:
+- distinct `account_number` from `voucher_line` joined to `voucher` where `fiscal_year_id = ?` and `status in ('ACTIVE', 'CORRECTION')` (same scoping `loadBookedVouchers`/`loadClosingBalances` already use for booked activity), and
+- distinct `account_number` from `opening_balance` for that fiscal year (covers balance accounts with a carried-forward balance but no movement this year).
+
+`previewSieExport` computes this set, filters to accounts with a blank `sru_code`, and — only when `company.legalForm` is set (if unset, the app can't know which accounts need a code at all, so the list is left empty rather than flagging everything) — returns it as `accountsMissingSruCode`.
 
 ---
 
@@ -183,12 +192,12 @@ Exporting today never fails and shouldn't start failing just because this featur
 ## 7. Tests
 
 - `DatabaseServiceTest` (or wherever migration application is already covered): V28/V29 apply cleanly on top of V27, and a fresh database ends up with both new columns via the normal `MIGRATIONS` bootstrap path.
-- `CompanyServiceTest`: `legalForm`/`simplifiedAnnualReport` round-trip through `save()` (both create and update) and `findById()` — this is the test that would have caught the missing `mapCompany`/`create`/`update` wiring.
+- `CompanyServiceTest`: `legalForm`/`simplifiedAnnualReport` round-trip through `save()` (both create and update) and are visible via `findById()`, `listCompanies()`, and `listArchivedCompanies()` — this is the test that would have caught the missing `mapCompany`/`create`/`update`/listing wiring.
 - `AccountServiceTest`: `sruCode`/`sruCode2` validation (accepts digits/null, rejects non-digits) and persistence round-trip via `updateAccount`/`findAccount`.
 - `SruSuggestionParserTest` (unit-level, no spreadsheet needed): each parsing primitive from §3 point 1 individually — range, wildcard, wildcard-range, exclusion, per-segment sign tagging including the mid-list case.
 - `SruSuggestionServiceTest`: expected row count per generated CSV; CSV parser reproduces all 210 pairs in the real-export fixture (§3); sign-dependent account returns both candidates; unmapped account returns `[]`; `legalForm == null` returns `[]`; never suggests `sruCode2`.
-- `SieImportExportServiceTest`: export emits 0/1/2 `#SRU` lines depending on which of `sruCode`/`sruCode2` are set; `accountsMissingSruCode` includes only accounts with year activity and `legalForm` set; import persists SRU codes on new accounts and leaves them untouched on existing accounts regardless of file content (mirrors existing `vat_code`-preservation tests if present); warns-and-truncates beyond two codes.
-- `SieExchangeDialogTest.groovy`: update if it snapshots dialog fields affected by these changes; add coverage for the new export confirmation dialog.
+- `SieImportExportServiceTest`: export emits 0/1/2 `#SRU` lines depending on which of `sruCode`/`sruCode2` are set; `previewSieExport()` returns accounts missing a code only when they have voucher-line activity or an opening balance this year (including a result/expense account case, not just balance accounts) and only when `legalForm` is set; `exportFiscalYear()` itself does not compute or require this (pure file-writing behavior unchanged); import persists SRU codes on new accounts and leaves them untouched on existing accounts regardless of file content (mirrors existing `vat_code`-preservation tests if present); warns-and-truncates beyond two codes.
+- `SieExchangeDialogTest.groovy`: update if it snapshots dialog fields affected by these changes; add coverage that `exportRequested()` calls `previewSieExport()` first and only proceeds to `exportFiscalYear()` when the list is empty or the user confirms.
 
 ---
 
@@ -204,3 +213,6 @@ Exporting today never fails and shouldn't start failing just because this featur
 - `Company`/`Account` new fields are appended at the end of each class's field list, and every positional `new Company(...)`/`new Account(...)` call site (`CompanyService.mapCompany`, `AccountService.mapAccount`) is updated — both classes use `@Canonical` positional constructors, so this is not optional cleanup.
 - Import never overwrites a manually-set `sru_code`/`sru_code2` on an existing account — only sets them on first insert, matching the existing `vat_code` precedent in `upsertAccounts()`.
 - Export never blocks on missing SRU codes; it warns, scoped to accounts with actual activity in the exported fiscal year (not the full chart of accounts).
+- The missing-SRU check runs via a new `previewSieExport()` called *before* `exportFiscalYear()` writes anything — `exportFiscalYear()` already writes the file before returning a result, so a field on its result object can't support a cancellable confirmation.
+- "Used this year" for the missing-SRU check is voucher-line activity (ACTIVE/CORRECTION) unioned with opening balances — not `closings`/`openings`, which structurally exclude income/expense accounts (`loadClosingBalances` filters to ASSET/LIABILITY/EQUITY only).
+- All three SELECTs feeding `CompanyService.mapCompany()` (`findById`, `listCompanies`, `listArchivedCompanies`) get the new columns, not just `findById`.
