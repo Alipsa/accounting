@@ -6,10 +6,12 @@ import com.formdev.flatlaf.util.SystemFileChooser
 import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.SruSuggestion
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.ChartOfAccountsImportService
 import se.alipsa.accounting.service.ChartOfAccountsImportService.ImportSummary
+import se.alipsa.accounting.service.SruSuggestionService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.BorderLayout
@@ -58,6 +60,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private final AccountService accountService
   private final ChartOfAccountsImportService importService
   private final ActiveCompanyManager activeCompanyManager
+  private final SruSuggestionService sruSuggestionService
 
   private final JTextField searchField = new JTextField(18)
   private final JComboBox<String> classFilter = new JComboBox<>()
@@ -80,11 +83,13 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   ChartOfAccountsPanel(
       AccountService accountService,
       ChartOfAccountsImportService importService,
-      ActiveCompanyManager activeCompanyManager
+      ActiveCompanyManager activeCompanyManager,
+      SruSuggestionService sruSuggestionService = new SruSuggestionService()
   ) {
     this.accountService = accountService
     this.importService = importService
     this.activeCompanyManager = activeCompanyManager
+    this.sruSuggestionService = sruSuggestionService
     registerListenersOnce()
     rebuildClassFilter()
     buildUi()
@@ -445,7 +450,8 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
 
-    AccountEditorDialog.AccountEditorResult edited = AccountEditorDialog.show(this, account)
+    List<SruSuggestion> suggestions = sruSuggestionService.suggest(activeCompanyManager.activeCompany, account.accountNumber)
+    AccountEditorDialog.AccountEditorResult edited = AccountEditorDialog.show(this, account, suggestions)
     if (edited == null) {
       return
     }
