@@ -309,12 +309,14 @@ final class SieImportExportService {
         return new SieExportPreview(true, [])
       }
       Set<String> usedAccounts = loadAccountsUsedInFiscalYear(sql, fiscalYearId)
-      Map<String, String> sruCodes = sql.rows(
-          'select account_number as accountNumber, sru_code as sruCode from account where company_id = ?',
+      Set<String> accountsWithSruCode = sql.rows(
+          'select account_number as accountNumber, sru_code as sruCode, sru_code2 as sruCode2 from account where company_id = ?',
           [companyId]
-      ).collectEntries { GroovyRowResult row -> [(row.get('accountNumber') as String): row.get('sruCode') as String] }
+      ).findAll { GroovyRowResult row ->
+        (row.get('sruCode') as String)?.trim() || (row.get('sruCode2') as String)?.trim()
+      }.collect { GroovyRowResult row -> row.get('accountNumber') as String } as Set
       List<String> missing = usedAccounts.findAll { String accountNumber ->
-        !(sruCodes[accountNumber]?.trim())
+        !(accountNumber in accountsWithSruCode)
       }.sort()
       new SieExportPreview(false, missing)
     }

@@ -720,6 +720,30 @@ class SieImportExportServiceTest {
   }
 
   @Test
+  void previewSieExportDoesNotFlagAccountWithOnlySecondSruCodeSet() {
+    // AccountService.updateAccount() allows sru_code to be null while sru_code2 is set, and
+    // export emits a #SRU line from either column - the preview must not warn about an account
+    // that will in fact get exported correctly just because the *first* slot is empty.
+    switchHome(tempDir.resolve('preview-second-code-only-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    databaseService.withSql { Sql sql ->
+      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7369', '2611'])
+      sql.executeUpdate('update account set sru_code2 = ? where account_number = ?', ['7410', '3010'])
+    }
+
+    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
+
+    assertFalse(preview.legalFormUnset)
+    assertFalse(preview.accountsMissingSruCode.contains('3010'), "3010 has an SRU code in the second slot - must not be flagged")
+    assertEquals([], preview.accountsMissingSruCode)
+  }
+
+  @Test
   void importPersistsSruCodesOnNewAccount() {
     switchHome(tempDir.resolve('import-sru-new-db'))
     DatabaseService databaseService = DatabaseService.newForTesting()
