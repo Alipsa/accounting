@@ -5,6 +5,9 @@
 ### Buggfixar
 
 - **AI-assistent-launchern fungerar på Windows utan Windows Terminal** — Tidigare krävdes `wt.exe` för att starta AI-assistenten på Windows, vilket inte finns på äldre Windows-versioner eller när App Execution Alias är inaktiverat. Launchern faller nu tillbaka på `cmd.exe` och kan även hitta Windows Terminal när det är installerat från Microsoft Store via dess alias. `conhost.exe` anropas aldrig direkt.
+- **Säkrare borttagning av rapportarkiv** — Rapportarkivets databasrad raderades före filen, så om filen var låst (t.ex. på Windows) blev den ett föräldralöst orphan som inte kunde återtagas via UI. Nu markeras raden först som `PENDING_DELETE`, filen raderas, och först därefter slutförs borttagningen som `DELETED`. Misslyckade raderingar återställs vid appstart.
+- **Rapportarkivets integritetsskanning kontrollerar alla arkiv** — Integritetsskanningen tittade bara på de 500 nyaste arkiven, så äldre skadade eller saknade filer upptäcktes aldrig. Skanningen läser nu alla aktiva arkivrader.
+- **SIE-export visar rätt programversion** — SIE-filens `#PROGRAM` rad angav tidigare version `1.0.0`. Den hämtas nu från JAR-manifestets `Implementation-Version`.
 
 ## v1.7.0, 2026-07-25
 

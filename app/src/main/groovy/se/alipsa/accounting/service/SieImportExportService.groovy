@@ -37,8 +37,12 @@ final class SieImportExportService {
   private static final int AMOUNT_SCALE = 2
   private static final long MAX_IMPORT_FILE_SIZE_BYTES = 50L * 1024L * 1024L
   private static final String PROGRAM_NAME = 'Alipsa Accounting'
-  private static final String PROGRAM_VERSION = '1.0.0'
   private static final String GENERATOR_NAME = 'desktop-app'
+
+  private static String programVersion() {
+    SieImportExportService.package?.implementationVersion ?: 'development'
+  }
+
   private static final Set<String> INCOME_KEYWORDS = [
       'INTAKT', 'RANTEINTAKT', 'RANTEINTAKTER', 'VINST', 'ERHALL', 'ERHALLNA', 'ERHALLET', 'UTDELNING',
       'BIDRAG', 'OVERSKOTT', 'ATERFORING', 'RABATT'
@@ -867,7 +871,7 @@ final class SieImportExportService {
     document.setGEN_DATE(LocalDate.now())
     document.setGEN_NAMN(GENERATOR_NAME)
     document.setOMFATTN(fiscalYear.endDate)
-    document.setPROGRAM([PROGRAM_NAME, PROGRAM_VERSION])
+    document.setPROGRAM([PROGRAM_NAME, programVersion()])
     document.setVALUTA(company.defaultCurrency?.trim()?.toUpperCase(Locale.ROOT) ?: 'SEK')
     document.setFNAMN(new SieCompany())
     document.getFNAMN().setName(company.companyName)

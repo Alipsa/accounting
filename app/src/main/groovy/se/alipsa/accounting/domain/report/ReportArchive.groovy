@@ -23,4 +23,5 @@ final class ReportArchive {
   String checksumSha256
   String parameters
   LocalDateTime createdAt
+  String status
 }
