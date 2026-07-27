@@ -301,6 +301,42 @@ final class SieImportExportService {
         payload.voucherCount
     )
   }
+  SieExportPreview previewSieExport(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      long companyId = resolveCompanyId(sql, fiscalYearId)
+      Company company = companyService.findById(companyId)
+      if (company?.legalForm == null) {
+        return new SieExportPreview(true, [])
+      }
+      Set<String> usedAccounts = loadAccountsUsedInFiscalYear(sql, fiscalYearId)
+      Map<String, String> sruCodes = sql.rows(
+          'select account_number as accountNumber, sru_code as sruCode from account where company_id = ?',
+          [companyId]
+      ).collectEntries { GroovyRowResult row -> [(row.get('accountNumber') as String): row.get('sruCode') as String] }
+      List<String> missing = usedAccounts.findAll { String accountNumber ->
+        !(sruCodes[accountNumber]?.trim())
+      }.sort()
+      new SieExportPreview(false, missing)
+    }
+  }
+
+  private static Set<String> loadAccountsUsedInFiscalYear(Sql sql, long fiscalYearId) {
+    Set<String> accounts = [] as Set
+    sql.rows('''
+        select distinct vl.account_number as accountNumber
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+    ''', [fiscalYearId]).each { GroovyRowResult row -> accounts << (row.get('accountNumber') as String) }
+    sql.rows('''
+        select distinct a.account_number as accountNumber
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
+    ''', [fiscalYearId]).each { GroovyRowResult row -> accounts << (row.get('accountNumber') as String) }
+    accounts
+  }
   List<ImportJob> listImportJobs(long companyId, int limit = 20) {
     CompanyService.requireValidCompanyId(companyId)
     importJobRepository.list(companyId, limit)

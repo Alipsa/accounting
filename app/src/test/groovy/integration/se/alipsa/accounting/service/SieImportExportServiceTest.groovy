@@ -661,6 +661,63 @@ class SieImportExportServiceTest {
     assertEquals(3, sruLines.size())
   }
 
+  @Test
+  void previewSieExportFlagsLegalFormUnset() {
+    switchHome(tempDir.resolve('preview-unset-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+
+    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
+
+    assertTrue(preview.legalFormUnset)
+    assertEquals([], preview.accountsMissingSruCode)
+  }
+
+  @Test
+  void previewSieExportFlagsMissingCodesIncludingResultAccounts() {
+    switchHome(tempDir.resolve('preview-missing-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    databaseService.withSql { Sql sql ->
+      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
+      // 2611 and 3010 are left without a code - 3010 is an INCOME account with a voucher line
+      // but no opening/closing balance row, so it only shows up via voucher_line, not via
+      // closings/openings (the bug this preview logic specifically fixes)
+    }
+
+    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
+
+    assertFalse(preview.legalFormUnset)
+    assertTrue(preview.accountsMissingSruCode.contains('3010'), "3010 has voucher-line activity and no opening balance - must still be flagged")
+    assertTrue(preview.accountsMissingSruCode.contains('2611'))
+    assertFalse(preview.accountsMissingSruCode.contains('1510'))
+    assertFalse(preview.accountsMissingSruCode.contains('2010'))
+  }
+
+  @Test
+  void previewSieExportReturnsNoWarningsWhenAllUsedAccountsHaveCodes() {
+    switchHome(tempDir.resolve('preview-clean-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    databaseService.withSql { Sql sql ->
+      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7369', '2611'])
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7410', '3010'])
+    }
+
+    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
+
+    assertFalse(preview.legalFormUnset)
+    assertEquals([], preview.accountsMissingSruCode)
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()

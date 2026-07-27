@@ -57,6 +57,13 @@ final class SieExportResult {
 }
 
 @Canonical
+final class SieExportPreview {
+
+  boolean legalFormUnset
+  List<String> accountsMissingSruCode = []
+}
+
+@Canonical
 final class ParsedSie {
 
   SieDocument document
