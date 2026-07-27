@@ -53,7 +53,8 @@ final class DatabaseService {
       new MigrationDefinition(26, 'V26__accounting_instructions.sql', '/db/migrations/V26__accounting_instructions.sql'),
       new MigrationDefinition(27, 'V27__audit_log_decouple_references.sql', '/db/migrations/V27__audit_log_decouple_references.sql'),
       new MigrationDefinition(28, 'V28__company_legal_form.sql', '/db/migrations/V28__company_legal_form.sql'),
-      new MigrationDefinition(29, 'V29__account_sru_code.sql', '/db/migrations/V29__account_sru_code.sql')
+      new MigrationDefinition(29, 'V29__account_sru_code.sql', '/db/migrations/V29__account_sru_code.sql'),
+      new MigrationDefinition(30, 'V30__report_archive_status.sql', '/db/migrations/V30__report_archive_status.sql')
   ]
 
   static DatabaseService newForTesting() {

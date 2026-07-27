@@ -56,6 +56,15 @@ final class StartupVerificationService {
     }
     warnings.addAll(recoveryReport.warnings)
 
+    ReportArchiveRecoveryReport archiveRecoveryReport = reportArchiveService.recoverOnStartup()
+    if (archiveRecoveryReport.deletionsDone > 0) {
+      warnings << ("Rapportarkivåterställning: ${archiveRecoveryReport.deletionsDone} borttagningar slutförda." as String)
+    }
+    archiveRecoveryReport.orphanFiles.each { Path orphan ->
+      warnings << ("Orphan-rapportarkiv på disk utan DB-rad: ${orphan}" as String)
+    }
+    warnings.addAll(archiveRecoveryReport.warnings)
+
     errors.addAll(reportIntegrityService.listCriticalProblems())
     reportArchiveService.findAllIntegrityFailures().each { ReportArchive archive ->
       errors << ("Rapportarkiv ${archive.id} har avvikande checksumma eller saknas på disk." as String)

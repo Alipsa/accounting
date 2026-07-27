@@ -16,6 +16,7 @@ import java.sql.Timestamp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.logging.Logger
+import java.util.stream.Stream
 
 /**
  * Stores generated report artifacts on disk and keeps archive metadata in the database.
@@ -26,6 +27,7 @@ final class ReportArchiveService {
 
   private final DatabaseService databaseService
   private final RetentionPolicyService retentionPolicyService
+  private final ReportArchiveFileOperations fileOperations
 
   ReportArchiveService() {
     this(DatabaseService.instance)
@@ -36,8 +38,17 @@ final class ReportArchiveService {
   }
 
   ReportArchiveService(DatabaseService databaseService, RetentionPolicyService retentionPolicyService) {
+    this(databaseService, retentionPolicyService, new DefaultReportArchiveFileOperations())
+  }
+
+  ReportArchiveService(
+      DatabaseService databaseService,
+      RetentionPolicyService retentionPolicyService,
+      ReportArchiveFileOperations fileOperations
+  ) {
     this.databaseService = databaseService
     this.retentionPolicyService = retentionPolicyService
+    this.fileOperations = fileOperations
   }
 
   ReportArchive archiveReport(ReportSelection selection, String reportFormat, byte[] content) {
@@ -52,7 +63,7 @@ final class ReportArchiveService {
     String storagePath = buildStoragePath(companyId, fileName)
     Path targetPath = resolveStoragePath(storagePath)
     Files.createDirectories(targetPath.parent)
-    Files.write(targetPath, content)
+    fileOperations.write(targetPath, content)
     String checksum = calculateChecksum(content)
 
     try {
@@ -71,8 +82,9 @@ final class ReportArchiveService {
                 storage_path,
                 checksum_sha256,
                 parameters,
-                created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at,
+                status
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', [
             companyId,
             safeSelection.reportType.name(),
@@ -85,13 +97,14 @@ final class ReportArchiveService {
             storagePath,
             checksum,
             formatParameters(safeSelection),
-            Timestamp.valueOf(createdAt)
+            Timestamp.valueOf(createdAt),
+            'ACTIVE'
         ])
         long archiveId = ((Number) keys.first().first()).longValue()
         findArchive(sql, archiveId)
       }
     } catch (Throwable throwable) {
-      Files.deleteIfExists(targetPath)
+      fileOperations.deleteIfExists(targetPath)
       throw throwable
     }
   }
@@ -112,10 +125,12 @@ final class ReportArchiveService {
                  ra.storage_path as storagePath,
                  ra.checksum_sha256 as checksumSha256,
                  ra.parameters,
-                 ra.created_at as createdAt
+                 ra.created_at as createdAt,
+                 ra.status
             from report_archive ra
             join fiscal_year fy on fy.id = ra.fiscal_year_id
            where fy.company_id = ?
+             and ra.status = 'ACTIVE'
            order by ra.created_at desc, ra.id desc
            limit ?
       ''', [companyId, safeLimit]).collect { GroovyRowResult row ->
@@ -139,8 +154,10 @@ final class ReportArchiveService {
                  storage_path as storagePath,
                  checksum_sha256 as checksumSha256,
                  parameters,
-                 created_at as createdAt
+                 created_at as createdAt,
+                 status
             from report_archive
+           where status = 'ACTIVE'
            order by created_at desc, id desc
            limit ?
       ''', [safeLimit]).collect { GroovyRowResult row ->
@@ -158,7 +175,7 @@ final class ReportArchiveService {
     if (archive == null) {
       throw new IllegalArgumentException("Okänt rapportarkiv: ${archiveId}")
     }
-    Files.readAllBytes(resolveStoredPath(archive))
+    fileOperations.readAllBytes(resolveStoredPath(archive))
   }
 
   boolean verifyArchive(long archiveId) {
@@ -170,14 +187,59 @@ final class ReportArchiveService {
   }
 
   List<ReportArchive> findIntegrityFailures(long companyId) {
-    listArchives(companyId, 500).findAll { ReportArchive archive ->
-      !verifyArchive(archive)
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select ra.id,
+                 ra.report_type as reportType,
+                 ra.report_format as reportFormat,
+                 ra.fiscal_year_id as fiscalYearId,
+                 ra.accounting_period_id as accountingPeriodId,
+                 ra.start_date as startDate,
+                 ra.end_date as endDate,
+                 ra.file_name as fileName,
+                 ra.storage_path as storagePath,
+                 ra.checksum_sha256 as checksumSha256,
+                 ra.parameters,
+                 ra.created_at as createdAt,
+                 ra.status
+            from report_archive ra
+            join fiscal_year fy on fy.id = ra.fiscal_year_id
+           where fy.company_id = ?
+             and ra.status = 'ACTIVE'
+           order by ra.id
+      ''', [companyId]).collect { GroovyRowResult row ->
+        mapArchive(row)
+      }.findAll { ReportArchive archive ->
+        !verifyArchive(archive)
+      }
     }
   }
 
   List<ReportArchive> findAllIntegrityFailures() {
-    listAllArchives(500).findAll { ReportArchive archive ->
-      !verifyArchive(archive)
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select id,
+                 report_type as reportType,
+                 report_format as reportFormat,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 start_date as startDate,
+                 end_date as endDate,
+                 file_name as fileName,
+                 storage_path as storagePath,
+                 checksum_sha256 as checksumSha256,
+                 parameters,
+                 created_at as createdAt,
+                 status
+            from report_archive
+           where status = 'ACTIVE'
+           order by id
+      ''').collect { GroovyRowResult row ->
+        mapArchive(row)
+      }.findAll { ReportArchive archive ->
+        !verifyArchive(archive)
+      }
     }
   }
 
@@ -187,19 +249,127 @@ final class ReportArchiveService {
     }
   }
 
+  ReportArchiveRecoveryReport recoverOnStartup() {
+    int deletionsDone = 0
+    List<String> warnings = []
+
+    databaseService.withTransaction { Sql sql ->
+      List<ReportArchive> pendingDelete = sql.rows('''
+          select id,
+                 report_type as reportType,
+                 report_format as reportFormat,
+                 fiscal_year_id as fiscalYearId,
+                 accounting_period_id as accountingPeriodId,
+                 start_date as startDate,
+                 end_date as endDate,
+                 file_name as fileName,
+                 storage_path as storagePath,
+                 checksum_sha256 as checksumSha256,
+                 parameters,
+                 created_at as createdAt,
+                 status
+            from report_archive
+           where status = 'PENDING_DELETE'
+           order by id
+      ''').collect { GroovyRowResult row ->
+        mapArchive(row)
+      }
+
+      pendingDelete.each { ReportArchive archive ->
+        Path path = resolveStoragePath(archive.storagePath)
+        tryDeleteQuietly(path)
+        if (!fileOperations.isRegularFile(path)) {
+          int updated = sql.executeUpdate(
+              'update report_archive set status = ? where id = ? and status = ?',
+              ['DELETED', archive.id, 'PENDING_DELETE']
+          )
+          if (updated == 1) {
+            deletionsDone++
+          }
+        } else {
+          String warning = "Rapportarkiv ${archive.id} kunde inte raderas vid återställning; lämnas som PENDING_DELETE."
+          log.warning(warning)
+          warnings << warning
+        }
+      }
+    }
+
+    List<Path> orphanFiles = findOrphanFiles()
+    new ReportArchiveRecoveryReport(deletionsDone, orphanFiles, warnings)
+  }
+
+  private List<Path> findOrphanFiles() {
+    Path root = AppPaths.reportsDirectory().toAbsolutePath().normalize()
+    if (!Files.isDirectory(root)) {
+      return []
+    }
+
+    Set<String> knownPaths = databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select storage_path as storagePath
+            from report_archive
+           where status != 'DELETED'
+      ''').collect { GroovyRowResult row ->
+        ((String) row.get('storagePath')).replace('\\', '/')
+      } as Set
+    }
+
+    List<Path> orphans = []
+    try (Stream<Path> stream = fileOperations.walk(root)) {
+      stream.each { Path path ->
+        if (fileOperations.isRegularFile(path)) {
+          String relative = root.relativize(path).toString().replace('\\', '/')
+          if (!knownPaths.contains(relative)) {
+            orphans << path
+          }
+        }
+      }
+    }
+    orphans
+  }
+
+  private void tryDeleteQuietly(Path path) {
+    try {
+      fileOperations.deleteIfExists(path)
+    } catch (IOException ignored) {
+      // best-effort cleanup
+    }
+  }
+
   void deleteArchive(long archiveId) {
     ReportArchive archive = findArchive(archiveId)
     if (archive == null) {
       throw new IllegalArgumentException("Okänt rapportarkiv: ${archiveId}")
     }
+    if (archive.status != 'ACTIVE') {
+      throw new IllegalArgumentException("Rapportarkiv ${archiveId} är inte aktivt (status=${archive.status}).")
+    }
     retentionPolicyService.ensureDeletionAllowed(archive.createdAt, "Rapportarkiv ${archive.fileName}")
     databaseService.withTransaction { Sql sql ->
-      int deleted = sql.executeUpdate('delete from report_archive where id = ?', [archiveId])
-      if (deleted != 1) {
-        throw new IllegalStateException("Rapportarkivet kunde inte raderas: ${archiveId}")
+      int updated = sql.executeUpdate(
+          'update report_archive set status = ? where id = ? and status = ?',
+          ['PENDING_DELETE', archiveId, 'ACTIVE']
+      )
+      if (updated != 1) {
+        throw new IllegalStateException("Rapportarkivet kunde inte markeras för borttagning: ${archiveId}")
       }
     }
-    Files.deleteIfExists(resolveStoredPath(archive))
+    Path targetPath = resolveStoredPath(archive)
+    try {
+      fileOperations.deleteIfExists(targetPath)
+    } catch (Exception exception) {
+      log.warning("Kunde inte radera rapportarkivfilen ${targetPath} för arkiv ${archiveId}: ${exception.message}")
+      return
+    }
+    databaseService.withTransaction { Sql sql ->
+      int updated = sql.executeUpdate(
+          'update report_archive set status = ? where id = ? and status = ?',
+          ['DELETED', archiveId, 'PENDING_DELETE']
+      )
+      if (updated != 1) {
+        throw new IllegalStateException("Rapportarkivet kunde inte slutföras som borttaget: ${archiveId}")
+      }
+    }
   }
 
   private static ReportArchive findArchive(Sql sql, long archiveId) {
@@ -215,7 +385,8 @@ final class ReportArchiveService {
                storage_path as storagePath,
                checksum_sha256 as checksumSha256,
                parameters,
-               created_at as createdAt
+               created_at as createdAt,
+               status
           from report_archive
          where id = ?
     ''', [archiveId]) as GroovyRowResult
@@ -235,7 +406,8 @@ final class ReportArchiveService {
         row.get('storagePath') as String,
         row.get('checksumSha256') as String,
         SqlValueMapper.toClob(row.get('parameters')),
-        SqlValueMapper.toLocalDateTime(row.get('createdAt'))
+        SqlValueMapper.toLocalDateTime(row.get('createdAt')),
+        row.get('status') as String
     )
   }
 
@@ -301,7 +473,7 @@ final class ReportArchiveService {
     HexFormat.of().formatHex(digest.digest(content))
   }
 
-  private static boolean verifyArchive(ReportArchive archive) {
+  private boolean verifyArchive(ReportArchive archive) {
     Path path
     try {
       path = resolveStoragePath(archive.storagePath)
@@ -309,9 +481,9 @@ final class ReportArchiveService {
       log.warning("Arkivets lagringsväg misslyckades vid säkerhetskontroll: ${archive.storagePath} – ${ex.message}")
       return false
     }
-    if (!Files.isRegularFile(path)) {
+    if (!fileOperations.isRegularFile(path)) {
       return false
     }
-    calculateChecksum(Files.readAllBytes(path)) == archive.checksumSha256
+    calculateChecksum(fileOperations.readAllBytes(path)) == archive.checksumSha256
   }
 }

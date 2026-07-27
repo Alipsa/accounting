@@ -63,6 +63,7 @@ final class SieExchangeDialog extends JDialog {
   private final CompanyService companyService
   private final UserPreferencesService userPreferencesService = new UserPreferencesService()
   private final Consumer<Long> onImportSuccess
+  private final Long initialFiscalYearId
   private long companyId
 
   private final JComboBox<FiscalYear> fiscalYearComboBox = new JComboBox<>()
@@ -76,21 +77,22 @@ final class SieExchangeDialog extends JDialog {
   private Path temporaryImportFile
   private String importDisplayFileName
 
-  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null) {
+  SieExchangeDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null, Long initialFiscalYearId = null) {
     super(owner, I18n.instance.getString('sieExchangeDialog.title'), true)
     this.sieImportExportService = sieImportExportService
     this.fiscalYearService = fiscalYearService
     this.companyService = companyService
     this.companyId = companyId
     this.onImportSuccess = onImportSuccess
+    this.initialFiscalYearId = initialFiscalYearId
     buildUi()
     reloadFiscalYears()
     reloadJobs()
     showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
   }
 
-  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null) {
-    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyService, companyId, onImportSuccess)
+  static void showDialog(Frame owner, SieImportExportService sieImportExportService, FiscalYearService fiscalYearService, CompanyService companyService, long companyId, Consumer<Long> onImportSuccess = null, Long initialFiscalYearId = null) {
+    SieExchangeDialog dialog = new SieExchangeDialog(owner, sieImportExportService, fiscalYearService, companyService, companyId, onImportSuccess, initialFiscalYearId)
     dialog.visible = true
   }
 
@@ -178,13 +180,20 @@ final class SieExchangeDialog extends JDialog {
 
   private void reloadFiscalYears() {
     FiscalYear selected = fiscalYearComboBox.selectedItem as FiscalYear
+    List<FiscalYear> fiscalYears = fiscalYearService.listFiscalYears(companyId)
     fiscalYearComboBox.removeAllItems()
-    fiscalYearService.listFiscalYears(companyId).each { FiscalYear fiscalYear ->
+    fiscalYears.each { FiscalYear fiscalYear ->
       fiscalYearComboBox.addItem(fiscalYear)
     }
     if (selected != null) {
       selectFiscalYear(selected.id)
+    } else {
+      selectFiscalYear(initialFiscalYearId(fiscalYears, initialFiscalYearId))
     }
+  }
+
+  static Long initialFiscalYearId(List<FiscalYear> fiscalYears, Long activeFiscalYearId) {
+    fiscalYears.find { FiscalYear fiscalYear -> fiscalYear.id == activeFiscalYearId }?.id
   }
 
   private void reloadJobs() {
