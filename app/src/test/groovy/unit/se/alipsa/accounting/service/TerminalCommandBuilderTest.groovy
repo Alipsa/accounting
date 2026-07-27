@@ -37,9 +37,10 @@ class TerminalCommandBuilderTest {
   }
 
   @Test
-  void createsCommandPromptCommand() {
+  void createsCommandPromptCommandThroughStartForAVisibleWindow() {
     Path cmdScript = WORKSPACE.resolve('.launch-codex-id.cmd')
-    assertEquals([EXECUTABLE.toString(), '/v:off', '/c', cmdScript.toString()],
+    assertEquals([EXECUTABLE.toString(), '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '/d', WORKSPACE.toString(), EXECUTABLE.toString(), '/v:off', '/c', cmdScript.toString()],
         TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, cmdScript))
   }
 

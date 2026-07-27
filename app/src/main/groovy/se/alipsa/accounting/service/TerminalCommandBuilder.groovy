@@ -25,7 +25,13 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.COMMAND_PROMPT:
         rejectUnsafeWindowsPath(workspace)
         rejectUnsafeWindowsPath(script)
-        return [executable.toString(), '/v:off', '/c', script.toString()]
+        // A plain "cmd.exe /c script" started via ProcessBuilder gets no visible console window at
+        // all in several common setups (e.g. when the launching process is itself console-attached,
+        // as during development, or with certain "default terminal app" configurations) - the click
+        // looks like it does nothing. Routing through "start" with an explicit title reliably forces
+        // a real, independent console window regardless of the launcher's own console state.
+        return [executable.toString(), '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+            '/d', workspace.toString(), executable.toString(), '/v:off', '/c', script.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +

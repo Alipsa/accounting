@@ -83,7 +83,9 @@ class AiAssistantLauncherTest {
     assertEquals(1, writtenScripts.size())
     Path script = writtenScripts.keySet().first()
     assertTrue(script.toString().endsWith('.cmd'))
-    assertEquals(['C:\\Windows\\System32\\cmd.exe', '/v:off', '/c', script.toString()], capturedCommand)
+    assertEquals(['C:\\Windows\\System32\\cmd.exe', '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '/d', AppPaths.aiWorkspaceDirectory().toString(), 'C:\\Windows\\System32\\cmd.exe', '/v:off', '/c', script.toString()],
+        capturedCommand)
   }
 
   @Test
