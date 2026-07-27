@@ -16,6 +16,7 @@ import java.sql.Timestamp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.logging.Logger
+import java.util.stream.Stream
 
 /**
  * Stores generated report artifacts on disk and keeps archive metadata in the database.
@@ -314,11 +315,13 @@ final class ReportArchiveService {
     }
 
     List<Path> orphans = []
-    fileOperations.walk(root).each { Path path ->
-      if (fileOperations.isRegularFile(path)) {
-        String relative = root.relativize(path).toString().replace('\\', '/')
-        if (!knownPaths.contains(relative)) {
-          orphans << path
+    try (Stream<Path> stream = fileOperations.walk(root)) {
+      stream.each { Path path ->
+        if (fileOperations.isRegularFile(path)) {
+          String relative = root.relativize(path).toString().replace('\\', '/')
+          if (!knownPaths.contains(relative)) {
+            orphans << path
+          }
         }
       }
     }
