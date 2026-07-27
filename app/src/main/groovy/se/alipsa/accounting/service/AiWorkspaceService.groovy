@@ -18,6 +18,7 @@ final class AiWorkspaceService {
   private final SecretFileWriter secretFileWriter
   private final ExecutableProbe executableProbe
   private final PathBinaryResolver pathBinaryResolver
+  private final EnvironmentLookup environmentLookup
   private final FileDeleter fileDeleter
 
   AiWorkspaceService() {
@@ -32,6 +33,7 @@ final class AiWorkspaceService {
     this.secretFileWriter = secretFileWriter
     this.executableProbe = executableProbe
     this.pathBinaryResolver = new PathBinaryResolver(environmentLookup, executableProbe)
+    this.environmentLookup = environmentLookup
     this.fileDeleter = fileDeleter
   }
 
@@ -116,11 +118,41 @@ final class AiWorkspaceService {
   }
 
   Tuple2<TerminalAdapterKind, Path> detectTerminalAdapter() {
-    for (TerminalAdapterKind kind : TerminalAdapterKind.forCurrentOs()) {
+    List<TerminalAdapterKind> kinds = TerminalAdapterKind.forCurrentOs()
+    if (kinds.contains(TerminalAdapterKind.WINDOWS_TERMINAL)) {
+      Tuple2<TerminalAdapterKind, Path> terminal = detectWindowsTerminal()
+      if (terminal != null) { return terminal }
+      return detectWindowsCommandPrompt()
+    }
+    for (TerminalAdapterKind kind : kinds) {
       Path resolved = pathBinaryResolver.resolve(kind.defaultBinaryName)
       if (resolved != null) { return new Tuple2<TerminalAdapterKind, Path>(kind, resolved) }
     }
     null
+  }
+
+  private Tuple2<TerminalAdapterKind, Path> detectWindowsTerminal() {
+    Path fromPath = pathBinaryResolver.resolve(TerminalAdapterKind.WINDOWS_TERMINAL.defaultBinaryName)
+    if (fromPath != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.WINDOWS_TERMINAL, fromPath) }
+    Path localAppData = localAppDataPath()
+    if (localAppData != null) {
+      Path alias = localAppData.resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe')
+      if (executableProbe.isExecutableFile(alias)) {
+        return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.WINDOWS_TERMINAL, alias.toAbsolutePath().normalize())
+      }
+    }
+    null
+  }
+
+  private Tuple2<TerminalAdapterKind, Path> detectWindowsCommandPrompt() {
+    Path resolved = pathBinaryResolver.resolve(TerminalAdapterKind.COMMAND_PROMPT.defaultBinaryName)
+    if (resolved != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.COMMAND_PROMPT, resolved) }
+    null
+  }
+
+  private Path localAppDataPath() {
+    String localAppData = environmentLookup.getenv('LOCALAPPDATA')
+    localAppData ? Path.of(localAppData) : null
   }
 
   boolean isValidExecutable(Path candidate) { candidate != null && executableProbe.isExecutableFile(candidate) }

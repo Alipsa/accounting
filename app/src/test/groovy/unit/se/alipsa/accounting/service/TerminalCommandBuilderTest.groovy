@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.TerminalAdapterKind
+import se.alipsa.accounting.support.ProcessArgumentEscaping
 
 import java.nio.file.Path
 
@@ -35,6 +36,13 @@ class TerminalCommandBuilderTest {
   }
 
   @Test
+  void createsCommandPromptCommand() {
+    Path cmdScript = WORKSPACE.resolve('.launch-codex-id.cmd')
+    assertEquals([EXECUTABLE.toString(), '/v:off', '/c', cmdScript.toString()],
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, cmdScript))
+  }
+
+  @Test
   void createsTerminalAppCommand() {
     String escapedScriptPath = SCRIPT.toString().replace('\\', '\\\\')
     String script = "tell application \"Terminal\" to do script \"'${escapedScriptPath}'\""
@@ -43,9 +51,30 @@ class TerminalCommandBuilderTest {
   }
 
   @Test
-  void rejectsUnsafeWindowsWorkspacePaths() {
-    assertThrows(IllegalArgumentException) {
-      TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, EXECUTABLE, Path.of('/tmp/work&space'), SCRIPT)
+  void rejectsEveryUnsafeCharacterForWindowsTerminal() {
+    ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
+      Path unsafeWorkspace = Path.of("/tmp/work${unsafe}space")
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, EXECUTABLE, unsafeWorkspace, SCRIPT)
+      }
+      Path unsafeScript = Path.of("/tmp/.launch-codex${unsafe}id.cmd")
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, EXECUTABLE, WORKSPACE, unsafeScript)
+      }
+    }
+  }
+
+  @Test
+  void rejectsEveryUnsafeCharacterForCommandPrompt() {
+    ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
+      Path unsafeWorkspace = Path.of("/tmp/work${unsafe}space")
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, unsafeWorkspace, SCRIPT)
+      }
+      Path unsafeScript = Path.of("/tmp/.launch-codex${unsafe}id.cmd")
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, unsafeScript)
+      }
     }
   }
 }

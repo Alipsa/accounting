@@ -43,7 +43,7 @@ final class AiAssistantLauncher {
     AppPaths.ensureAiWorkspaceHome()
     Path workspace = AppPaths.aiWorkspaceDirectory()
     permissions.ensureDirectory(workspace, workspace)
-    boolean windows = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL
+    boolean windows = isWindowsAdapter(adapterKind)
     Path script = AiWorkspacePaths.wrapperScript(workspace, client, UUID.randomUUID().toString(), windows)
     List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
     Map<String, String> env = [:]
@@ -65,8 +65,12 @@ final class AiAssistantLauncher {
   }
 
   void validatePreflight(TerminalAdapterKind adapterKind) {
-    if (adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL) {
-      TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindowsTerminal(AppPaths.aiWorkspaceDirectory())
+    if (isWindowsAdapter(adapterKind)) {
+      TerminalCommandBuilder.rejectUnsafeWorkspacePathForWindows(AppPaths.aiWorkspaceDirectory())
     }
+  }
+
+  private static boolean isWindowsAdapter(TerminalAdapterKind kind) {
+    kind == TerminalAdapterKind.WINDOWS_TERMINAL || kind == TerminalAdapterKind.COMMAND_PROMPT
   }
 }
