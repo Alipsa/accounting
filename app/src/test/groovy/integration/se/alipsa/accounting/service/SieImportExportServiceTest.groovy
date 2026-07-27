@@ -3,7 +3,6 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
-import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
@@ -11,10 +10,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.Company
@@ -29,32 +25,12 @@ import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
-import se.alipsa.accounting.support.I18n
 
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 
-class SieImportExportServiceTest {
-
-  @TempDir
-  Path tempDir
-
-  private String previousHome
-  private Locale previousLocale
-
-  @BeforeEach
-  void setUp() {
-    previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
-    previousLocale = I18n.instance.locale
-    I18n.instance.setLocale(Locale.forLanguageTag('sv'))
-  }
-
-  @AfterEach
-  void tearDown() {
-    restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
-    I18n.instance.setLocale(previousLocale)
-  }
+class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
 
   @Test
   void exportedSieCanBeImportedIntoFreshTestEnvironment() {
@@ -641,235 +617,6 @@ class SieImportExportServiceTest {
     assertEquals(vouchersBefore, countRows(targetDatabaseService, 'voucher'), 'Existing content must remain untouched')
   }
 
-  @Test
-  void exportEmitsSruLinesForAccountsWithCodes() {
-    switchHome(tempDir.resolve('sru-export-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-    databaseService.withSql { Sql sql ->
-      sql.executeUpdate("update account set sru_code = ?, sru_code2 = ? where account_number = ?", ['7261', '7653', '1510'])
-      sql.executeUpdate("update account set sru_code = ? where account_number = ?", ['7410', '3010'])
-    }
-    Path exportPath = tempDir.resolve('sru-export.sie')
-
-    services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath)
-
-    List<String> sruLines = exportPath.toFile().readLines('windows-1252').findAll { it.startsWith('#SRU') }
-    assertTrue(sruLines.contains('#SRU 1510 7261'))
-    assertTrue(sruLines.contains('#SRU 1510 7653'))
-    assertTrue(sruLines.contains('#SRU 3010 7410'))
-    assertEquals(3, sruLines.size())
-  }
-
-  @Test
-  void previewSieExportFlagsLegalFormUnset() {
-    switchHome(tempDir.resolve('preview-unset-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-
-    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
-
-    assertTrue(preview.legalFormUnset)
-    assertEquals([], preview.accountsMissingSruCode)
-  }
-
-  @Test
-  void previewSieExportFlagsMissingCodesIncludingResultAccounts() {
-    switchHome(tempDir.resolve('preview-missing-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-    databaseService.withSql { Sql sql ->
-      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
-      // 2611 and 3010 are left without a code - 3010 is an INCOME account with a voucher line
-      // but no opening/closing balance row, so it only shows up via voucher_line, not via
-      // closings/openings (the bug this preview logic specifically fixes)
-    }
-
-    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
-
-    assertFalse(preview.legalFormUnset)
-    assertTrue(preview.accountsMissingSruCode.contains('3010'), "3010 has voucher-line activity and no opening balance - must still be flagged")
-    assertTrue(preview.accountsMissingSruCode.contains('2611'))
-    assertFalse(preview.accountsMissingSruCode.contains('1510'))
-    assertFalse(preview.accountsMissingSruCode.contains('2010'))
-  }
-
-  @Test
-  void previewSieExportReturnsNoWarningsWhenAllUsedAccountsHaveCodes() {
-    switchHome(tempDir.resolve('preview-clean-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-    databaseService.withSql { Sql sql ->
-      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7369', '2611'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7410', '3010'])
-    }
-
-    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
-
-    assertFalse(preview.legalFormUnset)
-    assertEquals([], preview.accountsMissingSruCode)
-  }
-
-  @Test
-  void previewSieExportDoesNotFlagAccountWithOnlySecondSruCodeSet() {
-    // AccountService.updateAccount() allows sru_code to be null while sru_code2 is set, and
-    // export emits a #SRU line from either column - the preview must not warn about an account
-    // that will in fact get exported correctly just because the *first* slot is empty.
-    switchHome(tempDir.resolve('preview-second-code-only-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SeededServices services = seedEnvironment(databaseService)
-    databaseService.withSql { Sql sql ->
-      sql.executeUpdate('update company set legal_form = ? where id = ?', ['AKTIEBOLAG', CompanyService.LEGACY_COMPANY_ID])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7251', '1510'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7301', '2010'])
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7369', '2611'])
-      sql.executeUpdate('update account set sru_code2 = ? where account_number = ?', ['7410', '3010'])
-    }
-
-    SieExportPreview preview = services.sieService.previewSieExport(services.fiscalYear.id)
-
-    assertFalse(preview.legalFormUnset)
-    assertFalse(preview.accountsMissingSruCode.contains('3010'), "3010 has an SRU code in the second slot - must not be flagged")
-    assertEquals([], preview.accountsMissingSruCode)
-  }
-
-  @Test
-  void importPersistsSruCodesOnNewAccount() {
-    switchHome(tempDir.resolve('import-sru-new-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SieImportExportService service = createSieService(databaseService)
-    Path filePath = tempDir.resolve('import-sru-new.sie')
-    filePath.toFile().text = """#FLAGGA 0
-#PROGRAM "Test" "1.0"
-#FORMAT PC8
-#GEN 20260101 "tester"
-#SIETYP 4
-#FNAMN "Testbolaget AB"
-#ORGNR 556677-8899
-#RAR 0 20260101 20261231
-#KONTO 1630 "Andra kortfristiga fordringar"
-#SRU 1630 7261
-#IB 0 1630 100.00
-"""
-
-    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
-
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select sru_code as sruCode, sru_code2 as sruCode2 from account where account_number = ?', ['1630']
-      ) as GroovyRowResult
-      assertEquals('7261', row.get('sruCode'))
-      assertNull(row.get('sruCode2'))
-    }
-  }
-
-  @Test
-  void importPersistsTwoSruCodesOnNewAccount() {
-    switchHome(tempDir.resolve('import-sru-two-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SieImportExportService service = createSieService(databaseService)
-    Path filePath = tempDir.resolve('import-sru-two.sie')
-    filePath.toFile().text = """#FLAGGA 0
-#PROGRAM "Test" "1.0"
-#FORMAT PC8
-#GEN 20260101 "tester"
-#SIETYP 4
-#FNAMN "Testbolaget AB"
-#ORGNR 556677-8899
-#RAR 0 20260101 20261231
-#KONTO 6072 "Representation, ej avdragsgill"
-#SRU 6072 7513
-#SRU 6072 7653
-"""
-
-    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
-
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select sru_code as sruCode, sru_code2 as sruCode2 from account where account_number = ?', ['6072']
-      ) as GroovyRowResult
-      assertEquals('7513', row.get('sruCode'))
-      assertEquals('7653', row.get('sruCode2'))
-    }
-  }
-
-  @Test
-  void importDropsInvalidSruCodeAndWarnsWithoutAbortingImport() {
-    switchHome(tempDir.resolve('import-sru-invalid-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    SieImportExportService service = createSieService(databaseService)
-    Path filePath = tempDir.resolve('import-sru-invalid.sie')
-    filePath.toFile().text = """#FLAGGA 0
-#PROGRAM "Test" "1.0"
-#FORMAT PC8
-#GEN 20260101 "tester"
-#SIETYP 4
-#FNAMN "Testbolaget AB"
-#ORGNR 556677-8899
-#RAR 0 20260101 20261231
-#KONTO 1630 "Andra kortfristiga fordringar"
-#SRU 1630 ABCD
-#IB 0 1630 100.00
-"""
-
-    def result = service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
-
-    assertTrue(result.job.summary.contains('varningar'))
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select sru_code as sruCode from account where account_number = ?', ['1630']
-      ) as GroovyRowResult
-      assertNull(row.get('sruCode'))
-    }
-  }
-
-  @Test
-  void importDoesNotOverwriteExistingManuallySetSruCode() {
-    switchHome(tempDir.resolve('import-sru-preserve-db'))
-    DatabaseService databaseService = DatabaseService.newForTesting()
-    databaseService.initialize()
-    databaseService.withTransaction { Sql sql ->
-      insertAccount(sql, '1630', 'Manuellt namn', 'ASSET', 'DEBIT')
-      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7261', '1630'])
-    }
-    SieImportExportService service = createSieService(databaseService)
-    Path filePath = tempDir.resolve('import-sru-preserve.sie')
-    filePath.toFile().text = """#FLAGGA 0
-#PROGRAM "Test" "1.0"
-#FORMAT PC8
-#GEN 20260101 "tester"
-#SIETYP 4
-#FNAMN "Testbolaget AB"
-#ORGNR 556677-8899
-#RAR 0 20260101 20261231
-#KONTO 1630 "Andra kortfristiga fordringar"
-#SRU 1630 9999
-#IB 0 1630 100.00
-"""
-
-    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
-
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select sru_code as sruCode from account where account_number = ?', ['1630']
-      ) as GroovyRowResult
-      assertEquals('7261', row.get('sruCode'))
-    }
-  }
-
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()
@@ -877,65 +624,6 @@ class SieImportExportServiceTest {
     SeededServices services = seedEnvironment(databaseService)
     services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath)
     new ExportFixture(services.accountCount, services.openingBalanceCount, services.voucherCount, services.lineCount)
-  }
-
-  private SeededServices seedEnvironment(DatabaseService databaseService) {
-    AuditLogService auditLogService = new AuditLogService(databaseService)
-    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
-    FiscalYearService fiscalYearService = new FiscalYearService(databaseService, accountingPeriodService, auditLogService)
-    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
-    CompanyService companyService = new CompanyService(databaseService)
-    companyService.save(new Company(
-        CompanyService.LEGACY_COMPANY_ID, 'Testbolaget AB', '556677-8899', 'SEK', 'sv-SE',
-        VatPeriodicity.MONTHLY, true, null, null
-    ))
-    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
-
-    databaseService.withTransaction { Sql sql ->
-      insertAccount(sql, '2010', 'Eget kapital', 'EQUITY', 'CREDIT')
-      insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
-      insertAccount(sql, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT')
-      insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
-      sql.executeInsert('''
-          insert into opening_balance (
-              fiscal_year_id,
-              account_id,
-              amount,
-              created_at,
-              updated_at
-          ) values (?, (select id from account where account_number = ?), ?, current_timestamp, current_timestamp)
-      ''', [fiscalYear.id, '1510', 100.00G])
-      sql.executeInsert('''
-          insert into opening_balance (
-              fiscal_year_id,
-              account_id,
-              amount,
-              created_at,
-              updated_at
-          ) values (?, (select id from account where account_number = ?), ?, current_timestamp, current_timestamp)
-      ''', [fiscalYear.id, '2010', 100.00G])
-    }
-
-    voucherService.createVoucher(
-        fiscalYear.id,
-        'A',
-        LocalDate.of(2026, 1, 15),
-        'Försäljning januari',
-        [
-            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1250.00G, 0.00G),
-            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G),
-            new VoucherLine(null, null, 0, null, '2611', null, 'Utgående moms', 0.00G, 250.00G)
-        ]
-    )
-
-    new SeededServices(
-        createSieService(databaseService),
-        fiscalYear,
-        4,
-        2,
-        1,
-        3
-    )
   }
 
   private void seedReplaceTargetEnvironment(DatabaseService databaseService) {
@@ -1049,25 +737,6 @@ class SieImportExportServiceTest {
       ''', ['report-archive/stubborn-dir', 'old-report.pdf'])
     }
     stubbornDirectory
-  }
-
-  private SieImportExportService createSieService(DatabaseService databaseService) {
-    AuditLogService auditLogService = new AuditLogService(databaseService)
-    AccountingPeriodService accountingPeriodService = new AccountingPeriodService(databaseService, auditLogService)
-    VoucherService voucherService = new VoucherService(databaseService, auditLogService)
-    ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
-        new AttachmentService(databaseService, auditLogService),
-        auditLogService
-    )
-    new SieImportExportService(
-        databaseService,
-        accountingPeriodService,
-        voucherService,
-        new CompanyService(databaseService),
-        reportIntegrityService,
-        auditLogService,
-        new FiscalYearService(databaseService)
-    )
   }
 
   private ReportDataService createReportDataService(DatabaseService databaseService) {
@@ -1229,36 +898,6 @@ class SieImportExportServiceTest {
     }
   }
 
-  private static void insertAccount(Sql sql, String accountNumber, String accountName, String accountClass, String normalBalanceSide) {
-    sql.executeInsert('''
-        insert into account (
-            company_id,
-            account_number,
-            account_name,
-            account_class,
-            normal_balance_side,
-            vat_code,
-            active,
-            manual_review_required,
-            classification_note,
-            created_at,
-            updated_at
-        ) values (1, ?, ?, ?, ?, null, true, false, null, current_timestamp, current_timestamp)
-    ''', [accountNumber, accountName, accountClass, normalBalanceSide])
-  }
-
-  private void switchHome(Path home) {
-    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, home.toString())
-  }
-
-  private static void restoreProperty(String name, String value) {
-    if (value == null) {
-      System.clearProperty(name)
-      return
-    }
-    System.setProperty(name, value)
-  }
-
   private static final class ExportFixture {
 
     final int accountCount
@@ -1274,29 +913,4 @@ class SieImportExportServiceTest {
     }
   }
 
-  private static final class SeededServices {
-
-    final SieImportExportService sieService
-    final FiscalYear fiscalYear
-    final int accountCount
-    final int openingBalanceCount
-    final int voucherCount
-    final int lineCount
-
-    private SeededServices(
-        SieImportExportService sieService,
-        FiscalYear fiscalYear,
-        int accountCount,
-        int openingBalanceCount,
-        int voucherCount,
-        int lineCount
-    ) {
-      this.sieService = sieService
-      this.fiscalYear = fiscalYear
-      this.accountCount = accountCount
-      this.openingBalanceCount = openingBalanceCount
-      this.voucherCount = voucherCount
-      this.lineCount = lineCount
-    }
-  }
 }
