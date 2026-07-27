@@ -119,6 +119,8 @@ final class AccountSeed {
   String accountName
   String accountClass
   String normalBalanceSide
+  String sruCode
+  String sruCode2
 }
 
 @Canonical

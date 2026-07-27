@@ -814,6 +814,10 @@ final class SieImportExportService {
     Map<String, SieAccount> konto = [:]
     new TreeMap<String, AccountSeed>(accounts).each { String accountNumber, AccountSeed seed ->
       SieAccount account = new SieAccount(accountNumber, seed.accountName)
+      List<String> sruCodes = [seed.sruCode, seed.sruCode2].findAll { it?.trim() }
+      if (sruCodes) {
+        account.setSRU(sruCodes)
+      }
       konto[accountNumber] = account
     }
     document.setKONTO(konto)
@@ -845,7 +849,9 @@ final class SieImportExportService {
         select account_number as accountNumber,
                account_name as accountName,
                account_class as accountClass,
-               normal_balance_side as normalBalanceSide
+               normal_balance_side as normalBalanceSide,
+               sru_code as sruCode,
+               sru_code2 as sruCode2
           from account
          where company_id = ?
          order by account_number
@@ -853,7 +859,9 @@ final class SieImportExportService {
       accounts[row.get('accountNumber') as String] = new AccountSeed(
           row.get('accountName') as String,
           row.get('accountClass') as String,
-          row.get('normalBalanceSide') as String
+          row.get('normalBalanceSide') as String,
+          row.get('sruCode') as String,
+          row.get('sruCode2') as String
       )
     }
     accounts

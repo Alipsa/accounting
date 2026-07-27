@@ -640,6 +640,27 @@ class SieImportExportServiceTest {
     assertEquals(vouchersBefore, countRows(targetDatabaseService, 'voucher'), 'Existing content must remain untouched')
   }
 
+  @Test
+  void exportEmitsSruLinesForAccountsWithCodes() {
+    switchHome(tempDir.resolve('sru-export-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    databaseService.withSql { Sql sql ->
+      sql.executeUpdate("update account set sru_code = ?, sru_code2 = ? where account_number = ?", ['7261', '7653', '1510'])
+      sql.executeUpdate("update account set sru_code = ? where account_number = ?", ['7410', '3010'])
+    }
+    Path exportPath = tempDir.resolve('sru-export.sie')
+
+    services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath)
+
+    List<String> sruLines = exportPath.toFile().readLines('windows-1252').findAll { it.startsWith('#SRU') }
+    assertTrue(sruLines.contains('#SRU 1510 7261'))
+    assertTrue(sruLines.contains('#SRU 1510 7653'))
+    assertTrue(sruLines.contains('#SRU 3010 7410'))
+    assertEquals(3, sruLines.size())
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()
