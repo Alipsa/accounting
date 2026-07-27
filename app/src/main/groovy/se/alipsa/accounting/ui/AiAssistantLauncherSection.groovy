@@ -13,6 +13,8 @@ import se.alipsa.accounting.support.I18n
 import java.awt.FlowLayout
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Level
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -26,6 +28,8 @@ import javax.swing.border.TitledBorder
 
 /** Settings UI for launching an AI CLI configured for the local MCP server. */
 final class AiAssistantLauncherSection {
+
+  private static final Logger log = Logger.getLogger(AiAssistantLauncherSection.name)
 
   private final UserPreferencesService preferences
   private final AiWorkspaceService workspaceService
@@ -168,18 +172,27 @@ final class AiAssistantLauncherSection {
   }
 
   private void onLaunch() {
-    if (!mcpAvailable) { showError(I18n.instance.getString('aiLauncher.error.mcpNotRunning')); return }
-    AiClient selected = client.selectedItem as AiClient
-    String binary = binaryField.text?.trim()
-    TerminalAdapterKind adapter = terminalKind.selectedItem as TerminalAdapterKind
-    String terminal = terminalPath.text?.trim()
-    if (!binary) { showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(selected))); return }
-    if (adapter == null || !terminal) { showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing')); return }
-    launchButton.enabled = false
-    String token = preferences.ensureMcpToken()
-    tasks.run({ doLaunch(selected, binary, adapter, terminal, token) }, { String error ->
-      updateLaunchButtonState(); if (error != null) { showError(error) }
-    }) { Exception exception -> updateLaunchButtonState(); showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName)) }
+    try {
+      if (!mcpAvailable) { showError(I18n.instance.getString('aiLauncher.error.mcpNotRunning')); return }
+      AiClient selected = client.selectedItem as AiClient
+      String binary = binaryField.text?.trim()
+      TerminalAdapterKind adapter = terminalKind.selectedItem as TerminalAdapterKind
+      String terminal = terminalPath.text?.trim()
+      if (!binary) { showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(selected))); return }
+      if (adapter == null || !terminal) { showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing')); return }
+      launchButton.enabled = false
+      String token = preferences.ensureMcpToken()
+      tasks.run({ doLaunch(selected, binary, adapter, terminal, token) }, { String error ->
+        updateLaunchButtonState(); if (error != null) { showError(error) }
+      }) { Exception exception -> updateLaunchButtonState(); showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName)) }
+    } catch (Exception exception) {
+      // Anything thrown here runs synchronously on the EDT, before the background task even
+      // starts. Left uncaught, this vanishes silently on a packaged Windows build with no
+      // console attached - the click just looks like it did nothing.
+      log.log(Level.WARNING, 'Unexpected failure while starting the AI assistant launch.', exception)
+      updateLaunchButtonState()
+      showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName))
+    }
   }
 
   @PackageScope

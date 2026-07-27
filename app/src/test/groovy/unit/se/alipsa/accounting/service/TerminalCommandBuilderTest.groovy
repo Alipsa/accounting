@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.ProcessArgumentEscaping
 
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 class TerminalCommandBuilderTest {
@@ -53,28 +54,42 @@ class TerminalCommandBuilderTest {
   @Test
   void rejectsEveryUnsafeCharacterForWindowsTerminal() {
     ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
-      Path unsafeWorkspace = Path.of("/tmp/work${unsafe}space")
-      assertThrows(IllegalArgumentException) {
-        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, EXECUTABLE, unsafeWorkspace, SCRIPT)
-      }
-      Path unsafeScript = Path.of("/tmp/.launch-codex${unsafe}id.cmd")
-      assertThrows(IllegalArgumentException) {
-        TerminalCommandBuilder.commandFor(TerminalAdapterKind.WINDOWS_TERMINAL, EXECUTABLE, WORKSPACE, unsafeScript)
-      }
+      assertRejectsUnsafeCharacter(TerminalAdapterKind.WINDOWS_TERMINAL, unsafe)
     }
   }
 
   @Test
   void rejectsEveryUnsafeCharacterForCommandPrompt() {
     ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
-      Path unsafeWorkspace = Path.of("/tmp/work${unsafe}space")
+      assertRejectsUnsafeCharacter(TerminalAdapterKind.COMMAND_PROMPT, unsafe)
+    }
+  }
+
+  private static void assertRejectsUnsafeCharacter(TerminalAdapterKind adapter, String unsafe) {
+    withPathOrSkip("/tmp/work${unsafe}space") { Path unsafeWorkspace ->
       assertThrows(IllegalArgumentException) {
-        TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, unsafeWorkspace, SCRIPT)
-      }
-      Path unsafeScript = Path.of("/tmp/.launch-codex${unsafe}id.cmd")
-      assertThrows(IllegalArgumentException) {
-        TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, unsafeScript)
+        TerminalCommandBuilder.commandFor(adapter, EXECUTABLE, unsafeWorkspace, SCRIPT)
       }
     }
+    withPathOrSkip("/tmp/.launch-codex${unsafe}id.cmd") { Path unsafeScript ->
+      assertThrows(IllegalArgumentException) {
+        TerminalCommandBuilder.commandFor(adapter, EXECUTABLE, WORKSPACE, unsafeScript)
+      }
+    }
+  }
+
+  /**
+   * On Windows, some unsafe characters (e.g. '<', '>', '|') can't even be represented in a
+   * Path - the filesystem provider itself throws InvalidPathException before our own validation
+   * runs. That is a strictly stronger guarantee than ours, so there is nothing left to assert.
+   */
+  private static void withPathOrSkip(String rawPath, Closure assertion) {
+    Path path
+    try {
+      path = Path.of(rawPath)
+    } catch (InvalidPathException ignored) {
+      return
+    }
+    assertion.call(path)
   }
 }

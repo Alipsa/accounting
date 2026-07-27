@@ -106,7 +106,9 @@ class AiAssistantLauncherTest {
 
   @Test
   void failsPreflightBeforeWritingWrapperWhenWindowsTerminalWorkspacePathIsUnsafe() {
-    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work|space').toString())
+    // '^' rather than '|': both are unsafe Windows command characters, but '|' is illegal in an
+    // actual Windows path, so tempDir.resolve() itself would throw before reaching the code under test.
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work^space').toString())
     List<Path> written = []
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
       written << target
