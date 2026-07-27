@@ -8,6 +8,8 @@
 - **Säkrare borttagning av rapportarkiv** — Rapportarkivets databasrad raderades före filen, så om filen var låst (t.ex. på Windows) blev den ett föräldralöst orphan som inte kunde återtagas via UI. Nu markeras raden först som `PENDING_DELETE`, filen raderas, och först därefter slutförs borttagningen som `DELETED`. Misslyckade raderingar återställs vid appstart.
 - **Rapportarkivets integritetsskanning kontrollerar alla arkiv** — Integritetsskanningen tittade bara på de 500 nyaste arkiven, så äldre skadade eller saknade filer upptäcktes aldrig. Skanningen läser nu alla aktiva arkivrader.
 - **SIE-export visar rätt programversion** — SIE-filens `#PROGRAM` rad angav tidigare version `1.0.0`. Den hämtas nu från JAR-manifestets `Implementation-Version`.
+- **SIE-import/export förvalar aktuellt bokföringsår** — Dialogen för SIE-import/export öppnades tidigare utan valt räkenskapsår. Nu förvalas det aktuella räkenskapsåret.
+- **Resursläcka i rapportarkivets orphan-skanning åtgärdad** — `findOrphanFiles()` stänger nu `Stream<Path>` från `Files.walk()` ordentligt, så kataloghandtag frigörs direkt i stället för att läcka under applikationens livstid.
 
 ## v1.7.0, 2026-07-25
 
