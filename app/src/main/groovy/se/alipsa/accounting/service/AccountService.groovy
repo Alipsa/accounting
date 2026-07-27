@@ -51,6 +51,23 @@ final class AccountService {
     this.databaseService = databaseService
   }
 
+  static String normalizeSruCode(String value) {
+    String trimmed = value?.trim()
+    trimmed ?: null
+  }
+
+  static boolean isValidSruCode(String value) {
+    value == null || value ==~ /\d+/
+  }
+
+  private static String requireValidSruCode(String value) {
+    String normalized = normalizeSruCode(value)
+    if (!isValidSruCode(normalized)) {
+      throw new IllegalArgumentException("Ogiltig SRU-kod: ${value}")
+    }
+    normalized
+  }
+
   boolean hasAccounts(long companyId) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
@@ -94,7 +111,9 @@ final class AccountService {
                  active,
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote,
-                 account_subgroup as accountSubgroup
+                 account_subgroup as accountSubgroup,
+                 sru_code as sruCode,
+                 sru_code2 as sruCode2
             from account
            where company_id = ?
       ''')
@@ -144,7 +163,9 @@ final class AccountService {
                  active,
                  manual_review_required as manualReviewRequired,
                  classification_note as classificationNote,
-                 account_subgroup as accountSubgroup
+                 account_subgroup as accountSubgroup,
+                 sru_code as sruCode,
+                 sru_code2 as sruCode2
             from account
            where company_id = ?
              and account_number = ?
@@ -178,7 +199,9 @@ final class AccountService {
       String normalBalanceSide,
       VatCode vatCode,
       boolean active,
-      boolean manualReviewRequired
+      boolean manualReviewRequired,
+      String sruCode = null,
+      String sruCode2 = null
   ) {
     CompanyService.requireValidCompanyId(companyId)
     String normalizedName = accountName?.trim()
@@ -196,6 +219,8 @@ final class AccountService {
           "Kontoklass ${accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
       )
     }
+    String normalizedSruCode = requireValidSruCode(sruCode)
+    String normalizedSruCode2 = requireValidSruCode(sruCode2)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
       int updated = sql.executeUpdate('''
@@ -207,12 +232,14 @@ final class AccountService {
                  active = ?,
                  manual_review_required = ?,
                  classification_note = null,
+                 sru_code = ?,
+                 sru_code2 = ?,
                  updated_at = current_timestamp
            where company_id = ?
              and account_number = ?
       ''', [
           normalizedName, accountClass, normalBalanceSide, vatCode?.name(),
-          active, manualReviewRequired, companyId, normalized
+          active, manualReviewRequired, normalizedSruCode, normalizedSruCode2, companyId, normalized
       ])
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
@@ -756,7 +783,9 @@ final class AccountService {
                active,
                manual_review_required as manualReviewRequired,
                classification_note as classificationNote,
-               account_subgroup as accountSubgroup
+               account_subgroup as accountSubgroup,
+               sru_code as sruCode,
+               sru_code2 as sruCode2
           from account
          where company_id = ?
            and account_number = ?
@@ -779,7 +808,9 @@ final class AccountService {
         Boolean.TRUE == row.get('active'),
         Boolean.TRUE == row.get('manualReviewRequired'),
         row.get('classificationNote') as String,
-        row.get('accountSubgroup') as String
+        row.get('accountSubgroup') as String,
+        row.get('sruCode') as String,
+        row.get('sruCode2') as String
     )
   }
 

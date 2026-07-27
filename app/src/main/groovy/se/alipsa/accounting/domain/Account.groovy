@@ -19,6 +19,8 @@ final class Account {
   boolean manualReviewRequired = false
   String classificationNote
   String accountSubgroup
+  String sruCode
+  String sruCode2
 
   boolean isBalanceAccount() {
     accountClass in ['ASSET', 'LIABILITY', 'EQUITY']

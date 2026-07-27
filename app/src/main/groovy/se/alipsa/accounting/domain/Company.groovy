@@ -21,6 +21,8 @@ final class Company {
   LocalDateTime updatedAt
   boolean archived = false
   AccountingMethod accountingMethod = AccountingMethod.CASH
+  LegalForm legalForm
+  boolean simplifiedAnnualReport = false
 
   @Override
   String toString() {

@@ -11,6 +11,7 @@ import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearPurgeSummary
 import se.alipsa.accounting.service.FiscalYearService
+import se.alipsa.accounting.service.SieExportPreview
 import se.alipsa.accounting.service.SieExportResult
 import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.SieImportPreview
@@ -556,6 +557,63 @@ final class SieExchangeDialog extends JDialog {
     }
     Path targetPath = ensureSieExtension(chooser.selectedFile.toPath())
     setWorkingState(true)
+    showInfo(I18n.instance.format('sieExchangeDialog.status.checkingSru', fiscalYear.name))
+    new SwingWorker<SieExportPreview, Void>() {
+      @Override
+      protected SieExportPreview doInBackground() {
+        sieImportExportService.previewSieExport(fiscalYear.id)
+      }
+
+      @Override
+      protected void done() {
+        SieExportPreview preview
+        try {
+          preview = get()
+        } catch (InterruptedException exception) {
+          Thread.currentThread().interrupt()
+          setWorkingState(false)
+          showError(I18n.instance.getString('sieExchangeDialog.status.exportInterrupted'), null)
+          return
+        } catch (ExecutionException exception) {
+          setWorkingState(false)
+          Throwable cause = exception.cause ?: exception
+          showError(cause.message ?: I18n.instance.getString('sieExchangeDialog.status.exportFailed'), null)
+          return
+        }
+        if (preview.legalFormUnset) {
+          int choice = JOptionPane.showConfirmDialog(
+              SieExchangeDialog.this,
+              I18n.instance.getString('sieExchangeDialog.confirm.legalFormUnset.message'),
+              I18n.instance.getString('sieExchangeDialog.confirm.legalFormUnset.title'),
+              JOptionPane.OK_CANCEL_OPTION,
+              JOptionPane.WARNING_MESSAGE
+          )
+          if (choice != JOptionPane.OK_OPTION) {
+            setWorkingState(false)
+            showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+            return
+          }
+        } else if (!preview.accountsMissingSruCode.empty) {
+          int choice = JOptionPane.showConfirmDialog(
+              SieExchangeDialog.this,
+              I18n.instance.format('sieExchangeDialog.confirm.missingSruCodes.message',
+                  preview.accountsMissingSruCode.size() as Object, preview.accountsMissingSruCode.join(', ')),
+              I18n.instance.getString('sieExchangeDialog.confirm.missingSruCodes.title'),
+              JOptionPane.OK_CANCEL_OPTION,
+              JOptionPane.WARNING_MESSAGE
+          )
+          if (choice != JOptionPane.OK_OPTION) {
+            setWorkingState(false)
+            showInfo(I18n.instance.getString('sieExchangeDialog.status.initial'))
+            return
+          }
+        }
+        runExport(fiscalYear, targetPath)
+      }
+    }.execute()
+  }
+
+  private void runExport(FiscalYear fiscalYear, Path targetPath) {
     showInfo(I18n.instance.format('sieExchangeDialog.status.exporting', fiscalYear.name))
     new SwingWorker<SieExportResult, Void>() {
       @Override

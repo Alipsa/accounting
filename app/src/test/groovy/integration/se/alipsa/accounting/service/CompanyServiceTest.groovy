@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.Company
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.support.AppPaths
 
@@ -76,6 +77,37 @@ class CompanyServiceTest {
 
     assertEquals(AccountingMethod.INVOICE, created.accountingMethod)
     assertEquals(AccountingMethod.INVOICE, companyService.findById(created.id).accountingMethod)
+  }
+
+  @Test
+  void savesAndReadsLegalFormAndSimplifiedAnnualReport() {
+    Company created = companyService.save(
+        new Company(null, 'Enskild AB', '556999-1111', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY,
+            true, null, null, false, AccountingMethod.CASH, LegalForm.ENSKILD_FIRMA, true)
+    )
+
+    assertEquals(LegalForm.ENSKILD_FIRMA, created.legalForm)
+    assertTrue(created.simplifiedAnnualReport)
+
+    Company reloaded = companyService.findById(created.id)
+    assertEquals(LegalForm.ENSKILD_FIRMA, reloaded.legalForm)
+    assertTrue(reloaded.simplifiedAnnualReport)
+
+    Company found = companyService.listCompanies().find { Company c -> c.id == created.id }
+    assertEquals(LegalForm.ENSKILD_FIRMA, found.legalForm)
+
+    Company updated = companyService.save(
+        new Company(created.id, 'Enskild AB', '556999-1111', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY,
+            true, null, null, false, AccountingMethod.CASH, LegalForm.AKTIEBOLAG, false)
+    )
+    assertEquals(LegalForm.AKTIEBOLAG, updated.legalForm)
+    assertFalse(updated.simplifiedAnnualReport)
+  }
+
+  @Test
+  void legalFormIsNullByDefaultForExistingCompanies() {
+    Company defaultCompany = companyService.findById(CompanyService.LEGACY_COMPANY_ID)
+    assertNull(defaultCompany.legalForm)
   }
 
   @Test

@@ -71,7 +71,11 @@ class DatabaseServiceTest {
               (select count(*) from information_schema.columns where table_name = 'OPENING_BALANCE' and column_name = 'ACCOUNT_ID') as openingBalanceAccountIdColumn,
               (select count(*) from information_schema.columns where table_name = 'CLOSING_ENTRY' and column_name = 'ACCOUNT_ID') as closingEntryAccountIdColumn,
               (select count(*) from information_schema.columns where table_name = 'CLOSING_ENTRY' and column_name = 'COUNTER_ACCOUNT_ID') as closingEntryCounterAccountIdColumn,
-              (select count(*) from information_schema.columns where table_name = 'COMPANY' and column_name = 'ACCOUNTING_METHOD') as companyAccountingMethodColumn
+              (select count(*) from information_schema.columns where table_name = 'COMPANY' and column_name = 'ACCOUNTING_METHOD') as companyAccountingMethodColumn,
+              (select count(*) from information_schema.columns where table_name = 'COMPANY' and column_name = 'LEGAL_FORM') as companyLegalFormColumn,
+              (select count(*) from information_schema.columns where table_name = 'COMPANY' and column_name = 'SIMPLIFIED_ANNUAL_REPORT') as companySimplifiedAnnualReportColumn,
+              (select count(*) from information_schema.columns where table_name = 'ACCOUNT' and column_name = 'SRU_CODE') as accountSruCodeColumn,
+              (select count(*) from information_schema.columns where table_name = 'ACCOUNT' and column_name = 'SRU_CODE2') as accountSruCode2Column
       ''') as GroovyRowResult
     }
 
@@ -101,6 +105,10 @@ class DatabaseServiceTest {
     assertEquals(1, ((Number) result.closingEntryAccountIdColumn).intValue())
     assertEquals(1, ((Number) result.closingEntryCounterAccountIdColumn).intValue())
     assertEquals(1, ((Number) result.companyAccountingMethodColumn).intValue())
+    assertEquals(1, ((Number) result.companyLegalFormColumn).intValue())
+    assertEquals(1, ((Number) result.companySimplifiedAnnualReportColumn).intValue())
+    assertEquals(1, ((Number) result.accountSruCodeColumn).intValue())
+    assertEquals(1, ((Number) result.accountSruCode2Column).intValue())
     assertTrue(tempDir.resolve('data').resolve('accounting.mv.db').toFile().exists())
   }
 

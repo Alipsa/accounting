@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.Company
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.support.I18n
@@ -19,6 +20,7 @@ import java.util.function.Consumer
 
 import javax.swing.BorderFactory
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JDialog
 import javax.swing.JLabel
@@ -55,6 +57,8 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
       new JComboBox<>(buildLocaleList().toArray(new LocaleItem[0]))
   private final JComboBox<VatPeriodicity> vatPeriodicityComboBox = new JComboBox<>(VatPeriodicity.values())
   private final JComboBox<AccountingMethod> accountingMethodComboBox = new JComboBox<>(AccountingMethod.values())
+  private final JComboBox<LegalFormChoice> legalFormComboBox = new JComboBox<>()
+  private final JCheckBox simplifiedAnnualReportCheckBox = new JCheckBox()
   private final JTextArea validationArea = new JTextArea(4, 30)
 
   private JLabel companyNameLabel
@@ -63,6 +67,8 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
   private JLabel localeLabel
   private JLabel vatPeriodLabel
   private JLabel accountingMethodLabel
+  private JLabel legalFormLabel
+  private JLabel simplifiedAnnualReportLabel
   private JButton cancelButton
   private JButton saveButton
 
@@ -75,8 +81,24 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
       title = I18n.instance.getString('companyDialog.title.edit')
     }
     I18n.instance.addLocaleChangeListener(this)
+    buildLegalFormChoices()
     buildUi()
     populate()
+  }
+
+  private void buildLegalFormChoices() {
+    legalFormComboBox.addItem(new LegalFormChoice(null, I18n.instance.getString('chartOfAccountsPanel.vatCode.none')))
+    LegalForm.values().each { LegalForm form ->
+      legalFormComboBox.addItem(new LegalFormChoice(form, form.displayName))
+    }
+    legalFormComboBox.addActionListener {
+      LegalFormChoice choice = legalFormComboBox.selectedItem as LegalFormChoice
+      boolean isEnskildFirma = choice?.legalForm == LegalForm.ENSKILD_FIRMA
+      simplifiedAnnualReportCheckBox.enabled = isEnskildFirma
+      if (!isEnskildFirma) {
+        simplifiedAnnualReportCheckBox.selected = false
+      }
+    }
   }
 
   static void showDialog(Frame owner, CompanyService companyService, Company company, Consumer<Company> onSave) {
@@ -107,6 +129,8 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     localeLabel.text = I18n.instance.getString('companySettingsDialog.label.locale')
     vatPeriodLabel.text = I18n.instance.getString('companySettingsDialog.label.vatPeriod')
     accountingMethodLabel.text = I18n.instance.getString('companySettingsDialog.label.accountingMethod')
+    legalFormLabel.text = I18n.instance.getString('companySettingsDialog.label.legalForm')
+    simplifiedAnnualReportLabel.text = I18n.instance.getString('companySettingsDialog.label.simplifiedAnnualReport')
     cancelButton.text = I18n.instance.getString('companySettingsDialog.button.cancel')
     saveButton.text = I18n.instance.getString('companySettingsDialog.button.save')
     pack()
@@ -170,6 +194,18 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     panel.add(accountingMethodLabel, labelConstraints)
     panel.add(accountingMethodComboBox, fieldConstraints)
 
+    labelConstraints.gridy = 6
+    fieldConstraints.gridy = 6
+    legalFormLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.legalForm'))
+    panel.add(legalFormLabel, labelConstraints)
+    panel.add(legalFormComboBox, fieldConstraints)
+
+    labelConstraints.gridy = 7
+    fieldConstraints.gridy = 7
+    simplifiedAnnualReportLabel = new JLabel(I18n.instance.getString('companySettingsDialog.label.simplifiedAnnualReport'))
+    panel.add(simplifiedAnnualReportLabel, labelConstraints)
+    panel.add(simplifiedAnnualReportCheckBox, fieldConstraints)
+
     panel
   }
 
@@ -201,6 +237,9 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
       selectLocale(Locale.getDefault().toLanguageTag())
       vatPeriodicityComboBox.selectedItem = VatPeriodicity.MONTHLY
       accountingMethodComboBox.selectedItem = AccountingMethod.CASH
+      legalFormComboBox.selectedIndex = 0
+      simplifiedAnnualReportCheckBox.selected = false
+      simplifiedAnnualReportCheckBox.enabled = false
       return
     }
     companyNameField.text = company.companyName
@@ -209,6 +248,19 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     selectLocale(company.localeTag ?: Locale.getDefault().toLanguageTag())
     vatPeriodicityComboBox.selectedItem = company.vatPeriodicity ?: VatPeriodicity.MONTHLY
     accountingMethodComboBox.selectedItem = company.accountingMethod ?: AccountingMethod.CASH
+    selectLegalForm(company.legalForm)
+    simplifiedAnnualReportCheckBox.selected = company.simplifiedAnnualReport
+    simplifiedAnnualReportCheckBox.enabled = company.legalForm == LegalForm.ENSKILD_FIRMA
+  }
+
+  private void selectLegalForm(LegalForm legalForm) {
+    for (int i = 0; i < legalFormComboBox.itemCount; i++) {
+      if (legalFormComboBox.getItemAt(i).legalForm == legalForm) {
+        legalFormComboBox.selectedIndex = i
+        return
+      }
+    }
+    legalFormComboBox.selectedIndex = 0
   }
 
   private void selectCurrency(String code) {
@@ -244,6 +296,7 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     try {
       String currency = defaultCurrencyComboBox.selectedItem as String
       String localeTag = (localeComboBox.selectedItem as LocaleItem).tag
+      LegalFormChoice legalFormChoice = legalFormComboBox.selectedItem as LegalFormChoice
       Company toSave = new Company(
           company?.id,
           companyNameField.text.trim(),
@@ -255,7 +308,9 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
           null,
           null,
           company?.archived ?: false,
-          accountingMethodComboBox.selectedItem as AccountingMethod
+          accountingMethodComboBox.selectedItem as AccountingMethod,
+          legalFormChoice?.legalForm,
+          simplifiedAnnualReportCheckBox.selected
       )
       company = companyService.save(toSave)
       onSave.accept(company)
@@ -313,6 +368,22 @@ final class CompanyDialog extends JDialog implements PropertyChangeListener {
     @Override
     String toString() {
       displayText
+    }
+  }
+
+  private static final class LegalFormChoice {
+
+    final LegalForm legalForm
+    final String label
+
+    LegalFormChoice(LegalForm legalForm, String label) {
+      this.legalForm = legalForm
+      this.label = label
+    }
+
+    @Override
+    String toString() {
+      label
     }
   }
 }

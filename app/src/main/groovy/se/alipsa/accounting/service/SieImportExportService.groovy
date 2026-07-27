@@ -301,6 +301,44 @@ final class SieImportExportService {
         payload.voucherCount
     )
   }
+  SieExportPreview previewSieExport(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      long companyId = resolveCompanyId(sql, fiscalYearId)
+      Company company = companyService.findById(companyId)
+      if (company?.legalForm == null) {
+        return new SieExportPreview(true, [])
+      }
+      Set<String> usedAccounts = loadAccountsUsedInFiscalYear(sql, fiscalYearId)
+      Set<String> accountsWithSruCode = sql.rows(
+          'select account_number as accountNumber, sru_code as sruCode, sru_code2 as sruCode2 from account where company_id = ?',
+          [companyId]
+      ).findAll { GroovyRowResult row ->
+        (row.get('sruCode') as String)?.trim() || (row.get('sruCode2') as String)?.trim()
+      }.collect { GroovyRowResult row -> row.get('accountNumber') as String } as Set
+      List<String> missing = usedAccounts.findAll { String accountNumber ->
+        !(accountNumber in accountsWithSruCode)
+      }.sort()
+      new SieExportPreview(false, missing)
+    }
+  }
+
+  private static Set<String> loadAccountsUsedInFiscalYear(Sql sql, long fiscalYearId) {
+    Set<String> accounts = [] as Set
+    sql.rows('''
+        select distinct vl.account_number as accountNumber
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+    ''', [fiscalYearId]).each { GroovyRowResult row -> accounts << (row.get('accountNumber') as String) }
+    sql.rows('''
+        select distinct a.account_number as accountNumber
+          from opening_balance ob
+          join account a on a.id = ob.account_id
+         where ob.fiscal_year_id = ?
+    ''', [fiscalYearId]).each { GroovyRowResult row -> accounts << (row.get('accountNumber') as String) }
+    accounts
+  }
   List<ImportJob> listImportJobs(long companyId, int limit = 20) {
     CompanyService.requireValidCompanyId(companyId)
     importJobRepository.list(companyId, limit)
@@ -447,7 +485,7 @@ final class SieImportExportService {
   }
 
   private ImportCounts importDocument(Sql sql, long fiscalYearId, SieDocument document, List<String> warnings) {
-    int accountsCreated = upsertAccounts(sql, fiscalYearId, document.getKONTO().values() as Collection<SieAccount>)
+    int accountsCreated = upsertAccounts(sql, fiscalYearId, document.getKONTO().values() as Collection<SieAccount>, warnings)
     int openingBalanceCount = persistOpeningBalances(sql, fiscalYearId, document.getIB(), warnings)
     VoucherImportSummary voucherSummary = persistVouchers(sql, fiscalYearId, document.getVER())
     warnings.addAll(validateClosingBalances(sql, fiscalYearId, document.getUB()))
@@ -505,7 +543,7 @@ final class SieImportExportService {
     FiscalYearReplacementService.replaceFiscalYearContents(sql, companyId, fiscalYear)
   }
 
-  private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts) {
+  private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts, List<String> warnings) {
     long companyId = resolveCompanyId(sql, fiscalYearId)
     int created = 0
     List<SieAccount> sortedAccounts = new ArrayList<>(accounts ?: [])
@@ -525,6 +563,7 @@ final class SieImportExportService {
           [companyId, accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
+        List<String> sruCodes = resolveImportedSruCodes(accountNumber, account.SRU, warnings)
         sql.executeInsert('''
             insert into account (
                 company_id,
@@ -537,9 +576,11 @@ final class SieImportExportService {
                 manual_review_required,
                 classification_note,
                 account_subgroup,
+                sru_code,
+                sru_code2,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
             companyId,
             accountNumber,
@@ -549,7 +590,9 @@ final class SieImportExportService {
             null,
             classification.manualReviewRequired,
             classification.note,
-            classification.accountSubgroup
+            classification.accountSubgroup,
+            sruCodes.size() > 0 ? sruCodes[0] : null,
+            sruCodes.size() > 1 ? sruCodes[1] : null
         ])
         created++
       } else if (Boolean.TRUE == existing.get('manualReviewRequired')) {
@@ -591,6 +634,26 @@ final class SieImportExportService {
       }
     }
     created
+  }
+
+  private static List<String> resolveImportedSruCodes(String accountNumber, List<String> importedCodes, List<String> warnings) {
+    List<String> valid = []
+    (importedCodes ?: []).each { String code ->
+      String normalized = AccountService.normalizeSruCode(code)
+      if (normalized == null) {
+        return
+      }
+      if (!AccountService.isValidSruCode(normalized)) {
+        warnings << ("Konto ${accountNumber}: ogiltig SRU-kod '${code}' i importfilen hoppades över." as String)
+        return
+      }
+      valid << normalized
+    }
+    if (valid.size() > 2) {
+      warnings << ("Konto ${accountNumber}: fler än två SRU-koder i importfilen (${valid.join(', ')}), endast de första två sparades." as String)
+      valid = valid[0..1]
+    }
+    valid
   }
 
   private static int persistOpeningBalances(Sql sql, long fiscalYearId, List<SiePeriodValue> balances, List<String> warnings) {
@@ -814,6 +877,10 @@ final class SieImportExportService {
     Map<String, SieAccount> konto = [:]
     new TreeMap<String, AccountSeed>(accounts).each { String accountNumber, AccountSeed seed ->
       SieAccount account = new SieAccount(accountNumber, seed.accountName)
+      List<String> sruCodes = [seed.sruCode, seed.sruCode2].findAll { it?.trim() }
+      if (sruCodes) {
+        account.setSRU(sruCodes)
+      }
       konto[accountNumber] = account
     }
     document.setKONTO(konto)
@@ -845,7 +912,9 @@ final class SieImportExportService {
         select account_number as accountNumber,
                account_name as accountName,
                account_class as accountClass,
-               normal_balance_side as normalBalanceSide
+               normal_balance_side as normalBalanceSide,
+               sru_code as sruCode,
+               sru_code2 as sruCode2
           from account
          where company_id = ?
          order by account_number
@@ -853,7 +922,9 @@ final class SieImportExportService {
       accounts[row.get('accountNumber') as String] = new AccountSeed(
           row.get('accountName') as String,
           row.get('accountClass') as String,
-          row.get('normalBalanceSide') as String
+          row.get('normalBalanceSide') as String,
+          row.get('sruCode') as String,
+          row.get('sruCode2') as String
       )
     }
     accounts

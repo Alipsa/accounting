@@ -5,6 +5,7 @@ import groovy.sql.Sql
 
 import se.alipsa.accounting.domain.AccountingMethod
 import se.alipsa.accounting.domain.Company
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.domain.VatPeriodicity
 
 import java.util.logging.Logger
@@ -43,7 +44,9 @@ final class CompanyService {
                  created_at as createdAt,
                  updated_at as updatedAt,
                  archived,
-                 accounting_method as accountingMethod
+                 accounting_method as accountingMethod,
+                 legal_form as legalForm,
+                 simplified_annual_report as simplifiedAnnualReport
             from company
       ''')
       List<Object> params = []
@@ -83,7 +86,9 @@ final class CompanyService {
                  created_at as createdAt,
                  updated_at as updatedAt,
                  archived,
-                 accounting_method as accountingMethod
+                 accounting_method as accountingMethod,
+                 legal_form as legalForm,
+                 simplified_annual_report as simplifiedAnnualReport
             from company
            where archived = true
            order by company_name, id
@@ -180,9 +185,11 @@ final class CompanyService {
             active,
             archived,
             accounting_method,
+            legal_form,
+            simplified_annual_report,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
     ''', [
         company.companyName.trim(),
         company.organizationNumber.trim(),
@@ -191,7 +198,9 @@ final class CompanyService {
         (company.vatPeriodicity ?: VatPeriodicity.MONTHLY).name(),
         company.active,
         company.archived,
-        (company.accountingMethod ?: AccountingMethod.CASH).name()
+        (company.accountingMethod ?: AccountingMethod.CASH).name(),
+        company.legalForm?.name(),
+        company.simplifiedAnnualReport
     ])
     long companyId = ((Number) keys.first().first()).longValue()
     sql.executeInsert('''
@@ -212,6 +221,8 @@ final class CompanyService {
                active = ?,
                archived = ?,
                accounting_method = ?,
+               legal_form = ?,
+               simplified_annual_report = ?,
                updated_at = current_timestamp
          where id = ?
     ''', [
@@ -223,6 +234,8 @@ final class CompanyService {
         company.active,
         company.archived,
         (company.accountingMethod ?: AccountingMethod.CASH).name(),
+        company.legalForm?.name(),
+        company.simplifiedAnnualReport,
         company.id
     ])
     if (updated != 1) {
@@ -266,7 +279,9 @@ final class CompanyService {
                created_at as createdAt,
                updated_at as updatedAt,
                archived,
-               accounting_method as accountingMethod
+               accounting_method as accountingMethod,
+               legal_form as legalForm,
+               simplified_annual_report as simplifiedAnnualReport
           from company
          where id = ?
     ''', [companyId]) as GroovyRowResult
@@ -285,7 +300,9 @@ final class CompanyService {
         SqlValueMapper.toLocalDateTime(row.get('createdAt')),
         SqlValueMapper.toLocalDateTime(row.get('updatedAt')),
         Boolean.TRUE == row.get('archived'),
-        AccountingMethod.fromDatabaseValue(row.get('accountingMethod') as String)
+        AccountingMethod.fromDatabaseValue(row.get('accountingMethod') as String),
+        LegalForm.fromDatabaseValue(row.get('legalForm') as String),
+        Boolean.TRUE == row.get('simplifiedAnnualReport')
     )
   }
 

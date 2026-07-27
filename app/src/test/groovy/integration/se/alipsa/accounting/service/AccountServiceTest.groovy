@@ -255,6 +255,63 @@ class AccountServiceTest {
   }
 
   @Test
+  void updateAccountPersistsSruCodes() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false, '7513', '7653')
+
+    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8314')
+    assertEquals('7513', updated.sruCode)
+    assertEquals('7653', updated.sruCode2)
+  }
+
+  @Test
+  void updateAccountNormalizesWhitespaceOnlySruCodeToNull() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false, '   ', null)
+
+    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8314')
+    assertNull(updated.sruCode)
+  }
+
+  @Test
+  void updateAccountRejectsNonDigitSruCode() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.updateAccount(
+          CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+          'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false, 'ABCD', null)
+    }
+    assertTrue(exception.message.contains('SRU'))
+  }
+
+  @Test
+  void updateAccountWithoutSruArgumentsLeavesSruCodesNull() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false)
+
+    Account updated = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8314')
+    assertNull(updated.sruCode)
+    assertNull(updated.sruCode2)
+  }
+
+  @Test
+  void normalizeSruCodeTrimsToNull() {
+    assertNull(AccountService.normalizeSruCode('   '))
+    assertNull(AccountService.normalizeSruCode(null))
+    assertEquals('7261', AccountService.normalizeSruCode(' 7261 '))
+  }
+
+  @Test
+  void isValidSruCodeAcceptsNullAndDigitsRejectsOther() {
+    assertTrue(AccountService.isValidSruCode(null))
+    assertTrue(AccountService.isValidSruCode('7261'))
+    assertFalse(AccountService.isValidSruCode('72A1'))
+    assertFalse(AccountService.isValidSruCode(''))
+  }
+
+  @Test
   void compatibleVatCodesFiltersByAccountClass() {
     Account asset = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '1510')

@@ -1,16 +1,21 @@
 package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.SruSignCondition
+import se.alipsa.accounting.domain.SruSuggestion
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.support.I18n
 
 import java.awt.Component
+import java.awt.FlowLayout
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
+import java.awt.GridLayout
 import java.awt.Insets
 
 import javax.swing.BorderFactory
+import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JComponent
@@ -25,7 +30,7 @@ final class AccountEditorDialog {
   private AccountEditorDialog() {
   }
 
-  static AccountEditorResult show(Component parent, Account account) {
+  static AccountEditorResult show(Component parent, Account account, List<SruSuggestion> sruSuggestions = []) {
     JTextField nameField = new JTextField(account.accountName, 24)
     JComboBox<String> classCombo = new JComboBox<>(ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { String accountClass ->
       ChartOfAccountsPanel.displayAccountClass(accountClass)
@@ -38,6 +43,9 @@ final class AccountEditorDialog {
     activeCheckBox.selected = account.active
     JCheckBox reviewCheckBox = new JCheckBox()
     reviewCheckBox.selected = account.manualReviewRequired
+    JTextField sruCodeField = new JTextField(account.sruCode, 10)
+    JTextField sruCode2Field = new JTextField(account.sruCode2, 10)
+    JPanel sruSuggestionPanel = buildSruSuggestionPanel(sruSuggestions, sruCodeField)
 
     classCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf(account.accountClass))
     sideCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide))
@@ -46,7 +54,9 @@ final class AccountEditorDialog {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
     }
 
-    JPanel editorPanel = buildEditorPanel(nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox)
+    JPanel editorPanel = buildEditorPanel(
+        nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox,
+        sruCodeField, sruCode2Field, sruSuggestionPanel)
     int result = JOptionPane.showConfirmDialog(
         parent,
         editorPanel,
@@ -65,7 +75,9 @@ final class AccountEditorDialog {
         ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[sideCombo.selectedIndex],
         selectedVatChoice?.vatCode,
         activeCheckBox.selected,
-        reviewCheckBox.selected
+        reviewCheckBox.selected,
+        sruCodeField.text,
+        sruCode2Field.text
     )
   }
 
@@ -94,7 +106,10 @@ final class AccountEditorDialog {
       JComboBox<String> sideCombo,
       JComboBox<VatCodeChoice> vatCombo,
       JCheckBox activeCheckBox,
-      JCheckBox reviewCheckBox
+      JCheckBox reviewCheckBox,
+      JTextField sruCodeField,
+      JTextField sruCode2Field,
+      JPanel sruSuggestionPanel
   ) {
     JPanel editorPanel = new JPanel(new GridBagLayout())
     GridBagConstraints labelConstraints = new GridBagConstraints(
@@ -113,14 +128,53 @@ final class AccountEditorDialog {
     addRow(editorPanel, labelConstraints, fieldConstraints, 3, 'vatCode', vatCombo)
     addRow(editorPanel, labelConstraints, fieldConstraints, 4, 'active', activeCheckBox)
     addRow(editorPanel, labelConstraints, fieldConstraints, 5, 'review', reviewCheckBox)
+    addRow(editorPanel, labelConstraints, fieldConstraints, 6, 'sruCode', sruCodeField)
+
+    GridBagConstraints suggestionConstraints = new GridBagConstraints(
+        1, 7, 1, 1, 1.0d, 0.0d,
+        GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
+        new Insets(0, 0, 4, 4), 0, 0
+    )
+    editorPanel.add(sruSuggestionPanel, suggestionConstraints)
+
+    addRow(editorPanel, labelConstraints, fieldConstraints, 8, 'sruCode2', sruCode2Field)
 
     GridBagConstraints legendConstraints = new GridBagConstraints(
-        0, 6, 2, 1, 1.0d, 0.0d,
+        0, 9, 2, 1, 1.0d, 0.0d,
         GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL,
         new Insets(12, 4, 4, 4), 0, 0
     )
     editorPanel.add(buildLegend(), legendConstraints)
     editorPanel
+  }
+
+  private static JPanel buildSruSuggestionPanel(List<SruSuggestion> suggestions, JTextField sruCodeField) {
+    JPanel panel = new JPanel(new GridLayout(Math.max(suggestions.size(), 1), 1, 0, 2))
+    if (!suggestions) {
+      return panel
+    }
+    suggestions.each { SruSuggestion suggestion ->
+      String text
+      switch (suggestion.signCondition) {
+        case SruSignCondition.NET_POSITIVE:
+          text = I18n.instance.format('chartOfAccountsPanel.sru.suggestionSignPositive', suggestion.fieldCode)
+          break
+        case SruSignCondition.NET_NEGATIVE:
+          text = I18n.instance.format('chartOfAccountsPanel.sru.suggestionSignNegative', suggestion.fieldCode)
+          break
+        default:
+          text = I18n.instance.format('chartOfAccountsPanel.sru.suggestion', suggestion.fieldCode)
+      }
+      JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0))
+      row.add(new JLabel(text))
+      JButton useButton = new JButton(I18n.instance.getString('chartOfAccountsPanel.sru.useSuggestion'))
+      useButton.addActionListener {
+        sruCodeField.text = suggestion.fieldCode
+      }
+      row.add(useButton)
+      panel.add(row)
+    }
+    panel
   }
 
   private static void addRow(
@@ -142,7 +196,7 @@ final class AccountEditorDialog {
   }
 
   private static JLabel buildLegend() {
-    List<String> fieldKeys = ['name', 'class', 'normal', 'vatCode', 'active', 'review']
+    List<String> fieldKeys = ['name', 'class', 'normal', 'vatCode', 'active', 'review', 'sruCode', 'sruCode2']
     StringBuilder html = new StringBuilder('<html>')
     fieldKeys.each { String fieldKey ->
       String label = I18n.instance.getString("chartOfAccountsPanel.table.${fieldKey}")
@@ -180,6 +234,8 @@ final class AccountEditorDialog {
     final VatCode vatCode
     final boolean active
     final boolean manualReviewRequired
+    final String sruCode
+    final String sruCode2
 
     AccountEditorResult(
         String accountName,
@@ -187,7 +243,9 @@ final class AccountEditorDialog {
         String normalBalanceSide,
         VatCode vatCode,
         boolean active,
-        boolean manualReviewRequired
+        boolean manualReviewRequired,
+        String sruCode,
+        String sruCode2
     ) {
       this.accountName = accountName
       this.accountClass = accountClass
@@ -195,6 +253,8 @@ final class AccountEditorDialog {
       this.vatCode = vatCode
       this.active = active
       this.manualReviewRequired = manualReviewRequired
+      this.sruCode = sruCode
+      this.sruCode2 = sruCode2
     }
   }
 }
