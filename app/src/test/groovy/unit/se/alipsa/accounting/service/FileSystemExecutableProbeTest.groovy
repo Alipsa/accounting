@@ -65,6 +65,15 @@ class FileSystemExecutableProbeTest {
   }
 
   @Test
+  void rejectsExeReparsePointOutsideWindowsApps() {
+    FileSystemExecutableProbe.AppExecutionAliasDetector alias = { Path candidate -> true } as FileSystemExecutableProbe.AppExecutionAliasDetector
+    FileSystemExecutableProbe probe = new FileSystemExecutableProbe(true, alias)
+
+    assertFalse(probe.isExecutableFile(Path.of('C:\\Users\\x\\bin\\kimi.exe')))
+    assertFalse(probe.isExecutableFile(Path.of('C:\\Windows\\System32\\cmd.exe')))
+  }
+
+  @Test
   void ignoresAliasDetectorOnNonWindows() {
     FileSystemExecutableProbe.AppExecutionAliasDetector alias = { Path candidate -> true } as FileSystemExecutableProbe.AppExecutionAliasDetector
     FileSystemExecutableProbe probe = new FileSystemExecutableProbe(false, alias)

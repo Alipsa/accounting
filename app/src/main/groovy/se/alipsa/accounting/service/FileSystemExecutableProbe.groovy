@@ -26,12 +26,16 @@ final class FileSystemExecutableProbe implements ExecutableProbe {
   @Override
   boolean isExecutableFile(Path candidate) {
     if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) { return true }
-    if (windows && hasExeExtension(candidate) && aliasDetector.isAppExecutionAlias(candidate)) { return true }
+    if (windows && hasExeExtension(candidate) && isUnderWindowsApps(candidate) && aliasDetector.isAppExecutionAlias(candidate)) { return true }
     false
   }
 
   private static boolean hasExeExtension(Path candidate) {
     candidate.toString().toLowerCase(Locale.ROOT).endsWith('.exe')
+  }
+
+  private static boolean isUnderWindowsApps(Path candidate) {
+    candidate.toString().toLowerCase(Locale.ROOT).contains('\\microsoft\\windowsapps\\')
   }
 
   private static boolean isWindowsOs() {
