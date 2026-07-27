@@ -31,6 +31,7 @@ final class AiAssistantLauncherSection {
   private final AiWorkspaceService workspaceService
   private final AiAssistantLauncher launcher
   private final BackgroundTaskRunner tasks
+  private final ErrorDisplay errorDisplay
   private final JPanel panel = new JPanel()
   private final TitledBorder border = BorderFactory.createTitledBorder('')
   private final JLabel binaryLabel = new JLabel()
@@ -46,15 +47,21 @@ final class AiAssistantLauncherSection {
   private boolean mcpAvailable
 
   AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher) {
-    this(preferences, workspaceService, launcher, new SwingBackgroundTaskRunner())
+    this(preferences, workspaceService, launcher, new SwingBackgroundTaskRunner(), null)
   }
 
   AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher,
       BackgroundTaskRunner tasks) {
+    this(preferences, workspaceService, launcher, tasks, null)
+  }
+
+  AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher,
+      BackgroundTaskRunner tasks, ErrorDisplay errorDisplay) {
     this.preferences = preferences
     this.workspaceService = workspaceService
     this.launcher = launcher
     this.tasks = tasks
+    this.errorDisplay = errorDisplay ?: new SwingErrorDisplay(panel)
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     panel.border = border
     launchButton.name = 'aiLauncher.launchButton'
@@ -67,6 +74,18 @@ final class AiAssistantLauncherSection {
   }
 
   JPanel getPanel() { panel }
+
+  @PackageScope
+  JButton getDetectBinaryButton() { detectBinary }
+
+  @PackageScope
+  JButton getDetectTerminalButton() { detectTerminal }
+
+  @PackageScope
+  JTextField getBinaryField() { binaryField }
+
+  @PackageScope
+  JTextField getTerminalPathField() { terminalPath }
 
   void setMcpAvailable(boolean available) { mcpAvailable = available; updateLaunchButtonState() }
 
@@ -89,24 +108,44 @@ final class AiAssistantLauncherSection {
     client.addActionListener { updateSelectedClientFields() }
     JPanel clientRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); clientRow.add(clientLabel); clientRow.add(client); panel.add(clientRow)
     binaryField.name = 'aiLauncher.binaryField'
+    detectBinary.name = 'aiLauncher.detectBinary'
     detectBinary.addActionListener {
       AiClient selected = client.selectedItem as AiClient
-      tasks.run({ workspaceService.detectBinaryPath(selected) }, { Path found ->
-        if (found != null) { binaryField.text = found.toString(); preferences.setAiBinaryPath(selected, found.toString()) }
-      }, this.&showDetectionError)
+      tasks.run({ workspaceService.detectBinaryPath(selected) }, this.&onBinaryDetected, this.&showDetectionError)
     }
     JPanel binaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); binaryRow.add(binaryLabel); binaryRow.add(binaryField); binaryRow.add(detectBinary); panel.add(binaryRow)
     TerminalAdapterKind stored = preferences.terminalAdapterKind
     if (stored != null && TerminalAdapterKind.forCurrentOs().contains(stored)) { terminalKind.selectedItem = stored }
+    terminalPath.name = 'aiLauncher.terminalPath'
     terminalPath.text = preferences.terminalPath ?: ''
+    detectTerminal.name = 'aiLauncher.detectTerminal'
     detectTerminal.addActionListener {
-      tasks.run({ workspaceService.detectTerminalAdapter() }, { Tuple2<TerminalAdapterKind, Path> found ->
-        if (found != null) { terminalKind.selectedItem = found.v1; terminalPath.text = found.v2.toString(); preferences.terminalAdapterKind = found.v1; preferences.terminalPath = found.v2.toString() }
-      }, this.&showDetectionError)
+      tasks.run({ workspaceService.detectTerminalAdapter() }, this.&onTerminalDetected, this.&showDetectionError)
     }
     JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); panel.add(terminalRow)
     launchButton.addActionListener { onLaunch() }
     JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); launchRow.add(launchButton); panel.add(launchRow)
+  }
+
+  private void onBinaryDetected(Path found) {
+    AiClient selected = client.selectedItem as AiClient
+    if (found != null) {
+      binaryField.text = found.toString()
+      preferences.setAiBinaryPath(selected, found.toString())
+    } else {
+      showError(I18n.instance.format('aiLauncher.detection.notFound', displayName(selected)))
+    }
+  }
+
+  private void onTerminalDetected(Tuple2<TerminalAdapterKind, Path> found) {
+    if (found != null) {
+      terminalKind.selectedItem = found.v1
+      terminalPath.text = found.v2.toString()
+      preferences.terminalAdapterKind = found.v1
+      preferences.terminalPath = found.v2.toString()
+    } else {
+      showError(I18n.instance.format('aiLauncher.detection.notFound', I18n.instance.getString('aiLauncher.label.terminalAdapter')))
+    }
   }
 
   private void autoDetectBlankFields() {
@@ -158,7 +197,18 @@ final class AiAssistantLauncherSection {
   }
 
   private void showDetectionError(Exception exception) { showError(I18n.instance.format('aiLauncher.error.detectionFailed', exception.message ?: exception.class.simpleName)) }
-  private void showError(String text) { JOptionPane.showMessageDialog(panel, text, I18n.instance.getString('aiLauncher.error.title'), JOptionPane.ERROR_MESSAGE) }
+  private void showError(String text) { errorDisplay.showError(I18n.instance.getString('aiLauncher.error.title'), text) }
+
+  private static final class SwingErrorDisplay implements ErrorDisplay {
+    private final JPanel panel
+
+    SwingErrorDisplay(JPanel panel) { this.panel = panel }
+
+    @Override
+    void showError(String title, String message) {
+      JOptionPane.showMessageDialog(panel, message, title, JOptionPane.ERROR_MESSAGE)
+    }
+  }
 
   private void updateSelectedClientFields() {
     AiClient selected = client.selectedItem as AiClient

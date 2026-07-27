@@ -66,6 +66,63 @@ class AiAssistantLauncherTest {
   }
 
   @Test
+  void commandPromptWritesCmdWrapperAndRunsDirectCommand() {
+    List<String> capturedCommand = []
+    Map<Path, String> writtenScripts = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      writtenScripts[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.COMMAND_PROMPT,
+        Path.of('C:\\Windows\\System32\\cmd.exe'), 'token-value')
+
+    assertEquals(1, writtenScripts.size())
+    Path script = writtenScripts.keySet().first()
+    assertTrue(script.toString().endsWith('.cmd'))
+    assertEquals(['C:\\Windows\\System32\\cmd.exe', '/v:off', '/c', script.toString()], capturedCommand)
+  }
+
+  @Test
+  void failsPreflightBeforeWritingWrapperWhenWorkspacePathIsUnsafe() {
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work&space').toString())
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.validatePreflight(TerminalAdapterKind.COMMAND_PROMPT)
+    }
+    assertTrue(written.isEmpty())
+  }
+
+  @Test
+  void failsPreflightBeforeWritingWrapperWhenWindowsTerminalWorkspacePathIsUnsafe() {
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work|space').toString())
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.validatePreflight(TerminalAdapterKind.WINDOWS_TERMINAL)
+    }
+    assertTrue(written.isEmpty())
+  }
+
+  @Test
   void launchesClaudeWithTheAssistantSessionName() {
     Map<Path, String> writtenScripts = [:]
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->

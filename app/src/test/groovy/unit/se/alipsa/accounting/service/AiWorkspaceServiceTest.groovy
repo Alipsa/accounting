@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AiClient
+import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Files
@@ -196,6 +197,75 @@ class AiWorkspaceServiceTest {
     assertFalse(result.complete)
     assertEquals([workspace], result.failed)
     assertTrue(result.removed.isEmpty())
+  }
+
+  @Test
+  void prefersWindowsTerminalFromPathOverStoreAliasAndCommandPrompt() {
+    Path windowsTerminal = tempDir.resolve('bin').resolve('wt.exe').toAbsolutePath().normalize()
+    Path storeAlias = tempDir.resolve('appdata').resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe').toAbsolutePath().normalize()
+    Path commandPrompt = tempDir.resolve('bin').resolve('cmd.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString(), 'LOCALAPPDATA': tempDir.resolve('appdata').toString()],
+        { Path path -> path == windowsTerminal || path == storeAlias || path == commandPrompt } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    Tuple2 result = withWindowsOs { service.detectTerminalAdapter() }
+
+    assertEquals(TerminalAdapterKind.WINDOWS_TERMINAL, result.v1)
+    assertEquals(windowsTerminal, result.v2)
+  }
+
+  @Test
+  void fallsBackToStoreAliasWhenWindowsTerminalIsNotOnPath() {
+    Path storeAlias = tempDir.resolve('appdata').resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe').toAbsolutePath().normalize()
+    Path commandPrompt = tempDir.resolve('bin').resolve('cmd.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString(), 'LOCALAPPDATA': tempDir.resolve('appdata').toString()],
+        { Path path -> path == storeAlias || path == commandPrompt } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    Tuple2 result = withWindowsOs { service.detectTerminalAdapter() }
+
+    assertEquals(TerminalAdapterKind.WINDOWS_TERMINAL, result.v1)
+    assertEquals(storeAlias, result.v2)
+  }
+
+  @Test
+  void fallsBackToCommandPromptWhenWindowsTerminalIsUnavailable() {
+    Path commandPrompt = tempDir.resolve('bin').resolve('cmd.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString(), 'LOCALAPPDATA': tempDir.resolve('appdata').toString()],
+        { Path path -> path == commandPrompt } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    Tuple2 result = withWindowsOs { service.detectTerminalAdapter() }
+
+    assertEquals(TerminalAdapterKind.COMMAND_PROMPT, result.v1)
+    assertEquals(commandPrompt, result.v2)
+  }
+
+  @Test
+  void returnsNullWhenNoWindowsTerminalAdapterOrCommandPromptResolves() {
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString(), 'LOCALAPPDATA': tempDir.resolve('appdata').toString()],
+        { Path path -> false } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertEquals(null, withWindowsOs { service.detectTerminalAdapter() })
+  }
+
+  private static Tuple2 withWindowsOs(Closure<Tuple2> action) {
+    String previous = System.getProperty('os.name')
+    System.setProperty('os.name', 'Windows 10')
+    try {
+      return action.call()
+    } finally {
+      if (previous == null) {
+        System.clearProperty('os.name')
+      } else {
+        System.setProperty('os.name', previous)
+      }
+    }
   }
 
   private static AiWorkspaceService service(Map<String, String> environment, ExecutableProbe probe, FileDeleter deleter) {

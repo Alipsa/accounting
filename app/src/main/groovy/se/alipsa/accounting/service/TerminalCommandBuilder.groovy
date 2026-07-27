@@ -19,9 +19,13 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.XTERM:
         return [executable.toString(), '-e', script.toString()]
       case TerminalAdapterKind.WINDOWS_TERMINAL:
-        rejectUnsafeCmdCharacters(workspace)
-        rejectUnsafeCmdCharacters(script)
+        rejectUnsafeWindowsPath(workspace)
+        rejectUnsafeWindowsPath(script)
         return [executable.toString(), '-d', workspace.toString(), 'cmd.exe', '/v:off', '/c', script.toString()]
+      case TerminalAdapterKind.COMMAND_PROMPT:
+        rejectUnsafeWindowsPath(workspace)
+        rejectUnsafeWindowsPath(script)
+        return [executable.toString(), '/v:off', '/c', script.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +
@@ -31,9 +35,9 @@ final class TerminalCommandBuilder {
     }
   }
 
-  static void rejectUnsafeWorkspacePathForWindowsTerminal(Path workspace) { rejectUnsafeCmdCharacters(workspace) }
+  static void rejectUnsafeWorkspacePathForWindows(Path workspace) { rejectUnsafeWindowsPath(workspace) }
 
-  private static void rejectUnsafeCmdCharacters(Path path) {
+  private static void rejectUnsafeWindowsPath(Path path) {
     ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
       if (path.toString().contains(unsafe)) {
         throw new IllegalArgumentException("Refusing to launch through cmd.exe: ${path} contains '${unsafe}'.")

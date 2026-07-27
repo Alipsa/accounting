@@ -7,6 +7,7 @@ enum TerminalAdapterKind {
   KONSOLE('konsole'),
   XTERM('xterm'),
   WINDOWS_TERMINAL('wt.exe'),
+  COMMAND_PROMPT('cmd.exe'),
   TERMINAL_APP('osascript')
 
   final String defaultBinaryName
@@ -18,7 +19,7 @@ enum TerminalAdapterKind {
   static List<TerminalAdapterKind> forOsName(String osName) {
     String normalized = (osName ?: '').toLowerCase(Locale.ROOT)
     if (normalized.contains('win')) {
-      return [WINDOWS_TERMINAL]
+      return [WINDOWS_TERMINAL, COMMAND_PROMPT]
     }
     if (normalized.contains('mac')) {
       return [TERMINAL_APP]

@@ -25,7 +25,7 @@ Oavsett anslutningssätt krävs:
 För den inbyggda launchern (nästa avsnitt) tillkommer:
 
 4. En installerad CLI-binär för vald klient (`claude`, `codex`, `kimi` eller `vibe`) tillgänglig i `PATH` eller på en känd sökväg.
-5. En terminalemulator som launchern kan öppna (`gnome-terminal`/`konsole`/`xterm` på Linux, `wt.exe` på Windows, `Terminal.app` via `osascript` på macOS).
+5. En terminalemulator som launchern kan öppna (`gnome-terminal`/`konsole`/`xterm` på Linux, `wt.exe` eller `cmd.exe` på Windows, `Terminal.app` via `osascript` på macOS). På Windows föredras Windows Terminal om det finns, annars faller launchern tillbaka på Kommandotolken (`cmd.exe`). `conhost.exe` anropas aldrig direkt.
 
 ## Alternativ 1: Den inbyggda AI-assistent-launchern
 
