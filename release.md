@@ -1,5 +1,11 @@
 # Alipsa Accounting, Release History
 
+## v1.7.1, in progress
+
+### Buggfixar
+
+- **AI-assistent-launchern fungerar på Windows utan Windows Terminal** — Tidigare krävdes `wt.exe` för att starta AI-assistenten på Windows, vilket inte finns på äldre Windows-versioner eller när App Execution Alias är inaktiverat. Launchern faller nu tillbaka på `cmd.exe` och kan även hitta Windows Terminal när det är installerat från Microsoft Store via dess alias. `conhost.exe` anropas aldrig direkt.
+
 ## v1.7.0, 2026-07-25
 
 ### Förbättringar
@@ -18,7 +24,6 @@
 - **Bokslut blockerar nu okvalificerade konton** — Årsbokslut kunde tidigare genomföras även om ett konto med bokförda transaktioner saknade kontoklass eller normalsida. Resultatberäkningen filtrerar på kontoklass, så sådana konton föll tyst bort ur resultatet utan någon varning. Bokslutet blockeras nu och listar exakt vilka konton som måste klassificeras i kontoplanen först.
 - **Kontoklass och normalsida visas nu på svenska** — Kontoplanens tabell, kontodetaljer och klassfilter visade tidigare oöversatta engelska värden (till exempel INCOME, CREDIT) trots svenska språkinställningar.
 - **AI-assistentens kontext visade felaktigt öppet räkenskapsår efter stängning** — `get_active_context` läste stängningsstatus från skrivbordsgränssnittets cachade räkenskapsår, som inte uppdateras av MCP-verktyget för årsstängning. Efter en AI-driven årsstängning kunde AI-assistenten därför fortsätta tro att räkenskapsåret var öppet. Statusen hämtas nu alltid färsk från databasen.
-- **AI-assistent-launchern fungerar på Windows utan Windows Terminal** — Tidigare krävdes `wt.exe` för att starta AI-assistenten på Windows, vilket inte finns på äldre Windows-versioner eller när App Execution Alias är inaktiverat. Launchern faller nu tillbaka på `cmd.exe` och kan även hitta Windows Terminal när det är installerat från Microsoft Store via dess alias. `conhost.exe` anropas aldrig direkt.
 
 ## v1.6.1, 2026-07-23
 
