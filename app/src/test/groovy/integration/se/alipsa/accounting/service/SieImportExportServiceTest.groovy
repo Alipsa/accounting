@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
@@ -716,6 +717,133 @@ class SieImportExportServiceTest {
 
     assertFalse(preview.legalFormUnset)
     assertEquals([], preview.accountsMissingSruCode)
+  }
+
+  @Test
+  void importPersistsSruCodesOnNewAccount() {
+    switchHome(tempDir.resolve('import-sru-new-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('import-sru-new.sie')
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 1630 "Andra kortfristiga fordringar"
+#SRU 1630 7261
+#IB 0 1630 100.00
+"""
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select sru_code as sruCode, sru_code2 as sruCode2 from account where account_number = ?', ['1630']
+      ) as GroovyRowResult
+      assertEquals('7261', row.get('sruCode'))
+      assertNull(row.get('sruCode2'))
+    }
+  }
+
+  @Test
+  void importPersistsTwoSruCodesOnNewAccount() {
+    switchHome(tempDir.resolve('import-sru-two-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('import-sru-two.sie')
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 6072 "Representation, ej avdragsgill"
+#SRU 6072 7513
+#SRU 6072 7653
+"""
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select sru_code as sruCode, sru_code2 as sruCode2 from account where account_number = ?', ['6072']
+      ) as GroovyRowResult
+      assertEquals('7513', row.get('sruCode'))
+      assertEquals('7653', row.get('sruCode2'))
+    }
+  }
+
+  @Test
+  void importDropsInvalidSruCodeAndWarnsWithoutAbortingImport() {
+    switchHome(tempDir.resolve('import-sru-invalid-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('import-sru-invalid.sie')
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 1630 "Andra kortfristiga fordringar"
+#SRU 1630 ABCD
+#IB 0 1630 100.00
+"""
+
+    def result = service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    assertTrue(result.job.summary.contains('varningar'))
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select sru_code as sruCode from account where account_number = ?', ['1630']
+      ) as GroovyRowResult
+      assertNull(row.get('sruCode'))
+    }
+  }
+
+  @Test
+  void importDoesNotOverwriteExistingManuallySetSruCode() {
+    switchHome(tempDir.resolve('import-sru-preserve-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '1630', 'Manuellt namn', 'ASSET', 'DEBIT')
+      sql.executeUpdate('update account set sru_code = ? where account_number = ?', ['7261', '1630'])
+    }
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('import-sru-preserve.sie')
+    filePath.toFile().text = """#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 1630 "Andra kortfristiga fordringar"
+#SRU 1630 9999
+#IB 0 1630 100.00
+"""
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select sru_code as sruCode from account where account_number = ?', ['1630']
+      ) as GroovyRowResult
+      assertEquals('7261', row.get('sruCode'))
+    }
   }
 
   private ExportFixture createExportFixture(Path home, Path exportPath) {

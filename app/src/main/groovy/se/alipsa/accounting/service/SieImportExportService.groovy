@@ -483,7 +483,7 @@ final class SieImportExportService {
   }
 
   private ImportCounts importDocument(Sql sql, long fiscalYearId, SieDocument document, List<String> warnings) {
-    int accountsCreated = upsertAccounts(sql, fiscalYearId, document.getKONTO().values() as Collection<SieAccount>)
+    int accountsCreated = upsertAccounts(sql, fiscalYearId, document.getKONTO().values() as Collection<SieAccount>, warnings)
     int openingBalanceCount = persistOpeningBalances(sql, fiscalYearId, document.getIB(), warnings)
     VoucherImportSummary voucherSummary = persistVouchers(sql, fiscalYearId, document.getVER())
     warnings.addAll(validateClosingBalances(sql, fiscalYearId, document.getUB()))
@@ -541,7 +541,7 @@ final class SieImportExportService {
     FiscalYearReplacementService.replaceFiscalYearContents(sql, companyId, fiscalYear)
   }
 
-  private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts) {
+  private int upsertAccounts(Sql sql, long fiscalYearId, Collection<SieAccount> accounts, List<String> warnings) {
     long companyId = resolveCompanyId(sql, fiscalYearId)
     int created = 0
     List<SieAccount> sortedAccounts = new ArrayList<>(accounts ?: [])
@@ -561,6 +561,7 @@ final class SieImportExportService {
           [companyId, accountNumber]
       ) as GroovyRowResult
       if (existing == null) {
+        List<String> sruCodes = resolveImportedSruCodes(accountNumber, account.SRU, warnings)
         sql.executeInsert('''
             insert into account (
                 company_id,
@@ -573,9 +574,11 @@ final class SieImportExportService {
                 manual_review_required,
                 classification_note,
                 account_subgroup,
+                sru_code,
+                sru_code2,
                 created_at,
                 updated_at
-            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, ?, current_timestamp, current_timestamp)
+            ) values (?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
         ''', [
             companyId,
             accountNumber,
@@ -585,7 +588,9 @@ final class SieImportExportService {
             null,
             classification.manualReviewRequired,
             classification.note,
-            classification.accountSubgroup
+            classification.accountSubgroup,
+            sruCodes.size() > 0 ? sruCodes[0] : null,
+            sruCodes.size() > 1 ? sruCodes[1] : null
         ])
         created++
       } else if (Boolean.TRUE == existing.get('manualReviewRequired')) {
@@ -627,6 +632,26 @@ final class SieImportExportService {
       }
     }
     created
+  }
+
+  private static List<String> resolveImportedSruCodes(String accountNumber, List<String> importedCodes, List<String> warnings) {
+    List<String> valid = []
+    (importedCodes ?: []).each { String code ->
+      String normalized = AccountService.normalizeSruCode(code)
+      if (normalized == null) {
+        return
+      }
+      if (!AccountService.isValidSruCode(normalized)) {
+        warnings << ("Konto ${accountNumber}: ogiltig SRU-kod '${code}' i importfilen hoppades över." as String)
+        return
+      }
+      valid << normalized
+    }
+    if (valid.size() > 2) {
+      warnings << ("Konto ${accountNumber}: fler än två SRU-koder i importfilen (${valid.join(', ')}), endast de första två sparades." as String)
+      valid = valid[0..1]
+    }
+    valid
   }
 
   private static int persistOpeningBalances(Sql sql, long fiscalYearId, List<SiePeriodValue> balances, List<String> warnings) {
