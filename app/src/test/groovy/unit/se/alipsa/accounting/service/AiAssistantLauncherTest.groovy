@@ -178,6 +178,29 @@ class AiAssistantLauncherTest {
   }
 
   @Test
+  void failsEarlyWhenGitBashAdapterHasNoMinttyNextToIt() {
+    Path codex = Path.of('C:\\bin\\codex.exe')
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> path == codex || path == gitBash } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      launcher.launch(AiClient.CODEX, codex, TerminalAdapterKind.GIT_BASH, gitBash, 'token-value')
+    }
+
+    assertTrue(exception.message.contains('mintty.exe'))
+    assertTrue(exception.message.contains(mintty.toString()))
+    assertTrue(written.isEmpty())
+  }
+
+  @Test
   void launchesClaudeWithTheAssistantSessionName() {
     Map<Path, String> writtenScripts = [:]
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
