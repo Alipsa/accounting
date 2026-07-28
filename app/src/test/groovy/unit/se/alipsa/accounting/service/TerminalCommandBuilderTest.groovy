@@ -46,13 +46,15 @@ class TerminalCommandBuilderTest {
   }
 
   @Test
-  void createsGitBashCommandThatOpensTheMsysTerminalDirectly() {
+  void createsGitBashCommandThatOpensMinttyWithATitle() {
     Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
     Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
 
     List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, gitBash, WORKSPACE, shScript)
 
-    assertEquals([gitBash.toString(), '--cd=' + WORKSPACE.toString(), shScript.fileName.toString()], command)
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', WORKSPACE.toString(), '/usr/bin/bash', '--login', '-i', shScript.fileName.toString()], command)
   }
 
   @Test

@@ -35,12 +35,15 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.GIT_BASH:
         rejectUnsafeWindowsPath(workspace)
         rejectUnsafeWindowsPath(script)
-        // git-bash.exe is the Git-for-Windows launcher that opens the MSYS2/Mintty terminal.
-        // It is not a console-subsystem binary, so it creates its own window; we do not need
-        // cmd.exe's "start". Pass only the script filename because git-bash.exe forwards extra
-        // arguments to the inner bash, and a Windows-style absolute path would be mangled by
-        // MSYS2 path conversion. --cd=<workspace> sets the working directory for the session.
-        return [executable.toString(), '--cd=' + workspace, script.fileName.toString()]
+        // git-bash.exe is the user-facing Git-for-Windows launcher, but it is just a small wrapper
+        // that runs usr\bin\mintty.exe internally. Launch mintty directly so we can set a persistent
+        // window title with -T (mintty's --Title) and avoid relying on git-bash.exe to forward
+        // trailing arguments to the inner bash. The script filename is passed rather than a Windows
+        // absolute path because mintty's --dir sets the working directory and MSYS2 path conversion
+        // can mangle backslash-style paths.
+        Path mintty = executable.resolveSibling('usr/bin/mintty.exe')
+        return [mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+            '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +

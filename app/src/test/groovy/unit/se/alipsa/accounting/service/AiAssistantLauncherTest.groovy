@@ -90,7 +90,7 @@ class AiAssistantLauncherTest {
   }
 
   @Test
-  void gitBashGetsAPosixWrapperAndLaunchesThroughGitBashExe() {
+  void gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() {
     List<String> capturedCommand = []
     Map<Path, String> writtenScripts = [:]
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
@@ -102,6 +102,7 @@ class AiAssistantLauncherTest {
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
     launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
         gitBash, 'token-value')
 
@@ -116,7 +117,8 @@ class AiAssistantLauncherTest {
     assertTrue(content.contains("'C:\\bin\\codex.exe'"))
     assertTrue(content.contains('Exit code:'))
     Path workspace = AppPaths.aiWorkspaceDirectory()
-    assertEquals([gitBash.toString(), '--cd=' + workspace.toString(), script.fileName.toString()], capturedCommand)
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()], capturedCommand)
   }
 
   @Test
