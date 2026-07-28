@@ -46,17 +46,13 @@ class TerminalCommandBuilderTest {
   }
 
   @Test
-  void createsGitBashCommandThroughTheSystemCmdForAVisibleWindow() {
-    Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+  void createsGitBashCommandThatOpensTheMsysTerminalDirectly() {
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
     Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
 
-    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, bash, WORKSPACE, shScript)
+    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, gitBash, WORKSPACE, shScript)
 
-    // bash.exe is user-configured and not itself capable of running "start"; the first element
-    // must be the ambient system cmd.exe (varies by machine), everything after it is fixed.
-    assertTrue(command.first().toLowerCase(Locale.ROOT).endsWith('cmd.exe'))
-    assertEquals(['/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME, '/d', WORKSPACE.toString(),
-        bash.toString(), shScript.toString()], command.tail())
+    assertEquals([gitBash.toString(), '--cd=' + WORKSPACE.toString(), shScript.fileName.toString()], command)
   }
 
   @Test

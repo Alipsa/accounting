@@ -90,7 +90,7 @@ class AiAssistantLauncherTest {
   }
 
   @Test
-  void gitBashGetsAPosixWrapperEvenThoughItIsWindowsRouted() {
+  void gitBashGetsAPosixWrapperAndLaunchesThroughGitBashExe() {
     List<String> capturedCommand = []
     Map<Path, String> writtenScripts = [:]
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
@@ -101,8 +101,9 @@ class AiAssistantLauncherTest {
         { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
     launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
-        Path.of('C:\\Program Files\\Git\\bin\\bash.exe'), 'token-value')
+        gitBash, 'token-value')
 
     assertEquals(1, writtenScripts.size())
     Path script = writtenScripts.keySet().first()
@@ -110,13 +111,12 @@ class AiAssistantLauncherTest {
     String content = writtenScripts.values().first()
     assertTrue(content.startsWith('#!/bin/sh'))
     // Not "exec": exec would replace the shell process, leaving nothing to pause on failure with -
-    // and Git Bash needs that pause just as much as Command Prompt, since it also runs inside a
-    // window opened via "start" that closes the instant the script (or what it ran) exits.
+    // and the Git Bash terminal window closes the instant the script (or what it ran) exits.
     assertFalse(content.contains('exec '))
     assertTrue(content.contains("'C:\\bin\\codex.exe'"))
     assertTrue(content.contains('Exit code:'))
-    assertTrue(capturedCommand.last() == script.toString())
-    assertTrue(capturedCommand.contains('C:\\Program Files\\Git\\bin\\bash.exe'))
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertEquals([gitBash.toString(), '--cd=' + workspace.toString(), script.fileName.toString()], capturedCommand)
   }
 
   @Test

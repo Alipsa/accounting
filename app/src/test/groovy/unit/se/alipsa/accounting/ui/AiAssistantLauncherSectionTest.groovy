@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.AfterEach
@@ -79,6 +80,24 @@ class AiAssistantLauncherSectionTest {
 
     assertEquals(1, errors.size())
     assertTrue(errors.first().contains('Could not find'))
+  }
+
+  // The enum constant name (e.g. GIT_BASH) is not an executable; the error must name the binary
+  // the user needs to install (bash.exe) so the message is actionable.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void terminalDetectionFailureForGitBashNamesTheBinaryNotTheEnumConstant() {
+    List<String> errors = []
+    ErrorDisplay errorDisplay = { String title, String message -> errors << message } as ErrorDisplay
+    AiAssistantLauncherSection section = newSection(errorDisplay)
+
+    section.terminalKindCombo.selectedItem = TerminalAdapterKind.GIT_BASH
+    section.terminalPathField.text = ''
+    section.detectTerminalButton.doClick()
+
+    assertEquals(1, errors.size())
+    assertTrue(errors.first().contains('git-bash.exe'))
+    assertFalse(errors.first().contains('GIT_BASH'))
   }
 
   @Test

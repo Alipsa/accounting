@@ -35,12 +35,12 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.GIT_BASH:
         rejectUnsafeWindowsPath(workspace)
         rejectUnsafeWindowsPath(script)
-        // bash.exe is a plain console-subsystem executable just like cmd.exe, so it has the same
-        // no-visible-window problem - route it through "start" too. "start" is a cmd.exe builtin,
-        // so the ambient system cmd.exe (not the user-configured bash.exe) is what ProcessBuilder
-        // actually launches; it just hands off to bash.exe immediately.
-        return [systemCommandInterpreterPath(), '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
-            '/d', workspace.toString(), executable.toString(), script.toString()]
+        // git-bash.exe is the Git-for-Windows launcher that opens the MSYS2/Mintty terminal.
+        // It is not a console-subsystem binary, so it creates its own window; we do not need
+        // cmd.exe's "start". Pass only the script filename because git-bash.exe forwards extra
+        // arguments to the inner bash, and a Windows-style absolute path would be mangled by
+        // MSYS2 path conversion. --cd=<workspace> sets the working directory for the session.
+        return [executable.toString(), '--cd=' + workspace, script.fileName.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +
@@ -51,13 +51,6 @@ final class TerminalCommandBuilder {
   }
 
   static void rejectUnsafeWorkspacePathForWindows(Path workspace) { rejectUnsafeWindowsPath(workspace) }
-
-  private static String systemCommandInterpreterPath() {
-    String comSpec = System.getenv('ComSpec')
-    if (comSpec?.trim()) { return comSpec }
-    String systemRoot = System.getenv('SystemRoot') ?: 'C:\\Windows'
-    "${systemRoot}\\System32\\cmd.exe".toString()
-  }
 
   private static void rejectUnsafeWindowsPath(Path path) {
     ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->

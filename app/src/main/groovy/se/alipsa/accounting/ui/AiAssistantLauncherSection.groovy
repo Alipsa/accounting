@@ -163,7 +163,7 @@ final class AiAssistantLauncherSection {
       preferences.terminalAdapterKind = kind
       preferences.setTerminalPath(kind, found.toString())
     } else {
-      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.name()))
+      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.defaultBinaryName))
     }
   }
 

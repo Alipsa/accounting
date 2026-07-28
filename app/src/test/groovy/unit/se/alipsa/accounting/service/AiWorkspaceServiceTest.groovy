@@ -245,10 +245,22 @@ class AiWorkspaceServiceTest {
   }
 
   @Test
-  void detectsGitBashFromPathWhenExplicitlyTargeted() {
-    Path gitBash = tempDir.resolve('bin').resolve('bash.exe').toAbsolutePath().normalize()
+  void detectsGitBashFromPathWhenItIsOnPath() {
+    Path gitBash = tempDir.resolve('bin').resolve('git-bash.exe').toAbsolutePath().normalize()
     AiWorkspaceService service = service(
         ['PATH': tempDir.resolve('bin').toString()], { Path path -> path == gitBash } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  @Test
+  void detectsGitBashFromBashExeLocationWhenGitBashExeIsNotOnPath() {
+    Path bash = tempDir.resolve('bin').resolve('bash.exe').toAbsolutePath().normalize()
+    Path gitBash = tempDir.resolve('git-bash.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString()],
+        { Path path -> path == bash || path == gitBash } as ExecutableProbe,
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })

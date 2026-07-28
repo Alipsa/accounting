@@ -143,6 +143,9 @@ final class AiWorkspaceService {
     if (kind == TerminalAdapterKind.WINDOWS_TERMINAL) {
       return detectWindowsTerminal()
     }
+    if (kind == TerminalAdapterKind.GIT_BASH) {
+      return detectGitBash()
+    }
     pathBinaryResolver.resolve(kind.defaultBinaryName)
   }
 
@@ -154,6 +157,24 @@ final class AiWorkspaceService {
       Path alias = localAppData.resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe')
       if (executableProbe.isExecutableFile(alias)) {
         return alias.toAbsolutePath().normalize()
+      }
+    }
+    null
+  }
+
+  private Path detectGitBash() {
+    Path fromPath = pathBinaryResolver.resolve(TerminalAdapterKind.GIT_BASH.defaultBinaryName)
+    if (fromPath != null) { return fromPath }
+    // git-bash.exe itself is usually not on PATH, but bash.exe is. Derive the Git install root
+    // from bash.exe's location (C:\Program Files\Git\bin\bash.exe -> C:\Program Files\Git).
+    Path bash = pathBinaryResolver.resolve('bash.exe')
+    if (bash != null) {
+      Path gitRoot = bash.parent?.parent
+      if (gitRoot != null) {
+        Path candidate = gitRoot.resolve(TerminalAdapterKind.GIT_BASH.defaultBinaryName)
+        if (executableProbe.isExecutableFile(candidate)) {
+          return candidate.toAbsolutePath().normalize()
+        }
       }
     }
     null
