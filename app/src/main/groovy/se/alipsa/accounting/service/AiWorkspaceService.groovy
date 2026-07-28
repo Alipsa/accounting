@@ -120,33 +120,42 @@ final class AiWorkspaceService {
   Tuple2<TerminalAdapterKind, Path> detectTerminalAdapter() {
     List<TerminalAdapterKind> kinds = TerminalAdapterKind.forCurrentOs()
     if (kinds.contains(TerminalAdapterKind.WINDOWS_TERMINAL)) {
-      Tuple2<TerminalAdapterKind, Path> terminal = detectWindowsTerminal()
-      if (terminal != null) { return terminal }
-      return detectWindowsCommandPrompt()
+      Path wt = detectTerminalPath(TerminalAdapterKind.WINDOWS_TERMINAL)
+      if (wt != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.WINDOWS_TERMINAL, wt) }
+      Path cmd = detectTerminalPath(TerminalAdapterKind.COMMAND_PROMPT)
+      if (cmd != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.COMMAND_PROMPT, cmd) }
+      return null
     }
     for (TerminalAdapterKind kind : kinds) {
-      Path resolved = pathBinaryResolver.resolve(kind.defaultBinaryName)
+      Path resolved = detectTerminalPath(kind)
       if (resolved != null) { return new Tuple2<TerminalAdapterKind, Path>(kind, resolved) }
     }
     null
   }
 
-  private Tuple2<TerminalAdapterKind, Path> detectWindowsTerminal() {
+  /**
+   * Looks up the path for one specific terminal adapter kind, regardless of what else is
+   * available. Used when the caller (e.g. an explicit "Detect" click, or restoring the field for
+   * whichever kind is currently selected) already knows which kind it wants, as opposed to
+   * {@link #detectTerminalAdapter()}'s "find whatever is best available" search.
+   */
+  Path detectTerminalPath(TerminalAdapterKind kind) {
+    if (kind == TerminalAdapterKind.WINDOWS_TERMINAL) {
+      return detectWindowsTerminal()
+    }
+    pathBinaryResolver.resolve(kind.defaultBinaryName)
+  }
+
+  private Path detectWindowsTerminal() {
     Path fromPath = pathBinaryResolver.resolve(TerminalAdapterKind.WINDOWS_TERMINAL.defaultBinaryName)
-    if (fromPath != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.WINDOWS_TERMINAL, fromPath) }
+    if (fromPath != null) { return fromPath }
     Path localAppData = localAppDataPath()
     if (localAppData != null) {
       Path alias = localAppData.resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe')
       if (executableProbe.isExecutableFile(alias)) {
-        return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.WINDOWS_TERMINAL, alias.toAbsolutePath().normalize())
+        return alias.toAbsolutePath().normalize()
       }
     }
-    null
-  }
-
-  private Tuple2<TerminalAdapterKind, Path> detectWindowsCommandPrompt() {
-    Path resolved = pathBinaryResolver.resolve(TerminalAdapterKind.COMMAND_PROMPT.defaultBinaryName)
-    if (resolved != null) { return new Tuple2<TerminalAdapterKind, Path>(TerminalAdapterKind.COMMAND_PROMPT, resolved) }
     null
   }
 

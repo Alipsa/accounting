@@ -13,8 +13,13 @@ final class AiClientConfigWriter {
   static String configContent(AiClient client, String endpoint, String token) {
     switch (client) {
       case AiClient.CLAUDE:
+        // Claude pre-approves read-only tools through .claude/settings.local.json instead - see
+        // AiWorkspaceMcpSettings - so its own .mcp.json stays free of a client-specific extension.
+        return bearerJson(endpoint, token, null)
       case AiClient.KIMI:
-        return bearerJson(endpoint, token)
+        // Kimi has no separate settings file for this; its own MCP config format supports an
+        // inline "autoApprove" list of tool names on the server entry, so use that instead.
+        return bearerJson(endpoint, token, AiWorkspaceMcpSettings.READ_ONLY_TOOLS)
       case AiClient.CODEX:
         return """[mcp_servers.accounting]
 url = "${endpoint}"
@@ -32,8 +37,10 @@ headers = { Authorization = "Bearer ${token}" }
     }
   }
 
-  private static String bearerJson(String endpoint, String token) {
-    JsonOutput.toJson([mcpServers: [accounting: [type: 'http', url: endpoint,
-        headers: [Authorization: "Bearer ${token}".toString()]]]]) + '\n'
+  private static String bearerJson(String endpoint, String token, List<String> autoApprove) {
+    Map<String, Object> server = [type: 'http', url: endpoint,
+        headers: [Authorization: "Bearer ${token}".toString()]]
+    if (autoApprove) { server.autoApprove = autoApprove }
+    JsonOutput.toJson([mcpServers: [accounting: server]]) + '\n'
   }
 }

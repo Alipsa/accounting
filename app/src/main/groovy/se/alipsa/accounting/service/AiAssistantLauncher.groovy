@@ -47,13 +47,15 @@ final class AiAssistantLauncher {
     AppPaths.ensureAiWorkspaceHome()
     Path workspace = AppPaths.aiWorkspaceDirectory()
     permissions.ensureDirectory(workspace, workspace)
-    boolean windows = isWindowsAdapter(adapterKind)
-    Path script = AiWorkspacePaths.wrapperScript(workspace, client, UUID.randomUUID().toString(), windows)
+    // Git Bash is Windows-routed (goes through cmd.exe's "start", same as Command Prompt) but
+    // still needs a POSIX wrapper script, not a batch file, since bash is what runs it.
+    boolean windowsBatchScript = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL || adapterKind == TerminalAdapterKind.COMMAND_PROMPT
+    Path script = AiWorkspacePaths.wrapperScript(workspace, client, UUID.randomUUID().toString(), windowsBatchScript)
     List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)
     Map<String, String> env = [:]
     if (client == AiClient.CODEX) { env.ACCOUNTING_MCP_TOKEN = token }
     List<String> arguments = client == AiClient.CLAUDE ? ['--name', ASSISTANT_SESSION_NAME] : []
-    String content = windows ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env, arguments) :
+    String content = windowsBatchScript ? LaunchWrapperScript.windowsContent(workspace, binaryPath, env, arguments) :
         LaunchWrapperScript.unixContent(workspace, binaryPath, env, arguments)
     secretFileWriter.write(workspace, script, content.getBytes('UTF-8'), SecretFileKind.EXECUTABLE)
     log.info("Launching ${client} via ${adapterKind}: ${command} (workspace=${workspace})")
@@ -78,6 +80,6 @@ final class AiAssistantLauncher {
   }
 
   private static boolean isWindowsAdapter(TerminalAdapterKind kind) {
-    kind == TerminalAdapterKind.WINDOWS_TERMINAL || kind == TerminalAdapterKind.COMMAND_PROMPT
+    kind == TerminalAdapterKind.WINDOWS_TERMINAL || kind == TerminalAdapterKind.COMMAND_PROMPT || kind == TerminalAdapterKind.GIT_BASH
   }
 }

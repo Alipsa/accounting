@@ -89,6 +89,31 @@ class AiAssistantLauncherTest {
   }
 
   @Test
+  void gitBashGetsAPosixWrapperEvenThoughItIsWindowsRouted() {
+    List<String> capturedCommand = []
+    Map<Path, String> writtenScripts = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      writtenScripts[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
+        Path.of('C:\\Program Files\\Git\\bin\\bash.exe'), 'token-value')
+
+    assertEquals(1, writtenScripts.size())
+    Path script = writtenScripts.keySet().first()
+    assertTrue(script.toString().endsWith('.sh'))
+    String content = writtenScripts.values().first()
+    assertTrue(content.startsWith('#!/bin/sh'))
+    assertTrue(content.contains("exec '"))
+    assertTrue(capturedCommand.last() == script.toString())
+    assertTrue(capturedCommand.contains('C:\\Program Files\\Git\\bin\\bash.exe'))
+  }
+
+  @Test
   void failsPreflightBeforeWritingWrapperWhenWorkspacePathIsUnsafe() {
     System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work&space').toString())
     List<Path> written = []
@@ -122,6 +147,24 @@ class AiAssistantLauncherTest {
 
     assertThrows(IllegalArgumentException) {
       launcher.validatePreflight(TerminalAdapterKind.WINDOWS_TERMINAL)
+    }
+    assertTrue(written.isEmpty())
+  }
+
+  @Test
+  void failsPreflightBeforeWritingWrapperWhenGitBashWorkspacePathIsUnsafe() {
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work^space').toString())
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.validatePreflight(TerminalAdapterKind.GIT_BASH)
     }
     assertTrue(written.isEmpty())
   }

@@ -91,6 +91,9 @@ final class AiAssistantLauncherSection {
   @PackageScope
   JTextField getTerminalPathField() { terminalPath }
 
+  @PackageScope
+  JComboBox<TerminalAdapterKind> getTerminalKindCombo() { terminalKind }
+
   void setMcpAvailable(boolean available) { mcpAvailable = available; updateLaunchButtonState() }
 
   void applyLocale() {
@@ -121,10 +124,14 @@ final class AiAssistantLauncherSection {
     TerminalAdapterKind stored = preferences.terminalAdapterKind
     if (stored != null && TerminalAdapterKind.forCurrentOs().contains(stored)) { terminalKind.selectedItem = stored }
     terminalPath.name = 'aiLauncher.terminalPath'
-    terminalPath.text = preferences.terminalPath ?: ''
+    terminalPath.text = currentTerminalPathPreference() ?: ''
+    // Each adapter kind has its own binary (cmd.exe vs. wt.exe, ...): switching kinds must not
+    // silently keep showing - and launching through - the previous kind's path.
+    terminalKind.addActionListener { onTerminalKindChanged() }
     detectTerminal.name = 'aiLauncher.detectTerminal'
     detectTerminal.addActionListener {
-      tasks.run({ workspaceService.detectTerminalAdapter() }, this.&onTerminalDetected, this.&showDetectionError)
+      TerminalAdapterKind selected = terminalKind.selectedItem as TerminalAdapterKind
+      tasks.run({ workspaceService.detectTerminalPath(selected) }, { Path found -> onTerminalPathDetected(selected, found) }, this.&showDetectionError)
     }
     JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); panel.add(terminalRow)
     launchButton.addActionListener { onLaunch() }
@@ -141,14 +148,22 @@ final class AiAssistantLauncherSection {
     }
   }
 
-  private void onTerminalDetected(Tuple2<TerminalAdapterKind, Path> found) {
+  private void onTerminalKindChanged() {
+    terminalPath.text = currentTerminalPathPreference() ?: ''
+  }
+
+  private String currentTerminalPathPreference() {
+    TerminalAdapterKind selected = terminalKind.selectedItem as TerminalAdapterKind
+    selected != null ? preferences.getTerminalPath(selected) : null
+  }
+
+  private void onTerminalPathDetected(TerminalAdapterKind kind, Path found) {
     if (found != null) {
-      terminalKind.selectedItem = found.v1
-      terminalPath.text = found.v2.toString()
-      preferences.terminalAdapterKind = found.v1
-      preferences.terminalPath = found.v2.toString()
+      terminalPath.text = found.toString()
+      preferences.terminalAdapterKind = kind
+      preferences.setTerminalPath(kind, found.toString())
     } else {
-      showError(I18n.instance.format('aiLauncher.detection.notFound', I18n.instance.getString('aiLauncher.label.terminalAdapter')))
+      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.name()))
     }
   }
 
@@ -162,7 +177,12 @@ final class AiAssistantLauncherSection {
     }, { Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>> found ->
       found.v1.each { AiClient value, Path path -> if (!preferences.getAiBinaryPath(value)?.trim()) { preferences.setAiBinaryPath(value, path.toString()) } }
       updateSelectedClientFields()
-      if (found.v2 != null && !terminalPath.text?.trim()) { terminalKind.selectedItem = found.v2.v1; terminalPath.text = found.v2.v2.toString(); preferences.terminalAdapterKind = found.v2.v1; preferences.terminalPath = found.v2.v2.toString() }
+      if (found.v2 != null && !terminalPath.text?.trim()) {
+        terminalKind.selectedItem = found.v2.v1
+        terminalPath.text = found.v2.v2.toString()
+        preferences.terminalAdapterKind = found.v2.v1
+        preferences.setTerminalPath(found.v2.v1, found.v2.v2.toString())
+      }
     }, this.&showDetectionError)
   }
 
@@ -202,7 +222,7 @@ final class AiAssistantLauncherSection {
     if (!workspaceService.isValidExecutable(binaryPath)) { return I18n.instance.format('aiLauncher.error.binaryNotExecutable', displayName(selected), binary) }
     Path terminalExecutable = Paths.get(terminal)
     if (!workspaceService.isValidExecutable(terminalExecutable)) { return I18n.instance.format('aiLauncher.error.terminalNotExecutable', terminal) }
-    preferences.setAiBinaryPath(selected, binary); preferences.terminalAdapterKind = adapter; preferences.terminalPath = terminal
+    preferences.setAiBinaryPath(selected, binary); preferences.terminalAdapterKind = adapter; preferences.setTerminalPath(adapter, terminal)
     workspaceService.refreshClientFiles(selected, LoopbackMcpServer.ENDPOINT, token)
     launcher.launch(selected, binaryPath, adapter, terminalExecutable, token)
     preferences.aiClient = selected

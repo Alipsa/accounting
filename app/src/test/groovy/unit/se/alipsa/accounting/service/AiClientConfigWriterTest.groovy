@@ -28,4 +28,18 @@ class AiClientConfigWriterTest {
     assertTrue(vibe.contains('[[mcp_servers]]'))
     assertTrue(vibe.contains('headers = { Authorization = "Bearer test-token" }'))
   }
+
+  // Kimi has no separate settings file like Claude's .claude/settings.local.json, so read-only
+  // tools must be pre-approved inline in its own MCP config via "autoApprove" - otherwise every
+  // read prompts for approval, unlike Claude.
+  @Test
+  void kimiConfigAutoApprovesReadOnlyToolsButClaudesDoesNot() {
+    String kimi = AiClientConfigWriter.configContent(AiClient.KIMI, ENDPOINT, TOKEN)
+    String claude = AiClientConfigWriter.configContent(AiClient.CLAUDE, ENDPOINT, TOKEN)
+
+    assertTrue(kimi.contains('"autoApprove"'))
+    AiWorkspaceMcpSettings.READ_ONLY_TOOLS.each { String tool -> assertTrue(kimi.contains("\"${tool}\"")) }
+    assertFalse(kimi.contains('mcp__accounting__'))
+    assertFalse(claude.contains('"autoApprove"'))
+  }
 }

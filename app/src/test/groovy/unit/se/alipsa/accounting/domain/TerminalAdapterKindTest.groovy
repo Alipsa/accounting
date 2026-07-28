@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test
 class TerminalAdapterKindTest {
 
   @Test
-  void windowsAdaptersIncludeTerminalAndCommandPrompt() {
-    assertEquals([TerminalAdapterKind.WINDOWS_TERMINAL, TerminalAdapterKind.COMMAND_PROMPT],
+  void windowsAdaptersIncludeTerminalCommandPromptAndGitBash() {
+    assertEquals([TerminalAdapterKind.WINDOWS_TERMINAL, TerminalAdapterKind.COMMAND_PROMPT, TerminalAdapterKind.GIT_BASH],
         TerminalAdapterKind.forOsName('Windows 11'))
   }
 

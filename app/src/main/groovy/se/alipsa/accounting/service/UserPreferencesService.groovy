@@ -31,7 +31,11 @@ final class UserPreferencesService {
   private static final String AI_BINARY_KEY_PREFIX = 'ai.launcher.binary.'
   private static final String AI_CLIENT_KEY = 'ai.launcher.client'
   private static final String AI_TERMINAL_ADAPTER_KIND_KEY = 'ai.launcher.terminalAdapterKind'
-  private static final String AI_TERMINAL_PATH_KEY = 'ai.launcher.terminalPath'
+  private static final String AI_TERMINAL_PATH_KEY_PREFIX = 'ai.launcher.terminalPath.'
+  // Read-only: terminal paths used to be stored under one flat key shared by every adapter kind,
+  // which silently reused e.g. a Windows Terminal path after switching to Command Prompt. Kept
+  // only so an existing install's last-used path survives the migration to per-kind storage.
+  private static final String LEGACY_AI_TERMINAL_PATH_KEY = 'ai.launcher.terminalPath'
 
   private final Preferences preferences
 
@@ -222,9 +226,16 @@ final class UserPreferencesService {
     if (kind == null) { preferences.remove(AI_TERMINAL_ADAPTER_KIND_KEY) } else { preferences.put(AI_TERMINAL_ADAPTER_KIND_KEY, kind.name()) }
   }
 
-  String getTerminalPath() { preferences.get(AI_TERMINAL_PATH_KEY, null) }
+  String getTerminalPath(TerminalAdapterKind kind) {
+    String path = preferences.get(AI_TERMINAL_PATH_KEY_PREFIX + kind.name(), null)
+    if (path != null) { return path }
+    // Migrate a pre-existing single-path installation: only honor it for the kind that was
+    // actually selected when it was saved, never as a guess for some other kind.
+    kind == getTerminalAdapterKind() ? preferences.get(LEGACY_AI_TERMINAL_PATH_KEY, null) : null
+  }
 
-  void setTerminalPath(String path) {
-    if (path?.trim()) { preferences.put(AI_TERMINAL_PATH_KEY, path) } else { preferences.remove(AI_TERMINAL_PATH_KEY) }
+  void setTerminalPath(TerminalAdapterKind kind, String path) {
+    String key = AI_TERMINAL_PATH_KEY_PREFIX + kind.name()
+    if (path?.trim()) { preferences.put(key, path) } else { preferences.remove(key) }
   }
 }

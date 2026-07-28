@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertThrows
+import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
 
@@ -42,6 +43,27 @@ class TerminalCommandBuilderTest {
     assertEquals([EXECUTABLE.toString(), '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
         '/d', WORKSPACE.toString(), EXECUTABLE.toString(), '/v:off', '/c', cmdScript.toString()],
         TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, cmdScript))
+  }
+
+  @Test
+  void createsGitBashCommandThroughTheSystemCmdForAVisibleWindow() {
+    Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+    Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
+
+    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, bash, WORKSPACE, shScript)
+
+    // bash.exe is user-configured and not itself capable of running "start"; the first element
+    // must be the ambient system cmd.exe (varies by machine), everything after it is fixed.
+    assertTrue(command.first().toLowerCase(Locale.ROOT).endsWith('cmd.exe'))
+    assertEquals(['/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME, '/d', WORKSPACE.toString(),
+        bash.toString(), shScript.toString()], command.tail())
+  }
+
+  @Test
+  void rejectsEveryUnsafeCharacterForGitBash() {
+    ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->
+      assertRejectsUnsafeCharacter(TerminalAdapterKind.GIT_BASH, unsafe)
+    }
   }
 
   @Test
