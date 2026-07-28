@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AiClient
@@ -89,7 +91,12 @@ class AiAssistantLauncherTest {
         capturedCommand)
   }
 
+  // Windows-only: java.nio.file.Path only splits on backslash under the Windows filesystem
+  // provider, which minttyForGitBash() relies on to find mintty.exe relative to git-bash.exe/bash.exe.
+  // On Linux, Path.of('C:\...') is a single opaque path segment, so the lookup produces a
+  // different (wrong) result - not a real bug, just not testable outside a real Windows Path.
   @Test
+  @EnabledOnOs(OS.WINDOWS)
   void gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() {
     List<String> capturedCommand = []
     Map<Path, String> writtenScripts = [:]
@@ -177,7 +184,9 @@ class AiAssistantLauncherTest {
     assertTrue(written.isEmpty())
   }
 
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
   @Test
+  @EnabledOnOs(OS.WINDOWS)
   void gitBashLaunchesFromBashExeAndFindsMinttyTwoLevelsUp() {
     List<String> capturedCommand = []
     Map<Path, String> writtenScripts = [:]
@@ -202,7 +211,9 @@ class AiAssistantLauncherTest {
         '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()], capturedCommand)
   }
 
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
   @Test
+  @EnabledOnOs(OS.WINDOWS)
   void failsEarlyWhenGitBashAdapterHasNoMinttyNextToIt() {
     Path codex = Path.of('C:\\bin\\codex.exe')
     Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
@@ -225,7 +236,9 @@ class AiAssistantLauncherTest {
     assertTrue(written.isEmpty())
   }
 
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
   @Test
+  @EnabledOnOs(OS.WINDOWS)
   void failsEarlyWhenBashExeAdapterHasNoMinttyInGitRoot() {
     Path codex = Path.of('C:\\bin\\codex.exe')
     Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
