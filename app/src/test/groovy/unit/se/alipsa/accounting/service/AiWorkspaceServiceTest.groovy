@@ -245,6 +245,16 @@ class AiWorkspaceServiceTest {
   }
 
   @Test
+  void detectsGitBashFromPathWhenExplicitlyTargeted() {
+    Path gitBash = tempDir.resolve('bin').resolve('bash.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString()], { Path path -> path == gitBash } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  @Test
   void returnsNullWhenNoWindowsTerminalAdapterOrCommandPromptResolves() {
     AiWorkspaceService service = service(
         ['PATH': tempDir.resolve('bin').toString(), 'LOCALAPPDATA': tempDir.resolve('appdata').toString()],
@@ -254,7 +264,7 @@ class AiWorkspaceServiceTest {
     assertEquals(null, withWindowsOs { service.detectTerminalAdapter() })
   }
 
-  private static Tuple2 withWindowsOs(Closure<Tuple2> action) {
+  private static <T> T withWindowsOs(Closure<T> action) {
     String previous = System.getProperty('os.name')
     System.setProperty('os.name', 'Windows 10')
     try {

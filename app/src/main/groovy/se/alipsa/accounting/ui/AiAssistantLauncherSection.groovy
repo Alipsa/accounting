@@ -13,6 +13,8 @@ import se.alipsa.accounting.support.I18n
 import java.awt.FlowLayout
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Level
+import java.util.logging.Logger
 
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
@@ -26,6 +28,8 @@ import javax.swing.border.TitledBorder
 
 /** Settings UI for launching an AI CLI configured for the local MCP server. */
 final class AiAssistantLauncherSection {
+
+  private static final Logger log = Logger.getLogger(AiAssistantLauncherSection.name)
 
   private final UserPreferencesService preferences
   private final AiWorkspaceService workspaceService
@@ -87,6 +91,9 @@ final class AiAssistantLauncherSection {
   @PackageScope
   JTextField getTerminalPathField() { terminalPath }
 
+  @PackageScope
+  JComboBox<TerminalAdapterKind> getTerminalKindCombo() { terminalKind }
+
   void setMcpAvailable(boolean available) { mcpAvailable = available; updateLaunchButtonState() }
 
   void applyLocale() {
@@ -117,10 +124,14 @@ final class AiAssistantLauncherSection {
     TerminalAdapterKind stored = preferences.terminalAdapterKind
     if (stored != null && TerminalAdapterKind.forCurrentOs().contains(stored)) { terminalKind.selectedItem = stored }
     terminalPath.name = 'aiLauncher.terminalPath'
-    terminalPath.text = preferences.terminalPath ?: ''
+    terminalPath.text = currentTerminalPathPreference() ?: ''
+    // Each adapter kind has its own binary (cmd.exe vs. wt.exe, ...): switching kinds must not
+    // silently keep showing - and launching through - the previous kind's path.
+    terminalKind.addActionListener { onTerminalKindChanged() }
     detectTerminal.name = 'aiLauncher.detectTerminal'
     detectTerminal.addActionListener {
-      tasks.run({ workspaceService.detectTerminalAdapter() }, this.&onTerminalDetected, this.&showDetectionError)
+      TerminalAdapterKind selected = terminalKind.selectedItem as TerminalAdapterKind
+      tasks.run({ workspaceService.detectTerminalPath(selected) }, { Path found -> onTerminalPathDetected(selected, found) }, this.&showDetectionError)
     }
     JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); panel.add(terminalRow)
     launchButton.addActionListener { onLaunch() }
@@ -137,14 +148,22 @@ final class AiAssistantLauncherSection {
     }
   }
 
-  private void onTerminalDetected(Tuple2<TerminalAdapterKind, Path> found) {
+  private void onTerminalKindChanged() {
+    terminalPath.text = currentTerminalPathPreference() ?: ''
+  }
+
+  private String currentTerminalPathPreference() {
+    TerminalAdapterKind selected = terminalKind.selectedItem as TerminalAdapterKind
+    selected != null ? preferences.getTerminalPath(selected) : null
+  }
+
+  private void onTerminalPathDetected(TerminalAdapterKind kind, Path found) {
     if (found != null) {
-      terminalKind.selectedItem = found.v1
-      terminalPath.text = found.v2.toString()
-      preferences.terminalAdapterKind = found.v1
-      preferences.terminalPath = found.v2.toString()
+      terminalPath.text = found.toString()
+      preferences.terminalAdapterKind = kind
+      preferences.setTerminalPath(kind, found.toString())
     } else {
-      showError(I18n.instance.format('aiLauncher.detection.notFound', I18n.instance.getString('aiLauncher.label.terminalAdapter')))
+      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.name()))
     }
   }
 
@@ -158,7 +177,12 @@ final class AiAssistantLauncherSection {
     }, { Tuple2<Map<AiClient, Path>, Tuple2<TerminalAdapterKind, Path>> found ->
       found.v1.each { AiClient value, Path path -> if (!preferences.getAiBinaryPath(value)?.trim()) { preferences.setAiBinaryPath(value, path.toString()) } }
       updateSelectedClientFields()
-      if (found.v2 != null && !terminalPath.text?.trim()) { terminalKind.selectedItem = found.v2.v1; terminalPath.text = found.v2.v2.toString(); preferences.terminalAdapterKind = found.v2.v1; preferences.terminalPath = found.v2.v2.toString() }
+      if (found.v2 != null && !terminalPath.text?.trim()) {
+        terminalKind.selectedItem = found.v2.v1
+        terminalPath.text = found.v2.v2.toString()
+        preferences.terminalAdapterKind = found.v2.v1
+        preferences.setTerminalPath(found.v2.v1, found.v2.v2.toString())
+      }
     }, this.&showDetectionError)
   }
 
@@ -168,18 +192,27 @@ final class AiAssistantLauncherSection {
   }
 
   private void onLaunch() {
-    if (!mcpAvailable) { showError(I18n.instance.getString('aiLauncher.error.mcpNotRunning')); return }
-    AiClient selected = client.selectedItem as AiClient
-    String binary = binaryField.text?.trim()
-    TerminalAdapterKind adapter = terminalKind.selectedItem as TerminalAdapterKind
-    String terminal = terminalPath.text?.trim()
-    if (!binary) { showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(selected))); return }
-    if (adapter == null || !terminal) { showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing')); return }
-    launchButton.enabled = false
-    String token = preferences.ensureMcpToken()
-    tasks.run({ doLaunch(selected, binary, adapter, terminal, token) }, { String error ->
-      updateLaunchButtonState(); if (error != null) { showError(error) }
-    }) { Exception exception -> updateLaunchButtonState(); showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName)) }
+    try {
+      if (!mcpAvailable) { showError(I18n.instance.getString('aiLauncher.error.mcpNotRunning')); return }
+      AiClient selected = client.selectedItem as AiClient
+      String binary = binaryField.text?.trim()
+      TerminalAdapterKind adapter = terminalKind.selectedItem as TerminalAdapterKind
+      String terminal = terminalPath.text?.trim()
+      if (!binary) { showError(I18n.instance.format('aiLauncher.error.binaryMissing', displayName(selected))); return }
+      if (adapter == null || !terminal) { showError(I18n.instance.getString('aiLauncher.error.terminalAdapterMissing')); return }
+      launchButton.enabled = false
+      String token = preferences.ensureMcpToken()
+      tasks.run({ doLaunch(selected, binary, adapter, terminal, token) }, { String error ->
+        updateLaunchButtonState(); if (error != null) { showError(error) }
+      }) { Exception exception -> updateLaunchButtonState(); showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName)) }
+    } catch (Exception exception) {
+      // Anything thrown here runs synchronously on the EDT, before the background task even
+      // starts. Left uncaught, this vanishes silently on a packaged Windows build with no
+      // console attached - the click just looks like it did nothing.
+      log.log(Level.WARNING, 'Unexpected failure while starting the AI assistant launch.', exception)
+      updateLaunchButtonState()
+      showError(I18n.instance.format('aiLauncher.error.launchFailed', exception.message ?: exception.class.simpleName))
+    }
   }
 
   @PackageScope
@@ -189,7 +222,7 @@ final class AiAssistantLauncherSection {
     if (!workspaceService.isValidExecutable(binaryPath)) { return I18n.instance.format('aiLauncher.error.binaryNotExecutable', displayName(selected), binary) }
     Path terminalExecutable = Paths.get(terminal)
     if (!workspaceService.isValidExecutable(terminalExecutable)) { return I18n.instance.format('aiLauncher.error.terminalNotExecutable', terminal) }
-    preferences.setAiBinaryPath(selected, binary); preferences.terminalAdapterKind = adapter; preferences.terminalPath = terminal
+    preferences.setAiBinaryPath(selected, binary); preferences.terminalAdapterKind = adapter; preferences.setTerminalPath(adapter, terminal)
     workspaceService.refreshClientFiles(selected, LoopbackMcpServer.ENDPOINT, token)
     launcher.launch(selected, binaryPath, adapter, terminalExecutable, token)
     preferences.aiClient = selected

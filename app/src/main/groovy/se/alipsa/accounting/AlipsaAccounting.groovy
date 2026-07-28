@@ -8,6 +8,7 @@ import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.DataLocationResolver
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
+import se.alipsa.accounting.support.SwingExceptionHandler
 import se.alipsa.accounting.ui.DataLocationDialog
 import se.alipsa.accounting.ui.MainFrame
 import se.alipsa.accounting.ui.StartupSplash
@@ -38,6 +39,7 @@ final class AlipsaAccounting {
   }
 
   static void main(String[] args) {
+    SwingExceptionHandler.install()
     configureProcessLaunchMechanism()
     configureLinuxWindowClass()
     StartupOptions options = StartupOptions.parse(args ?: new String[0])

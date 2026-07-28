@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -83,7 +84,39 @@ class AiAssistantLauncherTest {
     assertEquals(1, writtenScripts.size())
     Path script = writtenScripts.keySet().first()
     assertTrue(script.toString().endsWith('.cmd'))
-    assertEquals(['C:\\Windows\\System32\\cmd.exe', '/v:off', '/c', script.toString()], capturedCommand)
+    assertEquals(['C:\\Windows\\System32\\cmd.exe', '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '/d', AppPaths.aiWorkspaceDirectory().toString(), 'C:\\Windows\\System32\\cmd.exe', '/v:off', '/c', script.toString()],
+        capturedCommand)
+  }
+
+  @Test
+  void gitBashGetsAPosixWrapperEvenThoughItIsWindowsRouted() {
+    List<String> capturedCommand = []
+    Map<Path, String> writtenScripts = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      writtenScripts[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
+        Path.of('C:\\Program Files\\Git\\bin\\bash.exe'), 'token-value')
+
+    assertEquals(1, writtenScripts.size())
+    Path script = writtenScripts.keySet().first()
+    assertTrue(script.toString().endsWith('.sh'))
+    String content = writtenScripts.values().first()
+    assertTrue(content.startsWith('#!/bin/sh'))
+    // Not "exec": exec would replace the shell process, leaving nothing to pause on failure with -
+    // and Git Bash needs that pause just as much as Command Prompt, since it also runs inside a
+    // window opened via "start" that closes the instant the script (or what it ran) exits.
+    assertFalse(content.contains('exec '))
+    assertTrue(content.contains("'C:\\bin\\codex.exe'"))
+    assertTrue(content.contains('Exit code:'))
+    assertTrue(capturedCommand.last() == script.toString())
+    assertTrue(capturedCommand.contains('C:\\Program Files\\Git\\bin\\bash.exe'))
   }
 
   @Test
@@ -106,7 +139,9 @@ class AiAssistantLauncherTest {
 
   @Test
   void failsPreflightBeforeWritingWrapperWhenWindowsTerminalWorkspacePathIsUnsafe() {
-    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work|space').toString())
+    // '^' rather than '|': both are unsafe Windows command characters, but '|' is illegal in an
+    // actual Windows path, so tempDir.resolve() itself would throw before reaching the code under test.
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work^space').toString())
     List<Path> written = []
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
       written << target
@@ -118,6 +153,24 @@ class AiAssistantLauncherTest {
 
     assertThrows(IllegalArgumentException) {
       launcher.validatePreflight(TerminalAdapterKind.WINDOWS_TERMINAL)
+    }
+    assertTrue(written.isEmpty())
+  }
+
+  @Test
+  void failsPreflightBeforeWritingWrapperWhenGitBashWorkspacePathIsUnsafe() {
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.resolve('work^space').toString())
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    assertThrows(IllegalArgumentException) {
+      launcher.validatePreflight(TerminalAdapterKind.GIT_BASH)
     }
     assertTrue(written.isEmpty())
   }
