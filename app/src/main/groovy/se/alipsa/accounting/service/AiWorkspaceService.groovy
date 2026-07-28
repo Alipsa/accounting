@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.GitBashLocator
 
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -20,21 +21,28 @@ final class AiWorkspaceService {
   private final PathBinaryResolver pathBinaryResolver
   private final EnvironmentLookup environmentLookup
   private final FileDeleter fileDeleter
+  private final GitBashLocator gitBashLocator
 
   AiWorkspaceService() {
     this(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), new FileSystemExecutableProbe(),
         { String name -> System.getenv(name) } as EnvironmentLookup,
-        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter, new GitBashLocator())
   }
 
   AiWorkspaceService(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ExecutableProbe executableProbe,
       EnvironmentLookup environmentLookup, FileDeleter fileDeleter) {
+    this(permissions, secretFileWriter, executableProbe, environmentLookup, fileDeleter, new GitBashLocator())
+  }
+
+  AiWorkspaceService(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ExecutableProbe executableProbe,
+      EnvironmentLookup environmentLookup, FileDeleter fileDeleter, GitBashLocator gitBashLocator) {
     this.permissions = permissions
     this.secretFileWriter = secretFileWriter
     this.executableProbe = executableProbe
     this.pathBinaryResolver = new PathBinaryResolver(environmentLookup, executableProbe)
     this.environmentLookup = environmentLookup
     this.fileDeleter = fileDeleter
+    this.gitBashLocator = gitBashLocator
   }
 
   void ensureWorkspace() {
@@ -163,6 +171,10 @@ final class AiWorkspaceService {
   }
 
   private Path detectGitBash() {
+    Path fromRegistry = gitBashLocator.findBash()
+    if (fromRegistry != null && executableProbe.isExecutableFile(fromRegistry)) {
+      return fromRegistry
+    }
     Path fromPath = pathBinaryResolver.resolve(TerminalAdapterKind.GIT_BASH.defaultBinaryName)
     if (fromPath != null) { return fromPath }
     // git-bash.exe itself is usually not on PATH, but bash.exe is. Derive the Git install root

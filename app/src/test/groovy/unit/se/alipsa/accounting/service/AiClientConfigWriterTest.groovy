@@ -26,6 +26,7 @@ class AiClientConfigWriterTest {
     assertTrue(codex.contains('bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"'))
     assertFalse(codex.contains(TOKEN))
     assertTrue(vibe.contains('[[mcp_servers]]'))
+    assertTrue(vibe.contains('transport = "streamable-http"'))
     assertTrue(vibe.contains('headers = { Authorization = "Bearer test-token" }'))
   }
 

@@ -2,7 +2,6 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertThrows
-import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
 
@@ -52,6 +51,18 @@ class TerminalCommandBuilderTest {
     Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
 
     List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, gitBash, WORKSPACE, shScript)
+
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', WORKSPACE.toString(), '/usr/bin/bash', '--login', '-i', shScript.fileName.toString()], command)
+  }
+
+  @Test
+  void createsGitBashCommandFromBashExeByLookingUpTwoLevelsForMintty() {
+    Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
+
+    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, bash, WORKSPACE, shScript)
 
     assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
         '--dir', WORKSPACE.toString(), '/usr/bin/bash', '--login', '-i', shScript.fileName.toString()], command)

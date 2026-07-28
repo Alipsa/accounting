@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 import static org.junit.jupiter.api.Assumptions.assumeTrue
 
+import com.sun.jna.platform.win32.Win32Exception
+import com.sun.jna.platform.win32.WinError
+import com.sun.jna.platform.win32.WinReg
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -14,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.GitBashLocator
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -264,6 +268,33 @@ class AiWorkspaceServiceTest {
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
     assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  @Test
+  void detectsGitBashFromRegistryBeforeFallingBackToPath() {
+    Path registryBash = tempDir.resolve('Git').resolve('git-bash.exe').toAbsolutePath().normalize()
+    Files.createDirectories(registryBash.parent)
+    Files.createFile(registryBash)
+    GitBashLocator locator = new GitBashLocator() {
+      @Override
+      boolean isWindows() { true }
+
+      @Override
+      String readInstallPath(WinReg.HKEY root, int view) {
+        if (root == WinReg.HKEY_CURRENT_USER && view == 0) {
+          return registryBash.parent.toString()
+        }
+        throw new Win32Exception(WinError.ERROR_FILE_NOT_FOUND)
+      }
+    }
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(),
+        { Path root, Path target, byte[] content, SecretFileKind kind -> } as SecretFileWriter,
+        { Path path -> path == registryBash } as ExecutableProbe,
+        { String name -> null } as EnvironmentLookup,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter,
+        locator)
+
+    assertEquals(registryBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
   }
 
   @Test

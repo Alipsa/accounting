@@ -26,9 +26,15 @@ url = "${endpoint}"
 bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"
 """.toString()
       case AiClient.VIBE:
+        // Vibe's "http" transport is plain request/response with no session tracking, but
+        // LoopbackMcpServer implements the actual MCP Streamable HTTP transport (initialize
+        // handshake + Mcp-Session-Id on every later call, see LoopbackMcpServer.McpHandler) and
+        // rejects any non-initialize request without a valid session. Using "http" here made
+        // every tool call fail silently, so Vibe never had working tools despite the workspace
+        // being configured.
         return """[[mcp_servers]]
 name = "accounting"
-transport = "http"
+transport = "streamable-http"
 url = "${endpoint}"
 headers = { Authorization = "Bearer ${token}" }
 """.toString()

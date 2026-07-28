@@ -41,7 +41,7 @@ final class TerminalCommandBuilder {
         // trailing arguments to the inner bash. The script filename is passed rather than a Windows
         // absolute path because mintty's --dir sets the working directory and MSYS2 path conversion
         // can mangle backslash-style paths.
-        Path mintty = executable.resolveSibling('usr/bin/mintty.exe')
+        Path mintty = minttyForGitBash(executable)
         return [mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
             '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
@@ -54,6 +54,23 @@ final class TerminalCommandBuilder {
   }
 
   static void rejectUnsafeWorkspacePathForWindows(Path workspace) { rejectUnsafeWindowsPath(workspace) }
+
+  /**
+   * git-bash.exe lives in the Git install root, so mintty.exe is next to it under
+   * usr/bin/mintty.exe. Users sometimes configure bash.exe instead (Git/bin/bash.exe);
+   * in that case mintty.exe is two levels up from bash.exe under the same usr/bin.
+   */
+  static Path minttyForGitBash(Path gitBashExecutable) {
+    Path parent = gitBashExecutable.parent
+    if (parent != null && gitBashExecutable.fileName.toString().equalsIgnoreCase('bash.exe')
+        && parent.fileName?.toString()?.equalsIgnoreCase('bin')) {
+      Path gitRoot = parent.parent
+      if (gitRoot != null) {
+        return gitRoot.resolve('usr/bin/mintty.exe')
+      }
+    }
+    gitBashExecutable.resolveSibling('usr/bin/mintty.exe')
+  }
 
   private static void rejectUnsafeWindowsPath(Path path) {
     ProcessArgumentEscaping.UNSAFE_WINDOWS_COMMAND_CHARACTERS.each { String unsafe ->

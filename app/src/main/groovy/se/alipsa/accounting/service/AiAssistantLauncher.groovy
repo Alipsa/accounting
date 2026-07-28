@@ -45,7 +45,7 @@ final class AiAssistantLauncher {
       throw new IllegalArgumentException('Configured AI CLI and terminal paths must be executable files.')
     }
     if (adapterKind == TerminalAdapterKind.GIT_BASH) {
-      Path mintty = adapterExecutable.resolveSibling('usr/bin/mintty.exe')
+      Path mintty = TerminalCommandBuilder.minttyForGitBash(adapterExecutable)
       if (!executableProbe.isExecutableFile(mintty)) {
         throw new IllegalArgumentException(
             "Could not find mintty.exe next to ${adapterExecutable} at ${mintty}. Is Git for Windows installed there?")

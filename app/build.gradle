@@ -27,6 +27,7 @@ dependencies {
   implementation libs.journo.runtime
   implementation libs.flatlaf
   implementation libs.swing.widgets
+  implementation libs.jna.platform
 
   testImplementation libs.junit.jupiter
   testImplementation libs.groovier.junit
