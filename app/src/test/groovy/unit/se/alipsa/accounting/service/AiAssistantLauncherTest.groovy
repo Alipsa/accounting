@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -108,7 +109,12 @@ class AiAssistantLauncherTest {
     assertTrue(script.toString().endsWith('.sh'))
     String content = writtenScripts.values().first()
     assertTrue(content.startsWith('#!/bin/sh'))
-    assertTrue(content.contains("exec '"))
+    // Not "exec": exec would replace the shell process, leaving nothing to pause on failure with -
+    // and Git Bash needs that pause just as much as Command Prompt, since it also runs inside a
+    // window opened via "start" that closes the instant the script (or what it ran) exits.
+    assertFalse(content.contains('exec '))
+    assertTrue(content.contains("'C:\\bin\\codex.exe'"))
+    assertTrue(content.contains('Exit code:'))
     assertTrue(capturedCommand.last() == script.toString())
     assertTrue(capturedCommand.contains('C:\\Program Files\\Git\\bin\\bash.exe'))
   }

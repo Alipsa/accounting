@@ -231,7 +231,15 @@ final class UserPreferencesService {
     if (path != null) { return path }
     // Migrate a pre-existing single-path installation: only honor it for the kind that was
     // actually selected when it was saved, never as a guess for some other kind.
-    kind == getTerminalAdapterKind() ? preferences.get(LEGACY_AI_TERMINAL_PATH_KEY, null) : null
+    if (kind != getTerminalAdapterKind()) { return null }
+    String legacyPath = preferences.get(LEGACY_AI_TERMINAL_PATH_KEY, null)
+    if (legacyPath != null) {
+      // One-time migration: move the value onto its per-kind key and drop the legacy key so it
+      // doesn't linger indefinitely once every installation has migrated.
+      preferences.put(AI_TERMINAL_PATH_KEY_PREFIX + kind.name(), legacyPath)
+      preferences.remove(LEGACY_AI_TERMINAL_PATH_KEY)
+    }
+    legacyPath
   }
 
   void setTerminalPath(TerminalAdapterKind kind, String path) {

@@ -61,4 +61,15 @@ class UserPreferencesServiceTest {
 
     assertEquals('C:\\Tools\\wt.exe', service.getTerminalPath(TerminalAdapterKind.WINDOWS_TERMINAL))
   }
+
+  @Test
+  void readingTheLegacyPreferenceMigratesItOntoThePerKindKeyAndRemovesIt() {
+    preferences.put('ai.launcher.terminalPath', 'C:\\WINDOWS\\system32\\cmd.exe')
+    service.terminalAdapterKind = TerminalAdapterKind.COMMAND_PROMPT
+
+    assertEquals('C:\\WINDOWS\\system32\\cmd.exe', service.getTerminalPath(TerminalAdapterKind.COMMAND_PROMPT))
+    assertNull(preferences.get('ai.launcher.terminalPath', null))
+    // Still readable afterwards, now served straight from the per-kind key.
+    assertEquals('C:\\WINDOWS\\system32\\cmd.exe', service.getTerminalPath(TerminalAdapterKind.COMMAND_PROMPT))
+  }
 }
