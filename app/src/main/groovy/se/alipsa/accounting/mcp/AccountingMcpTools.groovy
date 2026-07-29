@@ -153,6 +153,8 @@ class AccountingMcpTools {
     switch (name) {
       case 'get_active_context':
         return getActiveContext()
+      case 'list_companies':
+        return listCompanies()
       case 'get_company_info':
         return getCompanyInfo(arguments)
       case 'list_fiscal_years':
@@ -228,6 +230,13 @@ class AccountingMcpTools {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
     }
+    String attachmentPath = (args.get('attachment_path') as String)?.trim()
+    if (attachmentPath) {
+      Path attachment = Path.of(attachmentPath)
+      if (!Files.isRegularFile(attachment) || !Files.isReadable(attachment)) {
+        return [ok: false, errors: ["attachment_path does not point to a readable file: ${attachmentPath}".toString()]]
+      }
+    }
     List<Map<String, Object>> rawLines = linesArg(args)
     Map<String, Object> draft = new LinkedHashMap<>(args)
     if (!rawLines.isEmpty()) {
@@ -264,23 +273,30 @@ class AccountingMcpTools {
     [ok: true, instruction: instructionMap(instruction)]
   }
 
+  private Map<String, Object> listCompanies() {
+    [ok: true, companies: companyService.listCompanies().collect { Company c -> companyToMap(c) }]
+  }
+
   private Map<String, Object> getCompanyInfo(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     Company company = companyService.findById(companyId)
     if (company == null) {
       return [ok: false, error: "Company ${companyId} not found."]
     }
+    [ok: true, company: companyToMap(company)]
+  }
+
+  private static Map<String, Object> companyToMap(Company company) {
     [
-        ok: true,
-        company: [
-            id: company.id,
-            name: company.companyName,
-            organization_number: company.organizationNumber,
-            default_currency: company.defaultCurrency,
-            vat_periodicity: company.vatPeriodicity?.name(),
-            accounting_method: company.accountingMethod?.name(),
-            active: company.active
-        ]
+        id: company.id,
+        name: company.companyName,
+        organization_number: company.organizationNumber,
+        default_currency: company.defaultCurrency,
+        vat_periodicity: company.vatPeriodicity?.name(),
+        accounting_method: company.accountingMethod?.name(),
+        legal_form: company.legalForm?.name(),
+        legal_form_display_name: company.legalForm?.displayName,
+        active: company.active
     ]
   }
 
@@ -429,10 +445,15 @@ class AccountingMcpTools {
         new ReportSelection(ReportType.GENERAL_LEDGER, fiscalYearId, periodId, startDate, endDate)
     )
     List<GeneralLedgerRow> rows = (List<GeneralLedgerRow>) result.templateModel.get('typedRows')
+    String accountNumberFilter = (args.get('account_number') as String)?.trim()
+    if (accountNumberFilter) {
+      rows = rows.findAll { GeneralLedgerRow r -> r.accountNumber == accountNumberFilter }
+    }
     boolean truncated = rows.size() > limit
     [
         ok: true,
         fiscal_year_id: fiscalYearId,
+        account_number: accountNumberFilter ?: null,
         truncated: truncated,
         total_rows: rows.size(),
         rows: rows.take(limit).collect { GeneralLedgerRow r ->

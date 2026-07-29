@@ -7,8 +7,9 @@ import java.time.LocalDate
 /** Converts voucher-editor state to and from the MCP voucher-draft representation. */
 final class VoucherDraftMapper {
 
-  static Map<String, Object> toDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines) {
-    [
+  static Map<String, Object> toDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines,
+      String attachmentPath = null) {
+    Map<String, Object> draft = [
         accounting_date: accountingDate?.toString(),
         description: description ?: '',
         series_code: seriesCode?.trim() ?: 'A',
@@ -17,6 +18,10 @@ final class VoucherDraftMapper {
            debit: line.debitAmount, credit: line.creditAmount]
         }
     ]
+    if (attachmentPath) {
+      draft.attachment_path = attachmentPath
+    }
+    draft
   }
 
   static VoucherDraft fromDraft(Map<String, Object> draft) {
@@ -39,7 +44,8 @@ final class VoucherDraftMapper {
     } catch (Exception exception) {
       throw new IllegalArgumentException('accounting_date must be an ISO date (YYYY-MM-DD).', exception)
     }
-    new VoucherDraft(accountingDate, draft.get('description') as String ?: '', draft.get('series_code') as String ?: 'A', lines)
+    new VoucherDraft(accountingDate, draft.get('description') as String ?: '', draft.get('series_code') as String ?: 'A', lines,
+        (draft.get('attachment_path') as String)?.trim() ?: null)
   }
 
   private static BigDecimal decimal(Object value) {
@@ -51,12 +57,14 @@ final class VoucherDraftMapper {
     final String description
     final String seriesCode
     final List<VoucherLine> lines
+    final String attachmentPath
 
-    VoucherDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines) {
+    VoucherDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines, String attachmentPath = null) {
       this.accountingDate = accountingDate
       this.description = description
       this.seriesCode = seriesCode
       this.lines = lines
+      this.attachmentPath = attachmentPath
     }
   }
 }

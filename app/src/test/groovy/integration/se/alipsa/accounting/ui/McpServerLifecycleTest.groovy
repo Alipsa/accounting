@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AuditLogService
 import se.alipsa.accounting.service.CompanyService
@@ -52,7 +53,8 @@ class McpServerLifecycleTest {
   void activeContextReflectsFiscalYearClosedEvenWhenCachedObjectIsStale() {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
-    Company company = new Company(id: CompanyService.LEGACY_COMPANY_ID, companyName: 'Testbolaget AB')
+    Company company = new Company(id: CompanyService.LEGACY_COMPANY_ID, companyName: 'Testbolaget AB',
+        legalForm: LegalForm.AKTIEBOLAG)
 
     // Simulate closing performed by a process that does not go through the desktop UI, e.g.
     // the MCP close_fiscal_year tool, which never updates ActiveCompanyManager's cached object.
@@ -62,6 +64,8 @@ class McpServerLifecycleTest {
     Map<String, Object> context = McpServerLifecycle.buildActiveContext(fiscalYearService, company, staleCachedFiscalYear)
 
     assertEquals(true, context.fiscal_year_closed)
+    assertEquals('AKTIEBOLAG', context.legal_form)
+    assertEquals('Aktiebolag', context.legal_form_display_name)
   }
 
   @Test
