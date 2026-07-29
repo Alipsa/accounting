@@ -5,7 +5,7 @@ enum AiClient {
 
   CLAUDE('claude', '.mcp.json', '.claude/skills/accounting/accounting-mcp.md', false),
   CODEX('codex', '.codex/config.toml', 'AGENTS.md', false),
-  KIMI('kimi', '.kimi-code/mcp.json', 'AGENTS.md', true),
+  KIMI('kimi', '.kimi-code/mcp.json', 'AGENTS.md', false),
   VIBE('vibe', '.vibe/config.toml', 'AGENTS.md', true)
 
   final String binaryName
