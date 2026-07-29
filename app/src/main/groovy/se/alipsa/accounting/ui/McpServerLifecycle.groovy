@@ -102,6 +102,8 @@ final class McpServerLifecycle implements Closeable {
         ok: true,
         company_id: company.id,
         company_name: company.companyName,
+        legal_form: company.legalForm?.name(),
+        legal_form_display_name: company.legalForm?.displayName,
         fiscal_year_id: fiscalYear.id,
         fiscal_year_name: fiscalYear.name,
         fiscal_year_start: fiscalYear.startDate?.toString(),

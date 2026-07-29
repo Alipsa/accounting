@@ -33,6 +33,7 @@ class AccountingMcpToolsTest {
 
   private String previousHome
   private DatabaseService databaseService
+  private CompanyService companyService
   private FiscalYearService fiscalYearService
   private VoucherService voucherService
   private AccountingMcpTools tools
@@ -47,6 +48,7 @@ class AccountingMcpToolsTest {
 
     AuditLogService auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService periodService = new AccountingPeriodService(databaseService, auditLogService)
+    companyService = new CompanyService(databaseService)
     fiscalYearService = new FiscalYearService(databaseService, periodService, auditLogService)
     voucherService = new VoucherService(databaseService, auditLogService)
     ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
@@ -55,7 +57,7 @@ class AccountingMcpToolsTest {
     )
 
     tools = new AccountingMcpTools(
-        new CompanyService(databaseService),
+        companyService,
         fiscalYearService,
         new AccountService(databaseService),
         voucherService,
@@ -201,9 +203,9 @@ class AccountingMcpToolsTest {
 
   @Test
   void getCompanyInfoIncludesLegalForm() {
-    se.alipsa.accounting.domain.Company company = new CompanyService(databaseService).findById(CompanyService.LEGACY_COMPANY_ID)
+    se.alipsa.accounting.domain.Company company = companyService.findById(CompanyService.LEGACY_COMPANY_ID)
     company.legalForm = se.alipsa.accounting.domain.LegalForm.AKTIEBOLAG
-    new CompanyService(databaseService).save(company)
+    companyService.save(company)
 
     Map<String, Object> result = tools.callTool('get_company_info', ['company_id': (Object) 1L])
     assertTrue((boolean) result.get('ok'))

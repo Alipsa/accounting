@@ -7,8 +7,9 @@ import java.time.LocalDate
 /** Converts voucher-editor state to and from the MCP voucher-draft representation. */
 final class VoucherDraftMapper {
 
-  static Map<String, Object> toDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines) {
-    [
+  static Map<String, Object> toDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines,
+      String attachmentPath = null) {
+    Map<String, Object> draft = [
         accounting_date: accountingDate?.toString(),
         description: description ?: '',
         series_code: seriesCode?.trim() ?: 'A',
@@ -17,6 +18,10 @@ final class VoucherDraftMapper {
            debit: line.debitAmount, credit: line.creditAmount]
         }
     ]
+    if (attachmentPath) {
+      draft.attachment_path = attachmentPath
+    }
+    draft
   }
 
   static VoucherDraft fromDraft(Map<String, Object> draft) {

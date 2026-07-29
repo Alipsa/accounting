@@ -231,8 +231,11 @@ class AccountingMcpTools {
       return voucherEditorUnavailable()
     }
     String attachmentPath = (args.get('attachment_path') as String)?.trim()
-    if (attachmentPath && !Files.isRegularFile(Path.of(attachmentPath))) {
-      return [ok: false, errors: ["attachment_path does not point to a readable file: ${attachmentPath}".toString()]]
+    if (attachmentPath) {
+      Path attachment = Path.of(attachmentPath)
+      if (!Files.isRegularFile(attachment) || !Files.isReadable(attachment)) {
+        return [ok: false, errors: ["attachment_path does not point to a readable file: ${attachmentPath}".toString()]]
+      }
     }
     List<Map<String, Object>> rawLines = linesArg(args)
     Map<String, Object> draft = new LinkedHashMap<>(args)

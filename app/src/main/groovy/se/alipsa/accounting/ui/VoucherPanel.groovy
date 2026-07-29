@@ -817,7 +817,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private Map<String, Object> snapshotDraft() {
-    VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesField.text, lineTableModel.toVoucherLines())
+    VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesField.text, lineTableModel.toVoucherLines(),
+        pendingReceiptAttachmentPath)
   }
 
   private void applyDraft(VoucherDraftMapper.VoucherDraft voucherDraft) {
