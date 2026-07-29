@@ -47,6 +47,47 @@ Ladda ner rätt paket för din plattform från [GitHub Releases](https://github.
 
 Se [Release](#release) för filverifiering (checksummor och GPG-signaturer) samt avinstallation.
 
+## AI-assisterad bokföring
+
+Alipsa Accounting kombinerar en vanlig desktopapp med en lokal AI-arbetsyta: AI-klienten får relevant bokföringskontext och kan hjälpa till med förslag, konton, moms, rättelser, SIE och bokslut, medan appens regler och ditt godkännande styr alla förändringar. Det är assistans i bokföringsflödet — inte automatisk bokföring.
+
+När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
+
+Under **Inställningar → AI / MCP** skapar **Starta AI-assistent** en separat, projekt-scopad arbetsyta för vald klient och öppnar en terminal där. MCP-konfigurationen och instruktionerna gäller då endast den arbetsytan, inte klientens globala konfiguration.
+
+Servern använder samma lokala H2-databas, valideringar och affärsregler som desktopappen. Den är endast åtkomlig från den egna datorn och slutar svara när appen stängs; ett anslutningsfel i AI-klienten då är förväntat och ofarligt. Äldre stdio-konfigurationer med `--mode=mcp` stöds inte längre och måste ersättas med HTTP-konfigurationen.
+
+AI:n kan lägga ett förslag i den osparade verifikationsvyn, men kan aldrig spara det. Användaren granskar och trycker själv på Spara i desktopappen.
+
+MCP-servern ger klienten verktygen. Skill-filen styr hur LLM:en bör använda verktygen. Skill-filen installeras inte automatiskt av Claude Code eller Codex; se releaseavsnittet nedan för hur den länkas eller kopieras till respektive klients skill-katalog.
+
+Se [docs/ai-assistenten.md](docs/ai-assistenten.md) för en fullständig genomgång av installation och konfiguration, inklusive hur den inbyggda launchern fungerar under huvan, manuell konfiguration för andra MCP-klienter och hur desktop-versioner (t.ex. Claude Desktop) skulle kunna anslutas.
+
+## Drift och säkerhet
+
+- Applikationen använder endast embedded H2 i fil-läge.
+- Databasen, bilagor, rapportarkiv, loggar, backups och exporterad dokumentation lagras under applikationskatalogen i användarens profil.
+- Startup-verifiering kontrollerar driftkonfiguration och integritet för hashkedjor, bilagor och rapportarkiv.
+- Känsliga operationer som rapportexport, SIE-export, backup och årsstängning blockerar på kritiska integritetsfel.
+- Bokföringsdata, bilagor och rapportarkiv omfattas av sju års bevarandespärr.
+- Borttagning av räkenskapsår och företag visar förhandsgranskning eller blockerande fel innan data tas bort.
+
+## Backup och restore
+
+- Backupformatet är ZIP med:
+  - H2 `SCRIPT`-dump
+  - `manifest.txt` med schema-version och checksummor
+  - bilagearkiv
+  - rapportarkiv
+- Restore verifierar manifest och checksummor innan data och filarkiv återskapas.
+- Backup och restore kan köras från fliken `System`.
+
+## Dokumentation
+
+- Fliken `System` visar diagnostik, backup/restore och inbyggd systemdokumentation.
+- Hjälpmenyn öppnar användarmanualen från `app/src/main/resources/docs/user-manual.md`.
+- [docs/ai-assistenten.md](docs/ai-assistenten.md) beskriver installation och konfiguration av AI-assistenten i detalj.
+
 ## För utvecklare
 
 Det här avsnittet är för dig som vill bygga, köra eller bidra till projektet från källkod. Vill du bara använda programmet, se [Installation](#installation) ovan istället.
@@ -116,47 +157,6 @@ Kör alla kommandon från rotmappen.
 | Bygg          | Gradle 9.6                              |
 | Kodstil       | Spotless + CodeNarc                     |
 | Tester        | JUnit 6 + groovier-junit                |
-
-## Drift och säkerhet
-
-- Applikationen använder endast embedded H2 i fil-läge.
-- Databasen, bilagor, rapportarkiv, loggar, backups och exporterad dokumentation lagras under applikationskatalogen i användarens profil.
-- Startup-verifiering kontrollerar driftkonfiguration och integritet för hashkedjor, bilagor och rapportarkiv.
-- Känsliga operationer som rapportexport, SIE-export, backup och årsstängning blockerar på kritiska integritetsfel.
-- Bokföringsdata, bilagor och rapportarkiv omfattas av sju års bevarandespärr.
-- Borttagning av räkenskapsår och företag visar förhandsgranskning eller blockerande fel innan data tas bort.
-
-## Backup och restore
-
-- Backupformatet är ZIP med:
-  - H2 `SCRIPT`-dump
-  - `manifest.txt` med schema-version och checksummor
-  - bilagearkiv
-  - rapportarkiv
-- Restore verifierar manifest och checksummor innan data och filarkiv återskapas.
-- Backup och restore kan köras från fliken `System`.
-
-## Dokumentation
-
-- Fliken `System` visar diagnostik, backup/restore och inbyggd systemdokumentation.
-- Hjälpmenyn öppnar användarmanualen från `app/src/main/resources/docs/user-manual.md`.
-- [docs/ai-assistenten.md](docs/ai-assistenten.md) beskriver installation och konfiguration av AI-assistenten i detalj.
-
-## AI-assisterad bokföring
-
-Alipsa Accounting kombinerar en vanlig desktopapp med en lokal AI-arbetsyta: AI-klienten får relevant bokföringskontext och kan hjälpa till med förslag, konton, moms, rättelser, SIE och bokslut, medan appens regler och ditt godkännande styr alla förändringar. Det är assistans i bokföringsflödet — inte automatisk bokföring.
-
-När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
-
-Under **Inställningar → AI / MCP** skapar **Starta AI-assistent** en separat, projekt-scopad arbetsyta för vald klient och öppnar en terminal där. MCP-konfigurationen och instruktionerna gäller då endast den arbetsytan, inte klientens globala konfiguration.
-
-Servern använder samma lokala H2-databas, valideringar och affärsregler som desktopappen. Den är endast åtkomlig från den egna datorn och slutar svara när appen stängs; ett anslutningsfel i AI-klienten då är förväntat och ofarligt. Äldre stdio-konfigurationer med `--mode=mcp` stöds inte längre och måste ersättas med HTTP-konfigurationen.
-
-AI:n kan lägga ett förslag i den osparade verifikationsvyn, men kan aldrig spara det. Användaren granskar och trycker själv på Spara i desktopappen.
-
-MCP-servern ger klienten verktygen. Skill-filen styr hur LLM:en bör använda verktygen. Skill-filen installeras inte automatiskt av Claude Code eller Codex; se releaseavsnittet nedan för hur den länkas eller kopieras till respektive klients skill-katalog.
-
-Se [docs/ai-assistenten.md](docs/ai-assistenten.md) för en fullständig genomgång av installation och konfiguration, inklusive hur den inbyggda launchern fungerar under huvan, manuell konfiguration för andra MCP-klienter och hur desktop-versioner (t.ex. Claude Desktop) skulle kunna anslutas.
 
 ## Release
 
