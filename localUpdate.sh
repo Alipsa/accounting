@@ -15,6 +15,12 @@
 #   - macOS
 #   - Windows (Git Bash / MSYS2 / Cygwin)
 #
+# Note on Java (Windows portable installs only): bin/ is replaced wholesale
+# from the distZip on every update, which never contains a JAVA_HOME wrapper.
+# This script regenerates bin/Launch<APP_NAME>.bat (using Java detected from
+# this shell's own JAVA_HOME/PATH) after each update, so existing Desktop/
+# Start Menu shortcuts - which target that wrapper - keep working.
+#
 # Usage:
 #   ./localUpdate.sh                # auto-discover and update
 #   ./localUpdate.sh --no-build     # skip build, use latest local package
@@ -203,6 +209,52 @@ is_portable_lib_dir() {
   [[ "$1" == */lib && "$1" != */lib/app ]]
 }
 
+# Resolves a JAVA_HOME from this shell's own environment (JAVA_HOME or the
+# 'java' on PATH), so it can be baked into the generated launcher wrapper.
+# Prints the resolved path and returns 0, or returns 1 if none was found.
+detect_windows_java_home() {
+  if [ -n "${JAVA_HOME:-}" ] && [ -f "${JAVA_HOME}/bin/java.exe" ]; then
+    printf '%s' "${JAVA_HOME}"
+    return 0
+  fi
+
+  local java_bin
+  java_bin=$(command -v java.exe 2>/dev/null || command -v java 2>/dev/null || true)
+  if [ -z "${java_bin}" ]; then
+    return 1
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    java_bin=$(readlink -f "${java_bin}" 2>/dev/null || printf '%s' "${java_bin}")
+  fi
+  printf '%s' "$(dirname "$(dirname "${java_bin}")")"
+}
+
+# Writes a wrapper .bat that sets JAVA_HOME (if not already defined by the
+# environment it runs in) before calling the Gradle-generated launcher.
+# Existing shortcuts target this wrapper, and since bin/ is replaced wholesale
+# on every update (the Gradle distZip never contains this file), it must be
+# regenerated after each update or the shortcuts are left dangling.
+create_windows_launcher_wrapper() {
+  local app_root="$1"
+  local java_home="$2"
+  local wrapper="${app_root}/bin/Launch${APP_NAME}.bat"
+  local java_home_win=""
+
+  if [ -n "${java_home}" ]; then
+    java_home_win=$(cygpath -w "${java_home}")
+  fi
+
+  {
+    printf '@echo off\r\n'
+    if [ -n "${java_home_win}" ]; then
+      printf 'if not defined JAVA_HOME set "JAVA_HOME=%s"\r\n' "${java_home_win}"
+    fi
+    printf 'call "%%~dp0%s.bat" %%*\r\n' "${APP_NAME}"
+  } > "${wrapper}"
+
+  printf '%s' "${wrapper}"
+}
+
 build_classpath_block() {
   local main_jar="$1"
   local lib_dir="$2"
@@ -231,10 +283,24 @@ update_portable_install() {
       mv "${extracted_dir}/${entry}" "${install_root}/"
     fi
   done
+
+  if [ "${PLATFORM}" = "windows" ]; then
+    local detected_java_home=""
+    if detected_java_home=$(detect_windows_java_home); then
+      echo "  Detected Java runtime: ${detected_java_home}"
+    fi
+    WRAPPER_LAUNCHER=$(create_windows_launcher_wrapper "${install_root}" "${detected_java_home}")
+    if [ -z "${detected_java_home}" ]; then
+      echo "" >&2
+      echo "Warning: no Java installation was detected (JAVA_HOME is not set and 'java' is not on PATH)." >&2
+      echo "  ${APP_NAME} requires Java 21 or later; this portable install does not bundle a runtime." >&2
+      echo "  Install a JDK/JRE 21+ and set JAVA_HOME (or add java to PATH) before running the launcher." >&2
+    fi
+  fi
 }
 
 update_linux_desktop_entry() {
-  [ "${PLATFORM}" = "linux" ] || return
+  [ "${PLATFORM}" = "linux" ] || return 0
 
   local desktop_file="${XDG_DATA_HOME:-${HOME}/.local/share}/applications/${APP_NAME}.desktop"
   [ -f "${desktop_file}" ] || return
@@ -736,6 +802,9 @@ else
 fi
 
 LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
+if [ -n "${WRAPPER_LAUNCHER:-}" ]; then
+  LAUNCHER="${WRAPPER_LAUNCHER}"
+fi
 update_linux_desktop_entry
 
 echo ""
