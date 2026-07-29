@@ -21,22 +21,28 @@ class GitBashLocator {
     int[] views = [WinNT.KEY_WOW64_64KEY, WinNT.KEY_WOW64_32KEY, 0]
     for (WinReg.HKEY root : roots) {
       for (int view : views) {
-        try {
-          String installPath = readInstallPath(root, view)
-          Path bash = findBashWithin(Path.of(installPath))
-          if (bash != null) {
-            return bash
-          }
-        } catch (Win32Exception ignored) {
-          // Key or registry view does not exist.
+        String installPath = readInstallPath(root, view)
+        if (installPath == null) {
+          continue
+        }
+        Path bash = findBashWithin(Path.of(installPath))
+        if (bash != null) {
+          return bash
         }
       }
     }
     null
   }
 
+  /** Returns the InstallPath value, or null if the key or registry view does not exist. */
   protected String readInstallPath(WinReg.HKEY root, int view) {
-    Advapi32Util.registryGetStringValue(root, REGISTRY_KEY, 'InstallPath', view)
+    String installPath = null
+    try {
+      installPath = Advapi32Util.registryGetStringValue(root, REGISTRY_KEY, 'InstallPath', view)
+    } catch (Win32Exception ignored) {
+      // Key or registry view does not exist.
+    }
+    installPath
   }
 
   protected boolean isWindows() {

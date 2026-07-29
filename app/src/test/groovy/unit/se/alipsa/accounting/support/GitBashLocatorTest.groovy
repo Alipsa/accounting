@@ -3,8 +3,6 @@ package se.alipsa.accounting.support
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertNull
 
-import com.sun.jna.platform.win32.Win32Exception
-import com.sun.jna.platform.win32.WinError
 import com.sun.jna.platform.win32.WinReg
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -83,11 +81,7 @@ class GitBashLocatorTest {
 
     @Override
     String readInstallPath(WinReg.HKEY root, int view) {
-      String value = registryValues.get(new Tuple2(root, view))
-      if (value == null) {
-        throw new Win32Exception(WinError.ERROR_FILE_NOT_FOUND)
-      }
-      value
+      registryValues.get(new Tuple2(root, view))
     }
   }
 }
