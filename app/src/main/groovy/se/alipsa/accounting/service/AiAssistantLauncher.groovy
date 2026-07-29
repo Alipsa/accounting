@@ -44,11 +44,18 @@ final class AiAssistantLauncher {
     if (!executableProbe.isExecutableFile(binaryPath) || !executableProbe.isExecutableFile(adapterExecutable)) {
       throw new IllegalArgumentException('Configured AI CLI and terminal paths must be executable files.')
     }
+    if (adapterKind == TerminalAdapterKind.GIT_BASH) {
+      Path mintty = TerminalCommandBuilder.minttyForGitBash(adapterExecutable)
+      if (!executableProbe.isExecutableFile(mintty)) {
+        throw new IllegalArgumentException(
+            "Could not find mintty.exe next to ${adapterExecutable} at ${mintty}. Is Git for Windows installed there?")
+      }
+    }
     AppPaths.ensureAiWorkspaceHome()
     Path workspace = AppPaths.aiWorkspaceDirectory()
     permissions.ensureDirectory(workspace, workspace)
-    // Git Bash is Windows-routed (goes through cmd.exe's "start", same as Command Prompt) but
-    // still needs a POSIX wrapper script, not a batch file, since bash is what runs it.
+    // Git Bash uses the POSIX wrapper script too; the actual terminal is launched by mintty.exe
+    // derived from the configured git-bash.exe path, not through cmd.exe or a batch file.
     boolean windowsBatchScript = adapterKind == TerminalAdapterKind.WINDOWS_TERMINAL || adapterKind == TerminalAdapterKind.COMMAND_PROMPT
     Path script = AiWorkspacePaths.wrapperScript(workspace, client, UUID.randomUUID().toString(), windowsBatchScript)
     List<String> command = TerminalCommandBuilder.commandFor(adapterKind, adapterExecutable, workspace, script)

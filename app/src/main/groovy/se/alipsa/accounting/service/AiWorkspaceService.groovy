@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.GitBashLocator
 
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -20,21 +21,28 @@ final class AiWorkspaceService {
   private final PathBinaryResolver pathBinaryResolver
   private final EnvironmentLookup environmentLookup
   private final FileDeleter fileDeleter
+  private final GitBashLocator gitBashLocator
 
   AiWorkspaceService() {
     this(new AiWorkspacePermissions(), new AtomicSecretFileWriter(), new FileSystemExecutableProbe(),
         { String name -> System.getenv(name) } as EnvironmentLookup,
-        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter, new GitBashLocator())
   }
 
   AiWorkspaceService(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ExecutableProbe executableProbe,
       EnvironmentLookup environmentLookup, FileDeleter fileDeleter) {
+    this(permissions, secretFileWriter, executableProbe, environmentLookup, fileDeleter, new GitBashLocator())
+  }
+
+  AiWorkspaceService(AiWorkspacePermissions permissions, SecretFileWriter secretFileWriter, ExecutableProbe executableProbe,
+      EnvironmentLookup environmentLookup, FileDeleter fileDeleter, GitBashLocator gitBashLocator) {
     this.permissions = permissions
     this.secretFileWriter = secretFileWriter
     this.executableProbe = executableProbe
     this.pathBinaryResolver = new PathBinaryResolver(environmentLookup, executableProbe)
     this.environmentLookup = environmentLookup
     this.fileDeleter = fileDeleter
+    this.gitBashLocator = gitBashLocator
   }
 
   void ensureWorkspace() {
@@ -143,6 +151,9 @@ final class AiWorkspaceService {
     if (kind == TerminalAdapterKind.WINDOWS_TERMINAL) {
       return detectWindowsTerminal()
     }
+    if (kind == TerminalAdapterKind.GIT_BASH) {
+      return detectGitBash()
+    }
     pathBinaryResolver.resolve(kind.defaultBinaryName)
   }
 
@@ -154,6 +165,28 @@ final class AiWorkspaceService {
       Path alias = localAppData.resolve('Microsoft').resolve('WindowsApps').resolve('wt.exe')
       if (executableProbe.isExecutableFile(alias)) {
         return alias.toAbsolutePath().normalize()
+      }
+    }
+    null
+  }
+
+  private Path detectGitBash() {
+    Path fromRegistry = gitBashLocator.findBash()
+    if (fromRegistry != null && executableProbe.isExecutableFile(fromRegistry)) {
+      return fromRegistry
+    }
+    Path fromPath = pathBinaryResolver.resolve(TerminalAdapterKind.GIT_BASH.defaultBinaryName)
+    if (fromPath != null) { return fromPath }
+    // git-bash.exe itself is usually not on PATH, but bash.exe is. Derive the Git install root
+    // from bash.exe's location (C:\Program Files\Git\bin\bash.exe -> C:\Program Files\Git).
+    Path bash = pathBinaryResolver.resolve('bash.exe')
+    if (bash != null) {
+      Path gitRoot = bash.parent?.parent
+      if (gitRoot != null) {
+        Path candidate = gitRoot.resolve(TerminalAdapterKind.GIT_BASH.defaultBinaryName)
+        if (executableProbe.isExecutableFile(candidate)) {
+          return candidate.toAbsolutePath().normalize()
+        }
       }
     }
     null

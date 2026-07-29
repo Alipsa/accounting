@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.GitBashLocator
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -245,13 +246,60 @@ class AiWorkspaceServiceTest {
   }
 
   @Test
-  void detectsGitBashFromPathWhenExplicitlyTargeted() {
-    Path gitBash = tempDir.resolve('bin').resolve('bash.exe').toAbsolutePath().normalize()
+  void detectsGitBashFromPathWhenItIsOnPath() {
+    Path gitBash = tempDir.resolve('bin').resolve('git-bash.exe').toAbsolutePath().normalize()
     AiWorkspaceService service = service(
         ['PATH': tempDir.resolve('bin').toString()], { Path path -> path == gitBash } as ExecutableProbe,
-        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter, notFoundInRegistry())
 
     assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  @Test
+  void detectsGitBashFromBashExeLocationWhenGitBashExeIsNotOnPath() {
+    Path bash = tempDir.resolve('bin').resolve('bash.exe').toAbsolutePath().normalize()
+    Path gitBash = tempDir.resolve('git-bash.exe').toAbsolutePath().normalize()
+    AiWorkspaceService service = service(
+        ['PATH': tempDir.resolve('bin').toString()],
+        { Path path -> path == bash || path == gitBash } as ExecutableProbe,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter, notFoundInRegistry())
+
+    assertEquals(gitBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  @Test
+  void detectsGitBashFromRegistryBeforeFallingBackToPath() {
+    Path registryBash = tempDir.resolve('Git').resolve('git-bash.exe').toAbsolutePath().normalize()
+    Files.createDirectories(registryBash.parent)
+    Files.createFile(registryBash)
+    // Overriding findBash() directly - rather than isWindows()/readInstallPath() - means this
+    // never touches the real com.sun.jna.platform.win32.WinReg/WinNT classes. Those classes pick
+    // their native library (win32 vs linux) from os.name the first time any of them is loaded in
+    // the JVM; since withWindowsOs() below temporarily fakes os.name to Windows, letting the real
+    // GitBashLocator.findBash() run here would permanently wire this test JVM to load the win32
+    // native library, breaking every other GitBashLocator-related test that happens to run
+    // afterwards in the same JVM - including on Linux CI, where that library does not exist.
+    GitBashLocator locator = new GitBashLocator() {
+      @Override
+      Path findBash() { registryBash }
+    }
+    AiWorkspaceService service = new AiWorkspaceService(new AiWorkspacePermissions(),
+        { Path root, Path target, byte[] content, SecretFileKind kind -> } as SecretFileWriter,
+        { Path path -> path == registryBash } as ExecutableProbe,
+        { String name -> null } as EnvironmentLookup,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter,
+        locator)
+
+    assertEquals(registryBash, withWindowsOs { service.detectTerminalPath(TerminalAdapterKind.GIT_BASH) })
+  }
+
+  // See the comment in detectsGitBashFromRegistryBeforeFallingBackToPath(): overriding findBash()
+  // directly avoids ever loading the real JNA WinReg/WinNT classes under a faked os.name.
+  private static GitBashLocator notFoundInRegistry() {
+    new GitBashLocator() {
+      @Override
+      Path findBash() { null }
+    }
   }
 
   @Test
@@ -282,5 +330,12 @@ class AiWorkspaceServiceTest {
     EnvironmentLookup lookup = { String name -> environment[name] } as EnvironmentLookup
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind -> } as SecretFileWriter
     new AiWorkspaceService(new AiWorkspacePermissions(), writer, probe, lookup, deleter)
+  }
+
+  private static AiWorkspaceService service(Map<String, String> environment, ExecutableProbe probe, FileDeleter deleter,
+      GitBashLocator gitBashLocator) {
+    EnvironmentLookup lookup = { String name -> environment[name] } as EnvironmentLookup
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind -> } as SecretFileWriter
+    new AiWorkspaceService(new AiWorkspacePermissions(), writer, probe, lookup, deleter, gitBashLocator)
   }
 }

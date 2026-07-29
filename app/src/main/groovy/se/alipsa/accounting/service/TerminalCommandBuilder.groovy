@@ -35,12 +35,15 @@ final class TerminalCommandBuilder {
       case TerminalAdapterKind.GIT_BASH:
         rejectUnsafeWindowsPath(workspace)
         rejectUnsafeWindowsPath(script)
-        // bash.exe is a plain console-subsystem executable just like cmd.exe, so it has the same
-        // no-visible-window problem - route it through "start" too. "start" is a cmd.exe builtin,
-        // so the ambient system cmd.exe (not the user-configured bash.exe) is what ProcessBuilder
-        // actually launches; it just hands off to bash.exe immediately.
-        return [systemCommandInterpreterPath(), '/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
-            '/d', workspace.toString(), executable.toString(), script.toString()]
+        // git-bash.exe is the user-facing Git-for-Windows launcher, but it is just a small wrapper
+        // that runs usr\bin\mintty.exe internally. Launch mintty directly so we can set a persistent
+        // window title with -T (mintty's --Title) and avoid relying on git-bash.exe to forward
+        // trailing arguments to the inner bash. The script filename is passed rather than a Windows
+        // absolute path because mintty's --dir sets the working directory and MSYS2 path conversion
+        // can mangle backslash-style paths.
+        Path mintty = minttyForGitBash(executable)
+        return [mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+            '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()]
       case TerminalAdapterKind.TERMINAL_APP:
         String quoted = ProcessArgumentEscaping.shellQuoteSingle(script.toString())
         return [executable.toString(), '-e', 'tell application "Terminal" to do script "' +
@@ -52,11 +55,21 @@ final class TerminalCommandBuilder {
 
   static void rejectUnsafeWorkspacePathForWindows(Path workspace) { rejectUnsafeWindowsPath(workspace) }
 
-  private static String systemCommandInterpreterPath() {
-    String comSpec = System.getenv('ComSpec')
-    if (comSpec?.trim()) { return comSpec }
-    String systemRoot = System.getenv('SystemRoot') ?: 'C:\\Windows'
-    "${systemRoot}\\System32\\cmd.exe".toString()
+  /**
+   * git-bash.exe lives in the Git install root, so mintty.exe is next to it under
+   * usr/bin/mintty.exe. Users sometimes configure bash.exe instead (Git/bin/bash.exe);
+   * in that case mintty.exe is two levels up from bash.exe under the same usr/bin.
+   */
+  static Path minttyForGitBash(Path gitBashExecutable) {
+    Path parent = gitBashExecutable.parent
+    if (parent != null && gitBashExecutable.fileName.toString().equalsIgnoreCase('bash.exe')
+        && parent.fileName?.toString()?.equalsIgnoreCase('bin')) {
+      Path gitRoot = parent.parent
+      if (gitRoot != null) {
+        return gitRoot.resolve('usr/bin/mintty.exe')
+      }
+    }
+    gitBashExecutable.resolveSibling('usr/bin/mintty.exe')
   }
 
   private static void rejectUnsafeWindowsPath(Path path) {

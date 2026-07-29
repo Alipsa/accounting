@@ -2,9 +2,10 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertThrows
-import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.support.ProcessArgumentEscaping
@@ -45,18 +46,35 @@ class TerminalCommandBuilderTest {
         TerminalCommandBuilder.commandFor(TerminalAdapterKind.COMMAND_PROMPT, EXECUTABLE, WORKSPACE, cmdScript))
   }
 
+  // Windows-only: java.nio.file.Path only splits on backslash under the Windows filesystem
+  // provider, which minttyForGitBash() relies on to find mintty.exe relative to git-bash.exe/bash.exe.
+  // On Linux, Path.of('C:\...') is a single opaque path segment, so the lookup produces a
+  // different (wrong) result - not a real bug, just not testable outside a real Windows Path.
   @Test
-  void createsGitBashCommandThroughTheSystemCmdForAVisibleWindow() {
+  @EnabledOnOs(OS.WINDOWS)
+  void createsGitBashCommandThatOpensMinttyWithATitle() {
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
+
+    List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, gitBash, WORKSPACE, shScript)
+
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', WORKSPACE.toString(), '/usr/bin/bash', '--login', '-i', shScript.fileName.toString()], command)
+  }
+
+  // Windows-only: see the comment on createsGitBashCommandThatOpensMinttyWithATitle() above.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void createsGitBashCommandFromBashExeByLookingUpTwoLevelsForMintty() {
     Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
     Path shScript = WORKSPACE.resolve('.launch-codex-id.sh')
 
     List<String> command = TerminalCommandBuilder.commandFor(TerminalAdapterKind.GIT_BASH, bash, WORKSPACE, shScript)
 
-    // bash.exe is user-configured and not itself capable of running "start"; the first element
-    // must be the ambient system cmd.exe (varies by machine), everything after it is fixed.
-    assertTrue(command.first().toLowerCase(Locale.ROOT).endsWith('cmd.exe'))
-    assertEquals(['/c', 'start', AiAssistantLauncher.ASSISTANT_SESSION_NAME, '/d', WORKSPACE.toString(),
-        bash.toString(), shScript.toString()], command.tail())
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', WORKSPACE.toString(), '/usr/bin/bash', '--login', '-i', shScript.fileName.toString()], command)
   }
 
   @Test

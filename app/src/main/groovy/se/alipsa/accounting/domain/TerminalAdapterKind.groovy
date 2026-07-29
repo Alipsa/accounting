@@ -8,7 +8,7 @@ enum TerminalAdapterKind {
   XTERM('xterm'),
   WINDOWS_TERMINAL('wt.exe'),
   COMMAND_PROMPT('cmd.exe'),
-  GIT_BASH('bash.exe'),
+  GIT_BASH('git-bash.exe'),
   TERMINAL_APP('osascript')
 
   final String defaultBinaryName

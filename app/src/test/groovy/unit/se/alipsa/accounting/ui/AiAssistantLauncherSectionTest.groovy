@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.AfterEach
@@ -26,6 +27,8 @@ import se.alipsa.accounting.support.I18n
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.prefs.Preferences
+
+import javax.swing.JTextField
 
 class AiAssistantLauncherSectionTest {
 
@@ -79,6 +82,24 @@ class AiAssistantLauncherSectionTest {
 
     assertEquals(1, errors.size())
     assertTrue(errors.first().contains('Could not find'))
+  }
+
+  // The enum constant name (e.g. GIT_BASH) is not an executable; the error must name the binary
+  // the user needs to install (bash.exe) so the message is actionable.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void terminalDetectionFailureForGitBashNamesTheBinaryNotTheEnumConstant() {
+    List<String> errors = []
+    ErrorDisplay errorDisplay = { String title, String message -> errors << message } as ErrorDisplay
+    AiAssistantLauncherSection section = newSection(errorDisplay)
+
+    section.terminalKindCombo.selectedItem = TerminalAdapterKind.GIT_BASH
+    section.terminalPathField.text = ''
+    section.detectTerminalButton.doClick()
+
+    assertEquals(1, errors.size())
+    assertTrue(errors.first().contains('git-bash.exe'))
+    assertFalse(errors.first().contains('GIT_BASH'))
   }
 
   @Test
@@ -143,11 +164,51 @@ class AiAssistantLauncherSectionTest {
     assertTrue(errors.isEmpty())
   }
 
+  @Test
+  void browseButtonsAreLabeledAndNamed() {
+    AiAssistantLauncherSection section = newSection({ String title, String message -> } as ErrorDisplay)
+
+    assertEquals('...', section.browseBinaryButton.text)
+    assertEquals('aiLauncher.browseBinary', section.browseBinaryButton.name)
+    assertEquals('...', section.browseTerminalButton.text)
+    assertEquals('aiLauncher.browseTerminal', section.browseTerminalButton.name)
+  }
+
+  @Test
+  void browseBinaryButtonUpdatesBinaryField() {
+    AiAssistantLauncherSection section = newSection({ String title, String message -> } as ErrorDisplay) { JTextField field ->
+      field.text = '/usr/local/bin/claude'
+    }
+
+    section.browseBinaryButton.doClick()
+
+    assertEquals('/usr/local/bin/claude', section.binaryField.text)
+  }
+
+  @Test
+  void browseTerminalButtonUpdatesTerminalPathField() {
+    AiAssistantLauncherSection section = newSection({ String title, String message -> } as ErrorDisplay) { JTextField field ->
+      field.text = '/usr/bin/gnome-terminal'
+    }
+
+    section.browseTerminalButton.doClick()
+
+    assertEquals('/usr/bin/gnome-terminal', section.terminalPathField.text)
+  }
+
   private AiAssistantLauncherSection newSection(ErrorDisplay errorDisplay) {
-    newSection(errorDisplay, workspaceServiceThatFindsNothing())
+    newSection(errorDisplay, workspaceServiceThatFindsNothing(), null)
   }
 
   private AiAssistantLauncherSection newSection(ErrorDisplay errorDisplay, AiWorkspaceService workspaceService) {
+    newSection(errorDisplay, workspaceService, null)
+  }
+
+  private AiAssistantLauncherSection newSection(ErrorDisplay errorDisplay, Closure fileChooser) {
+    newSection(errorDisplay, workspaceServiceThatFindsNothing(), fileChooser)
+  }
+
+  private AiAssistantLauncherSection newSection(ErrorDisplay errorDisplay, AiWorkspaceService workspaceService, Closure fileChooser) {
     UserPreferencesService preferencesService = new UserPreferencesService(preferences)
     AiAssistantLauncher launcher = new AiAssistantLauncher()
     BackgroundTaskRunner runner = { Closure backgroundWork, Closure onDone, Closure onError ->
@@ -157,7 +218,7 @@ class AiAssistantLauncherSectionTest {
         onError.call(exception)
       }
     } as BackgroundTaskRunner
-    new AiAssistantLauncherSection(preferencesService, workspaceService, launcher, runner, errorDisplay)
+    new AiAssistantLauncherSection(preferencesService, workspaceService, launcher, runner, errorDisplay, fileChooser)
   }
 
   private AiWorkspaceService workspaceServiceThatFindsNothing() {

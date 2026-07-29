@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AiClient
@@ -89,8 +91,13 @@ class AiAssistantLauncherTest {
         capturedCommand)
   }
 
+  // Windows-only: java.nio.file.Path only splits on backslash under the Windows filesystem
+  // provider, which minttyForGitBash() relies on to find mintty.exe relative to git-bash.exe/bash.exe.
+  // On Linux, Path.of('C:\...') is a single opaque path segment, so the lookup produces a
+  // different (wrong) result - not a real bug, just not testable outside a real Windows Path.
   @Test
-  void gitBashGetsAPosixWrapperEvenThoughItIsWindowsRouted() {
+  @EnabledOnOs(OS.WINDOWS)
+  void gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() {
     List<String> capturedCommand = []
     Map<Path, String> writtenScripts = [:]
     SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
@@ -101,8 +108,10 @@ class AiAssistantLauncherTest {
         { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
         { Path path -> Files.deleteIfExists(path) } as FileDeleter)
 
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
     launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
-        Path.of('C:\\Program Files\\Git\\bin\\bash.exe'), 'token-value')
+        gitBash, 'token-value')
 
     assertEquals(1, writtenScripts.size())
     Path script = writtenScripts.keySet().first()
@@ -110,13 +119,13 @@ class AiAssistantLauncherTest {
     String content = writtenScripts.values().first()
     assertTrue(content.startsWith('#!/bin/sh'))
     // Not "exec": exec would replace the shell process, leaving nothing to pause on failure with -
-    // and Git Bash needs that pause just as much as Command Prompt, since it also runs inside a
-    // window opened via "start" that closes the instant the script (or what it ran) exits.
+    // and the Git Bash terminal window closes the instant the script (or what it ran) exits.
     assertFalse(content.contains('exec '))
     assertTrue(content.contains("'C:\\bin\\codex.exe'"))
     assertTrue(content.contains('Exit code:'))
-    assertTrue(capturedCommand.last() == script.toString())
-    assertTrue(capturedCommand.contains('C:\\Program Files\\Git\\bin\\bash.exe'))
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()], capturedCommand)
   }
 
   @Test
@@ -172,6 +181,83 @@ class AiAssistantLauncherTest {
     assertThrows(IllegalArgumentException) {
       launcher.validatePreflight(TerminalAdapterKind.GIT_BASH)
     }
+    assertTrue(written.isEmpty())
+  }
+
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void gitBashLaunchesFromBashExeAndFindsMinttyTwoLevelsUp() {
+    List<String> capturedCommand = []
+    Map<Path, String> writtenScripts = [:]
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      writtenScripts[target] = new String(content, 'UTF-8')
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> true } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> capturedCommand = command; null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    launcher.launch(AiClient.CODEX, Path.of('C:\\bin\\codex.exe'), TerminalAdapterKind.GIT_BASH,
+        bash, 'token-value')
+
+    assertEquals(1, writtenScripts.size())
+    Path script = writtenScripts.keySet().first()
+    assertTrue(script.toString().endsWith('.sh'))
+    Path workspace = AppPaths.aiWorkspaceDirectory()
+    assertEquals([mintty.toString(), '-T', AiAssistantLauncher.ASSISTANT_SESSION_NAME,
+        '--dir', workspace.toString(), '/usr/bin/bash', '--login', '-i', script.fileName.toString()], capturedCommand)
+  }
+
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void failsEarlyWhenGitBashAdapterHasNoMinttyNextToIt() {
+    Path codex = Path.of('C:\\bin\\codex.exe')
+    Path gitBash = Path.of('C:\\Program Files\\Git\\git-bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> path == codex || path == gitBash } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      launcher.launch(AiClient.CODEX, codex, TerminalAdapterKind.GIT_BASH, gitBash, 'token-value')
+    }
+
+    assertTrue(exception.message.contains('mintty.exe'))
+    assertTrue(exception.message.contains(mintty.toString()))
+    assertTrue(written.isEmpty())
+  }
+
+  // Windows-only: see the comment on gitBashGetsAPosixWrapperAndLaunchesMinttyWithTitleAndWorkingDirectory() above.
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  void failsEarlyWhenBashExeAdapterHasNoMinttyInGitRoot() {
+    Path codex = Path.of('C:\\bin\\codex.exe')
+    Path bash = Path.of('C:\\Program Files\\Git\\bin\\bash.exe')
+    Path mintty = Path.of('C:\\Program Files\\Git\\usr\\bin\\mintty.exe')
+    List<Path> written = []
+    SecretFileWriter writer = { Path root, Path target, byte[] content, SecretFileKind kind ->
+      written << target
+    } as SecretFileWriter
+    ExecutableProbe probe = { Path path -> path == codex || path == bash } as ExecutableProbe
+    AiAssistantLauncher launcher = new AiAssistantLauncher(new AiWorkspacePermissions(), writer, probe,
+        { List<String> command, Path workspace -> null } as ProcessRunner,
+        { Path path -> Files.deleteIfExists(path) } as FileDeleter)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      launcher.launch(AiClient.CODEX, codex, TerminalAdapterKind.GIT_BASH, bash, 'token-value')
+    }
+
+    assertTrue(exception.message.contains('mintty.exe'))
+    assertTrue(exception.message.contains(mintty.toString()))
     assertTrue(written.isEmpty())
   }
 

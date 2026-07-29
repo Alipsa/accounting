@@ -2,6 +2,9 @@ package se.alipsa.accounting.ui
 
 import groovy.transform.PackageScope
 
+import com.formdev.flatlaf.util.SystemFileChooser
+import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
+
 import se.alipsa.accounting.domain.AiClient
 import se.alipsa.accounting.domain.TerminalAdapterKind
 import se.alipsa.accounting.mcp.LoopbackMcpServer
@@ -41,31 +44,40 @@ final class AiAssistantLauncherSection {
   private final JLabel binaryLabel = new JLabel()
   private final JTextField binaryField = new JTextField(24)
   private final JButton detectBinary = new JButton()
+  private final JButton browseBinary = new JButton()
   private final JLabel terminalLabel = new JLabel()
   private final JComboBox<TerminalAdapterKind> terminalKind = new JComboBox<>(TerminalAdapterKind.forCurrentOs() as TerminalAdapterKind[])
   private final JTextField terminalPath = new JTextField(24)
   private final JButton detectTerminal = new JButton()
+  private final JButton browseTerminal = new JButton()
   private final JLabel clientLabel = new JLabel()
   private final JComboBox<AiClient> client = new JComboBox<>(AiClient.values())
   private final JButton launchButton = new JButton()
+  private final Closure fileChooser
   private boolean mcpAvailable
 
   AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher) {
-    this(preferences, workspaceService, launcher, new SwingBackgroundTaskRunner(), null)
+    this(preferences, workspaceService, launcher, new SwingBackgroundTaskRunner(), null, null)
   }
 
   AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher,
       BackgroundTaskRunner tasks) {
-    this(preferences, workspaceService, launcher, tasks, null)
+    this(preferences, workspaceService, launcher, tasks, null, null)
   }
 
   AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher,
       BackgroundTaskRunner tasks, ErrorDisplay errorDisplay) {
+    this(preferences, workspaceService, launcher, tasks, errorDisplay, null)
+  }
+
+  AiAssistantLauncherSection(UserPreferencesService preferences, AiWorkspaceService workspaceService, AiAssistantLauncher launcher,
+      BackgroundTaskRunner tasks, ErrorDisplay errorDisplay, Closure fileChooser) {
     this.preferences = preferences
     this.workspaceService = workspaceService
     this.launcher = launcher
     this.tasks = tasks
     this.errorDisplay = errorDisplay ?: new SwingErrorDisplay(panel)
+    this.fileChooser = fileChooser ?: this.&browseWithSystemFileChooser
     panel.layout = new BoxLayout(panel, BoxLayout.Y_AXIS)
     panel.border = border
     launchButton.name = 'aiLauncher.launchButton'
@@ -86,6 +98,12 @@ final class AiAssistantLauncherSection {
   JButton getDetectTerminalButton() { detectTerminal }
 
   @PackageScope
+  JButton getBrowseBinaryButton() { browseBinary }
+
+  @PackageScope
+  JButton getBrowseTerminalButton() { browseTerminal }
+
+  @PackageScope
   JTextField getBinaryField() { binaryField }
 
   @PackageScope
@@ -100,8 +118,10 @@ final class AiAssistantLauncherSection {
     border.title = I18n.instance.getString('aiLauncher.section.title')
     updateSelectedClientFields()
     detectBinary.text = I18n.instance.getString('aiLauncher.button.detect')
+    browseBinary.text = I18n.instance.getString('aiLauncher.button.browse')
     terminalLabel.text = I18n.instance.getString('aiLauncher.label.terminalAdapter')
     detectTerminal.text = I18n.instance.getString('aiLauncher.button.detect')
+    browseTerminal.text = I18n.instance.getString('aiLauncher.button.browse')
     clientLabel.text = I18n.instance.getString('aiLauncher.label.client')
     launchButton.text = I18n.instance.getString('aiLauncher.button.launch')
   }
@@ -120,7 +140,9 @@ final class AiAssistantLauncherSection {
       AiClient selected = client.selectedItem as AiClient
       tasks.run({ workspaceService.detectBinaryPath(selected) }, this.&onBinaryDetected, this.&showDetectionError)
     }
-    JPanel binaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); binaryRow.add(binaryLabel); binaryRow.add(binaryField); binaryRow.add(detectBinary); panel.add(binaryRow)
+    browseBinary.name = 'aiLauncher.browseBinary'
+    browseBinary.addActionListener { fileChooser.call(binaryField) }
+    JPanel binaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); binaryRow.add(binaryLabel); binaryRow.add(binaryField); binaryRow.add(detectBinary); binaryRow.add(browseBinary); panel.add(binaryRow)
     TerminalAdapterKind stored = preferences.terminalAdapterKind
     if (stored != null && TerminalAdapterKind.forCurrentOs().contains(stored)) { terminalKind.selectedItem = stored }
     terminalPath.name = 'aiLauncher.terminalPath'
@@ -133,7 +155,9 @@ final class AiAssistantLauncherSection {
       TerminalAdapterKind selected = terminalKind.selectedItem as TerminalAdapterKind
       tasks.run({ workspaceService.detectTerminalPath(selected) }, { Path found -> onTerminalPathDetected(selected, found) }, this.&showDetectionError)
     }
-    JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); panel.add(terminalRow)
+    browseTerminal.name = 'aiLauncher.browseTerminal'
+    browseTerminal.addActionListener { fileChooser.call(terminalPath) }
+    JPanel terminalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); terminalRow.add(terminalLabel); terminalRow.add(terminalKind); terminalRow.add(terminalPath); terminalRow.add(detectTerminal); terminalRow.add(browseTerminal); panel.add(terminalRow)
     launchButton.addActionListener { onLaunch() }
     JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); launchRow.add(launchButton); panel.add(launchRow)
   }
@@ -163,7 +187,7 @@ final class AiAssistantLauncherSection {
       preferences.terminalAdapterKind = kind
       preferences.setTerminalPath(kind, found.toString())
     } else {
-      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.name()))
+      showError(I18n.instance.format('aiLauncher.detection.notFound', kind.defaultBinaryName))
     }
   }
 
@@ -231,6 +255,28 @@ final class AiAssistantLauncherSection {
 
   private void showDetectionError(Exception exception) { showError(I18n.instance.format('aiLauncher.error.detectionFailed', exception.message ?: exception.class.simpleName)) }
   private void showError(String text) { errorDisplay.showError(I18n.instance.getString('aiLauncher.error.title'), text) }
+
+  private void browseWithSystemFileChooser(JTextField field) {
+    SystemFileChooser chooser = new SystemFileChooser()
+    chooser.fileSelectionMode = SystemFileChooser.FILES_ONLY
+    if (isWindows()) {
+      chooser.fileFilter = new FileNameExtensionFilter(I18n.instance.getString('aiLauncher.fileFilter.executable'), 'exe')
+    }
+    String current = field.text?.trim()
+    if (current) {
+      File currentFile = new File(current)
+      if (currentFile.parentFile?.directory) {
+        chooser.currentDirectory = currentFile.parentFile
+      }
+    }
+    if (chooser.showOpenDialog(panel) == SystemFileChooser.APPROVE_OPTION) {
+      field.text = chooser.selectedFile.toPath().toString()
+    }
+  }
+
+  private static boolean isWindows() {
+    System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win')
+  }
 
   private static final class SwingErrorDisplay implements ErrorDisplay {
     private final JPanel panel

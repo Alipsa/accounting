@@ -6,9 +6,11 @@
 # version without creating a formal release.
 #
 # The update is applied using the same platform-independent app-<version>.zip
-# distribution that the in-app updater uses:
-#   - jpackage installs: JAR files are replaced and .cfg files are rewritten.
-#   - Gradle distZip portable installs: bin/, lib/ and skill/ are replaced.
+# distribution that the in-app updater uses: JAR files are replaced in place
+# and each .cfg file's classpath/version is rewritten. All three platforms
+# install a jpackage app image (each bundling its own Java runtime), so this
+# works identically everywhere - no platform-specific install format to
+# special-case.
 #
 # Supported platforms:
 #   - Linux
@@ -105,9 +107,7 @@ find_lib_dir() {
     windows)
       candidates=(
         "${install_dir}/${APP_NAME}/app"
-        "${install_dir}/${APP_NAME}/lib"
         "${install_dir}/app"
-        "${install_dir}/lib"
       )
       ;;
   esac
@@ -139,14 +139,6 @@ launcher_path_for_lib_dir() {
       # Windows jpackage install: <install>/app -> <install>/<APP_NAME>.exe
       echo "${parent}/${APP_NAME}.exe"
       ;;
-    */lib)
-      # Gradle distZip portable install: <install>/lib -> <install>/bin/<APP_NAME>
-      if [ "${PLATFORM}" = "windows" ]; then
-        echo "${parent}/bin/${APP_NAME}.bat"
-      else
-        echo "${parent}/bin/${APP_NAME}"
-      fi
-      ;;
     *)
       echo ""
       ;;
@@ -163,7 +155,7 @@ install_root_for_lib_dir() {
     */lib/app|*/Contents/app)
       dirname "${parent}"
       ;;
-    */app|*/lib)
+    */app)
       echo "${parent}"
       ;;
     *)
@@ -190,17 +182,10 @@ is_valid_install() {
     windows)
       [ -f "${dir}/${APP_NAME}.exe" ] ||
       [ -f "${dir}/app/${APP_NAME}.cfg" ] ||
-      [ -f "${dir}/bin/${APP_NAME}.bat" ] ||
       [ -f "${dir}/${APP_NAME}/${APP_NAME}.exe" ] ||
-      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ] ||
-      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}.bat" ]
+      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ]
       ;;
   esac
-}
-
-is_portable_lib_dir() {
-  # A plain .../lib directory (not jpackage's .../lib/app) is a Gradle distZip portable install.
-  [[ "$1" == */lib && "$1" != */lib/app ]]
 }
 
 build_classpath_block() {
@@ -216,25 +201,8 @@ build_classpath_block() {
   done
 }
 
-update_portable_install() {
-  local install_root="$1"
-  local extracted_dir="$2"
-
-  echo "  Replacing portable distribution files..."
-  for entry in bin lib skill; do
-    if [ -e "${install_root}/${entry}" ]; then
-      rm -rf "${install_root}/${entry}"
-    fi
-  done
-  for entry in bin lib skill; do
-    if [ -d "${extracted_dir}/${entry}" ]; then
-      mv "${extracted_dir}/${entry}" "${install_root}/"
-    fi
-  done
-}
-
 update_linux_desktop_entry() {
-  [ "${PLATFORM}" = "linux" ] || return
+  [ "${PLATFORM}" = "linux" ] || return 0
 
   local desktop_file="${XDG_DATA_HOME:-${HOME}/.local/share}/applications/${APP_NAME}.desktop"
   [ -f "${desktop_file}" ] || return
@@ -421,12 +389,12 @@ windows_shortcut_targets_from_file() {
     fi
     tr -d '\000' < "${shortcut}" 2>/dev/null || true
   } | LC_ALL=C awk -v app="${APP_NAME}" '
-    index($0, app ".exe") || index($0, app ".bat") {
-      while (match($0, /[A-Za-z]:\\[A-Za-z0-9_.(){}$&+@!#%=~^, -][^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+    index($0, app ".exe") {
+      while (match($0, /[A-Za-z]:\\[A-Za-z0-9_.(){}$&+@!#%=~^, -][^"'\''\r\n]*AlipsaAccounting\.exe/)) {
         print substr($0, RSTART, RLENGTH)
         $0 = substr($0, RSTART + RLENGTH)
       }
-      while (match($0, /\/[A-Za-z]\/[^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+      while (match($0, /\/[A-Za-z]\/[^"'\''\r\n]*AlipsaAccounting\.exe/)) {
         print substr($0, RSTART, RLENGTH)
         $0 = substr($0, RSTART + RLENGTH)
       }
@@ -517,7 +485,7 @@ find_via_windows_shortcut_powershell() {
   shortcut_targets=$("${powershell}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
 \$ErrorActionPreference = 'SilentlyContinue'
 \$appName = '${APP_NAME}'
-\$targetNames = @(\"${APP_NAME}.exe\", \"${APP_NAME}.bat\")
+\$targetNames = @(\"${APP_NAME}.exe\")
 \$roots = @(
   [Environment]::GetFolderPath('Desktop'),
   [Environment]::GetFolderPath('CommonDesktopDirectory'),
@@ -683,57 +651,53 @@ if [ -z "${NEW_MAIN_JAR}" ]; then
 fi
 NEW_MAIN_JAR=$(basename "${NEW_MAIN_JAR}")
 
-if is_portable_lib_dir "${LIB_DIR}"; then
-  update_portable_install "${INSTALL_ROOT}" "${STAGING_DIR}/${APP_DIR_NAME}"
-else
-  echo "  Backing up current JARs..."
+echo "  Backing up current JARs..."
+rm -rf "${BACKUP_DIR}"
+mkdir -p "${BACKUP_DIR}"
+mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
+
+echo "  Copying updated JARs..."
+if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
+  echo "Error: failed to copy updated JARs; restoring backup." >&2
+  mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
   rm -rf "${BACKUP_DIR}"
-  mkdir -p "${BACKUP_DIR}"
-  mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
-
-  echo "  Copying updated JARs..."
-  if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
-    echo "Error: failed to copy updated JARs; restoring backup." >&2
-    mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
-    rm -rf "${BACKUP_DIR}"
-    exit 1
-  fi
-
-  echo "  Updating launcher configuration..."
-  CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
-  WINDOW_CLASS_OPTION=""
-  if [ "${PLATFORM}" = "linux" ]; then
-    WINDOW_CLASS_OPTION="java-options=-Dsun.awt.X11.XWMClass=${LINUX_WM_CLASS}"
-  fi
-  export CLASSPATH_BLOCK
-  export WINDOW_CLASS_OPTION
-  for cfg in "${LIB_DIR}"/*.cfg; do
-    [ -f "${cfg}" ] || continue
-    awk -v version="${VERSION}" '
-      /^app\.classpath=/ { next }
-      ENVIRON["WINDOW_CLASS_OPTION"] != "" && $0 == ENVIRON["WINDOW_CLASS_OPTION"] { next }
-      ENVIRON["WINDOW_CLASS_OPTION"] != "" && /^java-options=-Dsun\.awt\.X11\.XWMClass=/ { next }
-      /^java-options=-Djpackage\.app-version=/ {
-        sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
-        print
-        next
-      }
-      /^\[JavaOptions\]$/ {
-        print
-        if (ENVIRON["WINDOW_CLASS_OPTION"] != "") {
-          print ENVIRON["WINDOW_CLASS_OPTION"]
-        }
-        next
-      }
-      /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
-      { print }
-    ' "${cfg}" > "${cfg}.tmp"
-    mv "${cfg}.tmp" "${cfg}"
-  done
-
-  echo "  Cleaning up..."
-  rm -rf "${BACKUP_DIR}"
+  exit 1
 fi
+
+echo "  Updating launcher configuration..."
+CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
+WINDOW_CLASS_OPTION=""
+if [ "${PLATFORM}" = "linux" ]; then
+  WINDOW_CLASS_OPTION="java-options=-Dsun.awt.X11.XWMClass=${LINUX_WM_CLASS}"
+fi
+export CLASSPATH_BLOCK
+export WINDOW_CLASS_OPTION
+for cfg in "${LIB_DIR}"/*.cfg; do
+  [ -f "${cfg}" ] || continue
+  awk -v version="${VERSION}" '
+    /^app\.classpath=/ { next }
+    ENVIRON["WINDOW_CLASS_OPTION"] != "" && $0 == ENVIRON["WINDOW_CLASS_OPTION"] { next }
+    ENVIRON["WINDOW_CLASS_OPTION"] != "" && /^java-options=-Dsun\.awt\.X11\.XWMClass=/ { next }
+    /^java-options=-Djpackage\.app-version=/ {
+      sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
+      print
+      next
+    }
+    /^\[JavaOptions\]$/ {
+      print
+      if (ENVIRON["WINDOW_CLASS_OPTION"] != "") {
+        print ENVIRON["WINDOW_CLASS_OPTION"]
+      }
+      next
+    }
+    /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
+    { print }
+  ' "${cfg}" > "${cfg}.tmp"
+  mv "${cfg}.tmp" "${cfg}"
+done
+
+echo "  Cleaning up..."
+rm -rf "${BACKUP_DIR}"
 
 LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
 update_linux_desktop_entry
