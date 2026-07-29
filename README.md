@@ -14,7 +14,7 @@ Det är inte ett komplett affärssystem — fakturering, lönehantering, bankint
 
 ## Funktioner
 
-- **AI-assisterad bokföring — med dig i kontroll** — anslut Claude Code, Codex, Kimi eller Vibe till en lokal, token-skyddad MCP-server. AI:n får kontoplan, historik och rapporter som kontext, kan validera förslag och fylla den osparade verifikationsvyn, men kan aldrig bokföra eller spara åt dig. Allt går genom samma lokala H2-databas, valideringar och affärsregler som i appen.
+- **AI-assisterad bokföring — med dig i kontroll** — anslut Claude Code, Codex, Kimi eller Vibe till en lokal, token-skyddad MCP-server. AI:n får kontoplan, historik och rapporter som kontext, känner till varje företags juridiska form (aktiebolag, handelsbolag/kommanditbolag eller enskild firma) för att undvika att blanda ihop konteringsmönster mellan dem, kan validera förslag och fylla den osparade verifikationsvyn — inklusive att bifoga ett kvitto eller en faktura som bild automatiskt när verifikationen sparas — men kan aldrig bokföra eller spara åt dig. Allt går genom samma lokala H2-databas, valideringar och affärsregler som i appen.
 - **Flerföretagsstöd** — skapa och växla mellan flera företag i samma installation. Varje företag har egen kontoplan, egna räkenskapsår, nummerserier, hashkedjor och rapportarkiv. Data isoleras fullständigt via `company_id` i datamodellen.
 - **Kontoplan** — BAS-baserad kontoplan med import från Excel och automatisk klassificering. Kontoplanen är företagsspecifik — två företag kan ha samma BAS-kontonummer utan konflikt.
 - **Räkenskapsår och perioder** — skapa år, dela in i perioder och lås perioder när de är klara.
@@ -50,6 +50,8 @@ Se [Release](#release) för filverifiering (checksummor och GPG-signaturer) samt
 ## AI-assisterad bokföring
 
 Alipsa Accounting kombinerar en vanlig desktopapp med en lokal AI-arbetsyta: AI-klienten får relevant bokföringskontext och kan hjälpa till med förslag, konton, moms, rättelser, SIE och bokslut, medan appens regler och ditt godkännande styr alla förändringar. Det är assistans i bokföringsflödet — inte automatisk bokföring.
+
+AI-klienten kan lista alla registrerade företag i installationen, inklusive juridisk form (aktiebolag, handelsbolag/kommanditbolag eller enskild firma), för att undvika att återanvända ett företags konteringsmönster på ett annat med en annan juridisk form. Ett kvitto eller en faktura som bild kan skickas med i förslaget och bifogas automatiskt till verifikationen så snart användaren sparar den i desktopappen — inget separat bifogningssteg krävs.
 
 När desktopappen körs startar den en lokal, token-skyddad MCP-server på `http://127.0.0.1:48652/mcp`. Konfigurera Claude Code, Codex, Kimi eller Vibe som en HTTP-MCP-klient med `Authorization: Bearer <token>`. Endpoint och token visas under Inställningar; token kan regenereras där.
 

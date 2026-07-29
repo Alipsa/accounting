@@ -32,7 +32,7 @@ För den inbyggda launchern (nästa avsnitt) tillkommer:
 Det här är den enklaste vägen för CLI-klienter och det som `README.md` refererar till som **Starta AI-assistent**.
 
 1. Öppna **Inställningar → AI / MCP**.
-2. I sektionen **Starta AI-assistent**, välj klient i listan: `Claude Code`, `Codex`, `Kimi` eller `Vibe`. Kimi och Vibe är märkta **experimentella** — deras instruktionsfilskonvention (`AGENTS.md`) är inte fullt verifierad mot en riktig installation, till skillnad från Claude Code och Codex.
+2. I sektionen **Starta AI-assistent**, välj klient i listan: `Claude Code`, `Codex`, `Kimi` eller `Vibe`. Vibe är märkt **experimentell** — dess instruktionsfilskonvention (`AGENTS.md`) är inte fullt verifierad mot en riktig installation, till skillnad från Claude Code, Codex och Kimi.
 3. Fyll i sökvägen till klientens CLI-binär, eller klicka **Hitta** för att låta appen söka igenom `PATH` och vanliga installationsplatser.
 4. Välj terminal och dess sökväg, eller klicka **Hitta** för att söka automatiskt.
 5. Klicka **Starta AI-assistent**. Knappen är inaktiv om MCP-servern inte är igång.
@@ -48,7 +48,7 @@ Vad som händer i bakgrunden:
 |-------------|----------------------------------|-----------------------------------------------|---------------|
 | Claude Code | `.mcp.json`                      | `.claude/skills/accounting/accounting-mcp.md` | Verifierad    |
 | Codex       | `.codex/config.toml`             | `AGENTS.md`                                   | Verifierad    |
-| Kimi        | `.kimi-code/mcp.json`            | `AGENTS.md`                                   | Experimentell |
+| Kimi        | `.kimi-code/mcp.json`            | `AGENTS.md`                                   | Verifierad    |
 | Vibe        | `.vibe/config.toml`              | `AGENTS.md`                                   | Experimentell |
 
 Claude Code och Kimi använder samma JSON-form (se `AiClientConfigWriter.bearerJson`):
