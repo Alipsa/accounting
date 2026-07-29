@@ -170,6 +170,63 @@ install_linux_macos() {
   esac
 }
 
+create_windows_shortcuts() {
+  local app_root="$1"
+  local launcher_win workdir_win icon_src icon_dst icon_win icon_line ps1
+
+  if ! command -v powershell.exe >/dev/null 2>&1; then
+    echo "  Warning: powershell.exe not found; skipping shortcut creation." >&2
+    return
+  fi
+
+  icon_src="${SCRIPT_DIR}/packaging/windows/${APP_NAME}.ico"
+  icon_win=""
+  if [ -f "${icon_src}" ]; then
+    icon_dst="${app_root}/${APP_NAME}.ico"
+    cp "${icon_src}" "${icon_dst}"
+    icon_win=$(cygpath -w "${icon_dst}")
+  fi
+
+  launcher_win=$(cygpath -w "${app_root}/bin/${APP_NAME}.bat")
+  workdir_win=$(cygpath -w "${app_root}/bin")
+
+  icon_line=""
+  if [ -n "${icon_win}" ]; then
+    icon_line="\$s.IconLocation = '${icon_win}'"
+  fi
+
+  ps1=$(mktemp "${TMPDIR:-/tmp}/alipsa-shortcut-XXXXXX")
+  mv "${ps1}" "${ps1}.ps1"
+  ps1="${ps1}.ps1"
+
+  cat > "${ps1}" <<EOF
+\$ErrorActionPreference = 'Stop'
+\$WshShell = New-Object -ComObject WScript.Shell
+
+function New-AppShortcut(\$path) {
+  \$s = \$WshShell.CreateShortcut(\$path)
+  \$s.TargetPath = '${launcher_win}'
+  \$s.WorkingDirectory = '${workdir_win}'
+  ${icon_line}
+  \$s.Save()
+}
+
+\$desktop = [Environment]::GetFolderPath('Desktop')
+New-AppShortcut (Join-Path \$desktop '${APP_NAME}.lnk')
+
+\$programs = [Environment]::GetFolderPath('Programs')
+New-AppShortcut (Join-Path \$programs '${APP_NAME}.lnk')
+EOF
+
+  echo "  Creating desktop and Start Menu shortcuts..."
+  if powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "${ps1}")"; then
+    echo "  Shortcuts created."
+  else
+    echo "  Warning: failed to create shortcuts." >&2
+  fi
+  rm -f "${ps1}"
+}
+
 install_windows() {
   local zip_file="${SCRIPT_DIR}/app/build/distributions/app-${VERSION}.zip"
   if [ ! -f "${zip_file}" ]; then
@@ -186,7 +243,6 @@ install_windows() {
   fi
   mkdir -p "${app_root}"
 
-  local staging_dir
   staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/alipsa-install-XXXXXX")
   trap 'rm -rf "${staging_dir}"' EXIT
 
@@ -207,6 +263,8 @@ install_windows() {
     echo "Error: launcher not found: ${LAUNCHER}" >&2
     exit 1
   fi
+
+  create_windows_shortcuts "${app_root}"
 }
 
 case "${PLATFORM}" in
@@ -221,5 +279,8 @@ esac
 echo ""
 echo "Installed ${APP_NAME} ${VERSION}."
 echo "  Launcher: ${LAUNCHER}"
+if [ "${PLATFORM}" = "windows" ]; then
+  echo "  Shortcuts: Desktop and Start Menu"
+fi
 echo ""
 echo "Start the app from the applications menu or run: ${LAUNCHER}"
