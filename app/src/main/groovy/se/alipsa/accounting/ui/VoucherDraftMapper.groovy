@@ -39,7 +39,8 @@ final class VoucherDraftMapper {
     } catch (Exception exception) {
       throw new IllegalArgumentException('accounting_date must be an ISO date (YYYY-MM-DD).', exception)
     }
-    new VoucherDraft(accountingDate, draft.get('description') as String ?: '', draft.get('series_code') as String ?: 'A', lines)
+    new VoucherDraft(accountingDate, draft.get('description') as String ?: '', draft.get('series_code') as String ?: 'A', lines,
+        (draft.get('attachment_path') as String)?.trim() ?: null)
   }
 
   private static BigDecimal decimal(Object value) {
@@ -51,12 +52,14 @@ final class VoucherDraftMapper {
     final String description
     final String seriesCode
     final List<VoucherLine> lines
+    final String attachmentPath
 
-    VoucherDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines) {
+    VoucherDraft(LocalDate accountingDate, String description, String seriesCode, List<VoucherLine> lines, String attachmentPath = null) {
       this.accountingDate = accountingDate
       this.description = description
       this.seriesCode = seriesCode
       this.lines = lines
+      this.attachmentPath = attachmentPath
     }
   }
 }

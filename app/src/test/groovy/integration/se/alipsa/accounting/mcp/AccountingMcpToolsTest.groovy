@@ -200,6 +200,57 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void getCompanyInfoIncludesLegalForm() {
+    se.alipsa.accounting.domain.Company company = new CompanyService(databaseService).findById(CompanyService.LEGACY_COMPANY_ID)
+    company.legalForm = se.alipsa.accounting.domain.LegalForm.AKTIEBOLAG
+    new CompanyService(databaseService).save(company)
+
+    Map<String, Object> result = tools.callTool('get_company_info', ['company_id': (Object) 1L])
+    assertTrue((boolean) result.get('ok'))
+    Map companyMap = (Map) result.get('company')
+    assertEquals('AKTIEBOLAG', companyMap.get('legal_form'))
+    assertEquals('Aktiebolag', companyMap.get('legal_form_display_name'))
+  }
+
+  @Test
+  void listCompaniesReturnsLegacyCompany() {
+    Map<String, Object> result = tools.callTool('list_companies', [:])
+    assertTrue((boolean) result.get('ok'))
+    List companies = (List) result.get('companies')
+    assertEquals(1, companies.size())
+    assertEquals(1L, ((Number) ((Map) companies.first()).get('id')).longValue())
+  }
+
+  @Test
+  void listCompaniesReturnsEmptyListWhenNoneExist() {
+    // A fresh, isolated database is required here: the shared databaseService from setUp() already
+    // has a fiscal year and accounts referencing company id 1 (foreign key "on delete restrict"),
+    // so deleting the company row there would fail. list_companies() in AccountingMcpTools is a
+    // trivial pass-through over CompanyService.listCompanies(), so exercising that directly against
+    // a genuinely empty company table is an equally valid proof of the "graceful empty" behavior.
+    Path emptyDbHome = tempDir.resolve('empty-db')
+    Files.createDirectories(emptyDbHome)
+    String currentHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, emptyDbHome.toString())
+    DatabaseService emptyDatabaseService = DatabaseService.newForTesting()
+    try {
+      emptyDatabaseService.initialize()
+      emptyDatabaseService.withTransaction { groovy.sql.Sql sql ->
+        // Migrations auto-seed per-company rows in several tables (e.g. audit_log_chain_head)
+        // beyond just "company" itself; bypass referential integrity for this one cleanup
+        // statement rather than hardcoding every dependent table.
+        sql.execute('set referential_integrity false')
+        sql.execute('delete from company')
+        sql.execute('set referential_integrity true')
+      }
+      assertTrue(new CompanyService(emptyDatabaseService).listCompanies().isEmpty())
+    } finally {
+      emptyDatabaseService.shutdown()
+      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, currentHome)
+    }
+  }
+
+  @Test
   void listFiscalYearsReturnsCreatedYear() {
     Map<String, Object> result = tools.callTool('list_fiscal_years', ['company_id': (Object) 1L])
     assertTrue((boolean) result.get('ok'))
@@ -290,6 +341,27 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) result.get('ok'))
     List rows = (List) result.get('rows')
     assertTrue(rows.size() <= 1)
+  }
+
+  @Test
+  void getGeneralLedgerFiltersByAccountNumber() {
+    voucherService.createVoucher(fiscalYearId, 'A', LocalDate.of(2026, 3, 1), 'Kontofilter-test', [
+        new VoucherLine(null, null, 0, null, '1930', null, null, 100.00G, 0.00G),
+        new VoucherLine(null, null, 1, null, '2440', null, null, 0.00G, 100.00G)
+    ])
+
+    Map<String, Object> result = tools.callTool('get_general_ledger', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId,
+        'account_number': (Object) '1930'
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+    assertEquals('1930', result.get('account_number'))
+    List<Map> rows = (List<Map>) result.get('rows')
+    assertFalse(rows.isEmpty())
+    assertTrue(rows.every { Map row -> row.get('account_number') == '1930' })
+    assertEquals(rows.size(), ((Number) result.get('total_rows')).intValue())
   }
 
   @Test
@@ -726,6 +798,37 @@ class AccountingMcpToolsTest {
     Map<String, Object> missingDraft = tools.callTool('get_active_voucher_draft', [:])
     assertFalse((boolean) missingDraft.get('ok'))
     assertEquals(['No unsaved voucher draft is active.'], missingDraft.get('errors'))
+  }
+
+  @Test
+  void setActiveVoucherDraftValidatesAttachmentPath() {
+    Map<String, Object>[] appliedDraft = new Map[1]
+    tools.setVoucherDraftAccess(new VoucherDraftAccess() {
+      @Override
+      Map<String, Object> getVoucherDraft() { [:] }
+
+      @Override
+      void setVoucherDraft(Map<String, Object> draft) {
+        appliedDraft[0] = draft
+      }
+    })
+
+    Path missingFile = tempDir.resolve('does-not-exist.jpg')
+    Map<String, Object> rejected = tools.callTool('set_active_voucher_draft', [
+        accounting_date: '2026-03-01', description: 'Kvitto', lines: [],
+        attachment_path: missingFile.toString()
+    ])
+    assertFalse((boolean) rejected.get('ok'))
+    assertNull(appliedDraft[0])
+
+    Path receipt = tempDir.resolve('receipt.jpg')
+    Files.createFile(receipt)
+    Map<String, Object> accepted = tools.callTool('set_active_voucher_draft', [
+        accounting_date: '2026-03-01', description: 'Kvitto', lines: [],
+        attachment_path: receipt.toString()
+    ])
+    assertTrue((boolean) accepted.get('ok'))
+    assertEquals(receipt.toString(), appliedDraft[0].attachment_path)
   }
 
 

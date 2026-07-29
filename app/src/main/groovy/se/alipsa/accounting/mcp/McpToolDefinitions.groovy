@@ -19,8 +19,12 @@ final class McpToolDefinitions {
             [],
             [:]
         ),
+        toolDef('list_companies',
+            'Lists all companies registered in this installation, including their legal form. Returns an empty list, not an error, when no companies exist yet.',
+            [], [:]
+        ),
         toolDef('get_company_info',
-            'Returns the company record for the given company ID.',
+            'Returns the company record for the given company ID, including its legal form (AKTIEBOLAG, ENSKILD_FIRMA, HANDELSBOLAG_KB). Check legal_form before reusing another company\'s account usage as a template - account conventions differ by legal form.',
             ['company_id'],
             [company_id: intParam('Company ID')]
         ),
@@ -62,7 +66,7 @@ final class McpToolDefinitions {
             ]
         ),
         toolDef('get_general_ledger',
-            'Returns the general ledger (huvudbok). One row per posting with running balance. Use limit to manage large years.',
+            'Returns the general ledger (huvudbok). One row per posting with running balance. Use limit to manage large years. Use account_number to see only postings for a specific account (e.g. to check how another company booked something).',
             ['company_id', 'fiscal_year_id'],
             [
                 company_id: intParam('Company ID'),
@@ -70,6 +74,7 @@ final class McpToolDefinitions {
                 accounting_period_id: optIntParam('Optional: restrict to a specific accounting period.'),
                 start_date: optStrParam('Optional: restrict start date (ISO YYYY-MM-DD).'),
                 end_date: optStrParam('Optional: restrict end date (ISO YYYY-MM-DD).'),
+                account_number: optStrParam('Optional: restrict to a single account number.'),
                 limit: optIntParam('Max rows returned. Default 1000, max 5000.')
             ]
         ),
@@ -111,13 +116,14 @@ final class McpToolDefinitions {
             [], [:]
         ),
         toolDef('set_active_voucher_draft',
-            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool.',
+            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool. If attachment_path is provided, the file is validated immediately and will be automatically attached to the voucher the moment the user saves it - no separate attach step is needed.',
             ['accounting_date', 'description', 'lines'],
             [
                 accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
                 description: strParam('Voucher description'),
                 series_code: optStrParam('Voucher series code. Defaults to A.'),
-                lines: voucherLinesParam()
+                lines: voucherLinesParam(),
+                attachment_path: optStrParam('Optional absolute path to a receipt/invoice file. Validated immediately; auto-attached to the voucher when the user saves it in the GUI.')
             ]
         ),
         toolDef('save_accounting_instruction',

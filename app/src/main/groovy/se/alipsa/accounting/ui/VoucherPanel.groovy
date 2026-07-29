@@ -36,6 +36,7 @@ import java.awt.event.MouseEvent
 import java.awt.print.PrinterException
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
+import java.nio.file.Path
 import java.text.MessageFormat
 import java.time.LocalDate
 import java.util.function.Consumer
@@ -125,6 +126,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JTable auditLogTable = new JTable(auditLogTableModel)
 
   private Voucher currentVoucher
+  private String pendingReceiptAttachmentPath
   private final VoucherNavigation navigation = new VoucherNavigation()
   private boolean readOnly = false
   private final Map<String, BigDecimal> balanceCache = [:]
@@ -666,11 +668,25 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void handleSavedVoucher(Voucher savedVoucher) {
+    String attachmentPathToApply = pendingReceiptAttachmentPath
+    pendingReceiptAttachmentPath = null
     reloadVoucherList(advanceAfterSaveCheckBox.selected ? null : savedVoucher)
+    if (attachmentPathToApply) {
+      try {
+        attachmentService.addAttachment(savedVoucher.id, Path.of(attachmentPathToApply))
+        refreshAttachmentAndHistory()
+        showInfo(I18n.instance.format('voucherPanel.message.savedWithReceipt',
+            savedVoucher.voucherNumber ?: '', Path.of(attachmentPathToApply).fileName.toString()))
+      } catch (Exception ex) {
+        showError(ex.message ?: I18n.instance.format('voucherPanel.error.receiptAttachmentFailed',
+            savedVoucher.voucherNumber ?: ''))
+      }
+    }
   }
 
   private void showVoucher(Voucher v) {
     currentVoucher = v
+    pendingReceiptAttachmentPath = null
     balanceCache.clear()
     if (v == null) {
       showBlankVoucher()
@@ -712,6 +728,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void showEmptyVoucher() {
     currentVoucher = null
+    pendingReceiptAttachmentPath = null
     readOnly = false
     balanceCache.clear()
     String nextNumber = previewNextVoucherNumber('A')
@@ -809,6 +826,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     descriptionField.text = voucherDraft.description
     seriesField.text = voucherDraft.seriesCode
     lineTableModel.setRows(voucherDraft.lines)
+    pendingReceiptAttachmentPath = voucherDraft.attachmentPath
     ensureAutoRow()
     recalculateAllBalances()
     refreshTotals()

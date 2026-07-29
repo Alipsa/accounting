@@ -22,6 +22,19 @@ final class VoucherDraftMapperTest {
     assertEquals(1, draft.lines.size())
     assertEquals(125.50G, draft.lines[0].debitAmount)
     assertEquals(BigDecimal.ZERO, draft.lines[0].creditAmount)
+    assertEquals(null, draft.attachmentPath)
+  }
+
+  @Test
+  void capturesAttachmentPathWhenProvided() {
+    VoucherDraftMapper.VoucherDraft draft = VoucherDraftMapper.fromDraft([
+        accounting_date: '2026-07-21',
+        description: 'Kvitto',
+        lines: [],
+        attachment_path: '/tmp/receipt.jpg'
+    ])
+
+    assertEquals('/tmp/receipt.jpg', draft.attachmentPath)
   }
 
   @Test

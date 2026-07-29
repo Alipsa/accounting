@@ -1,6 +1,13 @@
 # Alipsa Accounting, Release History
 
-## v1.7.1, in progress
+## v1.8.0, in progress
+
+### Förbättringar
+
+- **Lista alla registrerade företag via AI-assistenten** — Nytt MCP-verktyg `list_companies` listar alla registrerade företag, inklusive juridisk form. Returnerar en tom lista i stället för ett fel om inga företag finns ännu.
+- **Bolagsform synlig för AI-assistenten** — `get_company_info` och `list_companies` visar nu företagets juridiska form (Aktiebolag, Handelsbolag/kommanditbolag eller Enskild firma), så AI-assistenten kan undvika att använda ett aktiebolags kontering som mall för ett handelsbolag eller en enskild firma.
+- **Kontofilter i huvudboken** — `get_general_ledger` kan nu filtreras på ett specifikt kontonummer via AI-assistenten, vilket gör det enklare att se hur ett visst konto har konterats, till exempel i ett annat företag.
+- **Kvitton/fakturor som bild kan bifogas automatiskt** — AI-assistenten kan nu ta emot en sökväg till en kvitto- eller fakturabild, föreslå en kontering utifrån den, och bilden bifogas automatiskt till verifikationen så snart användaren sparar den i skrivbordsappen — inget separat steg krävs.
 
 ### Buggfixar
 
