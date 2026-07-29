@@ -9,16 +9,10 @@
 # Supported platforms:
 #   - Linux   (full support, including desktop entry registration)
 #   - macOS   (installs the .app bundle)
-#   - Windows (portable install from the Gradle distribution zip)
+#   - Windows (jpackage app image, plus Desktop/Start Menu shortcuts)
 #
-# Note on Java: the Linux and macOS installs are jpackage app-images, which
-# bundle their own Java runtime. The Windows portable install is a plain
-# Gradle distribution zip and does NOT bundle a runtime - it needs a
-# separately installed Java 21+. On Windows, this script detects the java
-# on THIS shell's PATH/JAVA_HOME (e.g. one managed by SDKMAN, which is not
-# visible from a plain cmd.exe/Explorer launch) and bakes it into a small
-# launcher wrapper, so the desktop/Start Menu shortcuts work out of the box.
-# If no java can be detected here, a warning is printed instead.
+# All three platforms install a jpackage app image, which bundles its own
+# Java runtime - no separately installed JDK/JRE is required on any of them.
 #
 # Usage:
 #   ./localInstall.sh                # build and install to default location
@@ -30,10 +24,10 @@
 #   macOS   : ~/Applications
 #   Windows : %LOCALAPPDATA%
 #
-# The release zip is extracted into that directory, producing:
-#   Linux : <dir>/AlipsaAccounting/   (jpackage app image)
-#   macOS : <dir>/AlipsaAccounting.app/
-#   Windows : <dir>/AlipsaAccounting/  (bin/, lib/, skill/)
+# Producing, in that directory:
+#   Linux   : AlipsaAccounting/   (jpackage app image), skill/, install.sh/uninstall.sh
+#   macOS   : AlipsaAccounting.app/
+#   Windows : AlipsaAccounting/   (jpackage app image: AlipsaAccounting.exe, app/, runtime/, skill/)
 #
 
 set -euo pipefail
@@ -107,7 +101,7 @@ if [ "${BUILD}" = true ]; then
   cd "${SCRIPT_DIR}"
   case "${PLATFORM}" in
     windows)
-      ./gradlew :app:distZip
+      ./gradlew :app:copySkillToWindowsAppImage
       ;;
     *)
       ./gradlew :app:packageCurrentPlatformRelease
@@ -179,52 +173,6 @@ install_linux_macos() {
   esac
 }
 
-# Resolves a JAVA_HOME from this shell's own environment (JAVA_HOME or the
-# 'java' on PATH), so it can be baked into the generated launcher wrapper.
-# Prints the resolved path and returns 0, or returns 1 if none was found.
-detect_windows_java_home() {
-  if [ -n "${JAVA_HOME:-}" ] && [ -f "${JAVA_HOME}/bin/java.exe" ]; then
-    printf '%s' "${JAVA_HOME}"
-    return 0
-  fi
-
-  local java_bin
-  java_bin=$(command -v java.exe 2>/dev/null || command -v java 2>/dev/null || true)
-  if [ -z "${java_bin}" ]; then
-    return 1
-  fi
-  if command -v readlink >/dev/null 2>&1; then
-    java_bin=$(readlink -f "${java_bin}" 2>/dev/null || printf '%s' "${java_bin}")
-  fi
-  printf '%s' "$(dirname "$(dirname "${java_bin}")")"
-}
-
-# Writes a wrapper .bat that sets JAVA_HOME (if not already defined by the
-# environment it runs in) before calling the Gradle-generated launcher.
-# This is what shortcuts should target, since the Gradle-generated
-# AlipsaAccounting.bat is regenerated on every build and only auto-detects
-# Java that is visible from wherever it happens to be launched.
-create_windows_launcher_wrapper() {
-  local app_root="$1"
-  local java_home="$2"
-  local wrapper="${app_root}/bin/Launch${APP_NAME}.bat"
-  local java_home_win=""
-
-  if [ -n "${java_home}" ]; then
-    java_home_win=$(cygpath -w "${java_home}")
-  fi
-
-  {
-    printf '@echo off\r\n'
-    if [ -n "${java_home_win}" ]; then
-      printf 'if not defined JAVA_HOME set "JAVA_HOME=%s"\r\n' "${java_home_win}"
-    fi
-    printf 'call "%%~dp0%s.bat" %%*\r\n' "${APP_NAME}"
-  } > "${wrapper}"
-
-  printf '%s' "${wrapper}"
-}
-
 create_windows_shortcuts() {
   local app_root="$1"
   local launcher="$2"
@@ -244,7 +192,7 @@ create_windows_shortcuts() {
   fi
 
   launcher_win=$(cygpath -w "${launcher}")
-  workdir_win=$(cygpath -w "${app_root}/bin")
+  workdir_win=$(cygpath -w "${app_root}")
 
   icon_line=""
   if [ -n "${icon_win}" ]; then
@@ -284,9 +232,10 @@ EOF
 }
 
 install_windows() {
-  local zip_file="${SCRIPT_DIR}/app/build/distributions/app-${VERSION}.zip"
-  if [ ! -f "${zip_file}" ]; then
-    echo "Error: distribution zip not found: ${zip_file}" >&2
+  local app_image_dir="${SCRIPT_DIR}/app/build/release/windows/${APP_NAME}"
+  local skill_dir="${SCRIPT_DIR}/app/build/release/windows/skill"
+  if [ ! -d "${app_image_dir}" ]; then
+    echo "Error: app image not found: ${app_image_dir}" >&2
     echo "Run $0 without --no-build to build it first." >&2
     exit 1
   fi
@@ -297,44 +246,21 @@ install_windows() {
   if [ -d "${app_root}" ]; then
     rm -rf "${app_root}"
   fi
-  mkdir -p "${app_root}"
+  mkdir -p "${INSTALL_DIR}"
 
-  staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/alipsa-install-XXXXXX")
-  trap 'rm -rf "${staging_dir}"' EXIT
+  echo "  Copying app image..."
+  cp -r "${app_image_dir}" "${app_root}"
+  if [ -d "${skill_dir}" ]; then
+    cp -r "${skill_dir}" "${app_root}/skill"
+  fi
 
-  echo "  Extracting ${zip_file}..."
-  unzip -oq "${zip_file}" -d "${staging_dir}"
-
-  local extracted_dir="${staging_dir}/app-${VERSION}"
-  if [ ! -d "${extracted_dir}" ]; then
-    echo "Error: expected top-level directory app-${VERSION} not found in ${zip_file}" >&2
+  LAUNCHER="${app_root}/${APP_NAME}.exe"
+  if [ ! -f "${LAUNCHER}" ]; then
+    echo "Error: launcher not found: ${LAUNCHER}" >&2
     exit 1
   fi
-
-  echo "  Moving files into place..."
-  mv "${extracted_dir}/"* "${app_root}/"
-
-  local generated_launcher="${app_root}/bin/${APP_NAME}.bat"
-  if [ ! -f "${generated_launcher}" ]; then
-    echo "Error: launcher not found: ${generated_launcher}" >&2
-    exit 1
-  fi
-
-  DETECTED_JAVA_HOME=""
-  if DETECTED_JAVA_HOME=$(detect_windows_java_home); then
-    echo "  Detected Java runtime: ${DETECTED_JAVA_HOME}"
-  fi
-
-  LAUNCHER=$(create_windows_launcher_wrapper "${app_root}" "${DETECTED_JAVA_HOME}")
 
   create_windows_shortcuts "${app_root}" "${LAUNCHER}"
-
-  if [ -z "${DETECTED_JAVA_HOME}" ]; then
-    echo "" >&2
-    echo "Warning: no Java installation was detected (JAVA_HOME is not set and 'java' is not on PATH)." >&2
-    echo "  ${APP_NAME} requires Java 21 or later; this portable install does not bundle a runtime." >&2
-    echo "  Install a JDK/JRE 21+ and set JAVA_HOME (or add java to PATH) before running the launcher." >&2
-  fi
 }
 
 case "${PLATFORM}" in
@@ -351,11 +277,6 @@ echo "Installed ${APP_NAME} ${VERSION}."
 echo "  Launcher: ${LAUNCHER}"
 if [ "${PLATFORM}" = "windows" ]; then
   echo "  Shortcuts: Desktop and Start Menu"
-  if [ -n "${DETECTED_JAVA_HOME}" ]; then
-    echo "  Java runtime: ${DETECTED_JAVA_HOME} (baked into the launcher wrapper)"
-  else
-    echo "  Requires: Java 21+ (JAVA_HOME or java on PATH) - not bundled with this portable install"
-  fi
 fi
 echo ""
 echo "Start the app from the applications menu or run: ${LAUNCHER}"

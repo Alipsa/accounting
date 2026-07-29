@@ -6,20 +6,16 @@
 # version without creating a formal release.
 #
 # The update is applied using the same platform-independent app-<version>.zip
-# distribution that the in-app updater uses:
-#   - jpackage installs: JAR files are replaced and .cfg files are rewritten.
-#   - Gradle distZip portable installs: bin/, lib/ and skill/ are replaced.
+# distribution that the in-app updater uses: JAR files are replaced in place
+# and each .cfg file's classpath/version is rewritten. All three platforms
+# install a jpackage app image (each bundling its own Java runtime), so this
+# works identically everywhere - no platform-specific install format to
+# special-case.
 #
 # Supported platforms:
 #   - Linux
 #   - macOS
 #   - Windows (Git Bash / MSYS2 / Cygwin)
-#
-# Note on Java (Windows portable installs only): bin/ is replaced wholesale
-# from the distZip on every update, which never contains a JAVA_HOME wrapper.
-# This script regenerates bin/Launch<APP_NAME>.bat (using Java detected from
-# this shell's own JAVA_HOME/PATH) after each update, so existing Desktop/
-# Start Menu shortcuts - which target that wrapper - keep working.
 #
 # Usage:
 #   ./localUpdate.sh                # auto-discover and update
@@ -111,9 +107,7 @@ find_lib_dir() {
     windows)
       candidates=(
         "${install_dir}/${APP_NAME}/app"
-        "${install_dir}/${APP_NAME}/lib"
         "${install_dir}/app"
-        "${install_dir}/lib"
       )
       ;;
   esac
@@ -145,14 +139,6 @@ launcher_path_for_lib_dir() {
       # Windows jpackage install: <install>/app -> <install>/<APP_NAME>.exe
       echo "${parent}/${APP_NAME}.exe"
       ;;
-    */lib)
-      # Gradle distZip portable install: <install>/lib -> <install>/bin/<APP_NAME>
-      if [ "${PLATFORM}" = "windows" ]; then
-        echo "${parent}/bin/${APP_NAME}.bat"
-      else
-        echo "${parent}/bin/${APP_NAME}"
-      fi
-      ;;
     *)
       echo ""
       ;;
@@ -169,7 +155,7 @@ install_root_for_lib_dir() {
     */lib/app|*/Contents/app)
       dirname "${parent}"
       ;;
-    */app|*/lib)
+    */app)
       echo "${parent}"
       ;;
     *)
@@ -196,63 +182,10 @@ is_valid_install() {
     windows)
       [ -f "${dir}/${APP_NAME}.exe" ] ||
       [ -f "${dir}/app/${APP_NAME}.cfg" ] ||
-      [ -f "${dir}/bin/${APP_NAME}.bat" ] ||
       [ -f "${dir}/${APP_NAME}/${APP_NAME}.exe" ] ||
-      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ] ||
-      [ -f "${dir}/${APP_NAME}/bin/${APP_NAME}.bat" ]
+      [ -f "${dir}/${APP_NAME}/app/${APP_NAME}.cfg" ]
       ;;
   esac
-}
-
-is_portable_lib_dir() {
-  # A plain .../lib directory (not jpackage's .../lib/app) is a Gradle distZip portable install.
-  [[ "$1" == */lib && "$1" != */lib/app ]]
-}
-
-# Resolves a JAVA_HOME from this shell's own environment (JAVA_HOME or the
-# 'java' on PATH), so it can be baked into the generated launcher wrapper.
-# Prints the resolved path and returns 0, or returns 1 if none was found.
-detect_windows_java_home() {
-  if [ -n "${JAVA_HOME:-}" ] && [ -f "${JAVA_HOME}/bin/java.exe" ]; then
-    printf '%s' "${JAVA_HOME}"
-    return 0
-  fi
-
-  local java_bin
-  java_bin=$(command -v java.exe 2>/dev/null || command -v java 2>/dev/null || true)
-  if [ -z "${java_bin}" ]; then
-    return 1
-  fi
-  if command -v readlink >/dev/null 2>&1; then
-    java_bin=$(readlink -f "${java_bin}" 2>/dev/null || printf '%s' "${java_bin}")
-  fi
-  printf '%s' "$(dirname "$(dirname "${java_bin}")")"
-}
-
-# Writes a wrapper .bat that sets JAVA_HOME (if not already defined by the
-# environment it runs in) before calling the Gradle-generated launcher.
-# Existing shortcuts target this wrapper, and since bin/ is replaced wholesale
-# on every update (the Gradle distZip never contains this file), it must be
-# regenerated after each update or the shortcuts are left dangling.
-create_windows_launcher_wrapper() {
-  local app_root="$1"
-  local java_home="$2"
-  local wrapper="${app_root}/bin/Launch${APP_NAME}.bat"
-  local java_home_win=""
-
-  if [ -n "${java_home}" ]; then
-    java_home_win=$(cygpath -w "${java_home}")
-  fi
-
-  {
-    printf '@echo off\r\n'
-    if [ -n "${java_home_win}" ]; then
-      printf 'if not defined JAVA_HOME set "JAVA_HOME=%s"\r\n' "${java_home_win}"
-    fi
-    printf 'call "%%~dp0%s.bat" %%*\r\n' "${APP_NAME}"
-  } > "${wrapper}"
-
-  printf '%s' "${wrapper}"
 }
 
 build_classpath_block() {
@@ -266,37 +199,6 @@ build_classpath_block() {
     [ "${jar_name}" = "${main_jar}" ] && continue
     echo "app.classpath=\$APPDIR/${jar_name}"
   done
-}
-
-update_portable_install() {
-  local install_root="$1"
-  local extracted_dir="$2"
-
-  echo "  Replacing portable distribution files..."
-  for entry in bin lib skill; do
-    if [ -e "${install_root}/${entry}" ]; then
-      rm -rf "${install_root}/${entry}"
-    fi
-  done
-  for entry in bin lib skill; do
-    if [ -d "${extracted_dir}/${entry}" ]; then
-      mv "${extracted_dir}/${entry}" "${install_root}/"
-    fi
-  done
-
-  if [ "${PLATFORM}" = "windows" ]; then
-    local detected_java_home=""
-    if detected_java_home=$(detect_windows_java_home); then
-      echo "  Detected Java runtime: ${detected_java_home}"
-    fi
-    WRAPPER_LAUNCHER=$(create_windows_launcher_wrapper "${install_root}" "${detected_java_home}")
-    if [ -z "${detected_java_home}" ]; then
-      echo "" >&2
-      echo "Warning: no Java installation was detected (JAVA_HOME is not set and 'java' is not on PATH)." >&2
-      echo "  ${APP_NAME} requires Java 21 or later; this portable install does not bundle a runtime." >&2
-      echo "  Install a JDK/JRE 21+ and set JAVA_HOME (or add java to PATH) before running the launcher." >&2
-    fi
-  fi
 }
 
 update_linux_desktop_entry() {
@@ -487,12 +389,12 @@ windows_shortcut_targets_from_file() {
     fi
     tr -d '\000' < "${shortcut}" 2>/dev/null || true
   } | LC_ALL=C awk -v app="${APP_NAME}" '
-    index($0, app ".exe") || index($0, app ".bat") {
-      while (match($0, /[A-Za-z]:\\[A-Za-z0-9_.(){}$&+@!#%=~^, -][^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+    index($0, app ".exe") {
+      while (match($0, /[A-Za-z]:\\[A-Za-z0-9_.(){}$&+@!#%=~^, -][^"'\''\r\n]*AlipsaAccounting\.exe/)) {
         print substr($0, RSTART, RLENGTH)
         $0 = substr($0, RSTART + RLENGTH)
       }
-      while (match($0, /\/[A-Za-z]\/[^"'\''\r\n]*(AlipsaAccounting\.exe|AlipsaAccounting\.bat)/)) {
+      while (match($0, /\/[A-Za-z]\/[^"'\''\r\n]*AlipsaAccounting\.exe/)) {
         print substr($0, RSTART, RLENGTH)
         $0 = substr($0, RSTART + RLENGTH)
       }
@@ -583,7 +485,7 @@ find_via_windows_shortcut_powershell() {
   shortcut_targets=$("${powershell}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "
 \$ErrorActionPreference = 'SilentlyContinue'
 \$appName = '${APP_NAME}'
-\$targetNames = @(\"${APP_NAME}.exe\", \"${APP_NAME}.bat\")
+\$targetNames = @(\"${APP_NAME}.exe\")
 \$roots = @(
   [Environment]::GetFolderPath('Desktop'),
   [Environment]::GetFolderPath('CommonDesktopDirectory'),
@@ -749,62 +651,55 @@ if [ -z "${NEW_MAIN_JAR}" ]; then
 fi
 NEW_MAIN_JAR=$(basename "${NEW_MAIN_JAR}")
 
-if is_portable_lib_dir "${LIB_DIR}"; then
-  update_portable_install "${INSTALL_ROOT}" "${STAGING_DIR}/${APP_DIR_NAME}"
-else
-  echo "  Backing up current JARs..."
+echo "  Backing up current JARs..."
+rm -rf "${BACKUP_DIR}"
+mkdir -p "${BACKUP_DIR}"
+mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
+
+echo "  Copying updated JARs..."
+if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
+  echo "Error: failed to copy updated JARs; restoring backup." >&2
+  mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
   rm -rf "${BACKUP_DIR}"
-  mkdir -p "${BACKUP_DIR}"
-  mv "${LIB_DIR}/"*.jar "${BACKUP_DIR}/"
-
-  echo "  Copying updated JARs..."
-  if ! cp "${STAGING_DIR}/${APP_DIR_NAME}/lib/"*.jar "${LIB_DIR}/"; then
-    echo "Error: failed to copy updated JARs; restoring backup." >&2
-    mv "${BACKUP_DIR}/"*.jar "${LIB_DIR}/"
-    rm -rf "${BACKUP_DIR}"
-    exit 1
-  fi
-
-  echo "  Updating launcher configuration..."
-  CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
-  WINDOW_CLASS_OPTION=""
-  if [ "${PLATFORM}" = "linux" ]; then
-    WINDOW_CLASS_OPTION="java-options=-Dsun.awt.X11.XWMClass=${LINUX_WM_CLASS}"
-  fi
-  export CLASSPATH_BLOCK
-  export WINDOW_CLASS_OPTION
-  for cfg in "${LIB_DIR}"/*.cfg; do
-    [ -f "${cfg}" ] || continue
-    awk -v version="${VERSION}" '
-      /^app\.classpath=/ { next }
-      ENVIRON["WINDOW_CLASS_OPTION"] != "" && $0 == ENVIRON["WINDOW_CLASS_OPTION"] { next }
-      ENVIRON["WINDOW_CLASS_OPTION"] != "" && /^java-options=-Dsun\.awt\.X11\.XWMClass=/ { next }
-      /^java-options=-Djpackage\.app-version=/ {
-        sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
-        print
-        next
-      }
-      /^\[JavaOptions\]$/ {
-        print
-        if (ENVIRON["WINDOW_CLASS_OPTION"] != "") {
-          print ENVIRON["WINDOW_CLASS_OPTION"]
-        }
-        next
-      }
-      /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
-      { print }
-    ' "${cfg}" > "${cfg}.tmp"
-    mv "${cfg}.tmp" "${cfg}"
-  done
-
-  echo "  Cleaning up..."
-  rm -rf "${BACKUP_DIR}"
+  exit 1
 fi
+
+echo "  Updating launcher configuration..."
+CLASSPATH_BLOCK=$(build_classpath_block "${NEW_MAIN_JAR}" "${LIB_DIR}")
+WINDOW_CLASS_OPTION=""
+if [ "${PLATFORM}" = "linux" ]; then
+  WINDOW_CLASS_OPTION="java-options=-Dsun.awt.X11.XWMClass=${LINUX_WM_CLASS}"
+fi
+export CLASSPATH_BLOCK
+export WINDOW_CLASS_OPTION
+for cfg in "${LIB_DIR}"/*.cfg; do
+  [ -f "${cfg}" ] || continue
+  awk -v version="${VERSION}" '
+    /^app\.classpath=/ { next }
+    ENVIRON["WINDOW_CLASS_OPTION"] != "" && $0 == ENVIRON["WINDOW_CLASS_OPTION"] { next }
+    ENVIRON["WINDOW_CLASS_OPTION"] != "" && /^java-options=-Dsun\.awt\.X11\.XWMClass=/ { next }
+    /^java-options=-Djpackage\.app-version=/ {
+      sub(/^java-options=-Djpackage\.app-version=.*/, "java-options=-Djpackage.app-version=" version)
+      print
+      next
+    }
+    /^\[JavaOptions\]$/ {
+      print
+      if (ENVIRON["WINDOW_CLASS_OPTION"] != "") {
+        print ENVIRON["WINDOW_CLASS_OPTION"]
+      }
+      next
+    }
+    /^\[Application\]$/ { print; print ENVIRON["CLASSPATH_BLOCK"]; next }
+    { print }
+  ' "${cfg}" > "${cfg}.tmp"
+  mv "${cfg}.tmp" "${cfg}"
+done
+
+echo "  Cleaning up..."
+rm -rf "${BACKUP_DIR}"
 
 LAUNCHER=$(launcher_path_for_lib_dir "${LIB_DIR}")
-if [ -n "${WRAPPER_LAUNCHER:-}" ]; then
-  LAUNCHER="${WRAPPER_LAUNCHER}"
-fi
 update_linux_desktop_entry
 
 echo ""

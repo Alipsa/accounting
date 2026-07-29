@@ -87,6 +87,12 @@ def releaseConfig = [
   generatedRoot : layout.buildDirectory.dir('generated/packaging')
 ]
 
+// jpackage's --app-version rejects a "-SNAPSHOT" (or any non-numeric-dotted) suffix, which
+// the project version always carries between releases. Strip it here so local/dev jpackage
+// builds work off whatever version is currently checked out; every other use of the version
+// (file names, manifest, etc.) still gets the full releaseConfig.version string.
+def jpackageAppVersion = releaseConfig.version.toString().replaceFirst(/[-+].*$/, '')
+
 def licenseFilePath = rootProject.file('LICENSE').absolutePath
 
 def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file("${releaseConfig.appName}.desktop.template")
@@ -142,7 +148,7 @@ def buildJpackageArgs = { String platform, String type, File destinationDir, Lis
     '--main-jar',
     mainJarFileName.get(),
     '--app-version',
-    releaseConfig.version,
+    jpackageAppVersion,
     '--vendor',
     releaseConfig.vendor,
     '--description',
