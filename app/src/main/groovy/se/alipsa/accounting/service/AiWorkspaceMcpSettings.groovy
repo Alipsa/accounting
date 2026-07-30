@@ -15,6 +15,7 @@ final class AiWorkspaceMcpSettings {
 
   static final List<String> READ_ONLY_TOOLS = [
       'get_active_context',
+      'list_companies',
       'get_company_info',
       'list_fiscal_years',
       'list_accounts',
