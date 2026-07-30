@@ -163,6 +163,10 @@ final class DatabaseService {
 
   private String validateDatabaseUrl(String url) {
     String upper = url.toUpperCase(Locale.ROOT)
+    boolean allowInMemory = 'true'.equalsIgnoreCase(System.getProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, ''))
+    if (upper.startsWith('JDBC:H2:MEM:') && allowInMemory) {
+      return url
+    }
     if (!upper.startsWith('JDBC:H2:FILE:')) {
       throw new IllegalStateException('Only embedded file-based H2 URLs are allowed.')
     }

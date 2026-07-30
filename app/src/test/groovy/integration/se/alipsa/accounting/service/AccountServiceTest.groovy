@@ -23,11 +23,17 @@ class AccountServiceTest {
   private DatabaseService databaseService
   private AccountService accountService
   private String previousHome
+  private String previousUrl
+  private String previousAllowInMemory
 
   @BeforeEach
   void setUp() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
+    previousAllowInMemory = System.getProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, TestDatabaseUrls.uniqueInMemoryUrl('accountservicetest'))
+    System.setProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, 'true')
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     accountService = new AccountService(databaseService)
@@ -36,11 +42,9 @@ class AccountServiceTest {
 
   @AfterEach
   void tearDown() {
-    if (previousHome == null) {
-      System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
-    } else {
-      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
-    }
+    TestDatabaseUrls.restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    TestDatabaseUrls.restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
+    TestDatabaseUrls.restoreProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, previousAllowInMemory)
   }
 
   @Test

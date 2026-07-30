@@ -3,12 +3,12 @@ plugins {
   id 'application'
   id 'signing'
   id 'codenarc'
-  id 'com.diffplug.spotless' version '8.8.0'
-  id 'com.github.ben-manes.versions' version '0.54.0'
+  id 'com.diffplug.spotless' version '8.9.0'
+  id 'io.github.ben-manes.versions' version '0.57.0'
 }
 
 group = 'se.alipsa'
-version = '1.8.0-SNAPSHOT'
+version = '1.8.0'
 
 repositories {
   mavenLocal()
@@ -72,16 +72,16 @@ distributions {
 }
 
 def releaseConfig = [
-  appName       : 'AlipsaAccounting',
-  displayName   : 'Alipsa Accounting',
-  vendor        : 'Alipsa',
-  packageName   : 'alipsa-accounting',
-  linuxWmClass  : 'se-alipsa-accounting-AlipsaAccounting',
-  version       : project.version.toString(),
-  description   : 'Desktop accounting for small Swedish businesses.',
-  copyright     : 'Copyright 2026 Alipsa',
+  appName : 'AlipsaAccounting',
+  displayName : 'Alipsa Accounting',
+  vendor : 'Alipsa',
+  packageName : 'alipsa-accounting',
+  linuxWmClass : 'se-alipsa-accounting-AlipsaAccounting',
+  version : project.version.toString(),
+  description : 'Desktop accounting for small Swedish businesses.',
+  copyright : 'Copyright 2026 Alipsa',
   mainClassName : application.mainClass,
-  releaseRoot   : layout.buildDirectory.dir('release'),
+  releaseRoot : layout.buildDirectory.dir('release'),
   packagingRoot : rootProject.layout.projectDirectory.dir('packaging'),
   installLibDir : layout.buildDirectory.dir("install/${application.applicationName}/lib"),
   generatedRoot : layout.buildDirectory.dir('generated/packaging')
@@ -96,22 +96,34 @@ def jpackageAppVersion = releaseConfig.version.toString().replaceFirst(/[-+].*$/
 def licenseFilePath = rootProject.file('LICENSE').absolutePath
 
 def linuxDesktopTemplate = releaseConfig.packagingRoot.dir('linux/desktop').file("${releaseConfig.appName}.desktop.template")
-def linuxDesktopEntry = releaseConfig.generatedRoot.map { it.file("linux-desktop/${releaseConfig.appName}.desktop") }
+def linuxDesktopEntry = releaseConfig.generatedRoot.map {
+  it.file("linux-desktop/${releaseConfig.appName}.desktop")
+}
 def linuxInstallTemplate = releaseConfig.packagingRoot.dir('linux').file('install.sh.template')
 def linuxUninstallTemplate = releaseConfig.packagingRoot.dir('linux').file('uninstall.sh.template')
 def macosUninstallTemplate = releaseConfig.packagingRoot.dir('macos').file('uninstall.command.template')
 def windowsUninstallCleanupTemplate = releaseConfig.packagingRoot.dir('windows').file('uninstall-cleanup.ps1.template')
-def linuxInstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/install.sh') }
-def linuxUninstallScript = releaseConfig.generatedRoot.map { it.file('linux-scripts/uninstall.sh') }
-def macosUninstallScript = releaseConfig.generatedRoot.map { it.file('macos-scripts/uninstall.command') }
-def windowsUninstallCleanupScript = releaseConfig.generatedRoot.map { it.file('windows-scripts/uninstall-cleanup.ps1') }
+def linuxInstallScript = releaseConfig.generatedRoot.map {
+  it.file('linux-scripts/install.sh')
+}
+def linuxUninstallScript = releaseConfig.generatedRoot.map {
+  it.file('linux-scripts/uninstall.sh')
+}
+def macosUninstallScript = releaseConfig.generatedRoot.map {
+  it.file('macos-scripts/uninstall.command')
+}
+def windowsUninstallCleanupScript = releaseConfig.generatedRoot.map {
+  it.file('windows-scripts/uninstall-cleanup.ps1')
+}
 
 def currentOsName = System.getProperty('os.name', 'unknown').toLowerCase(Locale.ROOT)
 def currentPlatform = currentOsName.contains('win') ? 'windows' : currentOsName.contains('mac') ? 'macos' : 'linux'
 def isWindows = currentPlatform == 'windows'
 def isMacos = currentPlatform == 'macos'
 def isLinux = currentPlatform == 'linux'
-def mainJarFileName = tasks.named('jar', Jar).flatMap { Jar jarTask -> jarTask.archiveFileName }
+def mainJarFileName = tasks.named('jar', Jar).flatMap { Jar jarTask ->
+  jarTask.archiveFileName
+}
 
 def jpackageExecutable = project.providers.gradleProperty('jpackage.executable')
     .orElse(javaToolchains.launcherFor {
@@ -121,7 +133,9 @@ def jpackageExecutable = project.providers.gradleProperty('jpackage.executable')
     })
 
 def isNonStable = { String v ->
-  def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { v?.toUpperCase()?.contains(it) }
+  def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any {
+    v?.toUpperCase()?.contains(it)
+  }
   def regex = /^[0-9,.v-]+(-r)?$/
   !stableKeyword && !(v ==~ regex)
 }
@@ -225,7 +239,9 @@ tasks.named('jar', Jar) {
 }
 
 tasks.register('generateReleaseMetadata') {
-  outputs.file(releaseConfig.generatedRoot.map { it.file('release.properties') })
+  outputs.file(releaseConfig.generatedRoot.map {
+    it.file('release.properties')
+  })
   doLast {
     File metadataFile = releaseConfig.generatedRoot.get().file('release.properties').asFile
     metadataFile.parentFile.mkdirs()
@@ -418,7 +434,9 @@ tasks.register('packageLinuxReleaseZip', Zip) {
   archiveVersion = releaseConfig.version
   archiveClassifier = 'linux'
   destinationDirectory = releaseConfig.releaseRoot.map { it.dir('linux') }
-  from(releaseConfig.releaseRoot.map { it.dir("linux/${releaseConfig.appName}") }) {
+  from(releaseConfig.releaseRoot.map {
+    it.dir("linux/${releaseConfig.appName}")
+  }) {
     into(releaseConfig.appName)
     filesMatching("bin/${releaseConfig.appName}") {
       it.permissions { unix(0755) }
@@ -499,7 +517,9 @@ tasks.register('packageWindowsReleaseZip', Zip) {
   archiveBaseName = releaseConfig.packageName
   archiveVersion = releaseConfig.version
   archiveClassifier = 'windows'
-  destinationDirectory = releaseConfig.releaseRoot.map { it.dir('windows-release') }
+  destinationDirectory = releaseConfig.releaseRoot.map {
+    it.dir('windows-release')
+  }
   from(releaseConfig.releaseRoot.map { it.dir('windows-installer') }) {
     include '*.exe'
   }
@@ -520,7 +540,9 @@ tasks.register('packageMacosReleaseZip', Zip) {
   archiveBaseName = releaseConfig.packageName
   archiveVersion = releaseConfig.version
   archiveClassifier = 'macos'
-  destinationDirectory = releaseConfig.releaseRoot.map { it.dir('macos-release') }
+  destinationDirectory = releaseConfig.releaseRoot.map {
+    it.dir('macos-release')
+  }
   from(releaseConfig.releaseRoot.map { it.dir('macos') })
   from(macosUninstallScript) {
     filePermissions { unix(0755) }
@@ -598,7 +620,7 @@ tasks.named('test') {
 }
 
 codenarc {
-  toolVersion = '3.7.0'
+  toolVersion = '4.0.0'
   configFile = rootProject.file('config/codenarc/ruleset.groovy')
   ignoreFailures = false
   maxPriority1Violations = 0

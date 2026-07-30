@@ -23,11 +23,13 @@ class DatabaseServiceTest {
   private DatabaseService databaseService
   private String previousHome
   private String previousUrl
+  private String previousAllowInMemory
 
   @BeforeEach
   void captureProperties() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
+    previousAllowInMemory = System.getProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY)
     databaseService = DatabaseService.newForTesting()
   }
 
@@ -35,6 +37,7 @@ class DatabaseServiceTest {
   void restoreProperties() {
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
     restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
+    restoreProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, previousAllowInMemory)
   }
 
   @Test
@@ -130,6 +133,27 @@ class DatabaseServiceTest {
     Executable action = { databaseService.initialize() } as Executable
 
     assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void inMemoryDatabaseUrlIsRejectedByDefault() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:mem:rejected-by-default;DB_CLOSE_DELAY=-1')
+
+    Executable action = { databaseService.initialize() } as Executable
+
+    assertThrows(IllegalStateException, action)
+  }
+
+  @Test
+  void inMemoryDatabaseUrlIsAllowedWhenTestFlagIsSet() {
+    System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, 'jdbc:h2:mem:allowed-with-flag;DB_CLOSE_DELAY=-1')
+    System.setProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, 'true')
+
+    databaseService.initialize()
+
+    assertEquals(databaseService.expectedSchemaVersion(), databaseService.currentSchemaVersion())
   }
 
   private static void restoreProperty(String name, String value) {

@@ -26,11 +26,17 @@ class AuditLogServiceTest {
   private DatabaseService databaseService
   private AuditLogService auditLogService
   private String previousHome
+  private String previousUrl
+  private String previousAllowInMemory
 
   @BeforeEach
   void setUp() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+    previousUrl = System.getProperty(AppPaths.DATABASE_URL_PROPERTY)
+    previousAllowInMemory = System.getProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    System.setProperty(AppPaths.DATABASE_URL_PROPERTY, TestDatabaseUrls.uniqueInMemoryUrl('auditlogservicetest'))
+    System.setProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, 'true')
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
     auditLogService = new AuditLogService(databaseService)
@@ -39,6 +45,8 @@ class AuditLogServiceTest {
   @AfterEach
   void tearDown() {
     restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
+    restoreProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, previousAllowInMemory)
   }
 
   @Test

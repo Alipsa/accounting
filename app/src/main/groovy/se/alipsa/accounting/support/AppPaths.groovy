@@ -20,6 +20,10 @@ final class AppPaths {
   static final String HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.home'
   static final String AI_WORKSPACE_HOME_OVERRIDE_PROPERTY = 'alipsa.accounting.aiWorkspace.home'
   static final String DATABASE_URL_PROPERTY = 'alipsa.accounting.db.url'
+  // Test-only escape hatch: never set by the shipped application, only by the test suite,
+  // so DatabaseService.validateDatabaseUrl can allow fast in-memory H2 during tests while
+  // still refusing it for the real desktop app (see CLAUDE.md "H2 is embedded-only").
+  static final String ALLOW_IN_MEMORY_DATABASE_PROPERTY = 'alipsa.accounting.test.allowInMemoryDb'
   private static final String AI_WORKSPACE_DIRECTORY_NAME = 'alipsa-accounting-ai-assistant'
   private static final String LEGACY_AI_WORKSPACE_DIRECTORY_NAME = 'ai-workspace'
 
