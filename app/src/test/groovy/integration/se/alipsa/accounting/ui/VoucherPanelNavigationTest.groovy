@@ -636,6 +636,22 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void newSeriesButtonTooltipUpdatesAfterALocaleSwitch() {
+    Locale previousLocale = I18n.instance.locale
+    JButton newSeriesButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.newSeries')
+    }
+
+    try {
+      onEdt { I18n.instance.setLocale(Locale.forLanguageTag('sv')) }
+
+      assertEquals(I18n.instance.getString('voucherPanel.button.newSeries'), onEdt { newSeriesButton.toolTipText })
+    } finally {
+      onEdt { I18n.instance.setLocale(previousLocale) }
+    }
+  }
+
+  @Test
   void closedFiscalYearNeverSeedsASeriesAndDisablesNewSeriesButton() {
     FiscalYear closedYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))

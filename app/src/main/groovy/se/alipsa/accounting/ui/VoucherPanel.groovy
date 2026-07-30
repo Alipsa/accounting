@@ -1348,6 +1348,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
+    newSeriesButton.toolTipText = I18n.instance.getString('voucherPanel.button.newSeries')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
