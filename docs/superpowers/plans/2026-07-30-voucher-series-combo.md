@@ -68,7 +68,7 @@ newVoucherSeriesDialog.error.invalidCode=Series code must be 1-8 characters, A-Z
 
 - [ ] **Step 2: Add the matching keys to `messages_sv.properties`**
 
-Same insertion points, Swedish text (unicode-escaped to match the file's existing convention):
+Same insertion points. All non-ASCII characters (å/ä/ö) are written as `\uXXXX` escapes below, matching every existing line in this file — copy them exactly as shown, do not "fix" them back to literal å/ä/ö:
 
 ```properties
 voucherPanel.label.series=Serie
@@ -76,8 +76,8 @@ voucherPanel.button.newSeries=Skapa ny serie...
 ```
 
 ```properties
-voucherPanel.error.periodLocked=Räkenskapsåret är låst. Lås upp det innan du registrerar rättelser.
-voucherPanel.error.seriesCreationLocked=Det går inte att skapa en verifikationsserie när räkenskapsperioden är låst.
+voucherPanel.error.periodLocked=R\u00E4kenskaps\u00E5ret \u00E4r l\u00E5st. L\u00E5s upp det innan du registrerar r\u00E4ttelser.
+voucherPanel.error.seriesCreationLocked=Det g\u00E5r inte att skapa en verifikationsserie n\u00E4r r\u00E4kenskapsperioden \u00E4r l\u00E5st.
 ```
 
 ```properties
@@ -86,7 +86,7 @@ newVoucherSeriesDialog.label.code=Kod
 newVoucherSeriesDialog.label.name=Namn
 newVoucherSeriesDialog.button.ok=OK
 newVoucherSeriesDialog.button.cancel=Avbryt
-newVoucherSeriesDialog.error.invalidCode=Seriekoden måste vara 1-8 tecken, A-Z eller 0-9.
+newVoucherSeriesDialog.error.invalidCode=Seriekoden m\u00E5ste vara 1-8 tecken, A-Z eller 0-9.
 ```
 
 - [ ] **Step 3: Verify the properties files still parse**
@@ -1151,17 +1151,21 @@ Expected: PASS.
 
   @Test
   void directlyCallingCreateSeriesWhileLockedShowsAnErrorAndCreatesNothing() {
+    // Switch the active fiscal year to the closed one itself, not just the date picker's value -
+    // createNewSeries() reads activeCompanyManager.fiscalYear directly. fiscalYear (2030) already
+    // has its own auto-seeded 'A' from setUp()'s panel construction, so asserting against it here
+    // would fail regardless of whether createNewSeries() behaves correctly; closedYear is the one
+    // fiscal year in this test that's guaranteed to never receive any series.
     FiscalYear closedYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))
     fiscalYearService.closeFiscalYear(closedYear.id)
-    DatePicker datePicker = findComponent(panel, DatePicker) { true }
-    onEdt { datePicker.date = LocalDate.of(2029, 6, 1) }
+    onEdt { activeCompanyManager.fiscalYear = closedYear }
 
     onEdt { panel.createNewSeriesForTest() }
 
     assertTrue(onEdt { findFeedbackArea(panel).text }.contains(
         I18n.instance.getString('voucherPanel.error.seriesCreationLocked')))
-    assertEquals(0, voucherService.listSeries(fiscalYear.id).size())
+    assertEquals(0, voucherService.listSeries(closedYear.id).size())
   }
 ```
 
