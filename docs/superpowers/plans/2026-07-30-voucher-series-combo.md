@@ -299,7 +299,7 @@ This is one cohesive change: `VoucherPanel` is a single Swing class where the se
 
 **Interfaces:**
 - Consumes: `NewVoucherSeriesDialog.showDialog(Frame, VoucherService, long)` (Task 2), `VoucherService.listSeries(long fiscalYearId)` and `VoucherService.ensureSeries(long, String, String)` (existing), `AccountingPeriodService.isDateLocked(long companyId, LocalDate date)` (existing), `DatePicker.addListener(Consumer<LocalDate>)` (existing, in `se.alipsa.datepicker.DatePicker`), `VoucherDraftMapper.VoucherDraft` (existing, `se.alipsa.accounting.ui.VoucherDraftMapper.VoucherDraft`), `VoucherNavigation.rememberDraft(VoucherDraftMapper.VoucherDraft)` (existing).
-- Produces (new members Task 4's tests rely on): field `JComboBox<VoucherSeries> seriesComboBox`, field `JButton newSeriesButton`, `private boolean isNewVoucherPeriodLocked()`, and three `@PackageScope` test seams added in Step 10: `void rememberDraftForTest(VoucherDraftMapper.VoucherDraft draft)`, `void reloadVoucherListForTest()`, `void createNewSeriesForTest()`. `applyDraft(VoucherDraftMapper.VoucherDraft)` now throws `IllegalArgumentException` for an unresolvable series code (was previously silent).
+- Produces (new members Task 4's tests rely on): field `JComboBox<VoucherSeries> seriesComboBox`, field `JButton newSeriesButton`, `private boolean isNewVoucherPeriodLocked()`, and three `@PackageScope` test seams added in Step 10: `void rememberDraftForTest(VoucherDraftMapper.VoucherDraft draft)`, `void refreshSeriesComboBoxForTest(String preferredCode)`, `void createNewSeriesForTest()`. `applyDraft(VoucherDraftMapper.VoucherDraft)` now throws `IllegalArgumentException` for an unresolvable series code (was previously silent).
 
 - [ ] **Step 1: Update imports**
 
@@ -740,12 +740,15 @@ Replace with:
     navigation.rememberDraft(draft)
   }
 
-  /** Lets tests force a series-combo/voucher-list refresh after creating a series directly via
-   * VoucherService (bypassing the modal NewVoucherSeriesDialog), without switching fiscal year.
+  /** Lets tests simulate exactly what createNewSeries() does once NewVoucherSeriesDialog
+   * returns a result - refresh the combo with that series preferred/selected - without going
+   * through the real, blocking dialog. A plain reload (no preferred code) would not prove
+   * selection: refreshSeriesComboBox(null) keeps whatever was already selected if it's still
+   * present, so it can't distinguish "series exists" from "series became selected".
    */
   @PackageScope
-  void reloadVoucherListForTest() {
-    reloadVoucherList()
+  void refreshSeriesComboBoxForTest(String preferredCode) {
+    refreshSeriesComboBox(preferredCode)
   }
 
   /** Lets tests exercise createNewSeries()'s own defensive lock re-check without going through
@@ -922,7 +925,7 @@ git commit -m "feat: replace voucher series text field with a locked combo box +
 - Modify: `app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest.groovy`
 
 **Interfaces:**
-- Consumes everything Task 3 produced (`seriesComboBox`, `newSeriesButton`, and the three test seams `rememberDraftForTest`, `reloadVoucherListForTest`, `createNewSeriesForTest`; `isNewVoucherPeriodLocked` indirectly via `newSeriesButton.enabled`), plus `FiscalYearService.closeFiscalYear(long)` (existing), `ActiveCompanyManager.setFiscalYear(FiscalYear)` (existing).
+- Consumes everything Task 3 produced (`seriesComboBox`, `newSeriesButton`, and the three test seams `rememberDraftForTest`, `refreshSeriesComboBoxForTest`, `createNewSeriesForTest`; `isNewVoucherPeriodLocked` indirectly via `newSeriesButton.enabled`), plus `FiscalYearService.closeFiscalYear(long)` (existing), `ActiveCompanyManager.setFiscalYear(FiscalYear)` (existing).
 
 Add imports needed by the new tests, before writing any of the steps below:
 - `import se.alipsa.accounting.domain.VoucherSeries` — alongside the existing `se.alipsa.accounting.domain.*` imports.
@@ -957,41 +960,42 @@ Expected: PASS.
 
 - [ ] **Step 3: Test — creating a series via the dialog appears in the combo and gets selected**
 
-`createNewSeries()` opens a real, blocking modal dialog, so this test doesn't call it. Instead it calls `voucherService.ensureSeries` directly (exactly what the dialog does internally) and then forces the same combo refresh `createNewSeries()` triggers after the dialog returns, via the `reloadVoucherListForTest()` seam.
+`createNewSeries()` opens a real, blocking modal dialog, so this test doesn't call it. Instead it calls `voucherService.ensureSeries` directly (exactly what the dialog does internally) and then calls `refreshSeriesComboBoxForTest('B')` — the exact same `refreshSeriesComboBox(created.seriesCode)` call `createNewSeries()` makes after the dialog returns. A no-preferred-code reload would not prove selection (it keeps whatever was already selected, i.e. `A`, since `A` is still present) — this is the point of the fix: it must actually assert `B` is *selected*, not merely present in the list.
 
 ```groovy
   @Test
-  void creatingASecondSeriesMakesItAppearInTheComboAndBecomeSelectable() {
+  void creatingASecondSeriesMakesItAppearInTheComboAndBecomeSelected() {
     voucherService.ensureSeries(fiscalYear.id, 'B', 'Kassaverifikat')
 
-    onEdt { panel.reloadVoucherListForTest() }
+    onEdt { panel.refreshSeriesComboBoxForTest('B') }
 
     JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
     List<String> codes = onEdt {
       (0..<seriesComboBox.itemCount).collect { int i -> (seriesComboBox.getItemAt(i) as VoucherSeries).seriesCode }
     }
+    VoucherSeries selected = onEdt { seriesComboBox.selectedItem } as VoucherSeries
+
     assertTrue(codes.containsAll(['A', 'B']))
+    assertEquals('B', selected.seriesCode)
   }
 ```
 
-(This uses `reloadVoucherListForTest()`, the seam added in Task 3 Step 10.)
-
 - [ ] **Step 4: Run it**
 
-Run: `./gradlew test --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest.creatingASecondSeriesMakesItAppearInTheComboAndBecomeSelectable"`
+Run: `./gradlew test --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest.creatingASecondSeriesMakesItAppearInTheComboAndBecomeSelected"`
 Expected: PASS.
 
 - [ ] **Step 5: Test — switching fiscal year repopulates the combo (finding 3)**
+
+`setUp()` already builds `panel` against `fiscalYear` before this test body runs, which — with the `ensureDefaultSeriesForNewVoucher()` change in Task 3 — auto-seeds series `A` into `fiscalYear` as a side effect of construction. So `fiscalYear` always has `A` by the time any test starts; this test doesn't need (and must not assume) a series-free "only B" year 1 to prove its point. What it needs is: some *non-`A`* series selected in the combo, then a switch to a genuinely fresh year, then confirm the fresh year shows its own freshly-seeded `A` rather than the carried-over selection.
 
 ```groovy
   @Test
   void switchingFiscalYearRepopulatesComboWithoutStaleSelection() {
     voucherService.ensureSeries(fiscalYear.id, 'B', null)
-    // No 'A' in this fiscal year - only 'B'.
-    onEdt { panel.reloadVoucherListForTest() }
+    onEdt { panel.refreshSeriesComboBoxForTest('B') }
     JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
-    onEdt { seriesComboBox.selectedItem = seriesComboBox.getItemAt(
-        (0..<seriesComboBox.itemCount).find { int i -> (seriesComboBox.getItemAt(i) as VoucherSeries).seriesCode == 'B' }) }
+    assertEquals('B', (onEdt { seriesComboBox.selectedItem } as VoucherSeries).seriesCode)
 
     FiscalYear secondYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2031', LocalDate.of(2031, 1, 1), LocalDate.of(2031, 12, 31))
@@ -1002,11 +1006,11 @@ Expected: PASS.
 
     assertEquals('A', selected.seriesCode)
     assertEquals('A-1', onEdt { voucherJumpField.text })
-    assertEquals(0, voucherService.listSeries(fiscalYear.id).findAll { VoucherSeries s -> s.seriesCode == 'A' }.size())
+    assertEquals(1, voucherService.listSeries(secondYear.id).size())
   }
 ```
 
-(Last assertion: year 1 must still have no `A` series - confirming the seed happened for year 2, not accidentally for year 1.)
+(Last assertion: the fresh second year has exactly one series - the freshly-seeded `A` - confirming the seed happened for it specifically, once, not that it somehow inherited year 1's series.)
 
 - [ ] **Step 6: Run it**
 
@@ -1015,12 +1019,18 @@ Expected: PASS.
 
 - [ ] **Step 7: Test — non-`A` default series shows the correct preview and saves correctly (finding 2)**
 
+As in Step 5, `fiscalYear` already has `A` seeded by the time this test starts (a side effect of `setUp()` building the panel against it). A genuinely `A`-free, `B`-only fiscal year can only exist as a **separate** fiscal year that never gets `A` seeded into it - which only happens if `B` is created there **before** the panel is ever switched to it (`ensureDefaultSeriesForNewVoucher()` only seeds when the combo would otherwise be empty).
+
 ```groovy
   @Test
   void fiscalYearWithOnlyNonADefaultSeriesPreviewsAndSavesUnderThatSeries() {
-    voucherService.ensureSeries(fiscalYear.id, 'B', null)
-    onEdt { panel.reloadVoucherListForTest() }
+    FiscalYear onlyBYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2028', LocalDate.of(2028, 1, 1), LocalDate.of(2028, 12, 31))
+    voucherService.ensureSeries(onlyBYear.id, 'B', null)
 
+    onEdt { activeCompanyManager.fiscalYear = onlyBYear }
+
+    assertEquals(1, voucherService.listSeries(onlyBYear.id).size())
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
     assertEquals('B-1', onEdt { voucherJumpField.text })
 
@@ -1036,11 +1046,13 @@ Expected: PASS.
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
     }
 
-    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id)
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, onlyBYear.id)
     assertEquals(1, vouchers.size())
     assertEquals('B-1', vouchers.first().voucherNumber)
   }
 ```
+
+(First assertion confirms the premise itself: `onlyBYear` really does have exactly one series, `B` - not `A` sneaking in.)
 
 - [ ] **Step 8: Run it**
 
