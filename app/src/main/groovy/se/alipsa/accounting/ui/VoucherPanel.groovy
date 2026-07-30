@@ -27,6 +27,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Desktop
 import java.awt.FlowLayout
+import java.awt.Frame
 import java.awt.Insets
 import java.awt.event.ActionEvent
 import java.awt.event.KeyAdapter
@@ -48,6 +49,7 @@ import javax.swing.DefaultCellEditor
 import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JCheckBox
+import javax.swing.JComboBox
 import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JMenuItem
@@ -97,7 +99,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
   private final JTextField descriptionField = new JTextField(30)
-  private final JTextField seriesField = new JTextField(4)
+  private final JComboBox<VoucherSeries> seriesComboBox = new JComboBox<>()
+  private boolean applyingSeriesProgrammatically = false
   private final JLabel correctsLabel = new JLabel('')
   private final JLabel totalsLabel = new JLabel('')
   private final JTextArea feedbackArea = new JTextArea(2, 40)
@@ -115,6 +118,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private JButton voidButton
   private JButton addAttachmentButton
   private JButton openAttachmentButton
+  private JButton newSeriesButton
   private JTabbedPane tabs
 
   @PackageScope
@@ -174,7 +178,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
     voucherEditorActions = new VoucherEditorActions(voucherOperations, { activeCompanyManager.fiscalYear }, { datePicker.date },
         { descriptionField.text?.trim() }, { lineTableModel.toVoucherLines() }, { currentVoucher },
-        { seriesField.text?.trim() ?: 'A' }, this::showInfo, this::showError, this::handleSavedVoucher)
+        { (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode ?: 'A' }, this::showInfo, this::showError, this::handleSavedVoucher)
     reloadVoucherList()
   }
 
@@ -235,6 +239,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     center.add(buildMainTabs(), BorderLayout.CENTER)
     add(center, BorderLayout.CENTER)
     add(buildFooter(), BorderLayout.SOUTH)
+    datePicker.addListener { LocalDate date -> applyReadOnlyState() }
   }
 
   private JPanel buildHeaderBar() {
@@ -251,7 +256,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
     panel.add(descriptionField)
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.series')))
-    panel.add(seriesField)
+    seriesComboBox.editable = false
+    seriesComboBox.addActionListener { onSeriesSelectionChanged() }
+    panel.add(seriesComboBox)
+    newSeriesButton = navigationButton('+', 'voucherPanel.button.newSeries') { createNewSeries() }
+    panel.add(newSeriesButton)
     correctsLabel.visible = false
     panel.add(correctsLabel)
     panel
@@ -625,6 +634,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void reloadVoucherList(Voucher selectedVoucher = null) {
+    // Must run before any showBlankVoucher()/showVoucher()/navigation.select(...) call below -
+    // those are the last action of every branch in this method, not after some later "end", so
+    // refreshing anywhere but first would let them run against the previous fiscal year's still-
+    // loaded combo items when switching fiscal years.
+    refreshSeriesComboBox()
     cancelBalancePreload()
     voucherBalanceCache.clear()
     voucherBalanceCacheGeneration++
@@ -702,7 +716,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     jumpField.text = displayNumber
     datePicker.date = v.accountingDate
     descriptionField.text = v.description ?: ''
-    seriesField.text = v.seriesCode ?: 'A'
+    selectSeriesCode(v.seriesCode ?: 'A')
     if (v.originalVoucherId != null) {
       Voucher original = voucherService.findVoucher(v.originalVoucherId)
       String originalNumber = original?.voucherNumber ?: String.valueOf(v.originalVoucherId)
@@ -731,13 +745,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     pendingReceiptAttachmentPath = null
     readOnly = false
     balanceCache.clear()
-    String nextNumber = previewNextVoucherNumber('A')
+    // datePicker.date must be set before ensureDefaultSeriesForNewVoucher() runs, so its
+    // internal isNewVoucherPeriodLocked() check reads this new blank voucher's own date rather
+    // than whatever was left over from the previously displayed voucher/draft.
+    datePicker.date = defaultDate()
+    ensureDefaultSeriesForNewVoucher()
+    VoucherSeries selectedSeries = seriesComboBox.selectedItem as VoucherSeries
+    String nextNumber = selectedSeries != null ? previewNextVoucherNumber(selectedSeries.seriesCode) : ''
     voucherNumberLabel.text = nextNumber
     unsavedLabel.visible = true
     jumpField.text = nextNumber
-    datePicker.date = defaultDate()
     descriptionField.text = ''
-    seriesField.text = 'A'
     correctsLabel.text = ''
     correctsLabel.visible = false
     lineTableModel.clear()
@@ -764,6 +782,104 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       log.warning("Kunde inte förhandsgranska verifikatnummer: ${ex.message}")
     }
     "${seriesCode}-1" as String
+  }
+
+  private boolean isNewVoucherPeriodLocked() {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    if (fy == null) {
+      return true
+    }
+    LocalDate date = datePicker.date ?: defaultDate()
+    try {
+      accountingPeriodService.isDateLocked(activeCompanyManager.companyId, date)
+    } catch (Exception ex) {
+      log.warning("Kunde inte avgöra om räkenskapsåret är låst – skrivskyddar verifikatet: ${ex.message}")
+      true
+    }
+  }
+
+  private VoucherSeries findComboSeries(String code) {
+    if (code == null) {
+      return null
+    }
+    (0..<seriesComboBox.itemCount)
+        .collect { int index -> seriesComboBox.getItemAt(index) }
+        .find { VoucherSeries series -> series.seriesCode == code }
+  }
+
+  private void selectSeriesCode(String code) {
+    VoucherSeries match = findComboSeries(code)
+    if (match == null) {
+      return
+    }
+    applyingSeriesProgrammatically = true
+    try {
+      seriesComboBox.selectedItem = match
+    } finally {
+      applyingSeriesProgrammatically = false
+    }
+  }
+
+  private void refreshSeriesComboBox(String preferredCode = null) {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    VoucherSeries previousSelection = seriesComboBox.selectedItem as VoucherSeries
+    applyingSeriesProgrammatically = true
+    try {
+      seriesComboBox.removeAllItems()
+      if (fy == null) {
+        return
+      }
+      List<VoucherSeries> series = voucherService.listSeries(fy.id)
+      series.each { VoucherSeries entry -> seriesComboBox.addItem(entry) }
+      if (series.isEmpty()) {
+        return
+      }
+      VoucherSeries target = preferredCode == null ? null : series.find { VoucherSeries entry -> entry.seriesCode == preferredCode }
+      if (target == null && previousSelection != null) {
+        target = series.find { VoucherSeries entry -> entry.seriesCode == previousSelection.seriesCode }
+      }
+      seriesComboBox.selectedItem = target ?: series.first()
+    } finally {
+      applyingSeriesProgrammatically = false
+    }
+  }
+
+  private void ensureDefaultSeriesForNewVoucher() {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    if (fy == null || seriesComboBox.itemCount > 0) {
+      return
+    }
+    if (isNewVoucherPeriodLocked()) {
+      return
+    }
+    voucherService.ensureSeries(fy.id, 'A')
+    refreshSeriesComboBox('A')
+  }
+
+  private void createNewSeries() {
+    FiscalYear fy = activeCompanyManager.fiscalYear
+    if (fy == null || isNewVoucherPeriodLocked()) {
+      showError(I18n.instance.getString('voucherPanel.error.seriesCreationLocked'))
+      return
+    }
+    VoucherSeries created = NewVoucherSeriesDialog.showDialog(
+        SwingUtilities.getWindowAncestor(this) as Frame, voucherService, fy.id)
+    if (created != null) {
+      refreshSeriesComboBox(created.seriesCode)
+    }
+  }
+
+  private void onSeriesSelectionChanged() {
+    if (applyingSeriesProgrammatically || currentVoucher != null) {
+      return
+    }
+    VoucherSeries selected = seriesComboBox.selectedItem as VoucherSeries
+    if (selected == null) {
+      return
+    }
+    String nextNumber = previewNextVoucherNumber(selected.seriesCode)
+    voucherNumberLabel.text = nextNumber
+    jumpField.text = nextNumber
   }
 
   private LocalDate defaultDate() {
@@ -817,15 +933,26 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private Map<String, Object> snapshotDraft() {
-    VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesField.text, lineTableModel.toVoucherLines(),
+    String seriesCode = (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode
+    VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesCode, lineTableModel.toVoucherLines(),
         pendingReceiptAttachmentPath)
   }
 
   private void applyDraft(VoucherDraftMapper.VoucherDraft voucherDraft) {
+    // voucherDraft.seriesCode can come from an external, unvalidated source (the MCP tool
+    // set_active_voucher_draft, via VoucherDraftEditorAccess.setVoucherDraft -> this method as
+    // draftConsumer). Validate before mutating any panel state: falling back to whatever the
+    // combo already had selected would let a later Save post into a different series than
+    // requested, with no error.
+    VoucherSeries requestedSeries = findComboSeries(voucherDraft.seriesCode)
+    if (requestedSeries == null) {
+      throw new IllegalArgumentException(
+          "Unknown voucher series '${voucherDraft.seriesCode}' for the current fiscal year. Create it first or choose an existing series.")
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
     descriptionField.text = voucherDraft.description
-    seriesField.text = voucherDraft.seriesCode
+    selectSeriesCode(requestedSeries.seriesCode)
     lineTableModel.setRows(voucherDraft.lines)
     pendingReceiptAttachmentPath = voucherDraft.attachmentPath
     ensureAutoRow()
@@ -850,7 +977,49 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showEmptyVoucher()
       return
     }
-    applyDraft(draft)
+    try {
+      applyDraft(draft)
+    } catch (IllegalArgumentException exception) {
+      // This draft was populated by snapshotDraft() moments earlier in the same fiscal year, so
+      // its series should always resolve - this is a should-never-happen defensive fallback, not
+      // a path with untrusted input. An uncaught exception out of a Swing navigation callback is
+      // a worse failure mode than silently starting a blank voucher.
+      log.warning("Discarding a remembered draft with an unresolvable series: ${exception.message}")
+      showEmptyVoucher()
+    }
+  }
+
+  // --- Test seams below: same-package integration tests (VoucherPanelNavigationTest) need to
+  // drive a few private methods directly, since there's no other public trigger for them without
+  // going through a real fiscal-year/company switch or a blocking modal dialog. ---
+
+  /** Lets tests seed navigation's remembered draft directly, to exercise
+   * restoreNavigationDraft()'s fallback above for a deliberately-invalid draft - a state that can
+   * never arise through real user action, since this design has no way to remove or rename an
+   * already-created series.
+   */
+  @PackageScope
+  void rememberDraftForTest(VoucherDraftMapper.VoucherDraft draft) {
+    navigation.rememberDraft(draft)
+  }
+
+  /** Lets tests simulate exactly what createNewSeries() does once NewVoucherSeriesDialog
+   * returns a result - refresh the combo with that series preferred/selected - without going
+   * through the real, blocking dialog. A plain reload (no preferred code) would not prove
+   * selection: refreshSeriesComboBox(null) keeps whatever was already selected if it's still
+   * present, so it can't distinguish "series exists" from "series became selected".
+   */
+  @PackageScope
+  void refreshSeriesComboBoxForTest(String preferredCode) {
+    refreshSeriesComboBox(preferredCode)
+  }
+
+  /** Lets tests exercise createNewSeries()'s own defensive lock re-check without going through
+   * the real, blocking NewVoucherSeriesDialog.showDialog() call.
+   */
+  @PackageScope
+  void createNewSeriesForTest() {
+    createNewSeries()
   }
 
   private void duplicateVoucher() {
@@ -865,7 +1034,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     voucherNumberLabel.text = previewNextVoucherNumber(seriesCode)
     jumpField.text = voucherNumberLabel.text
     descriptionField.text = source.description ?: ''
-    seriesField.text = seriesCode
+    selectSeriesCode(seriesCode)
     lineTableModel.setRows(copiedLines)
     ensureAutoRow()
     recalculateAllBalances()
@@ -923,20 +1092,20 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         fiscalYearClosed = true
       }
     } else if (activeCompanyManager.fiscalYear != null) {
-      try {
-        readOnly = accountingPeriodService.isDateLocked(
-            activeCompanyManager.companyId, defaultDate())
-      } catch (Exception ex) {
-        log.warning("Kunde inte avgöra om räkenskapsåret är låst – skrivskyddar verifikatet: ${ex.message}")
-        readOnly = true
-      }
+      readOnly = isNewVoucherPeriodLocked()
     } else {
       readOnly = false
     }
     lineTableModel.editable = !readOnly
-    datePicker.enabled = !readOnly
+    // Unlike the other controls below, the date picker must stay usable for the whole duration
+    // of composing a new voucher regardless of the currently-entered date's lock status - this
+    // method is now reentrant (the datePicker listener added in buildUi() calls it on every date
+    // change), and disabling the date picker itself here would trap the user in a locked date
+    // with no way back (DatePicker.setEnabled(false) also closes its popup).
+    datePicker.enabled = currentVoucher == null || !readOnly
     descriptionField.enabled = !readOnly
-    seriesField.enabled = currentVoucher == null
+    seriesComboBox.enabled = currentVoucher == null
+    newSeriesButton.enabled = currentVoucher == null && !readOnly
     saveButton.enabled = !readOnly
     printButton.enabled = true
     duplicateButton.enabled = currentVoucher != null
