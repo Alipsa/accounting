@@ -1,6 +1,7 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.VoucherSeries
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingPeriodService
 import se.alipsa.accounting.service.AttachmentService
@@ -39,6 +41,7 @@ import java.util.prefs.Preferences
 
 import javax.swing.JButton
 import javax.swing.JCheckBox
+import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
@@ -533,6 +536,220 @@ final class VoucherPanelNavigationTest {
     } finally {
       I18n.instance.setLocale(previousLocale)
     }
+  }
+
+  @Test
+  void freshFiscalYearSeedsDefaultSeriesAAndPreviewsItsFirstNumber() {
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+
+    VoucherSeries selected = onEdt { seriesComboBox.selectedItem } as VoucherSeries
+
+    assertEquals(1, onEdt { seriesComboBox.itemCount })
+    assertEquals('A', selected.seriesCode)
+    assertEquals('A-1', onEdt { voucherJumpField.text })
+    assertEquals(1, voucherService.listSeries(fiscalYear.id).size())
+  }
+
+  @Test
+  void creatingASecondSeriesMakesItAppearInTheComboAndBecomeSelected() {
+    voucherService.ensureSeries(fiscalYear.id, 'B', 'Kassaverifikat')
+
+    onEdt { panel.refreshSeriesComboBoxForTest('B') }
+
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    List<String> codes = onEdt {
+      (0..<seriesComboBox.itemCount).collect { int i -> (seriesComboBox.getItemAt(i) as VoucherSeries).seriesCode }
+    }
+    VoucherSeries selected = onEdt { seriesComboBox.selectedItem } as VoucherSeries
+
+    assertTrue(codes.containsAll(['A', 'B']))
+    assertEquals('B', selected.seriesCode)
+  }
+
+  @Test
+  void switchingFiscalYearRepopulatesComboWithoutStaleSelection() {
+    voucherService.ensureSeries(fiscalYear.id, 'B', null)
+    onEdt { panel.refreshSeriesComboBoxForTest('B') }
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    assertEquals('B', (onEdt { seriesComboBox.selectedItem } as VoucherSeries).seriesCode)
+
+    FiscalYear secondYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2031', LocalDate.of(2031, 1, 1), LocalDate.of(2031, 12, 31))
+    onEdt { activeCompanyManager.fiscalYear = secondYear }
+
+    VoucherSeries selected = onEdt { seriesComboBox.selectedItem } as VoucherSeries
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+
+    assertEquals('A', selected.seriesCode)
+    assertEquals('A-1', onEdt { voucherJumpField.text })
+    assertEquals(1, voucherService.listSeries(secondYear.id).size())
+  }
+
+  @Test
+  void fiscalYearWithOnlyNonADefaultSeriesPreviewsAndSavesUnderThatSeries() {
+    FiscalYear onlyBYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2028', LocalDate.of(2028, 1, 1), LocalDate.of(2028, 12, 31))
+    voucherService.ensureSeries(onlyBYear.id, 'B', null)
+
+    onEdt { activeCompanyManager.fiscalYear = onlyBYear }
+
+    assertEquals(1, voucherService.listSeries(onlyBYear.id).size())
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    assertEquals('B-1', onEdt { voucherJumpField.text })
+
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    onEdt {
+      description.text = 'Only B series exists'
+      panel.lineTableModel.rows[0].accountNumber = '1510'
+      panel.lineTableModel.rows[0].accountName = 'Kundfordringar'
+      panel.lineTableModel.rows[0].debit = '100'
+      panel.lineTableModel.rows[1].accountNumber = '3010'
+      panel.lineTableModel.rows[1].accountName = 'Försäljning'
+      panel.lineTableModel.rows[1].credit = '100'
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
+    }
+
+    List<Voucher> vouchers = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, onlyBYear.id)
+    assertEquals(1, vouchers.size())
+    assertEquals('B-1', vouchers.first().voucherNumber)
+  }
+
+  @Test
+  void seriesComboAndNewSeriesButtonAreDisabledOnceAnExistingVoucherIsLoaded() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
+
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    JButton newSeriesButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.newSeries')
+    }
+
+    assertFalse(onEdt { seriesComboBox.enabled })
+    assertFalse(onEdt { newSeriesButton.enabled })
+  }
+
+  @Test
+  void closedFiscalYearNeverSeedsASeriesAndDisablesNewSeriesButton() {
+    FiscalYear closedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))
+    fiscalYearService.closeFiscalYear(closedYear.id)
+
+    onEdt { activeCompanyManager.fiscalYear = closedYear }
+
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    JButton newSeriesButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.newSeries')
+    }
+
+    assertEquals(0, onEdt { seriesComboBox.itemCount })
+    assertFalse(onEdt { newSeriesButton.enabled })
+    assertEquals(0, voucherService.listSeries(closedYear.id).size())
+  }
+
+  @Test
+  void changingToALockedDateDisablesNewSeriesAndSaveButNotTheDatePicker() {
+    FiscalYear closedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))
+    fiscalYearService.closeFiscalYear(closedYear.id)
+    LocalDate lockedDate = LocalDate.of(2029, 6, 1)
+    LocalDate openDate = LocalDate.of(2030, 6, 1)
+
+    DatePicker datePicker = findComponent(panel, DatePicker) { true }
+    JButton newSeriesButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.newSeries')
+    }
+    JButton saveButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.save')
+    }
+
+    assertTrue(onEdt { newSeriesButton.enabled })
+
+    onEdt { datePicker.date = lockedDate }
+
+    assertTrue(onEdt { datePicker.enabled }, 'Date picker must stay usable so the user can pick their way out of a locked date')
+    assertFalse(onEdt { newSeriesButton.enabled })
+    assertFalse(onEdt { saveButton.enabled })
+    assertFalse(onEdt { panel.lineTableModel.editable })
+
+    onEdt { datePicker.date = openDate }
+
+    assertTrue(onEdt { newSeriesButton.enabled })
+    assertTrue(onEdt { saveButton.enabled })
+  }
+
+  @Test
+  void directlyCallingCreateSeriesWhileLockedShowsAnErrorAndCreatesNothing() {
+    // Switch the active fiscal year to the closed one itself, not just the date picker's value -
+    // createNewSeries() reads activeCompanyManager.fiscalYear directly. fiscalYear (2030) already
+    // has its own auto-seeded 'A' from setUp()'s panel construction, so asserting against it here
+    // would fail regardless of whether createNewSeries() behaves correctly; closedYear is the one
+    // fiscal year in this test that's guaranteed to never receive any series.
+    FiscalYear closedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))
+    fiscalYearService.closeFiscalYear(closedYear.id)
+    onEdt { activeCompanyManager.fiscalYear = closedYear }
+
+    onEdt { panel.createNewSeriesForTest() }
+
+    assertTrue(onEdt { findFeedbackArea(panel).text }.contains(
+        I18n.instance.getString('voucherPanel.error.seriesCreationLocked')))
+    assertEquals(0, voucherService.listSeries(closedYear.id).size())
+  }
+
+  @Test
+  void applyingAnMcpDraftWithAnUnknownSeriesCodeThrowsAndLeavesThePanelUnchanged() {
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    String numberBefore = onEdt { voucherJumpField.text }
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
+          accounting_date: '2030-05-01',
+          description: 'Draft with bad series',
+          series_code: 'ZZZZZZZZ',
+          lines: [[account_number: '1510', debit: 50G, credit: 0G]]
+      ])
+    }
+
+    assertTrue(exception.message.contains('ZZZZZZZZ'))
+    assertEquals(numberBefore, onEdt { voucherJumpField.text })
+  }
+
+  @Test
+  void restoreNavigationDraftFallsBackToBlankVoucherForAnUnresolvableRememberedSeries() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Only saved voucher',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    installPanelHooks()
+
+    VoucherDraftMapper.VoucherDraft invalidDraft = new VoucherDraftMapper.VoucherDraft(
+        LocalDate.of(2030, 6, 1), 'Deliberately invalid', 'ZZZZZZZZ', [])
+    onEdt { panel.rememberDraftForTest(invalidDraft) }
+
+    JButton previous = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
+    }
+    JButton next = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.next')
+    }
+    // isOnDraft() is true here (no navigation yet), so rememberDraftForTest's value actually
+    // stuck. "prev" moves onto the one saved voucher; "next" falls off the end back to the
+    // (invalid) remembered draft, reaching restoreNavigationDraft()'s fallback.
+    onEdt { previous.doClick() }
+    onEdt { next.doClick() }
+
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    assertEquals('', onEdt { description.text })
   }
 
   private void setSingleLine(String normalBalanceSide) {
