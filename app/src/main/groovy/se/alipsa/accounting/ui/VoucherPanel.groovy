@@ -28,6 +28,8 @@ import java.awt.Color
 import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.Frame
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import java.awt.Insets
 import java.awt.event.ActionEvent
 import java.awt.event.KeyAdapter
@@ -243,26 +245,46 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private JPanel buildHeaderBar() {
-    JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4))
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber')))
-    panel.add(voucherNumberLabel)
+    JPanel panel = new JPanel(new GridBagLayout())
+    GridBagConstraints constraints = new GridBagConstraints(
+        gridx: 0, gridy: 0, anchor: GridBagConstraints.WEST, insets: new Insets(4, 0, 4, 8))
+    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber')), constraints)
+    constraints.gridx++
+    panel.add(voucherNumberLabel, constraints)
     unsavedLabel.foreground = new Color(180, 83, 9)
     unsavedLabel.text = I18n.instance.getString('voucherPanel.label.unsaved')
     unsavedLabel.toolTipText = I18n.instance.getString('voucherPanel.label.unsaved')
-    panel.add(unsavedLabel)
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')))
-    panel.add(datePicker)
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')))
+    constraints.gridx++
+    panel.add(unsavedLabel, constraints)
+    constraints.gridx++
+    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')), constraints)
+    constraints.gridx++
+    panel.add(datePicker, constraints)
+    constraints.gridx++
+    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')), constraints)
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
-    panel.add(descriptionField)
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.series')))
+    constraints.gridx++
+    constraints.weightx = 1.0G
+    constraints.fill = GridBagConstraints.HORIZONTAL
+    panel.add(descriptionField, constraints)
+    constraints.gridx++
+    constraints.weightx = 0.0G
+    constraints.fill = GridBagConstraints.NONE
+    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.series')), constraints)
     seriesComboBox.editable = false
     seriesComboBox.addActionListener { onSeriesSelectionChanged() }
-    panel.add(seriesComboBox)
+    constraints.gridx++
+    panel.add(seriesComboBox, constraints)
     newSeriesButton = navigationButton('+', 'voucherPanel.button.newSeries') { createNewSeries() }
-    panel.add(newSeriesButton)
+    constraints.gridx++
+    panel.add(newSeriesButton, constraints)
     correctsLabel.visible = false
-    panel.add(correctsLabel)
+    constraints.gridx++
+    constraints.weightx = 0.2G
+    constraints.fill = GridBagConstraints.HORIZONTAL
+    constraints.gridwidth = GridBagConstraints.REMAINDER
+    constraints.insets = new Insets(4, 0, 4, 0)
+    panel.add(correctsLabel, constraints)
     panel
   }
 

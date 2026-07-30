@@ -568,6 +568,29 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void seriesControlsStayOnTheHeaderRowWhenASecondSeriesWidensTheCombo() {
+    voucherService.ensureSeries(fiscalYear.id, 'B', 'Kassaverifikat')
+
+    onEdt {
+      panel.refreshSeriesComboBoxForTest('B')
+      panel.setSize(900, 600)
+      panel.doLayout()
+      Container header = (findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>).parent
+      header.doLayout()
+    }
+
+    JComboBox<VoucherSeries> seriesComboBox = findComponent(panel, JComboBox) { true } as JComboBox<VoucherSeries>
+    JButton newSeriesButton = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.newSeries')
+    }
+
+    assertTrue(onEdt { seriesComboBox.visible })
+    assertTrue(onEdt { newSeriesButton.visible })
+    assertEquals(onEdt { seriesComboBox.y }, onEdt { newSeriesButton.y })
+    assertTrue(onEdt { newSeriesButton.x + newSeriesButton.width <= newSeriesButton.parent.width })
+  }
+
+  @Test
   void switchingFiscalYearRepopulatesComboWithoutStaleSelection() {
     voucherService.ensureSeries(fiscalYear.id, 'B', null)
     onEdt { panel.refreshSeriesComboBoxForTest('B') }
