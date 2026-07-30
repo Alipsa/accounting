@@ -21,10 +21,13 @@ final class AiClientConfigWriter {
         // inline "autoApprove" list of tool names on the server entry, so use that instead.
         return bearerJson(endpoint, token, AiWorkspaceMcpSettings.READ_ONLY_TOOLS)
       case AiClient.CODEX:
+        // Codex has no separate settings file or inline server-level auto-approve list either;
+        // each MCP tool gets pre-approved through its own [mcp_servers.accounting.tools.<name>]
+        // table with approval_mode = "approve" - otherwise every read prompts, unlike Claude.
         return """[mcp_servers.accounting]
 url = "${endpoint}"
 bearer_token_env_var = "ACCOUNTING_MCP_TOKEN"
-""".toString()
+${codexReadOnlyToolPermissions()}""".toString()
       case AiClient.VIBE:
         // Vibe's "http" transport is plain request/response with no session tracking, but
         // LoopbackMcpServer implements the actual MCP Streamable HTTP transport (initialize
@@ -37,7 +40,7 @@ name = "accounting"
 transport = "streamable-http"
 url = "${endpoint}"
 headers = { Authorization = "Bearer ${token}" }
-""".toString()
+${vibeReadOnlyToolPermissions()}""".toString()
       default:
         throw new IllegalArgumentException("Unknown AI client: ${client}")
     }
@@ -48,5 +51,24 @@ headers = { Authorization = "Bearer ${token}" }
         headers: [Authorization: "Bearer ${token}".toString()]]
     if (autoApprove) { server.autoApprove = autoApprove }
     JsonOutput.toJson([mcpServers: [accounting: server]]) + '\n'
+  }
+
+  // Vibe has neither Claude's separate settings file nor Kimi's inline server-level
+  // "autoApprove" list; each MCP tool gets pre-approved through its own [tools.<name>] table,
+  // keyed by "<mcp server name>_<tool name>" (see vibe's core.tools.mcp.tools published_name).
+  private static String vibeReadOnlyToolPermissions() {
+    StringBuilder permissions = new StringBuilder()
+    AiWorkspaceMcpSettings.READ_ONLY_TOOLS.each { String tool ->
+      permissions << "\n[tools.accounting_${tool}]\npermission = \"always\"\n"
+    }
+    permissions.toString()
+  }
+
+  private static String codexReadOnlyToolPermissions() {
+    StringBuilder permissions = new StringBuilder()
+    AiWorkspaceMcpSettings.READ_ONLY_TOOLS.each { String tool ->
+      permissions << "\n[mcp_servers.accounting.tools.${tool}]\napproval_mode = \"approve\"\n"
+    }
+    permissions.toString()
   }
 }

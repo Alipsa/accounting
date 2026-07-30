@@ -43,4 +43,30 @@ class AiClientConfigWriterTest {
     assertFalse(kimi.contains('mcp__accounting__'))
     assertFalse(claude.contains('"autoApprove"'))
   }
+
+  // Vibe has neither Claude's settings file nor Kimi's inline "autoApprove" list, so read-only
+  // tools must be pre-approved via a [tools.<name>] permission table per tool - otherwise every
+  // read prompts for approval, unlike Claude and Kimi.
+  @Test
+  void vibeConfigPreApprovesReadOnlyTools() {
+    String vibe = AiClientConfigWriter.configContent(AiClient.VIBE, ENDPOINT, TOKEN)
+
+    AiWorkspaceMcpSettings.READ_ONLY_TOOLS.each { String tool ->
+      assertTrue(vibe.contains("[tools.accounting_${tool}]" as String), "missing ${tool}")
+    }
+    assertTrue(vibe.contains('permission = "always"'))
+  }
+
+  // Codex has no separate settings file or inline auto-approve list either, so read-only tools
+  // must be pre-approved via a [mcp_servers.accounting.tools.<name>] table per tool - otherwise
+  // every read prompts for approval, unlike Claude.
+  @Test
+  void codexConfigPreApprovesReadOnlyTools() {
+    String codex = AiClientConfigWriter.configContent(AiClient.CODEX, ENDPOINT, TOKEN)
+
+    AiWorkspaceMcpSettings.READ_ONLY_TOOLS.each { String tool ->
+      assertTrue(codex.contains("[mcp_servers.accounting.tools.${tool}]" as String), "missing ${tool}")
+    }
+    assertTrue(codex.contains('approval_mode = "approve"'))
+  }
 }
