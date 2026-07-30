@@ -24,7 +24,9 @@ Out of scope: renaming/deleting/editing existing series, reordering series, any 
 
 Today, typing an unrecognized code into the field and saving silently creates that series. This spec **removes that path**: the combo is locked to existing series, and `+` is the only way to create a new one. This is the actual fix for "invisible series" — every series that ever gets created is now a deliberate, visible action, not a side effect of a typo.
 
-**Empty-state default.** A brand new fiscal year has zero rows in `voucher_series` until the first voucher is ever saved (nothing seeds one today). With the combo locked, an empty list would block the very first voucher. To keep that zero-friction: when `refreshSeriesComboBox()` finds the list empty for the active fiscal year, it calls `ensureSeries(fiscalYearId, 'A')` once to seed the same default the app already gives implicitly today, then populates the combo with that one entry, selected. Every series *after* that first default one is explicit via `+`.
+**Empty-state default.** A brand new fiscal year has zero rows in `voucher_series` until the first voucher is ever saved (nothing seeds one today). With the combo locked, an empty list would block the very first voucher. To keep that zero-friction, a default `A` series is seeded — but **only** at the point a new, genuinely editable voucher is being composed, never merely from populating/viewing the combo (see `ensureDefaultSeriesForNewVoucher()` below). Every series *after* that first default one is explicit via `+`.
+
+**Locked periods must not write anything.** The old text field being "enabled" while composing a new voucher in a locked period was harmless, because nothing persisted until `Save` — which is already blocked (`saveButton.enabled = !readOnly`). The `+` button breaks that assumption: it calls `ensureSeries` immediately on click, independent of whether the resulting voucher could ever be saved. Two rules follow, both detailed below: (1) `+` is only enabled when composing a new voucher *and* that voucher's date isn't in a locked period, and (2) populating the combo (`refreshSeriesComboBox()`) is a pure read with no side effects — the `A` seed never happens just from opening/browsing a fiscal year, locked or not.
 
 ## Components
 
@@ -32,24 +34,31 @@ Today, typing an unrecognized code into the field and saving silently creates th
 
 - Field: `private final JComboBox<VoucherSeries> seriesComboBox = new JComboBox<>()`, `seriesComboBox.editable = false`.
 - New button `newSeriesButton`, built with the existing `navigationButton('+', 'voucherPanel.button.newSeries') { createNewSeries() }` helper, placed immediately after the combo in `buildHeaderBar()`.
-- New `private void refreshSeriesComboBox(String preferredCode = null)`:
+- New `private boolean isNewVoucherPeriodLocked()`: extracts the exact lock check `applyReadOnlyState()` already performs for the "composing a new voucher" case (`accountingPeriodService.isDateLocked(activeCompanyManager.companyId, defaultDate())`, catching exceptions as locked/`true`, same log message). `applyReadOnlyState()`'s `else if (activeCompanyManager.fiscalYear != null)` branch is refactored to call this helper instead of inlining the try/catch, so there is exactly one implementation of "is a new voucher, today, allowed to be created". Returns `true` (fail closed) if there's no active fiscal year — nothing new-voucher-related should ever write when there's no fiscal year context.
+- New `private void refreshSeriesComboBox(String preferredCode = null)` — **pure read, no writes, safe to call from any context including a locked/closed fiscal year:**
   1. Resolve `FiscalYear fy = activeCompanyManager.fiscalYear`; if null, clear the combo model and return.
-  2. `List<VoucherSeries> series = voucherService.listSeries(fy.id)`.
-  3. If empty: `series = [voucherService.ensureSeries(fy.id, 'A')]`.
-  4. Rebuild the combo model from `series`.
-  5. Select `preferredCode` if given and present in the list; else keep the previous selection if still present; else select the first item.
+  2. `List<VoucherSeries> series = voucherService.listSeries(fy.id)` (may be empty — that's fine here; seeding is a separate, gated step, see `ensureDefaultSeriesForNewVoucher()` below).
+  3. Rebuild the combo model from `series`, which may leave it empty.
+  4. Select `preferredCode` if given and present in the list; else keep the previous selection if still present; else select the first item if any exist.
   - Called once at the end of `reloadVoucherList()` (covers construction, fiscal-year switch, and company switch — `reloadVoucherList()` already runs on all three via the existing `propertyChange` listener), and again after a successful `createNewSeries()` (passing the new code as `preferredCode`).
+- New `private void ensureDefaultSeriesForNewVoucher()` — the only place that seeds the default `A` series, and the only place besides `createNewSeries()` that writes to `voucher_series`:
+  1. If `activeCompanyManager.fiscalYear == null` or `seriesComboBox.itemCount > 0`, return (nothing to do — either no context, or series already exist so there's nothing to default).
+  2. If `isNewVoucherPeriodLocked()`, return **without seeding** — an empty combo in a locked period is fine: `Save` is already disabled by `readOnly`, so there is no new voucher this could mislead.
+  3. Otherwise: `voucherService.ensureSeries(fy.id, 'A')`, then `refreshSeriesComboBox('A')`.
+  - Called at the start of `showEmptyVoucher()`, before anything reads the combo's selection (see below) — the only call site, since it's specifically about preparing a *new* voucher.
 - New `private void createNewSeries()`:
   - Guards on `activeCompanyManager.fiscalYear != null` (button is only enabled when it is, but double-checked defensively).
   - Shows `NewVoucherSeriesDialog`, which returns the created/matched `VoucherSeries` or `null` if cancelled.
   - On success: `refreshSeriesComboBox(result.seriesCode)`.
 - Read/write sites switch from `seriesField.text` to the combo's selection:
   - `showVoucher(v)`: select the item whose `seriesCode == v.seriesCode` (helper `selectSeriesCode(String code)` that falls back to leaving the current selection if no match — shouldn't happen since a voucher's series always belongs to its own fiscal year, but fail-soft rather than throw).
-  - `showEmptyVoucher()`: select `'A'` via `selectSeriesCode('A')` (still meaningful post-refresh since the combo is guaranteed non-empty).
-  - `duplicateVoucher()`: `selectSeriesCode(source.seriesCode ?: 'A')`.
+  - `showEmptyVoucher()`: call `ensureDefaultSeriesForNewVoucher()` **first**. Then, instead of hardcoding `'A'` anywhere (the bug being fixed here — the old code called `previewNextVoucherNumber('A')` unconditionally, regardless of what was actually selected), read the combo's actual state: `VoucherSeries selected = seriesComboBox.selectedItem as VoucherSeries`. If non-null, `nextNumber = previewNextVoucherNumber(selected.seriesCode)`; if null (fiscal year has no series and the period is locked, so `ensureDefaultSeriesForNewVoucher()` correctly declined to seed), `nextNumber` is a blank/placeholder string — there is nothing to preview because nothing can be saved. This guarantees the displayed number always matches whatever series will actually be used if `Save` is (or becomes) available.
+  - `duplicateVoucher()`: `selectSeriesCode(source.seriesCode ?: 'A')` — unaffected by this fix, `source.seriesCode` is always a real, already-persisted series from an existing voucher, never a guess.
   - `snapshotDraft()` / `applyDraft()`: read/select via `(seriesComboBox.selectedItem as VoucherSeries)?.seriesCode` — the draft's `seriesCode` stays a plain `String`, unchanged on the `VoucherDraftMapper` boundary.
-  - `VoucherEditorActions` construction (`seriesSupplier`): `{ (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode ?: 'A' }` — `VoucherEditorActions`'s own signature (`Supplier<String>`) is unchanged.
-- `applyReadOnlyState()`: `seriesComboBox.enabled = newSeriesButton.enabled = currentVoucher == null` (same rule the text field used).
+  - `VoucherEditorActions` construction (`seriesSupplier`): `{ (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode ?: 'A' }` — `VoucherEditorActions`'s own signature (`Supplier<String>`) is unchanged. The `?: 'A'` fallback is now unreachable in practice for a savable voucher (by the time `Save` is enabled, `ensureDefaultSeriesForNewVoucher()` has guaranteed a selection), but kept as a defensive default matching the supplier's existing contract.
+- `applyReadOnlyState()`:
+  - `seriesComboBox.enabled = currentVoucher == null` (unchanged rule — merely *selecting* among already-existing series doesn't write anything, so it doesn't need the lock check; the write only happens at `Save`, already gated by `saveButton.enabled = !readOnly`).
+  - `newSeriesButton.enabled = currentVoucher == null && !readOnly` — this is the fix for the "+" button: creating a series is an immediate write, so it must respect the same lock check as `Save`, not just "is this a new voucher".
 - Bonus (small, low-risk UX win enabled by the structured model): add an item listener on `seriesComboBox` that updates `voucherNumberLabel`/`jumpField` live via the existing `previewNextVoucherNumber(seriesCode)`. Must guard on `currentVoucher == null` (only meaningful while composing a new voucher) **and** not fire during programmatic selection from `showVoucher`/`duplicateVoucher`/`applyDraft`/`refreshSeriesComboBox` — those already set the correct label themselves (e.g. `showVoucher` sets it from the loaded voucher's real number, not a preview) and must not have it overwritten. The existing codebase convention for this is a reentrancy guard flag set around programmatic `setSelectedItem` calls; the implementation plan should follow it.
 
 ### `NewVoucherSeriesDialog.groovy` (new file)
@@ -72,7 +81,9 @@ New keys under the existing `voucherPanel.*` namespace, added to both `messages.
 
 - New unit test `NewVoucherSeriesDialogTest` (or equivalent headless-safe test) covering code validation (rejects empty/too-long/invalid-character codes) and the "existing code selects existing series" path, using a real `VoucherService` against a temp DB (matching how `VoucherPanelNavigationTest` is set up).
 - Extend `VoucherPanelNavigationTest` (integration):
-  - A fresh fiscal year with no vouchers yet shows the combo pre-populated with a single seeded `A` series.
+  - A fresh, open fiscal year with no vouchers yet shows the combo pre-populated with a single seeded `A` series, and the voucher-number preview reads `A-1`.
   - Creating a second series via `createNewSeries()`/the dialog makes it appear in the combo and become selected.
   - Switching fiscal year repopulates the combo with that year's series.
   - Combo and `+` button are disabled once an existing voucher is loaded, matching the current `seriesField` behavior.
+  - **Locked-period regression (finding 1):** a fiscal year/period locked via `AccountingPeriodService` with zero existing series — merely opening/viewing it must not create a `voucher_series` row (assert `listSeries()` still returns empty after `reloadVoucherList()`/`showEmptyVoucher()`), and `newSeriesButton.enabled` must be `false`.
+  - **Non-`A` default series regression (finding 2):** a fiscal year whose only series is `B` (seeded directly via `ensureSeries(fy.id, 'B')` in test setup, simulating an imported/legacy year) — `showEmptyVoucher()` must select `B` in the combo *and* the voucher-number preview must read `B-<next>`, never `A-*`. Then actually saving must produce a `B-*` voucher number, confirming the label and the save path agree.
