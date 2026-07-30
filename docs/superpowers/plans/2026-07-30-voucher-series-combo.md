@@ -26,7 +26,7 @@
 - **Create** `app/src/test/groovy/unit/se/alipsa/accounting/ui/NewVoucherSeriesDialogTest.groovy` — unit tests for the dialog's static code-validation helper.
 - **Modify** `app/src/main/groovy/se/alipsa/accounting/ui/VoucherPanel.groovy` — swap `seriesField` for `seriesComboBox` + `newSeriesButton`; add lock-awareness helpers; update every read/write call site; add three package-scope test seams.
 - **Modify** `app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest.groovy` — extend with new test cases covering the combo's baseline behavior and all review findings from the design spec.
-- **Modify** `app/src/main/resources/i18n/messages.properties` and `messages_sv.properties` — new keys for the `+` button, the dialog, and one new error message.
+- **Modify** `app/src/main/resources/i18n/messages.properties` and `messages_sv.properties` — new keys for the `+` button, the dialog, and one new error message; `messages_sv.properties` additionally gets fully re-encoded from `\uXXXX` escapes to literal UTF-8 (Task 5, an encoding cleanup unrelated to the feature itself).
 
 ---
 
@@ -68,7 +68,7 @@ newVoucherSeriesDialog.error.invalidCode=Series code must be 1-8 characters, A-Z
 
 - [ ] **Step 2: Add the matching keys to `messages_sv.properties`**
 
-Same insertion points. All non-ASCII characters (å/ä/ö) are written as `\uXXXX` escapes below, matching every existing line in this file — copy them exactly as shown, do not "fix" them back to literal å/ä/ö:
+Same insertion points, written as plain UTF-8 text (not `\uXXXX` escapes). Despite appearances from a handful of sampled lines, `messages_sv.properties` is not consistently escaped: 440 of its 1001 lines already contain literal non-ASCII characters, against only 30 using `\uXXXX` escapes - literal UTF-8 is the dominant, established style, and Task 5 below converts the remaining 30 legacy-escaped lines to match it. Writing new keys as escapes here would mean writing them wrong now only to have Task 5 immediately convert them back.
 
 ```properties
 voucherPanel.label.series=Serie
@@ -76,8 +76,8 @@ voucherPanel.button.newSeries=Skapa ny serie...
 ```
 
 ```properties
-voucherPanel.error.periodLocked=R\u00E4kenskaps\u00E5ret \u00E4r l\u00E5st. L\u00E5s upp det innan du registrerar r\u00E4ttelser.
-voucherPanel.error.seriesCreationLocked=Det g\u00E5r inte att skapa en verifikationsserie n\u00E4r r\u00E4kenskapsperioden \u00E4r l\u00E5st.
+voucherPanel.error.periodLocked=Räkenskapsåret är låst. Lås upp det innan du registrerar rättelser.
+voucherPanel.error.seriesCreationLocked=Det går inte att skapa en verifikationsserie när räkenskapsperioden är låst.
 ```
 
 ```properties
@@ -86,7 +86,7 @@ newVoucherSeriesDialog.label.code=Kod
 newVoucherSeriesDialog.label.name=Namn
 newVoucherSeriesDialog.button.ok=OK
 newVoucherSeriesDialog.button.cancel=Avbryt
-newVoucherSeriesDialog.error.invalidCode=Seriekoden m\u00E5ste vara 1-8 tecken, A-Z eller 0-9.
+newVoucherSeriesDialog.error.invalidCode=Seriekoden måste vara 1-8 tecken, A-Z eller 0-9.
 ```
 
 - [ ] **Step 3: Verify the properties files still parse**
@@ -1264,7 +1264,77 @@ git commit -m "test: cover voucher series combo behavior and all design-review f
 
 ---
 
-## Task 5: Full verification
+## Task 5: Convert `messages_sv.properties` to literal UTF-8 (encoding cleanup)
+
+Unrelated to the voucher series feature itself, but requested alongside it: `messages_sv.properties` is **not** consistently encoded. Of its 1001 lines, 440 already write accented characters (å/ä/ö) as literal UTF-8 - the dominant, established style - but a minority of 30 lines (clustered mainly in the `overviewPanel.*` and `voucherPanel.*` sections, apparently from whenever those specific keys were originally authored) still use `\uXXXX` escapes, a convention associated with pre-Java-9 tooling (`native2ascii`, removed from the JDK in Java 9) where `.properties` files were read as ISO-8859-1 by default. `I18n.groovy`'s `ResourceBundle.Control` only overrides `getTimeToLive()`, not `newBundle()`, so it uses the JDK's default bundle-loading behavior — which, since JEP 226 (Java 9+), reads `.properties` files as UTF-8. This project targets Java 21 (`app/build.gradle:39`), so there's no technical reason for those 30 lines to differ from the other 440; converting them to match is a pure consistency cleanup.
+
+Scope: `messages_sv.properties` only (`messages.properties` is English and has no accented characters needing escaping). This task can be done independently of Tasks 1-4 and 6 if you'd rather ship it as its own change — it's placed here only because it was raised during this feature's planning. If Task 1 has already run, its two new keys are already literal UTF-8 (see Task 1 Step 2) and this task's conversion script simply won't find anything to change in them - the 30 lines it acts on are pre-existing, unrelated to this feature.
+
+**Files:**
+- Modify: `app/src/main/resources/i18n/messages_sv.properties`
+
+**Interfaces:** none — pure content conversion, no code or key changes. Every existing key and its (decoded) value must be byte-for-byte equivalent to before, just re-encoded.
+
+- [ ] **Step 1: Convert all `\uXXXX` escapes to literal UTF-8 characters**
+
+Run this from the repository root — it rewrites the file in place, replacing every `\uXXXX` sequence with the actual Unicode character it represents, and leaves everything else (keys, `=`, ASCII text, line structure) untouched:
+
+```bash
+python3 - <<'PYEOF'
+import re
+
+path = "app/src/main/resources/i18n/messages_sv.properties"
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+
+converted = re.sub(r'\\u([0-9A-Fa-f]{4})', lambda m: chr(int(m.group(1), 16)), content)
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(converted)
+
+print(f"Replaced {len(re.findall(r'\\u[0-9A-Fa-f]{4}', content))} escape sequences.")
+PYEOF
+```
+
+This only touches the 30 pre-existing legacy-escaped lines. Task 1's own new keys are already literal UTF-8 (Task 1 Step 2), so this script finds nothing to change in them either way, regardless of task order.
+
+- [ ] **Step 2: Spot-check the diff**
+
+Run: `git diff app/src/main/resources/i18n/messages_sv.properties | head -60`
+
+Expected: every changed line only swaps `\uXXXX` sequences for the literal characters (e.g. `R\u00E4kenskaps\u00E5ret` becomes `Räkenskapsåret`) — no key names, `=` signs, or ASCII-only lines should differ, and no lines should be added, removed, or reordered.
+
+- [ ] **Step 3: Run the existing i18n regression tests**
+
+`I18nTest.groovy` already asserts real Swedish accented text: `formatReturnsSwedishWithParameters` expects `'Räkenskapsåret 2024 skapades.'` (Groovy string literal, decoded at compile time — unaffected by this change) *returned* by `I18n.instance.format(...)`, i.e. by the bundle actually reading the properties file correctly. This is the regression test that would catch a broken conversion.
+
+Run: `./gradlew test --tests "unit.se.alipsa.accounting.support.I18nTest"`
+Expected: PASS (all tests, including `formatReturnsSwedishWithParameters` and `getStringReturnsSwedishAfterLocaleChange`). This exact conversion script and this exact test were already run against a real copy of this file while writing this plan, confirming both the script (30 lines, 44 escape sequences converted, 1001 lines preserved) and the regression test pass — this step should be a formality, not a discovery.
+
+- [ ] **Step 4: Run the full test suite and Spotless**
+
+Run: `./gradlew test`
+Expected: PASS — in particular, any other test that switches to Swedish locale and checks accented output (e.g. `VoucherPanelNavigationTest.printableVoucherHtmlContainsHeaderLinesAndTotals`) must still pass unchanged.
+
+Run: `./gradlew spotlessCheck`
+Expected: PASS. If Spotless reformats anything beyond what Step 1's script already did (e.g. trailing newline handling), run `./gradlew spotlessApply` and re-run the diff check in Step 2.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src/main/resources/i18n/messages_sv.properties
+git commit -m "i18n: write messages_sv.properties as literal UTF-8 instead of \uXXXX escapes
+
+Java 9+ (JEP 226) reads .properties files as UTF-8 by default, and
+I18n.groovy's ResourceBundle.Control doesn't override that. The
+escaping was a leftover pre-Java-9/native2ascii convention no longer
+required on this project's Java 21 toolchain. Pure re-encoding, no
+key or value changes."
+```
+
+---
+
+## Task 6: Full verification
 
 **Files:** none (verification only).
 
@@ -1300,6 +1370,6 @@ If Step 3 required any code changes, commit them separately with a clear message
 
 ## Self-Review Notes
 
-- **Spec coverage:** Context/Scope (Task 3), Empty-state default + locked-periods-must-not-write (Task 3 Steps 6, 8, 12; Task 4 Steps 5, 11-14), non-`A` default series preview fix (Task 3 Step 8; Task 4 Step 7), stale-combo-on-fiscal-year-switch fix (Task 3 Step 13; Task 4 Step 5), date-picker-stays-usable fix (Task 3 Step 12; Task 4 Step 13), unknown-series-in-draft rejection (Task 3 Steps 9-10; Task 4 Steps 15, 17), `NewVoucherSeriesDialog` (Task 2), i18n (Task 1) — all covered.
+- **Spec coverage:** Context/Scope (Task 3), Empty-state default + locked-periods-must-not-write (Task 3 Steps 6, 8, 12; Task 4 Steps 5, 11-14), non-`A` default series preview fix (Task 3 Step 8; Task 4 Step 7), stale-combo-on-fiscal-year-switch fix (Task 3 Step 13; Task 4 Step 5), date-picker-stays-usable fix (Task 3 Step 12; Task 4 Step 13), unknown-series-in-draft rejection (Task 3 Steps 9-10; Task 4 Steps 15, 17), `NewVoucherSeriesDialog` (Task 2), i18n (Task 1) — all covered. Task 5 (the `messages_sv.properties` UTF-8 conversion) is outside the design spec's scope entirely — it was requested separately, during this plan's review, not part of the voucher-series feature.
 - **Placeholder scan:** every step has literal, complete code; no "similar to Task N" references.
 - **Type consistency:** `seriesComboBox` is `JComboBox<VoucherSeries>` everywhere it's referenced; `findComboSeries`/`selectSeriesCode`/`refreshSeriesComboBox`/`isNewVoucherPeriodLocked`/`ensureDefaultSeriesForNewVoucher`/`createNewSeries`/`onSeriesSelectionChanged` names and signatures match between their Task 3 definitions and every call site added in later steps of the same task. `NewVoucherSeriesDialog.showDialog`/`normalizeCode` signatures match between Task 2's implementation and Task 3 Step 6's call site.
