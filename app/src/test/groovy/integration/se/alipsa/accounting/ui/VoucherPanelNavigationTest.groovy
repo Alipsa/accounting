@@ -675,6 +675,65 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void headerCaptionLabelsUpdateAfterALocaleSwitch() {
+    Locale previousLocale = I18n.instance.locale
+    JLabel voucherNumberCaption = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.voucherNumber')
+    }
+    JLabel dateCaption = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.date')
+    }
+    JLabel descriptionCaption = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.description')
+    }
+    JLabel seriesCaption = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.series')
+    }
+    JLabel jumpCaption = findComponent(panel, JLabel) { JLabel label ->
+      label.text == I18n.instance.getString('voucherPanel.label.jump')
+    }
+
+    try {
+      onEdt { I18n.instance.setLocale(Locale.forLanguageTag('sv')) }
+
+      assertEquals(I18n.instance.getString('voucherPanel.label.voucherNumber'), onEdt { voucherNumberCaption.text })
+      assertEquals(I18n.instance.getString('voucherPanel.label.date'), onEdt { dateCaption.text })
+      assertEquals(I18n.instance.getString('voucherPanel.label.description'), onEdt { descriptionCaption.text })
+      assertEquals(I18n.instance.getString('voucherPanel.label.series'), onEdt { seriesCaption.text })
+      assertEquals(I18n.instance.getString('voucherPanel.label.jump'), onEdt { jumpCaption.text })
+    } finally {
+      onEdt { I18n.instance.setLocale(previousLocale) }
+    }
+  }
+
+  @Test
+  void correctsLabelUpdatesAfterALocaleSwitch() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 1), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createCorrectionVoucher(original.id, 'Korrigering')
+    panel?.dispose()
+    panel = buildPanel()
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.last')) }
+    JLabel correctsLabel = findComponent(panel, JLabel) { JLabel label ->
+      label.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects'))
+    }
+    assertTrue(onEdt { correctsLabel.visible })
+    Locale previousLocale = I18n.instance.locale
+
+    try {
+      onEdt { I18n.instance.setLocale(Locale.forLanguageTag('sv')) }
+
+      assertTrue(onEdt { correctsLabel.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects')) })
+      assertTrue(onEdt { correctsLabel.text.endsWith(original.voucherNumber) })
+    } finally {
+      onEdt { I18n.instance.setLocale(previousLocale) }
+    }
+  }
+
+  @Test
   void closedFiscalYearNeverSeedsASeriesAndDisablesNewSeriesButton() {
     FiscalYear closedYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2029', LocalDate.of(2029, 1, 1), LocalDate.of(2029, 12, 31))
