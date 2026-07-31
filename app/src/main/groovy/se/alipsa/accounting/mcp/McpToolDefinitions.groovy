@@ -215,7 +215,7 @@ final class McpToolDefinitions {
             ['fiscal_year_id'],
             [
                 fiscal_year_id: intParam('Fiscal year ID to export.'),
-                output_path: optStrParam('Optional absolute output path. Defaults to the application SIE export directory.'),
+                output_path: optStrParam('Optional absolute output path. Must resolve inside the AI assistant workspace directory; paths outside it, or reached via a symlink, are rejected. Defaults to a timestamped file under sie-exports inside that workspace.'),
                 overwrite: optBoolParam('Allow overwriting an existing output file. Defaults to false.')
             ]
         ),

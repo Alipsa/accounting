@@ -617,6 +617,79 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
     assertEquals(vouchersBefore, countRows(targetDatabaseService, 'voucher'), 'Existing content must remain untouched')
   }
 
+  @Test
+  void exportFiscalYearAbortsBeforeCreatingDirectoriesWhenPrewriteValidationFails() {
+    switchHome(tempDir.resolve('prewrite-validation-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    Path exportPath = tempDir.resolve('guarded-export-dir').resolve('guarded-export.sie')
+    List<Path> validatedPaths = []
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath) { Path target ->
+        validatedPaths << target
+        throw new IllegalStateException('simulated symlink swap detected before mkdir')
+      }
+    }
+
+    assertEquals('simulated symlink swap detected before mkdir', exception.message)
+    assertEquals([exportPath.toAbsolutePath().normalize()], validatedPaths)
+    assertFalse(Files.exists(exportPath.parent), 'Export directory must not be created before pre-write validation passes')
+    assertFalse(Files.exists(exportPath))
+  }
+
+  @Test
+  void exportFiscalYearAbortsBeforeWritingWhenTheSecondPrewriteValidationFails() {
+    switchHome(tempDir.resolve('prewrite-validation-second-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    Path exportPath = tempDir.resolve('second-check-dir').resolve('guarded-export.sie')
+    List<Path> validatedPaths = []
+
+    IllegalStateException exception = assertThrows(IllegalStateException) {
+      services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath) { Path target ->
+        validatedPaths << target
+        if (validatedPaths.size() == 2) {
+          throw new IllegalStateException('simulated symlink swap detected before write')
+        }
+      }
+    }
+
+    assertEquals('simulated symlink swap detected before write', exception.message)
+    assertEquals(2, validatedPaths.size())
+    assertTrue(Files.exists(exportPath.parent), 'Export directory should already exist once the second check runs')
+    assertFalse(Files.exists(exportPath))
+  }
+
+  @Test
+  void exportFiscalYearDoesNotFollowATargetSymlinkCreatedAfterValidation() {
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    switchHome(tempDir.resolve('nofollow-export-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    Path exportPath = tempDir.resolve('nofollow-export-dir').resolve('export.sie')
+    Path outsidePath = tempDir.resolve('outside-export.sie')
+    Files.createDirectories(exportPath.parent)
+    Files.writeString(outsidePath, 'must remain unchanged')
+    List<Path> validatedPaths = []
+
+    IOException exception = assertThrows(IOException) {
+      services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath) { Path target ->
+        validatedPaths << target
+        if (validatedPaths.size() == 2) {
+          Files.createSymbolicLink(exportPath, outsidePath)
+        }
+      }
+    }
+
+    assertTrue(exception.message.contains('NOFOLLOW_LINKS'))
+    assertEquals(2, validatedPaths.size())
+    assertEquals('must remain unchanged', Files.readString(outsidePath))
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()

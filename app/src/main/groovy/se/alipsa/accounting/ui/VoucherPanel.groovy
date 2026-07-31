@@ -104,10 +104,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JComboBox<VoucherSeries> seriesComboBox = new JComboBox<>()
   private boolean applyingSeriesProgrammatically = false
   private final JLabel correctsLabel = new JLabel('')
+  private String correctsOriginalVoucherNumber
   private final JLabel totalsLabel = new JLabel('')
   private final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
   private final JCheckBox advanceAfterSaveCheckBox = new JCheckBox()
+  private final JLabel voucherNumberCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber'))
+  private final JLabel dateCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.date'))
+  private final JLabel descriptionCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.description'))
+  private final JLabel seriesCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.series'))
+  private final JLabel jumpCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.jump'))
 
   private JButton prevButton
   private JButton nextButton
@@ -256,7 +262,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void addVoucherHeaderFields(JPanel panel, GridBagConstraints constraints) {
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber')), constraints)
+    panel.add(voucherNumberCaptionLabel, constraints)
     constraints.gridx++
     panel.add(voucherNumberLabel, constraints)
     unsavedLabel.foreground = new Color(180, 83, 9)
@@ -265,14 +271,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     constraints.gridx++
     panel.add(unsavedLabel, constraints)
     constraints.gridx++
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')), constraints)
+    panel.add(dateCaptionLabel, constraints)
     constraints.gridx++
     panel.add(datePicker, constraints)
   }
 
   private void addDescriptionHeaderField(JPanel panel, GridBagConstraints constraints) {
     constraints.gridx++
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')), constraints)
+    panel.add(descriptionCaptionLabel, constraints)
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
     constraints.gridx++
     constraints.weightx = 1.0G
@@ -284,7 +290,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     constraints.gridx++
     constraints.weightx = 0.0G
     constraints.fill = GridBagConstraints.NONE
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.series')), constraints)
+    panel.add(seriesCaptionLabel, constraints)
     seriesComboBox.editable = false
     seriesComboBox.addActionListener { onSeriesSelectionChanged() }
     constraints.gridx++
@@ -314,7 +320,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     prevButton = navigationButton('\u25C0', 'voucherPanel.button.prev') { navigatePrev() }
     panel.add(prevButton)
 
-    panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.jump')))
+    panel.add(jumpCaptionLabel)
     jumpField.addActionListener { jumpToVoucher(jumpField.text) }
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
     panel.add(jumpField)
@@ -758,10 +764,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     selectSeriesCode(v.seriesCode ?: 'A')
     if (v.originalVoucherId != null) {
       Voucher original = voucherService.findVoucher(v.originalVoucherId)
-      String originalNumber = original?.voucherNumber ?: String.valueOf(v.originalVoucherId)
-      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + originalNumber
+      correctsOriginalVoucherNumber = original?.voucherNumber ?: String.valueOf(v.originalVoucherId)
+      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
       correctsLabel.visible = true
     } else {
+      correctsOriginalVoucherNumber = null
       correctsLabel.text = ''
       correctsLabel.visible = false
     }
@@ -795,6 +802,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     unsavedLabel.visible = true
     jumpField.text = nextNumber
     descriptionField.text = ''
+    correctsOriginalVoucherNumber = null
     correctsLabel.text = ''
     correctsLabel.visible = false
     lineTableModel.clear()
@@ -1377,6 +1385,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void updateLabels() {
     datePicker.locale = I18n.instance.locale
+    refreshCaptionLabels()
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     firstButton.toolTipText = I18n.instance.getString('voucherPanel.button.first')
@@ -1400,6 +1409,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     attachmentTable.tableHeader.repaint()
     auditLogTable.tableHeader.repaint()
     refreshTotals()
+  }
+
+  private void refreshCaptionLabels() {
+    voucherNumberCaptionLabel.text = I18n.instance.getString('voucherPanel.label.voucherNumber')
+    dateCaptionLabel.text = I18n.instance.getString('voucherPanel.label.date')
+    descriptionCaptionLabel.text = I18n.instance.getString('voucherPanel.label.description')
+    seriesCaptionLabel.text = I18n.instance.getString('voucherPanel.label.series')
+    jumpCaptionLabel.text = I18n.instance.getString('voucherPanel.label.jump')
+    if (correctsOriginalVoucherNumber != null) {
+      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
+    }
   }
 
   private static DatePicker createDatePicker() {

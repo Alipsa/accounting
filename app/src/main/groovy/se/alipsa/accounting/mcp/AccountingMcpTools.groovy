@@ -16,6 +16,7 @@ import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingInstructionService
+import se.alipsa.accounting.service.AiWorkspacePermissions
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearPurgeSummary
@@ -57,6 +58,7 @@ class AccountingMcpTools {
   private VoucherDraftAccess voucherDraftAccess
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
+  private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
 
   AccountingMcpTools() {
     this(
@@ -397,9 +399,7 @@ class AccountingMcpTools {
   private Map<String, Object> getTrialBalance(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    Long periodId = args.get('accounting_period_id') != null
-        ? ((Number) args.get('accounting_period_id')).longValue()
-        : null
+    Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -429,14 +429,10 @@ class AccountingMcpTools {
   private Map<String, Object> getGeneralLedger(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    Long periodId = args.get('accounting_period_id') != null
-        ? ((Number) args.get('accounting_period_id')).longValue()
-        : null
+    Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
-    int limit = args.get('limit') != null
-        ? Math.max(1, Math.min(((Number) args.get('limit')).intValue(), 5000))
-        : 1000
+    int limit = Math.max(1, Math.min(optionalInt(args, 'limit', 1000), 5000))
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -801,6 +797,7 @@ class AccountingMcpTools {
       Path outputPath = args.get('output_path') == null
           ? defaultSieExportPath(fiscalYearId)
           : Path.of(args.get('output_path') as String).toAbsolutePath().normalize()
+      validateWithinAiWorkspace(outputPath)
       if (Files.exists(outputPath) && !overwrite) {
         return [
             ok: false,
@@ -809,7 +806,8 @@ class AccountingMcpTools {
             errors: ['Målfilen finns redan. Bekräfta överskrivning och anropa export_sie med overwrite: true.']
         ]
       }
-      SieExportResult result = sieImportExportService.exportFiscalYear(fiscalYearId, outputPath)
+      SieExportResult result = sieImportExportService.exportFiscalYear(
+          fiscalYearId, outputPath, this::validateWithinAiWorkspace)
       [
           ok: true,
           file_path: result.filePath?.toString(),
@@ -826,9 +824,7 @@ class AccountingMcpTools {
 
   private Map<String, Object> listImportJobs(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
-    int limit = args.get('limit') != null
-        ? Math.min(Math.max(((Number) args.get('limit')).intValue(), 1), 50)
-        : 20
+    int limit = Math.min(Math.max(optionalInt(args, 'limit', 20), 1), 50)
     try {
       [
           ok: true,
@@ -856,7 +852,32 @@ class AccountingMcpTools {
     if (value == null) {
       throw new IllegalArgumentException("Missing required argument: ${key}")
     }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
     ((Number) value).longValue()
+  }
+
+  private static Long optionalLong(Map<String, Object> args, String key) {
+    Object value = args.get(key)
+    if (value == null) {
+      return null
+    }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
+    ((Number) value).longValue()
+  }
+
+  private static int optionalInt(Map<String, Object> args, String key, int defaultValue) {
+    Object value = args.get(key)
+    if (value == null) {
+      return defaultValue
+    }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
+    ((Number) value).intValue()
   }
 
   private static String requiredString(Map<String, Object> args, String key) {
@@ -978,7 +999,16 @@ class AccountingMcpTools {
       safeName = fiscalYearId.toString()
     }
     String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern('yyyyMMddHHmm'))
-    AppPaths.sieExportsDirectory().resolve("AlipsaAccounting-${safeName}-${timestamp}.sie").toAbsolutePath().normalize()
+    AppPaths.aiWorkspaceDirectory().resolve('sie-exports')
+        .resolve("AlipsaAccounting-${safeName}-${timestamp}.sie").toAbsolutePath().normalize()
+  }
+
+  private void validateWithinAiWorkspace(Path candidate) {
+    try {
+      aiWorkspacePermissions.verifyNoSymlinksInPath(AppPaths.aiWorkspaceDirectory(), candidate)
+    } catch (IllegalStateException exception) {
+      throw new IllegalArgumentException(exception.message)
+    }
   }
 
   private VoucherPreview resolveVoucherLines(long companyId, List<Map<String, Object>> rawLines, List<String> errors) {
