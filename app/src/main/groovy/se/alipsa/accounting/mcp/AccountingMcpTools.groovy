@@ -399,9 +399,7 @@ class AccountingMcpTools {
   private Map<String, Object> getTrialBalance(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    Long periodId = args.get('accounting_period_id') != null
-        ? ((Number) args.get('accounting_period_id')).longValue()
-        : null
+    Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -431,14 +429,10 @@ class AccountingMcpTools {
   private Map<String, Object> getGeneralLedger(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    Long periodId = args.get('accounting_period_id') != null
-        ? ((Number) args.get('accounting_period_id')).longValue()
-        : null
+    Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
-    int limit = args.get('limit') != null
-        ? Math.max(1, Math.min(((Number) args.get('limit')).intValue(), 5000))
-        : 1000
+    int limit = Math.max(1, Math.min(optionalInt(args, 'limit', 1000), 5000))
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -830,9 +824,7 @@ class AccountingMcpTools {
 
   private Map<String, Object> listImportJobs(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
-    int limit = args.get('limit') != null
-        ? Math.min(Math.max(((Number) args.get('limit')).intValue(), 1), 50)
-        : 20
+    int limit = Math.min(Math.max(optionalInt(args, 'limit', 20), 1), 50)
     try {
       [
           ok: true,
@@ -864,6 +856,28 @@ class AccountingMcpTools {
       throw new IllegalArgumentException("Argument ${key} must be a number.")
     }
     ((Number) value).longValue()
+  }
+
+  private static Long optionalLong(Map<String, Object> args, String key) {
+    Object value = args.get(key)
+    if (value == null) {
+      return null
+    }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
+    ((Number) value).longValue()
+  }
+
+  private static int optionalInt(Map<String, Object> args, String key, int defaultValue) {
+    Object value = args.get(key)
+    if (value == null) {
+      return defaultValue
+    }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
+    ((Number) value).intValue()
   }
 
   private static String requiredString(Map<String, Object> args, String key) {

@@ -25,7 +25,9 @@ import se.alipsa.accounting.support.AppPaths
 
 import java.math.RoundingMode
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.sql.Date
 import java.text.Normalizer
 import java.time.LocalDate
@@ -284,7 +286,14 @@ final class SieImportExportService {
     prewriteValidation?.accept(safeTarget)
     Files.createDirectories(safeTarget.parent)
     prewriteValidation?.accept(safeTarget)
-    Files.write(safeTarget, content)
+    Files.write(
+        safeTarget,
+        content,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+        LinkOption.NOFOLLOW_LINKS
+    )
     String checksum = sha256(content)
     auditLogService.logExport(
         "Exporterade SIE ${payload.fiscalYear.name}",

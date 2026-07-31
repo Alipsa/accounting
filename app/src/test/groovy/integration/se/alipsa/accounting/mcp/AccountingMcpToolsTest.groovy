@@ -1086,6 +1086,28 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void optionalNumericArgumentsReturnJsonRpcInvalidParamsWhenNotNumbers() {
+    McpDispatcher dispatcher = new McpDispatcher(tools)
+
+    List<Map<String, Object>> toolCalls = []
+    toolCalls.add([name: 'get_trial_balance', arguments: [company_id: 1L, fiscal_year_id: fiscalYearId,
+                                                          accounting_period_id: 'not-a-number']])
+    toolCalls.add([name: 'get_general_ledger', arguments: [company_id: 1L, fiscal_year_id: fiscalYearId,
+                                                           limit: 'not-a-number']])
+    toolCalls.add([name: 'list_import_jobs', arguments: [company_id: 1L, limit: 'not-a-number']])
+    toolCalls.each { Map<String, Object> toolCall ->
+      Map<String, Object> response = (Map<String, Object>) dispatcher.dispatch([
+          jsonrpc: '2.0',
+          id     : 1,
+          method : 'tools/call',
+          params : toolCall
+      ])
+
+      assertEquals(-32602, ((Map<String, Object>) response.error).code, toolCall.name as String)
+    }
+  }
+
+  @Test
   void listImportJobsClampsLimitToFifty() {
     Path sieFile = writeSimpleSie(tempDir.resolve('job-list.sie'), 2027, '1510', 'Kundfordringar')
     Map<String, Object> preview = tools.callTool('preview_sie_import', [

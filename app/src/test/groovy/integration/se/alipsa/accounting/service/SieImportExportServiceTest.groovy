@@ -663,6 +663,32 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
     assertFalse(Files.exists(exportPath))
   }
 
+  @Test
+  void exportFiscalYearDoesNotFollowATargetSymlinkCreatedAfterValidation() {
+    assumeTrue(!System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    switchHome(tempDir.resolve('nofollow-export-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SeededServices services = seedEnvironment(databaseService)
+    Path exportPath = tempDir.resolve('nofollow-export-dir').resolve('export.sie')
+    Path outsidePath = tempDir.resolve('outside-export.sie')
+    Files.createDirectories(exportPath.parent)
+    Files.writeString(outsidePath, 'must remain unchanged')
+    List<Path> validatedPaths = []
+
+    assertThrows(Exception) {
+      services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath) { Path target ->
+        validatedPaths << target
+        if (validatedPaths.size() == 2) {
+          Files.createSymbolicLink(exportPath, outsidePath)
+        }
+      }
+    }
+
+    assertEquals(2, validatedPaths.size())
+    assertEquals('must remain unchanged', Files.readString(outsidePath))
+  }
+
   private ExportFixture createExportFixture(Path home, Path exportPath) {
     switchHome(home)
     DatabaseService databaseService = DatabaseService.newForTesting()
