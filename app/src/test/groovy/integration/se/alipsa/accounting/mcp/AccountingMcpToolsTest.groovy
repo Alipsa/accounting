@@ -32,6 +32,7 @@ class AccountingMcpToolsTest {
   Path tempDir
 
   private String previousHome
+  private String previousAiWorkspaceHome
   private DatabaseService databaseService
   private CompanyService companyService
   private FiscalYearService fiscalYearService
@@ -43,6 +44,8 @@ class AccountingMcpToolsTest {
   void setUp() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
+    previousAiWorkspaceHome = System.getProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+    System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
 
@@ -116,6 +119,11 @@ class AccountingMcpToolsTest {
       System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     } else {
       System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    }
+    if (previousAiWorkspaceHome == null) {
+      System.clearProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY)
+    } else {
+      System.setProperty(AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY, previousAiWorkspaceHome)
     }
   }
 
@@ -975,7 +983,7 @@ class AccountingMcpToolsTest {
   @Test
   void exportSieCreatesDefaultTimestampedFileAndProtectsExistingOutput() {
     previewAndPost(balancedVoucherArgs('Exportunderlag', 100.00G))
-    Path explicitPath = tempDir.resolve('export.sie')
+    Path explicitPath = AppPaths.aiWorkspaceDirectory().resolve('export.sie')
 
     Map<String, Object> defaultExport = tools.callTool('export_sie', [
         fiscal_year_id: (Object) fiscalYearId
@@ -1002,6 +1010,53 @@ class AccountingMcpToolsTest {
     assertFalse((boolean) blocked.get('ok'))
     assertTrue((boolean) blocked.get('file_exists'))
     assertTrue((boolean) overwrite.get('ok'), "Overwrite failed: ${overwrite.get('errors')}")
+  }
+
+  @Test
+  void exportSieRejectsOutputPathOutsideAiWorkspace() {
+    previewAndPost(balancedVoucherArgs('Exportunderlag', 100.00G))
+    Path outsidePath = tempDir.resolve('outside-workspace.sie')
+
+    Map<String, Object> result = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId,
+        output_path: (Object) outsidePath.toString()
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((List<String>) result.get('errors')).any { String error -> error.contains('workspace') })
+    assertFalse(Files.exists(outsidePath))
+  }
+
+  @Test
+  void exportSieDefaultPathStaysInsideAiWorkspace() {
+    previewAndPost(balancedVoucherArgs('Exportunderlag', 100.00G))
+
+    Map<String, Object> result = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Default export failed: ${result.get('errors')}")
+    Path filePath = Path.of((String) result.get('file_path'))
+    assertTrue(filePath.startsWith(AppPaths.aiWorkspaceDirectory()))
+  }
+
+  @Test
+  void exportSieRejectsDefaultPathWhenSieExportsIsASymlinkEscapingTheWorkspace() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        !System.getProperty('os.name', '').toLowerCase(Locale.ROOT).contains('win'))
+    previewAndPost(balancedVoucherArgs('Exportunderlag', 100.00G))
+    Path outsideDirectory = tempDir.resolve('outside-sie-exports')
+    Files.createDirectories(outsideDirectory)
+    Files.createDirectories(AppPaths.aiWorkspaceDirectory())
+    Files.createSymbolicLink(AppPaths.aiWorkspaceDirectory().resolve('sie-exports'), outsideDirectory)
+
+    Map<String, Object> result = tools.callTool('export_sie', [
+        fiscal_year_id: (Object) fiscalYearId
+    ])
+
+    assertFalse((boolean) result.get('ok'))
+    assertTrue(((List<String>) result.get('errors')).any { String error -> error.contains('symlink') })
+    assertEquals(0, outsideDirectory.toFile().list().length)
   }
 
   @Test

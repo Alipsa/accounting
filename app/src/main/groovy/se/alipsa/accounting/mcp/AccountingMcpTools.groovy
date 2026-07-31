@@ -16,6 +16,7 @@ import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingInstructionService
+import se.alipsa.accounting.service.AiWorkspacePermissions
 import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.FiscalYearPurgeSummary
@@ -57,6 +58,7 @@ class AccountingMcpTools {
   private VoucherDraftAccess voucherDraftAccess
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
+  private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
 
   AccountingMcpTools() {
     this(
@@ -801,6 +803,7 @@ class AccountingMcpTools {
       Path outputPath = args.get('output_path') == null
           ? defaultSieExportPath(fiscalYearId)
           : Path.of(args.get('output_path') as String).toAbsolutePath().normalize()
+      validateWithinAiWorkspace(outputPath)
       if (Files.exists(outputPath) && !overwrite) {
         return [
             ok: false,
@@ -809,7 +812,8 @@ class AccountingMcpTools {
             errors: ['Målfilen finns redan. Bekräfta överskrivning och anropa export_sie med overwrite: true.']
         ]
       }
-      SieExportResult result = sieImportExportService.exportFiscalYear(fiscalYearId, outputPath)
+      SieExportResult result = sieImportExportService.exportFiscalYear(
+          fiscalYearId, outputPath, this::validateWithinAiWorkspace)
       [
           ok: true,
           file_path: result.filePath?.toString(),
@@ -981,7 +985,16 @@ class AccountingMcpTools {
       safeName = fiscalYearId.toString()
     }
     String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern('yyyyMMddHHmm'))
-    AppPaths.sieExportsDirectory().resolve("AlipsaAccounting-${safeName}-${timestamp}.sie").toAbsolutePath().normalize()
+    AppPaths.aiWorkspaceDirectory().resolve('sie-exports')
+        .resolve("AlipsaAccounting-${safeName}-${timestamp}.sie").toAbsolutePath().normalize()
+  }
+
+  private void validateWithinAiWorkspace(Path candidate) {
+    try {
+      aiWorkspacePermissions.verifyNoSymlinksInPath(AppPaths.aiWorkspaceDirectory(), candidate)
+    } catch (IllegalStateException exception) {
+      throw new IllegalArgumentException(exception.message)
+    }
   }
 
   private VoucherPreview resolveVoucherLines(long companyId, List<Map<String, Object>> rawLines, List<String> errors) {

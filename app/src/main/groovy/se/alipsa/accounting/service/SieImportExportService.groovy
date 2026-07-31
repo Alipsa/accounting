@@ -29,6 +29,7 @@ import java.nio.file.Path
 import java.sql.Date
 import java.text.Normalizer
 import java.time.LocalDate
+import java.util.function.Consumer
 
 /**
  * Imports and exports SIE4 files and records import job outcomes.
@@ -268,7 +269,7 @@ final class SieImportExportService {
       throw exception
     }
   }
-  SieExportResult exportFiscalYear(long fiscalYearId, Path targetPath) {
+  SieExportResult exportFiscalYear(long fiscalYearId, Path targetPath, Consumer<Path> prewriteValidation = null) {
     Path safeTarget = normalizeExportPath(targetPath)
     ExportPayload payload = databaseService.withSql { Sql sql ->
       long companyId = resolveCompanyId(sql, fiscalYearId)
@@ -280,7 +281,9 @@ final class SieImportExportService {
       buildExportPayload(sql, fiscalYearId, company)
     }
     byte[] content = renderDocument(payload.document)
+    prewriteValidation?.accept(safeTarget)
     Files.createDirectories(safeTarget.parent)
+    prewriteValidation?.accept(safeTarget)
     Files.write(safeTarget, content)
     String checksum = sha256(content)
     auditLogService.logExport(
