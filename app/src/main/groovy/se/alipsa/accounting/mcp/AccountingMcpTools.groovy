@@ -856,6 +856,9 @@ class AccountingMcpTools {
     if (value == null) {
       throw new IllegalArgumentException("Missing required argument: ${key}")
     }
+    if (!(value instanceof Number)) {
+      throw new IllegalArgumentException("Argument ${key} must be a number.")
+    }
     ((Number) value).longValue()
   }
 

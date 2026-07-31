@@ -1005,6 +1005,32 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void requiredLongRejectsNonNumericArgumentWithACleanMessage() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      tools.callTool('export_sie', [fiscal_year_id: (Object) 'not-a-number'])
+    }
+    assertTrue(exception.message.contains('fiscal_year_id'))
+  }
+
+  @Test
+  void nonNumericArgumentReturnsJsonRpcInvalidParamsNotInternalError() {
+    McpDispatcher dispatcher = new McpDispatcher(tools)
+
+    Map<String, Object> response = (Map<String, Object>) dispatcher.dispatch([
+        jsonrpc: '2.0',
+        id     : 1,
+        method : 'tools/call',
+        params : [
+            name     : 'export_sie',
+            arguments: [fiscal_year_id: (Object) 'not-a-number']
+        ]
+    ])
+
+    Map<String, Object> error = (Map<String, Object>) response.error
+    assertEquals(-32602, error.code)
+  }
+
+  @Test
   void listImportJobsClampsLimitToFifty() {
     Path sieFile = writeSimpleSie(tempDir.resolve('job-list.sie'), 2027, '1510', 'Kundfordringar')
     Map<String, Object> preview = tools.callTool('preview_sie_import', [
