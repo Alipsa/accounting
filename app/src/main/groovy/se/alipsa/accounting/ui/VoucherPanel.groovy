@@ -1368,14 +1368,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void updateLabels() {
     datePicker.locale = I18n.instance.locale
-    voucherNumberCaptionLabel.text = I18n.instance.getString('voucherPanel.label.voucherNumber')
-    dateCaptionLabel.text = I18n.instance.getString('voucherPanel.label.date')
-    descriptionCaptionLabel.text = I18n.instance.getString('voucherPanel.label.description')
-    seriesCaptionLabel.text = I18n.instance.getString('voucherPanel.label.series')
-    jumpCaptionLabel.text = I18n.instance.getString('voucherPanel.label.jump')
-    if (correctsOriginalVoucherNumber != null) {
-      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
-    }
+    refreshCaptionLabels()
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
     nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
     firstButton.toolTipText = I18n.instance.getString('voucherPanel.button.first')
@@ -1399,6 +1392,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     attachmentTable.tableHeader.repaint()
     auditLogTable.tableHeader.repaint()
     refreshTotals()
+  }
+
+  private void refreshCaptionLabels() {
+    voucherNumberCaptionLabel.text = I18n.instance.getString('voucherPanel.label.voucherNumber')
+    dateCaptionLabel.text = I18n.instance.getString('voucherPanel.label.date')
+    descriptionCaptionLabel.text = I18n.instance.getString('voucherPanel.label.description')
+    seriesCaptionLabel.text = I18n.instance.getString('voucherPanel.label.series')
+    jumpCaptionLabel.text = I18n.instance.getString('voucherPanel.label.jump')
+    if (correctsOriginalVoucherNumber != null) {
+      correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
+    }
   }
 
   private static DatePicker createDatePicker() {
