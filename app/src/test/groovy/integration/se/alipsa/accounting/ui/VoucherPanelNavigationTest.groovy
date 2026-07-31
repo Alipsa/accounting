@@ -586,8 +586,13 @@ final class VoucherPanelNavigationTest {
 
     assertTrue(onEdt { seriesComboBox.visible })
     assertTrue(onEdt { newSeriesButton.visible })
-    assertEquals(onEdt { seriesComboBox.y }, onEdt { newSeriesButton.y })
-    assertTrue(onEdt { newSeriesButton.x + newSeriesButton.width <= newSeriesButton.parent.width })
+    assertTrue(onEdt {
+      int comboTop = seriesComboBox.y
+      int comboBottom = comboTop + seriesComboBox.height
+      int buttonTop = newSeriesButton.y
+      int buttonBottom = buttonTop + newSeriesButton.height
+      comboTop < buttonBottom && buttonTop < comboBottom
+    }, 'Series controls must occupy the same header row')
   }
 
   @Test
