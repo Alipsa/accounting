@@ -697,6 +697,7 @@ final class VoucherPanelNavigationTest {
     JLabel jumpCaption = findComponent(panel, JLabel) { JLabel label ->
       label.text == I18n.instance.getString('voucherPanel.label.jump')
     }
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
 
     try {
       onEdt { I18n.instance.setLocale(Locale.forLanguageTag('sv')) }
@@ -706,6 +707,9 @@ final class VoucherPanelNavigationTest {
       assertEquals(I18n.instance.getString('voucherPanel.label.description'), onEdt { descriptionCaption.text })
       assertEquals(I18n.instance.getString('voucherPanel.label.series'), onEdt { seriesCaption.text })
       assertEquals(I18n.instance.getString('voucherPanel.label.jump'), onEdt { jumpCaption.text })
+      assertEquals(I18n.instance.getString('voucherPanel.tab.lines'), onEdt { tabs.getTitleAt(0) })
+      assertEquals(I18n.instance.getString('voucherPanel.tab.attachments'), onEdt { tabs.getTitleAt(1) })
+      assertEquals(I18n.instance.getString('voucherPanel.tab.history'), onEdt { tabs.getTitleAt(2) })
     } finally {
       onEdt { I18n.instance.setLocale(previousLocale) }
     }

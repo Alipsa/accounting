@@ -676,7 +676,7 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
     Files.writeString(outsidePath, 'must remain unchanged')
     List<Path> validatedPaths = []
 
-    assertThrows(Exception) {
+    IOException exception = assertThrows(IOException) {
       services.sieService.exportFiscalYear(services.fiscalYear.id, exportPath) { Path target ->
         validatedPaths << target
         if (validatedPaths.size() == 2) {
@@ -685,6 +685,7 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
       }
     }
 
+    assertTrue(exception.message.contains('NOFOLLOW_LINKS'))
     assertEquals(2, validatedPaths.size())
     assertEquals('must remain unchanged', Files.readString(outsidePath))
   }

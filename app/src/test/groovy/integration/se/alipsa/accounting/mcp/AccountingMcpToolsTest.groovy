@@ -322,6 +322,17 @@ class AccountingMcpToolsTest {
   }
 
   @Test
+  void getTrialBalanceAcceptsNegativeOptionalAccountingPeriodIdAsANumericArgument() {
+    Map<String, Object> result = tools.callTool('get_trial_balance', [
+        'company_id': (Object) 1L,
+        'fiscal_year_id': (Object) fiscalYearId,
+        'accounting_period_id': (Object) -1L
+    ])
+
+    assertTrue((boolean) result.get('ok'))
+  }
+
+  @Test
   void getGeneralLedgerReturnsStructuredRows() {
     Map<String, Object> result = tools.callTool('get_general_ledger', [
         'company_id': (Object) 1L,

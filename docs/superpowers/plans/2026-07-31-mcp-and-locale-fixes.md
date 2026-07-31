@@ -30,7 +30,7 @@
 - Consumes: nothing new.
 - Produces: `requiredLong(Map<String, Object> args, String key)` now throws `IllegalArgumentException` (not `ClassCastException`) for a non-`Number` argument value. Every existing caller (`exportSie`, `previewSieImport`, `importSie`, etc.) is unaffected in the success path; only the error path changes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `AccountingMcpToolsTest.groovy`, after the existing `exportSieCreatesDefaultTimestampedFileAndProtectsExistingOutput` test (around line 1005):
 
@@ -64,13 +64,13 @@ Add to `AccountingMcpToolsTest.groovy`, after the existing `exportSieCreatesDefa
 
 (`assertThrows`, `assertTrue`, `assertEquals` are already available via the file's existing `import static org.junit.jupiter.api.Assertions.*`; `McpDispatcher` needs no import since the test class is already `package se.alipsa.accounting.mcp`.)
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest.requiredLongRejectsNonNumericArgumentWithACleanMessage" --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest.nonNumericArgumentReturnsJsonRpcInvalidParamsNotInternalError"`
 
 Expected: FAIL — the first test fails with "Unexpected exception type thrown: expected IllegalArgumentException, but was ClassCastException" (or equivalent JUnit message); the second fails on `assertEquals(-32602, error.code)` because `error.code` is `-32603`.
 
-- [ ] **Step 3: Fix `requiredLong`**
+- [x] **Step 3: Fix `requiredLong`**
 
 In `AccountingMcpTools.groovy`, replace:
 
@@ -99,13 +99,13 @@ with:
   }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest"`
 
 Expected: PASS (all tests in the class, including the two new ones).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/src/main/groovy/se/alipsa/accounting/mcp/AccountingMcpTools.groovy app/src/test/groovy/integration/se/alipsa/accounting/mcp/AccountingMcpToolsTest.groovy
@@ -135,7 +135,7 @@ This task wires `export_sie` through that root and check at **two points**, not 
 - Consumes: `AppPaths.aiWorkspaceDirectory()`, `AppPaths.AI_WORKSPACE_HOME_OVERRIDE_PROPERTY`, `AiWorkspacePermissions.verifyNoSymlinksInPath(Path, Path)`, `McpToolDefinitions.listTools()` — all pre-existing.
 - Produces: `AccountingMcpTools.validateWithinAiWorkspace(Path candidate)` — new private helper, throws `IllegalArgumentException` if `candidate` is outside `AppPaths.aiWorkspaceDirectory()` or escapes it via a symlink. `SieImportExportService.exportFiscalYear(long fiscalYearId, Path targetPath, Consumer<Path> prewriteValidation = null)` — existing method, new trailing optional parameter; `null` (the default) preserves current behavior for every existing caller.
 
-- [ ] **Step 1: Write the failing MCP-level tests**
+- [x] **Step 1: Write the failing MCP-level tests**
 
 First, extend the test fixture so it doesn't write outside the AI workspace root during the whole test class (every test in this file calls `setUp()`/`tearDown()`). In `AccountingMcpToolsTest.groovy`, replace:
 
@@ -272,13 +272,13 @@ Then, immediately after the closing brace of that test (after the line `assertTr
   }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest"`
 
 Expected: FAIL — `exportSieRejectsOutputPathOutsideAiWorkspace` fails because today `output_path` is accepted unconditionally; `exportSieDefaultPathStaysInsideAiWorkspace` fails because the default path is currently under `AppPaths.sieExportsDirectory()` (the configurable data home), not `AppPaths.aiWorkspaceDirectory()`; `exportSieRejectsDefaultPathWhenSieExportsIsASymlinkEscapingTheWorkspace` fails because the default path is never validated at all today, so the export silently writes through the symlink into `outsideDirectory`.
 
-- [ ] **Step 3: Add the `AiWorkspacePermissions` import and field**
+- [x] **Step 3: Add the `AiWorkspacePermissions` import and field**
 
 In `AccountingMcpTools.groovy`, replace:
 
@@ -312,7 +312,7 @@ with:
   private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
 ```
 
-- [ ] **Step 4: Confine the default export path to the AI workspace, and add the shared validation helper**
+- [x] **Step 4: Confine the default export path to the AI workspace, and add the shared validation helper**
 
 Replace:
 
@@ -361,7 +361,7 @@ with:
   }
 ```
 
-- [ ] **Step 5: Validate `exportSie`'s resolved path up front, and pass a re-check into `exportFiscalYear`**
+- [x] **Step 5: Validate `exportSie`'s resolved path up front, and pass a re-check into `exportFiscalYear`**
 
 Replace:
 
@@ -409,13 +409,13 @@ with:
 
 (`validateWithinAiWorkspace` matches `java.util.function.Consumer<Path>`'s `accept(Path)` shape, so `this::validateWithinAiWorkspace` binds directly to the new parameter added in Step 8 below — no functional-interface wrapper needed, following the same `this::method` style already used for `Consumer`/`Supplier` parameters elsewhere in this codebase, e.g. `VoucherNavigation.select(Voucher, Consumer<Voucher>)` called as `navigation.select(listedVoucher, this::showVoucher)` in `VoucherPanel.groovy:686`.)
 
-- [ ] **Step 6: Run the MCP-level tests to verify they pass**
+- [x] **Step 6: Run the MCP-level tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest"`
 
 Expected: PASS (all tests, including the three new ones). Note this requires Step 8 (the `exportFiscalYear` signature change) to be done first, since `exportSie` now calls the 3-argument overload — do Steps 1-8 as a block before running this.
 
-- [ ] **Step 7: Write the failing service-level tests for both prewrite re-check call sites**
+- [x] **Step 7: Write the failing service-level tests for both prewrite re-check call sites**
 
 Add to `SieImportExportServiceTest.groovy`, after the existing `exportFiscalYear`-related tests (a good anchor is right before the `createExportFixture` helper method around line 620, i.e. inside the test class, not the helper section). Two tests are needed: the callback is invoked twice per export (once before `Files.createDirectories`, once before `Files.write`), so one test must fail it on the first call and one on the second — a callback that always throws would only ever exercise the first call site, since the exception aborts the method before the second call is reached.
 
@@ -469,7 +469,7 @@ Add to `SieImportExportServiceTest.groovy`, after the existing `exportFiscalYear
 
 The first test proves the hook fires *before* `Files.createDirectories` (the export directory, `guarded-export-dir`, is never created when it fails there). The second test lets the first call through, so `createDirectories` actually runs (`second-check-dir` exists by the time the exception is asserted), then fails the second call and proves `Files.write` never ran (`exportPath` doesn't exist) — this is the one that specifically exercises the call site immediately before the write, which the first test's always-throwing callback never reaches.
 
-- [ ] **Step 8: Add the `prewriteValidation` parameter to `exportFiscalYear`**
+- [x] **Step 8: Add the `prewriteValidation` parameter to `exportFiscalYear`**
 
 In `SieImportExportService.groovy`, replace:
 
@@ -528,19 +528,19 @@ The validation callback runs twice: once right after the DB read and document re
 
 (The default `null` keeps every other caller — `SieExchangeDialog.groovy:630`, `AcceptanceCriteriaTest.groovy`, `MultiCompanyIsolationTest.groovy`, `SieImportExportServiceSruTest.groovy`, and the pre-existing tests in this file — unaffected: `prewriteValidation?.accept(...)` is a no-op when `null`.)
 
-- [ ] **Step 9: Run the service-level tests to verify they pass**
+- [x] **Step 9: Run the service-level tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.service.SieImportExportServiceTest"`
 
 Expected: PASS (all tests in the class, including the two new ones and every pre-existing `exportFiscalYear` caller in this file, unaffected by the new optional parameter).
 
-- [ ] **Step 10: Run the MCP-level tests from Step 6 now that both files are in place**
+- [x] **Step 10: Run the MCP-level tests from Step 6 now that both files are in place**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.AccountingMcpToolsTest"`
 
 Expected: PASS.
 
-- [ ] **Step 11: Write the failing MCP tool-schema test**
+- [x] **Step 11: Write the failing MCP tool-schema test**
 
 The `export_sie` tool's schema (returned by `tools/list` and read by MCP clients, including the AI assistant itself) still describes the pre-fix behavior: `McpToolDefinitions.groovy:218` currently reads `'Optional absolute output path. Defaults to the application SIE export directory.'` — an MCP client following that description would reasonably try an arbitrary absolute path and now get rejected, or expect the wrong default location.
 
@@ -576,13 +576,13 @@ class McpToolDefinitionsTest {
 }
 ```
 
-- [ ] **Step 12: Run the schema test to verify it fails**
+- [x] **Step 12: Run the schema test to verify it fails**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.McpToolDefinitionsTest"`
 
 Expected: FAIL — the current description doesn't contain `'workspace'` and does contain `'application SIE export directory'`.
 
-- [ ] **Step 13: Update the `export_sie` schema description**
+- [x] **Step 13: Update the `export_sie` schema description**
 
 In `McpToolDefinitions.groovy`, replace:
 
@@ -596,19 +596,19 @@ with:
                 output_path: optStrParam('Optional absolute output path. Must resolve inside the AI assistant workspace directory; paths outside it, or reached via a symlink, are rejected. Defaults to a timestamped file under sie-exports inside that workspace.'),
 ```
 
-- [ ] **Step 14: Run the schema test to verify it passes**
+- [x] **Step 14: Run the schema test to verify it passes**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.McpToolDefinitionsTest"`
 
 Expected: PASS.
 
-- [ ] **Step 15: Run the full MCP and SIE service test packages to check for regressions**
+- [x] **Step 15: Run the full MCP and SIE service test packages to check for regressions**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.mcp.*" --tests "se.alipsa.accounting.service.SieImportExportService*" --tests "se.alipsa.accounting.service.MultiCompanyIsolationTest" --tests "se.alipsa.accounting.ui.SieExchangeDialog*"`
 
 Expected: PASS.
 
-- [ ] **Step 16: Commit**
+- [x] **Step 16: Commit**
 
 ```bash
 git add app/src/main/groovy/se/alipsa/accounting/mcp/AccountingMcpTools.groovy app/src/main/groovy/se/alipsa/accounting/mcp/McpToolDefinitions.groovy app/src/main/groovy/se/alipsa/accounting/service/SieImportExportService.groovy app/src/test/groovy/integration/se/alipsa/accounting/mcp/AccountingMcpToolsTest.groovy app/src/test/groovy/integration/se/alipsa/accounting/service/SieImportExportServiceTest.groovy app/src/test/groovy/unit/se/alipsa/accounting/mcp/McpToolDefinitionsTest.groovy
@@ -629,7 +629,7 @@ git commit -m "fix: confine export_sie output paths to the AI assistant workspac
 - Consumes: nothing new.
 - Produces: five new private fields on `VoucherPanel` — `voucherNumberCaptionLabel`, `dateCaptionLabel`, `descriptionCaptionLabel`, `seriesCaptionLabel`, `jumpCaptionLabel` (all `JLabel`) — plus `correctsOriginalVoucherNumber` (`String`, nullable). None of these are consumed outside this file.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `VoucherPanelNavigationTest.groovy`, directly after the existing `newSeriesButtonTooltipUpdatesAfterALocaleSwitch` test (after its closing `}` around line 675):
 
@@ -694,13 +694,13 @@ Add to `VoucherPanelNavigationTest.groovy`, directly after the existing `newSeri
   }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest.headerCaptionLabelsUpdateAfterALocaleSwitch" --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest.correctsLabelUpdatesAfterALocaleSwitch"`
 
 Expected: FAIL — both `assertEquals` calls in the first test fail (labels still show the English text after switching to `sv`); the second test fails on the `startsWith` assertion after the locale switch.
 
-- [ ] **Step 3: Add the new fields**
+- [x] **Step 3: Add the new fields**
 
 In `VoucherPanel.groovy`, replace:
 
@@ -728,7 +728,7 @@ with:
   private final JLabel jumpCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.jump'))
 ```
 
-- [ ] **Step 4: Use the new fields in `buildHeaderBar()`**
+- [x] **Step 4: Use the new fields in `buildHeaderBar()`**
 
 Replace:
 
@@ -786,7 +786,7 @@ with:
     panel.add(seriesCaptionLabel, constraints)
 ```
 
-- [ ] **Step 5: Use the new field in `buildNavigationToolbar()`**
+- [x] **Step 5: Use the new field in `buildNavigationToolbar()`**
 
 Replace:
 
@@ -802,7 +802,7 @@ with:
     jumpField.addActionListener { jumpToVoucher(jumpField.text) }
 ```
 
-- [ ] **Step 6: Refresh the new labels (and the "corrects" label) in `updateLabels()`**
+- [x] **Step 6: Refresh the new labels (and the "corrects" label) in `updateLabels()`**
 
 Replace:
 
@@ -828,7 +828,7 @@ with:
     prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
 ```
 
-- [ ] **Step 7: Track the original voucher number so it survives a locale switch**
+- [x] **Step 7: Track the original voucher number so it survives a locale switch**
 
 In `showVoucher()`, replace:
 
@@ -876,13 +876,13 @@ with:
     lineTableModel.clear()
 ```
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest"`
 
 Expected: PASS (all tests in the class).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/src/main/groovy/se/alipsa/accounting/ui/VoucherPanel.groovy app/src/test/groovy/integration/se/alipsa/accounting/ui/VoucherPanelNavigationTest.groovy
@@ -893,24 +893,24 @@ git commit -m "fix: refresh VoucherPanel caption and corrects labels on locale s
 
 ### Task 4: Final verification
 
-- [ ] **Step 1: Format**
+- [x] **Step 1: Format**
 
 Run: `./gradlew spotlessApply`
 
 Then inspect `git diff` — Spotless can reformat unrelated lines or touch Markdown; revert anything outside the files this plan intentionally changed.
 
-- [ ] **Step 2: Static analysis on the modified production classes**
+- [x] **Step 2: Static analysis on the modified production classes**
 
 Run: `./gradlew codenarcMain`
 
 Expected: no new violations in `AccountingMcpTools.groovy`, `McpToolDefinitions.groovy`, `SieImportExportService.groovy`, or `VoucherPanel.groovy`.
 
-- [ ] **Step 3: Full build**
+- [x] **Step 3: Full build**
 
 Run: `./gradlew build`
 
 Expected: BUILD SUCCESSFUL (compilation, all tests, Spotless, CodeNarc).
 
-- [ ] **Step 4: Manual smoke check (Swing changes)**
+- [x] **Step 4: Manual smoke check (Swing changes)**
 
 Run: `./gradlew run`, open the Vouchers tab, switch the app language from the menu, and confirm every header/nav label (and the "Corrects ..." label, if a correction voucher is open) updates immediately. Take a screenshot before/after the switch per `CLAUDE.md`'s "include screenshots for Swing UI changes" guidance if this work is going into a PR.
