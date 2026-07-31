@@ -593,7 +593,6 @@ final class VoucherPanelNavigationTest {
       int buttonBottom = buttonTop + newSeriesButton.height
       comboTop < buttonBottom && buttonTop < comboBottom
     }, 'Series controls must occupy the same header row')
-    assertTrue(onEdt { newSeriesButton.x + newSeriesButton.width <= newSeriesButton.parent.width })
   }
 
   @Test

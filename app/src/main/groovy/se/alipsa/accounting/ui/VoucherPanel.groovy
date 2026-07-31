@@ -248,6 +248,14 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     JPanel panel = new JPanel(new GridBagLayout())
     GridBagConstraints constraints = new GridBagConstraints(
         gridx: 0, gridy: 0, anchor: GridBagConstraints.WEST, insets: new Insets(4, 0, 4, 8))
+    addVoucherHeaderFields(panel, constraints)
+    addDescriptionHeaderField(panel, constraints)
+    addSeriesHeaderControls(panel, constraints)
+    addCorrectsHeaderLabel(panel, constraints)
+    panel
+  }
+
+  private void addVoucherHeaderFields(JPanel panel, GridBagConstraints constraints) {
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber')), constraints)
     constraints.gridx++
     panel.add(voucherNumberLabel, constraints)
@@ -260,6 +268,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.date')), constraints)
     constraints.gridx++
     panel.add(datePicker, constraints)
+  }
+
+  private void addDescriptionHeaderField(JPanel panel, GridBagConstraints constraints) {
     constraints.gridx++
     panel.add(new JLabel(I18n.instance.getString('voucherPanel.label.description')), constraints)
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
@@ -267,6 +278,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     constraints.weightx = 1.0G
     constraints.fill = GridBagConstraints.HORIZONTAL
     panel.add(descriptionField, constraints)
+  }
+
+  private void addSeriesHeaderControls(JPanel panel, GridBagConstraints constraints) {
     constraints.gridx++
     constraints.weightx = 0.0G
     constraints.fill = GridBagConstraints.NONE
@@ -278,6 +292,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     newSeriesButton = navigationButton('+', 'voucherPanel.button.newSeries') { createNewSeries() }
     constraints.gridx++
     panel.add(newSeriesButton, constraints)
+  }
+
+  private void addCorrectsHeaderLabel(JPanel panel, GridBagConstraints constraints) {
     correctsLabel.visible = false
     constraints.gridx++
     constraints.weightx = 0.2G
