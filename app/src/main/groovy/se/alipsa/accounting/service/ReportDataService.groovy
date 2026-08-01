@@ -4,6 +4,11 @@ import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccou
 import static se.alipsa.accounting.service.ReportAccountSupport.inferIncomeAccountClassFromAccountNumber
 import static se.alipsa.accounting.service.ReportAccountSupport.inferNormalBalanceSide
 import static se.alipsa.accounting.service.ReportAccountSupport.shouldExcludeFromIncomeStatement
+import static se.alipsa.accounting.service.ReportValueSupport.formatAmountLocale
+import static se.alipsa.accounting.service.ReportValueSupport.formatNullableAmount
+import static se.alipsa.accounting.service.ReportValueSupport.scale
+import static se.alipsa.accounting.service.ReportValueSupport.signedAmount
+import static se.alipsa.accounting.service.ReportValueSupport.stringRow
 
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
@@ -22,14 +27,12 @@ import se.alipsa.accounting.domain.report.IncomeStatementSection
 import se.alipsa.accounting.domain.report.ReportResult
 import se.alipsa.accounting.domain.report.ReportSelection
 import se.alipsa.accounting.domain.report.ReportType
-import se.alipsa.accounting.domain.report.TransactionReportRow
 import se.alipsa.accounting.domain.report.TrialBalanceRow
 import se.alipsa.accounting.domain.report.VatReportEntry
 import se.alipsa.accounting.domain.report.VoucherListRow
 import se.alipsa.accounting.support.AmountFormatter
 import se.alipsa.accounting.support.I18n
 
-import java.math.RoundingMode
 import java.sql.Date
 import java.sql.Timestamp
 import java.time.LocalDate
@@ -43,18 +46,23 @@ import java.util.logging.Logger
 final class ReportDataService {
 
   private static final Logger log = Logger.getLogger(ReportDataService.name)
-  private static final int AMOUNT_SCALE = 2
 
   private final DatabaseService databaseService
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
+  private final TransactionReportBuilder transactionReportBuilder
 
   ReportDataService() {
     this(DatabaseService.instance)
   }
 
   ReportDataService(DatabaseService databaseService) {
-    this(databaseService, new FiscalYearService(databaseService), new AccountingPeriodService(databaseService))
+    this(
+        databaseService,
+        new FiscalYearService(databaseService),
+        new AccountingPeriodService(databaseService),
+        new VoucherService(databaseService)
+    )
   }
 
   ReportDataService(
@@ -62,9 +70,19 @@ final class ReportDataService {
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService
   ) {
+    this(databaseService, fiscalYearService, accountingPeriodService, new VoucherService(databaseService))
+  }
+
+  ReportDataService(
+      DatabaseService databaseService,
+      FiscalYearService fiscalYearService,
+      AccountingPeriodService accountingPeriodService,
+      VoucherService voucherService
+  ) {
     this.databaseService = databaseService
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
+    this.transactionReportBuilder = new TransactionReportBuilder(databaseService, voucherService)
   }
 
   ReportResult generate(ReportSelection selection) {
@@ -1065,65 +1083,15 @@ final class ReportDataService {
   }
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
-    List<TransactionReportRow> rows = databaseService.withSql { Sql sql ->
-      ReportSqlLoader.loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
-          .sort { PostingLine line ->
-            [line.accountingDate, line.voucherNumber ?: '', line.voucherId, line.lineIndex]
-          }.collect { PostingLine line ->
-            new TransactionReportRow(
-                line.voucherId,
-                line.accountingDate,
-                line.voucherNumber,
-                line.accountNumber,
-                line.accountName,
-                line.voucherDescription,
-                line.lineDescription,
-                line.debitAmount,
-                line.creditAmount,
-                line.status
-            )
-          }
-    }
-    BigDecimal debitTotal = rows.sum(BigDecimal.ZERO) { TransactionReportRow row -> row.debitAmount } as BigDecimal
-    BigDecimal creditTotal = rows.sum(BigDecimal.ZERO) { TransactionReportRow row -> row.creditAmount } as BigDecimal
+    TransactionReportBuildResult data = transactionReportBuilder.build(effective)
     createResult(
         effective,
-        [
-            I18n.instance.format('transactionReport.summary.count', rows.size()),
-            I18n.instance.format('transactionReport.summary.debitTotal', formatAmountLocale(scale(debitTotal), effective.locale)),
-            I18n.instance.format('transactionReport.summary.creditTotal', formatAmountLocale(scale(creditTotal), effective.locale))
-        ],
-        transactionReportHeaders(),
-        rows.collect { TransactionReportRow row ->
-          stringRow(
-              row.accountingDate.toString(),
-              row.voucherNumber,
-              row.accountNumber,
-              row.accountName,
-              row.voucherDescription,
-              row.lineDescription ?: '',
-              formatAmountLocale(row.debitAmount, effective.locale),
-              formatAmountLocale(row.creditAmount, effective.locale),
-              row.status
-          )
-        },
-        rows.collect { TransactionReportRow row -> row.voucherId },
-        [typedRows: rows, lead: I18n.instance.getString('report.transactionReport.lead')]
+        data.summaryLines,
+        data.headers,
+        data.tableRows,
+        data.rowVoucherIds,
+        data.extraModel
     )
-  }
-
-  private static List<String> transactionReportHeaders() {
-    [
-        I18n.instance.getString('transactionReport.column.date'),
-        I18n.instance.getString('transactionReport.column.voucher'),
-        I18n.instance.getString('transactionReport.column.account'),
-        I18n.instance.getString('transactionReport.column.accountName'),
-        I18n.instance.getString('transactionReport.column.voucherText'),
-        I18n.instance.getString('transactionReport.column.lineText'),
-        I18n.instance.getString('transactionReport.column.debit'),
-        I18n.instance.getString('transactionReport.column.credit'),
-        I18n.instance.getString('transactionReport.column.status')
-    ]
   }
 
   @SuppressWarnings('AbcMetric')
@@ -1263,30 +1231,4 @@ final class ReportDataService {
     AmountFormatter.resolveLocale(localeTag)
   }
 
-  private static BigDecimal signedAmount(BigDecimal debitAmount, BigDecimal creditAmount, String normalBalanceSide) {
-    String safeNormalBalanceSide = normalBalanceSide?.trim()?.toUpperCase(Locale.ROOT)
-    if (!safeNormalBalanceSide) {
-      throw new IllegalStateException('Kontot saknar normal balanssida för rapportering.')
-    }
-    safeNormalBalanceSide == 'DEBIT'
-        ? scale(debitAmount - creditAmount)
-        : scale(creditAmount - debitAmount)
-  }
-
-  private static BigDecimal scale(BigDecimal amount) {
-    (amount ?: BigDecimal.ZERO).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP)
-  }
-
-
-  private static String formatAmountLocale(BigDecimal amount, Locale locale) {
-    AmountFormatter.format(amount, locale)
-  }
-
-  private static String formatNullableAmount(BigDecimal amount, Locale locale) {
-    amount == null ? '' : formatAmountLocale(amount, locale)
-  }
-
-  private static List<String> stringRow(String... values) {
-    values.toList()
-  }
 }

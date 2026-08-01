@@ -135,6 +135,15 @@ final class IncomeStatementBuildResult {
   FiscalYear comparisonFiscalYear
 }
 
+@Canonical
+final class TransactionReportBuildResult {
+  List<String> summaryLines
+  List<String> headers
+  List<List<String>> tableRows
+  List<Long> rowVoucherIds
+  Map<String, Object> extraModel
+}
+
 final class VatBucket {
 
   BigDecimal baseAmount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)

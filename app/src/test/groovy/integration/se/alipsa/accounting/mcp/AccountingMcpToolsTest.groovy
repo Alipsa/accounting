@@ -21,6 +21,7 @@ import se.alipsa.accounting.service.SieImportExportService
 import se.alipsa.accounting.service.VatService
 import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -867,6 +868,25 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) correction.get('ok'), "Expected ok but got: ${correction.get('errors')}")
     assertNotNull(correction.get('voucher_id'))
     assertNotEquals(originalId, ((Number) correction.get('voucher_id')).longValue())
+
+    Map<String, Object> rejected = tools.callTool('create_correction_voucher', [
+        original_voucher_id: (Object) originalId
+    ])
+    assertFalse((boolean) rejected.get('ok'))
+    assertTrue((boolean) rejected.get('warning'))
+    assertEquals([correction.get('voucher_number')], rejected.get('existing_corrections'))
+    assertEquals(
+        [I18n.instance.format('mcp.createCorrectionVoucher.alreadyCorrected', correction.get('voucher_number'))],
+        rejected.get('errors')
+    )
+    assertEquals(1, voucherService.findCorrectionVoucherNumbers(originalId).size())
+
+    Map<String, Object> forced = tools.callTool('create_correction_voucher', [
+        original_voucher_id: (Object) originalId,
+        force: (Object) true
+    ])
+    assertTrue((boolean) forced.get('ok'), "Expected forced correction but got: ${forced.get('errors')}")
+    assertEquals(2, voucherService.findCorrectionVoucherNumbers(originalId).size())
   }
 
   @Test

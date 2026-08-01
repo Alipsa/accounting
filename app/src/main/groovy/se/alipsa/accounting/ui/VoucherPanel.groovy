@@ -103,6 +103,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   @PackageScope
   Closure attachmentFileChooser = { chooseAttachmentFile() }
 
+  @PackageScope
+  Closure<Boolean> recorrectionConfirmer = { List<String> existingNumbers ->
+    showRecorrectionConfirmDialog(existingNumbers)
+  }
+
+  @PackageScope
+  Closure<Boolean> cannotDeleteConfirmer = { Voucher voucher ->
+    showCannotDeleteConfirmDialog(voucher)
+  }
+
   private final JLabel voucherNumberLabel = new JLabel('')
   private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
@@ -111,6 +121,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private boolean applyingSeriesProgrammatically = false
   private final JLabel correctsLabel = new JLabel('')
   private String correctsOriginalVoucherNumber
+  private final JLabel correctedByLabel = new JLabel('')
+  private String correctedByVoucherNumbers
   private final JLabel totalsLabel = new JLabel('')
 
   // Package-scoped for VoucherPanelNavigationTest's MCP feedback assertions.
@@ -315,12 +327,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void addCorrectsHeaderLabel(JPanel panel, GridBagConstraints constraints) {
     correctsLabel.visible = false
+    correctedByLabel.foreground = new Color(180, 83, 9)
+    correctedByLabel.visible = false
+    JPanel correctionLabels = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    correctionLabels.add(correctsLabel)
+    correctionLabels.add(correctedByLabel)
     constraints.gridx++
     constraints.weightx = 0.2G
     constraints.fill = GridBagConstraints.HORIZONTAL
     constraints.gridwidth = GridBagConstraints.REMAINDER
     constraints.insets = new Insets(4, 0, 4, 0)
-    panel.add(correctsLabel, constraints)
+    panel.add(correctionLabels, constraints)
     panel
   }
 
@@ -359,6 +376,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     correctionButton = new JButton('\u270E')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     correctionButton.addActionListener {
+      if (currentVoucher != null && !confirmRecorrectionIfNeeded(currentVoucher.id)) {
+        return
+      }
       if (voucherEditorActions.createCorrection() != null) {
         reloadVoucherList()
       }
@@ -789,6 +809,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       correctsLabel.text = ''
       correctsLabel.visible = false
     }
+    List<String> correctionNumbers = voucherService.findCorrectionVoucherNumbers(v.id)
+    if (!correctionNumbers.isEmpty()) {
+      correctedByVoucherNumbers = correctionNumbers.join(', ')
+      correctedByLabel.text = I18n.instance.format('voucherPanel.label.correctedBy', correctedByVoucherNumbers)
+      correctedByLabel.visible = true
+    } else {
+      correctedByVoucherNumbers = null
+      correctedByLabel.text = ''
+      correctedByLabel.visible = false
+    }
     lineTableModel.setRows(v.lines)
     ensureAutoRow()
     recalculateAllBalances()
@@ -824,6 +854,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     correctsOriginalVoucherNumber = null
     correctsLabel.text = ''
     correctsLabel.visible = false
+    correctedByVoucherNumbers = null
+    correctedByLabel.text = ''
+    correctedByLabel.visible = false
     lineTableModel.clear()
     lineTableModel.addBlankRows(2)
     clearAttachmentAndHistory()
@@ -1118,27 +1151,63 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     dateFocusRequester.call()
   }
 
-  private void deleteOrCancelVoucher() {
+  @PackageScope
+  void deleteOrCancelVoucher() {
     if (currentVoucher == null) {
       return
     }
+    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(currentVoucher.id)
+    if (!confirmRecorrectionIfNeeded(existingCorrectionNumbers)) {
+      return
+    }
     try {
-      int choice = javax.swing.JOptionPane.showConfirmDialog(
-          this,
-          I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-              .replace('{0}', currentVoucher.voucherNumber ?: ''),
-          I18n.instance.getString('voucherPanel.button.void'),
-          javax.swing.JOptionPane.YES_NO_OPTION
-      )
-      if (choice == javax.swing.JOptionPane.YES_OPTION) {
-        Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-        showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-            correction.voucherNumber ?: ''))
-        reloadVoucherList()
+      if (existingCorrectionNumbers.isEmpty() && !cannotDeleteConfirmer.call(currentVoucher)) {
+        return
       }
+      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+          correction.voucherNumber ?: ''))
+      reloadVoucherList()
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
     }
+  }
+
+  @PackageScope
+  static boolean shouldProceedWithRecorrection(List<String> existingCorrectionNumbers, boolean confirmed) {
+    existingCorrectionNumbers.isEmpty() || confirmed
+  }
+
+  private boolean confirmRecorrectionIfNeeded(long voucherId) {
+    confirmRecorrectionIfNeeded(voucherService.findCorrectionVoucherNumbers(voucherId))
+  }
+
+  private boolean confirmRecorrectionIfNeeded(List<String> existingCorrectionNumbers) {
+    if (shouldProceedWithRecorrection(existingCorrectionNumbers, false)) {
+      return true
+    }
+    recorrectionConfirmer.call(existingCorrectionNumbers)
+  }
+
+  private boolean showRecorrectionConfirmDialog(List<String> existingCorrectionNumbers) {
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
+        I18n.instance.getString('voucherPanel.confirm.alreadyCorrected.title'),
+        javax.swing.JOptionPane.YES_NO_OPTION
+    )
+    choice == javax.swing.JOptionPane.YES_OPTION
+  }
+
+  private boolean showCannotDeleteConfirmDialog(Voucher voucher) {
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+            .replace('{0}', voucher.voucherNumber ?: ''),
+        I18n.instance.getString('voucherPanel.button.void'),
+        javax.swing.JOptionPane.YES_NO_OPTION
+    )
+    choice == javax.swing.JOptionPane.YES_OPTION
   }
 
   private void removeSelectedLine() {
@@ -1467,6 +1536,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     jumpCaptionLabel.text = I18n.instance.getString('voucherPanel.label.jump')
     if (correctsOriginalVoucherNumber != null) {
       correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
+    }
+    if (correctedByVoucherNumbers != null) {
+      correctedByLabel.text = I18n.instance.format('voucherPanel.label.correctedBy', correctedByVoucherNumbers)
     }
   }
 

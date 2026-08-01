@@ -1,5 +1,6 @@
 package se.alipsa.accounting.mcp
 
+import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertTrue
@@ -23,5 +24,19 @@ class McpToolDefinitionsTest {
         "output_path description should mention the AI workspace confinement, was: ${description}")
     assertFalse(description.contains('application SIE export directory'),
         'output_path description must not claim the stale unrestricted default location')
+  }
+
+  @Test
+  void createCorrectionVoucherSchemaIncludesOptionalForceFlag() {
+    Map<String, Object> correctionDef = McpToolDefinitions.listTools().find { Map<String, Object> tool ->
+      tool.name == 'create_correction_voucher'
+    } as Map<String, Object>
+    assertNotNull(correctionDef)
+    Map<String, Object> inputSchema = correctionDef.get('inputSchema') as Map<String, Object>
+    Map<String, Object> properties = inputSchema.get('properties') as Map<String, Object>
+    Map<String, Object> force = properties.get('force') as Map<String, Object>
+
+    assertEquals('boolean', force.type)
+    assertFalse((inputSchema.required as List<String>).contains('force'))
   }
 }

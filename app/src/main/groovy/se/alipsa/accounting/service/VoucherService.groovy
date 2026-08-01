@@ -153,6 +153,43 @@ final class VoucherService {
     }
   }
 
+  List<String> findCorrectionVoucherNumbers(long originalVoucherId) {
+    databaseService.withSql { Sql sql ->
+      sql.rows('''
+          select voucher_number as voucherNumber
+            from voucher
+           where original_voucher_id = ?
+           order by running_number
+      ''', [originalVoucherId]).collect { GroovyRowResult row ->
+        row.get('voucherNumber') as String
+      }
+    }
+  }
+
+  Map<Long, List<String>> findCorrectionVoucherNumbersForFiscalYear(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      Map<Long, List<String>> correctionsByOriginalId = [:]
+      sql.rows('''
+          select original_voucher_id as originalVoucherId,
+                 voucher_number as voucherNumber
+            from voucher
+           where fiscal_year_id = ?
+             and original_voucher_id is not null
+           order by running_number
+      ''', [fiscalYearId]).each { GroovyRowResult row ->
+        Long originalVoucherId = ((Number) row.get('originalVoucherId')).longValue()
+        List<String> correctionNumbers = correctionsByOriginalId[originalVoucherId]
+        if (correctionNumbers == null) {
+          correctionNumbers = []
+          correctionsByOriginalId[originalVoucherId] = correctionNumbers
+        }
+        String voucherNumber = row.get('voucherNumber') as String
+        correctionNumbers << voucherNumber
+      }
+      correctionsByOriginalId
+    }
+  }
+
   Voucher findVoucher(long companyId, long fiscalYearId, String voucherNumber) {
     CompanyService.requireValidCompanyId(companyId)
     String normalizedNumber = voucherNumber?.trim()

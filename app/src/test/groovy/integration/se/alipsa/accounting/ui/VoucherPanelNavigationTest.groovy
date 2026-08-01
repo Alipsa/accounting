@@ -141,6 +141,14 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void recorrectionPredicateAllowsFirstCorrectionAndRequiresConfirmationForLaterOnes() {
+    assertTrue(VoucherPanel.shouldProceedWithRecorrection([], false))
+    assertFalse(VoucherPanel.shouldProceedWithRecorrection(['A-2'], false))
+    assertTrue(VoucherPanel.shouldProceedWithRecorrection(['A-2'], true))
+    assertTrue(I18n.instance.hasString('voucherPanel.confirm.alreadyCorrected.title'))
+  }
+
+  @Test
   void draftValidationFromWorkerThreadPreservesActionableDateError() {
     IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
       panel.mcpVoucherDraftAccess.setVoucherDraft([
@@ -524,7 +532,9 @@ final class VoucherPanelNavigationTest {
     panel = buildPanel()
     installPanelHooks()
 
-    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev')) }
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
 
     assertEquals('DEBIT', onEdt { panel.lineTableModel.rows[0].normalBalanceSide })
     assertEquals('CREDIT', onEdt { panel.lineTableModel.rows[1].normalBalanceSide })
@@ -683,6 +693,90 @@ final class VoucherPanelNavigationTest {
       label.visible && label.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects'))
     }
     assertEquals("${I18n.instance.getString('voucherPanel.label.corrects')} ${original.voucherNumber}", corrects.text)
+  }
+
+  @Test
+  void correctedByLabelUsesAllCorrectionNumbersAndDoesNotAppearOnCorrectionVoucher() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Voucher firstCorrection = voucherService.createCorrectionVoucher(original.id)
+    Voucher secondCorrection = voucherService.createCorrectionVoucher(original.id)
+    panel?.dispose()
+    panel = buildPanel()
+
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+    JLabel correctedBy = findComponent(panel, JLabel) { JLabel label ->
+      label.text.startsWith(I18n.instance.getString('voucherPanel.label.correctedBy').replace('{0}', ''))
+    }
+    assertTrue(onEdt { correctedBy.visible })
+    assertEquals(
+        I18n.instance.format('voucherPanel.label.correctedBy', "${firstCorrection.voucherNumber}, ${secondCorrection.voucherNumber}"),
+        onEdt { correctedBy.text }
+    )
+
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.next')) }
+    assertFalse(onEdt { correctedBy.visible })
+  }
+
+  @Test
+  void deleteOrCancelVoucherSkipsCannotDeleteConfirmationForAlreadyCorrectedVoucher() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 8), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Voucher firstCorrection = voucherService.createCorrectionVoucher(original.id)
+    panel?.dispose()
+    panel = buildPanel()
+    boolean cannotDeleteConfirmationShown = false
+    panel.recorrectionConfirmer = { List<String> existing -> true }
+    panel.cannotDeleteConfirmer = { Voucher voucher ->
+      cannotDeleteConfirmationShown = true
+      false
+    }
+
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      panel.deleteOrCancelVoucher()
+    }
+
+    assertFalse(cannotDeleteConfirmationShown)
+    assertEquals(2, voucherService.findCorrectionVoucherNumbers(original.id).size())
+    assertEquals(firstCorrection.voucherNumber,
+        voucherService.findCorrectionVoucherNumbers(original.id).first())
+  }
+
+  @Test
+  void deleteOrCancelVoucherUsesCannotDeleteConfirmationBeforeFirstCorrection() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 9), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    int cannotDeleteConfirmationCount = 0
+    panel.cannotDeleteConfirmer = { Voucher voucher ->
+      cannotDeleteConfirmationCount++
+      cannotDeleteConfirmationCount > 1
+    }
+
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      panel.deleteOrCancelVoucher()
+      panel.deleteOrCancelVoucher()
+    }
+
+    assertEquals(2, cannotDeleteConfirmationCount)
+    assertEquals(1, voucherService.findCorrectionVoucherNumbers(original.id).size())
   }
 
   @Test
@@ -915,6 +1009,36 @@ final class VoucherPanelNavigationTest {
 
       assertTrue(onEdt { correctsLabel.text.startsWith(I18n.instance.getString('voucherPanel.label.corrects')) })
       assertTrue(onEdt { correctsLabel.text.endsWith(original.voucherNumber) })
+    } finally {
+      onEdt { I18n.instance.setLocale(previousLocale) }
+    }
+  }
+
+  @Test
+  void correctedByLabelUpdatesAfterALocaleSwitch() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 1), 'Original',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createCorrectionVoucher(original.id, 'Korrigering')
+    panel?.dispose()
+    panel = buildPanel()
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+    JLabel correctedByLabel = findComponent(panel, JLabel) { JLabel label ->
+      label.text.startsWith(I18n.instance.getString('voucherPanel.label.correctedBy').replace('{0}', ''))
+    }
+    Locale previousLocale = I18n.instance.locale
+
+    try {
+      onEdt { I18n.instance.setLocale(Locale.ENGLISH) }
+      assertEquals(
+          I18n.instance.format('voucherPanel.label.correctedBy', voucherService.findCorrectionVoucherNumbers(original.id).first()),
+          onEdt { correctedByLabel.text }
+      )
     } finally {
       onEdt { I18n.instance.setLocale(previousLocale) }
     }

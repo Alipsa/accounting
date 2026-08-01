@@ -31,6 +31,7 @@ import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.service.YearEndClosingResult
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -628,7 +629,18 @@ class AccountingMcpTools {
   private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
     long originalVoucherId = requiredLong(args, 'original_voucher_id')
     String description = args.get('description') as String
+    boolean force = optionalBoolean(args, 'force', false)
     try {
+      List<String> existingCorrections = voucherService.findCorrectionVoucherNumbers(originalVoucherId)
+      if (!existingCorrections.isEmpty() && !force) {
+        String numbers = existingCorrections.join(', ')
+        return [
+            ok: false,
+            warning: true,
+            existing_corrections: existingCorrections,
+            errors: [I18n.instance.format('mcp.createCorrectionVoucher.alreadyCorrected', numbers)]
+        ]
+      }
       Voucher correction = voucherService.createCorrectionVoucher(originalVoucherId, description)
       [
           ok: true,
