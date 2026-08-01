@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertArrayEquals
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -95,6 +96,22 @@ class AttachmentServiceTest {
     assertEquals([], attachmentService.findIntegrityFailures(CompanyService.LEGACY_COMPANY_ID))
     assertArrayEquals(Files.readAllBytes(source), attachmentService.readAttachment(attachment.id))
     assertTrue(auditEntries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.ATTACHMENT_ADDED })
+  }
+
+  @Test
+  void previewAttachmentDescribesSourceWithoutPersistingOrCopyingIt() {
+    Path source = tempDir.resolve('draft-receipt.txt')
+    Files.writeString(source, 'draft receipt', StandardCharsets.UTF_8)
+
+    AttachmentMetadata preview = attachmentService.previewAttachment(source)
+
+    assertNull(preview.id)
+    assertEquals('draft-receipt.txt', preview.originalFileName)
+    assertEquals(source.toAbsolutePath().normalize().toString(), preview.storagePath)
+    assertEquals('DRAFT', preview.status)
+    assertEquals(Files.size(source), preview.fileSize)
+    assertTrue(Files.exists(source))
+    assertEquals([], attachmentService.listAllAttachments())
   }
 
   @Test

@@ -116,14 +116,14 @@ final class McpToolDefinitions {
             [], [:]
         ),
         toolDef('set_active_voucher_draft',
-            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool. If attachment_path is provided, the file is validated immediately and will be automatically attached to the voucher the moment the user saves it - no separate attach step is needed.',
+            'Replaces the unsaved GUI voucher draft. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool. If attachment_path is provided, the file is validated immediately and shown in the draft\'s Attachments tab; it is automatically registered when the user saves the voucher.',
             ['accounting_date', 'description', 'lines'],
             [
                 accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),
                 description: strParam('Voucher description'),
                 series_code: optStrParam('Voucher series code. Defaults to A.'),
                 lines: voucherLinesParam(),
-                attachment_path: optStrParam('Optional absolute path to a receipt/invoice file. Validated immediately; auto-attached to the voucher when the user saves it in the GUI.')
+                attachment_path: optStrParam('Optional absolute path to a receipt/invoice file. Validated immediately and shown in the draft Attachments tab; registered when the user saves the voucher.')
             ]
         ),
         toolDef('save_accounting_instruction',

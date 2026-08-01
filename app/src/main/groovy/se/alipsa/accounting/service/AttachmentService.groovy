@@ -119,6 +119,25 @@ final class AttachmentService {
     }
   }
 
+  /**
+   * Builds metadata for a source file without copying it or changing the database.
+   * The UI uses this to show an attachment staged on an unsaved voucher draft.
+   */
+  AttachmentMetadata previewAttachment(Path sourceFile) {
+    Path safeSource = requireSourceFile(sourceFile)
+    new AttachmentMetadata(
+        null,
+        0L,
+        safeSource.fileName.toString(),
+        detectContentType(safeSource),
+        safeSource.toString(),
+        calculateChecksum(safeSource),
+        Files.size(safeSource),
+        LocalDateTime.now(),
+        'DRAFT'
+    )
+  }
+
   List<AttachmentMetadata> listAttachments(long voucherId) {
     databaseService.withSql { Sql sql ->
       sql.rows('''

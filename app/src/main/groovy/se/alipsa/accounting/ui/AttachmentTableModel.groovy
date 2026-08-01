@@ -53,7 +53,9 @@ final class AttachmentTableModel extends AbstractTableModel {
       case 3:
         return shortHash(attachment.checksumSha256)
       case 4:
-        return attachment.createdAt
+        return attachment.status == 'DRAFT'
+            ? I18n.instance.getString('voucherPanel.label.unsaved')
+            : attachment.createdAt
       default:
         return ''
     }
