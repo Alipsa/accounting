@@ -113,14 +113,7 @@ final class ActiveCompanyManager {
   }
 
   void reloadFiscalYears(Long preferredFiscalYearId = null) {
-    List<FiscalYear> years = listFiscalYears()
-    FiscalYear newYear = preferredFiscalYearId == null ? null : years.find { FiscalYear year ->
-      year.id == preferredFiscalYearId
-    }
-    if (newYear == null) {
-      newYear = years.isEmpty() ? null : years.first()
-    }
-    setFiscalYear(newYear)
+    setFiscalYear(resolveInitialFiscalYear(listFiscalYears(), preferredFiscalYearId))
   }
 
   boolean markOpeningBalanceRefreshPrompted(long fiscalYearId) {

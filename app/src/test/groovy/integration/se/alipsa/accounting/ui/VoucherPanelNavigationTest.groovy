@@ -502,10 +502,13 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
-  void suggestedDateOutsideThePickersAllowedRangeSurfacesAVisibleError() {
-    onEdt {
+  void suggestedDateOutsideThePickersAllowedRangeIsRejectedToTheMcpCaller() {
+    DatePicker datePicker = findComponent(panel, DatePicker) { true }
+    LocalDate suggestedDate = onEdt { datePicker.end.plusDays(1) }
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
       panel.mcpVoucherDraftAccess.setVoucherDraft([
-          accounting_date: LocalDate.now().plusYears(25).toString(),
+          accounting_date: suggestedDate.toString(),
           description: 'AI förslag från PDF',
           series_code: 'A',
           lines: [
@@ -516,8 +519,34 @@ final class VoucherPanelNavigationTest {
     }
 
     String expected = I18n.instance.format('voucherPanel.error.suggestedDateOutOfRange',
-        LocalDate.now().plusYears(25).toString())
-    assertEquals(expected, onEdt { panel.feedbackArea.text })
+        suggestedDate, datePicker.start, datePicker.end)
+    assertEquals(expected, exception.message)
+  }
+
+  @Test
+  void historyTabReloadsWhenNavigatingToAnotherVoucherWhileAlreadyOnThatTab() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Äldre verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 1), 'Nyare verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    JTable auditLogTable = tableWithFirstColumn(
+        panel, I18n.instance.getString('voucherEditor.table.auditLog.time'))
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+
+    onEdt {
+      tabs.selectedIndex = 2
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+
+    assertTrue(onEdt { auditLogTable.rowCount > 0 })
   }
 
   @Test

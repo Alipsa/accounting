@@ -81,6 +81,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
+  private static final LocalDate DATE_PICKER_RANGE_FROM = LocalDate.of(1900, 1, 1)
+  private static final LocalDate DATE_PICKER_RANGE_TO = LocalDate.now().plusYears(50)
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -106,6 +108,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JLabel correctsLabel = new JLabel('')
   private final JLabel totalsLabel = new JLabel('')
 
+  // Package-scoped for VoucherPanelNavigationTest's MCP feedback assertions.
   @PackageScope
   final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
@@ -129,6 +132,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   LineTableModel lineTableModel
   private JTable lineTable
 
+  // Package-scoped for VoucherPanelNavigationTest's attachment refresh assertions.
   @PackageScope
   final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
   private final JTable attachmentTable = new JTable(attachmentTableModel)
@@ -731,6 +735,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (attachmentPathToApply) {
       try {
         attachmentService.addAttachment(savedVoucher.id, Path.of(attachmentPathToApply))
+        // With advance-after-save enabled the panel already shows a blank draft, so this clears
+        // the tables. When advancing is disabled, it refreshes the selected tab for savedVoucher.
         refreshAttachmentAndHistory()
         showInfo(I18n.instance.format('voucherPanel.message.savedWithReceipt',
             savedVoucher.voucherNumber ?: '', Path.of(attachmentPathToApply).fileName.toString()))
@@ -993,12 +999,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       throw new IllegalArgumentException(
           "Unknown voucher series '${voucherDraft.seriesCode}' for the current fiscal year. Create it first or choose an existing series.")
     }
+    if (!datePickerAccepts(voucherDraft.accountingDate)) {
+      throw new IllegalArgumentException(I18n.instance.format(
+          'voucherPanel.error.suggestedDateOutOfRange', voucherDraft.accountingDate,
+          datePicker.start, datePicker.end))
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
-    if (datePicker.date != voucherDraft.accountingDate) {
-      showError(I18n.instance.format(
-          'voucherPanel.error.suggestedDateOutOfRange', voucherDraft.accountingDate.toString()))
-    }
     descriptionField.text = voucherDraft.description
     selectSeriesCode(requestedSeries.seriesCode)
     lineTableModel.setRows(voucherDraft.lines)
@@ -1077,7 +1084,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     List<VoucherLine> copiedLines = source.lines.collect { VoucherLine line ->
       new VoucherLine(null, null, line.lineIndex, null, line.accountNumber, line.accountName, line.description, line.debitAmount ?: BigDecimal.ZERO, line.creditAmount ?: BigDecimal.ZERO)
     }
-    navigation.showDraft()
     showBlankVoucher()
     voucherNumberLabel.text = previewNextVoucherNumber(seriesCode)
     jumpField.text = voucherNumberLabel.text
@@ -1412,9 +1418,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private static DatePicker createDatePicker() {
-    DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale)
+    // DatePicker's null bounds default to a fixed ±20-year range calculated at construction.
+    // Use explicit bounds so historical vouchers and AI drafts are not silently rejected.
+    DatePicker picker = new DatePicker(
+        DATE_PICKER_RANGE_FROM, DATE_PICKER_RANGE_TO, null, I18n.instance.locale)
     picker.textFieldPosition = TextFieldPosition.RIGHT
     picker
+  }
+
+  private boolean datePickerAccepts(LocalDate date) {
+    date == null || (!date.isBefore(datePicker.start) && !date.isAfter(datePicker.end))
   }
 
   private BigDecimal parseAmount(String value) {
