@@ -462,6 +462,39 @@ Add to `VoucherPanelNavigationTest.groovy`, immediately after `correctsLabelUpda
   }
 
   @Test
+  void correctedByLabelIsClearedWhenRestoreNavigationDraftFallsBackToABlankVoucher() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 10), 'Enda sparade verifikationen',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    installPanelHooks()
+
+    VoucherDraftMapper.VoucherDraft invalidDraft = new VoucherDraftMapper.VoucherDraft(
+        LocalDate.of(2030, 6, 1), 'Deliberately invalid', 'ZZZZZZZZ', [])
+    onEdt { panel.rememberDraftForTest(invalidDraft) }
+
+    JButton previous = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.prev')
+    }
+    JButton next = findComponent(panel, JButton) { JButton button ->
+      button.toolTipText == I18n.instance.getString('voucherPanel.button.next')
+    }
+    JLabel correctedByLabel = findComponent(panel, JLabel) { JLabel label -> label.name == 'correctedByLabel' }
+    // Same "prev then next" sequence as the existing restoreNavigationDraftFallsBackToBlankVoucher-
+    // ForAnUnresolvableRememberedSeries test: "prev" moves onto the one saved voucher, "next" falls
+    // off the end back into restoreNavigationDraft() rather than showBlankVoucher() - proving the
+    // showEmptyVoucher() reset added in this task also fires on that separate code path, not just
+    // on a freshly built panel.
+    onEdt { previous.doClick() }
+    onEdt { next.doClick() }
+
+    assertFalse(onEdt { correctedByLabel.visible })
+  }
+
+  @Test
   void correctionVoucherNeverShowsCorrectedByLabelAlongsideCorrectsLabel() {
     Voucher original = voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 4, 4), 'Original4',
@@ -502,9 +535,11 @@ to:
 ```groovy
   private final JLabel correctsLabel = new JLabel('')
   private String correctsOriginalVoucherNumber
-  private final JLabel correctedByLabel = new JLabel('').tap { name = 'correctedByLabel' }
+  private final JLabel correctedByLabel = new JLabel('').tap { name = 'correctedByLabel'; foreground = new Color(180, 83, 9) }
   private String correctedByVoucherNumbers
 ```
+
+`Color` needs no new import — `java.awt.Color` is already used for `unsavedLabel.foreground` elsewhere in this file. The amber foreground (`new Color(180, 83, 9)`) matches the spec's requirement that `correctedByLabel` uses the same warning color as `unsavedLabel`, so it reads as "pay attention" rather than neutral info.
 
 - [ ] **Step 4: Add the header label placement**
 
@@ -610,7 +645,7 @@ voucherPanel.label.correctedBy=Korrigerad av
 - [ ] **Step 9: Run the tests to verify they pass**
 
 Run: `./gradlew test --tests "se.alipsa.accounting.ui.VoucherPanelNavigationTest"`
-Expected: PASS (all tests in the class, including the four new ones and the existing `correctsLabelUpdatesAfterALocaleSwitch`).
+Expected: PASS (all tests in the class, including the five new ones and the existing `correctsLabelUpdatesAfterALocaleSwitch`/`restoreNavigationDraftFallsBackToBlankVoucherForAnUnresolvableRememberedSeries`).
 
 - [ ] **Step 10: Format, lint, commit**
 
