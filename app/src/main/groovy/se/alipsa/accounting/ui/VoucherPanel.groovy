@@ -1000,9 +1000,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
           "Unknown voucher series '${voucherDraft.seriesCode}' for the current fiscal year. Create it first or choose an existing series.")
     }
     if (!datePickerAccepts(voucherDraft.accountingDate)) {
-      throw new IllegalArgumentException(I18n.instance.format(
-          'voucherPanel.error.suggestedDateOutOfRange', voucherDraft.accountingDate,
-          datePicker.start, datePicker.end))
+      throw new IllegalArgumentException(
+          "accounting_date ${voucherDraft.accountingDate} is outside the allowed date range " +
+              "(${datePicker.start} to ${datePicker.end}).")
     }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
@@ -1427,6 +1427,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private boolean datePickerAccepts(LocalDate date) {
+    // This panel installs no DatePicker vetoPolicy; the range is its complete acceptance rule here.
     date == null || (!date.isBefore(datePicker.start) && !date.isAfter(datePicker.end))
   }
 

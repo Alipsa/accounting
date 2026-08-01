@@ -518,25 +518,26 @@ final class VoucherPanelNavigationTest {
       ])
     }
 
-    String expected = I18n.instance.format('voucherPanel.error.suggestedDateOutOfRange',
-        suggestedDate, datePicker.start, datePicker.end)
+    String expected = "accounting_date ${suggestedDate} is outside the allowed date range " +
+        "(${datePicker.start} to ${datePicker.end})."
     assertEquals(expected, exception.message)
   }
 
   @Test
   void historyTabReloadsWhenNavigatingToAnotherVoucherWhileAlreadyOnThatTab() {
-    voucherService.createVoucher(
+    Voucher older = voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Äldre verifikation',
         [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
          voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
     )
-    voucherService.createVoucher(
+    Voucher newer = voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 3, 1), 'Nyare verifikation',
         [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
          voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
     )
     panel?.dispose()
     panel = buildPanel()
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
     JTable auditLogTable = tableWithFirstColumn(
         panel, I18n.instance.getString('voucherEditor.table.auditLog.time'))
     JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
@@ -546,7 +547,14 @@ final class VoucherPanelNavigationTest {
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
     }
 
+    String selectedNumber = onEdt { voucherJumpField.text }
+    Voucher selectedVoucher = [older, newer].find { Voucher voucher -> voucher.voucherNumber == selectedNumber }
+    assertNotNull(selectedVoucher)
     assertTrue(onEdt { auditLogTable.rowCount > 0 })
+    assertTrue(onEdt {
+      String summary = auditLogTable.getValueAt(0, 2) as String
+      summary.contains(selectedVoucher.description)
+    })
   }
 
   @Test
