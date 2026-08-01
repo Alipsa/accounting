@@ -31,6 +31,7 @@ import se.alipsa.accounting.service.VoucherService
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.service.YearEndClosingResult
 import se.alipsa.accounting.support.AppPaths
+import se.alipsa.accounting.support.I18n
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -637,7 +638,7 @@ class AccountingMcpTools {
             ok: false,
             warning: true,
             existing_corrections: existingCorrections,
-            errors: ["This voucher was already corrected by ${numbers}. Pass force: true to create another correction anyway.".toString()]
+            errors: [I18n.instance.format('mcp.createCorrectionVoucher.alreadyCorrected', numbers)]
         ]
       }
       Voucher correction = voucherService.createCorrectionVoucher(originalVoucherId, description)

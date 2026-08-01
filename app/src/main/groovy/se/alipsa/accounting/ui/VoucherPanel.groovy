@@ -103,6 +103,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   @PackageScope
   Closure attachmentFileChooser = { chooseAttachmentFile() }
 
+  @PackageScope
+  Closure<Boolean> recorrectionConfirmer = { List<String> existingNumbers ->
+    showRecorrectionConfirmDialog(existingNumbers)
+  }
+
+  @PackageScope
+  Closure<Boolean> cannotDeleteConfirmer = { Voucher voucher ->
+    showCannotDeleteConfirmDialog(voucher)
+  }
+
   private final JLabel voucherNumberLabel = new JLabel('')
   private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
@@ -1141,7 +1151,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     dateFocusRequester.call()
   }
 
-  private void deleteOrCancelVoucher() {
+  @PackageScope
+  void deleteOrCancelVoucher() {
     if (currentVoucher == null) {
       return
     }
@@ -1150,17 +1161,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       return
     }
     try {
-      if (existingCorrectionNumbers.isEmpty()) {
-        int choice = javax.swing.JOptionPane.showConfirmDialog(
-            this,
-            I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-                .replace('{0}', currentVoucher.voucherNumber ?: ''),
-            I18n.instance.getString('voucherPanel.button.void'),
-            javax.swing.JOptionPane.YES_NO_OPTION
-        )
-        if (choice != javax.swing.JOptionPane.YES_OPTION) {
-          return
-        }
+      if (existingCorrectionNumbers.isEmpty() && !cannotDeleteConfirmer.call(currentVoucher)) {
+        return
       }
       Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
       showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
@@ -1184,13 +1186,28 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (shouldProceedWithRecorrection(existingCorrectionNumbers, false)) {
       return true
     }
+    recorrectionConfirmer.call(existingCorrectionNumbers)
+  }
+
+  private boolean showRecorrectionConfirmDialog(List<String> existingCorrectionNumbers) {
     int choice = javax.swing.JOptionPane.showConfirmDialog(
         this,
         I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
         I18n.instance.getString('voucherPanel.confirm.alreadyCorrected.title'),
         javax.swing.JOptionPane.YES_NO_OPTION
     )
-    shouldProceedWithRecorrection(existingCorrectionNumbers, choice == javax.swing.JOptionPane.YES_OPTION)
+    choice == javax.swing.JOptionPane.YES_OPTION
+  }
+
+  private boolean showCannotDeleteConfirmDialog(Voucher voucher) {
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+            .replace('{0}', voucher.voucherNumber ?: ''),
+        I18n.instance.getString('voucherPanel.button.void'),
+        javax.swing.JOptionPane.YES_NO_OPTION
+    )
+    choice == javax.swing.JOptionPane.YES_OPTION
   }
 
   private void removeSelectedLine() {
