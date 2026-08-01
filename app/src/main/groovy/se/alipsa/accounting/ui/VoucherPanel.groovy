@@ -146,7 +146,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JTable auditLogTable = new JTable(auditLogTableModel)
 
   private Voucher currentVoucher
-  private String pendingReceiptAttachmentPath
+  private String pendingAttachmentPath
   private final VoucherNavigation navigation = new VoucherNavigation()
   private boolean readOnly = false
   private final Map<String, BigDecimal> balanceCache = [:]
@@ -735,8 +735,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void handleSavedVoucher(Voucher savedVoucher) {
-    String attachmentPathToApply = pendingReceiptAttachmentPath
-    pendingReceiptAttachmentPath = null
+    String attachmentPathToApply = pendingAttachmentPath
+    pendingAttachmentPath = null
     reloadVoucherList(advanceAfterSaveCheckBox.selected ? null : savedVoucher)
     if (attachmentPathToApply) {
       try {
@@ -755,7 +755,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void showVoucher(Voucher v) {
     currentVoucher = v
-    pendingReceiptAttachmentPath = null
+    pendingAttachmentPath = null
     balanceCache.clear()
     if (v == null) {
       showBlankVoucher()
@@ -799,7 +799,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void showEmptyVoucher() {
     currentVoucher = null
-    pendingReceiptAttachmentPath = null
+    pendingAttachmentPath = null
     readOnly = false
     balanceCache.clear()
     // datePicker.date must be set before ensureDefaultSeriesForNewVoucher() runs, so its
@@ -993,7 +993,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private Map<String, Object> snapshotDraft() {
     String seriesCode = (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode
     VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesCode, lineTableModel.toVoucherLines(),
-        pendingReceiptAttachmentPath)
+        pendingAttachmentPath)
   }
 
   private void applyDraft(VoucherDraftMapper.VoucherDraft voucherDraft) {
@@ -1012,15 +1012,19 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
           "accounting_date ${voucherDraft.accountingDate} is outside the allowed date range " +
               "(${datePicker.start} to ${datePicker.end}).")
     }
+    if (voucherDraft.attachmentPath) {
+      attachmentService.previewAttachment(Path.of(voucherDraft.attachmentPath))
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
     descriptionField.text = voucherDraft.description
     selectSeriesCode(requestedSeries.seriesCode)
     lineTableModel.setRows(voucherDraft.lines)
-    pendingReceiptAttachmentPath = voucherDraft.attachmentPath
+    pendingAttachmentPath = voucherDraft.attachmentPath
     ensureAutoRow()
     recalculateAllBalances()
     refreshTotals()
+    refreshAttachmentAndHistory()
     dateFocusRequester.call()
   }
 
@@ -1177,7 +1181,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         && currentVoucher.accountingDate != null
         && currentVoucher.status == VoucherStatus.ACTIVE
         && !fiscalYearClosed
-    addAttachmentButton.enabled = currentVoucher != null
+    addAttachmentButton.enabled = currentVoucher != null || !readOnly
   }
 
   private void refreshTotals() {
@@ -1200,7 +1204,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void refreshAttachmentAndHistory() {
     if (currentVoucher == null) {
-      clearAttachmentAndHistory()
+      if (tabs.selectedIndex == 1 && pendingAttachmentPath) {
+        try {
+          attachmentTableModel.setRows([attachmentService.previewAttachment(Path.of(pendingAttachmentPath))])
+        } catch (Exception ignored) {
+          attachmentTableModel.setRows([])
+        }
+      } else {
+        clearAttachmentAndHistory()
+      }
       updateAttachmentButtons()
       return
     }
@@ -1218,19 +1230,23 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void addAttachmentRequested() {
-    if (currentVoucher == null) {
-      showError(I18n.instance.getString('voucherPanel.error.saveBeforeAttachment'))
-      return
-    }
     SystemFileChooser chooser = new SystemFileChooser()
     int result = chooser.showOpenDialog(this)
     if (result != SystemFileChooser.APPROVE_OPTION || chooser.selectedFile == null) {
       return
     }
     try {
-      attachmentService.addAttachment(currentVoucher.id, chooser.selectedFile.toPath())
-      refreshAttachmentAndHistory()
-      showInfo(I18n.instance.format('voucherPanel.message.attachmentAdded', chooser.selectedFile.name))
+      Path sourceFile = chooser.selectedFile.toPath()
+      if (currentVoucher == null) {
+        attachmentService.previewAttachment(sourceFile)
+        pendingAttachmentPath = sourceFile.toAbsolutePath().normalize().toString()
+        refreshAttachmentAndHistory()
+        showInfo(I18n.instance.format('voucherPanel.message.attachmentStaged', chooser.selectedFile.name))
+      } else {
+        attachmentService.addAttachment(currentVoucher.id, sourceFile)
+        refreshAttachmentAndHistory()
+        showInfo(I18n.instance.format('voucherPanel.message.attachmentAdded', chooser.selectedFile.name))
+      }
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.attachmentFailed'))
     }
@@ -1253,7 +1269,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       return
     }
     try {
-      desktop.open(attachmentService.resolveStoredPath(selected).toFile())
+      Path path = selected.id == null
+          ? Path.of(selected.storagePath)
+          : attachmentService.resolveStoredPath(selected)
+      desktop.open(path.toFile())
     } catch (IOException ex) {
       showError(ex.message ?: I18n.instance.getString('voucherEditor.error.attachmentOpenFailed'))
     }
@@ -1310,7 +1329,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void updateAttachmentButtons() {
-    addAttachmentButton.enabled = currentVoucher != null
+    addAttachmentButton.enabled = currentVoucher != null || !readOnly
     openAttachmentButton.enabled = attachmentTable.selectedRow >= 0
   }
 

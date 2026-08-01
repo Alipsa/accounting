@@ -453,7 +453,9 @@ final class VoucherPanelNavigationTest {
     Path receipt = tempDir.resolve('kvitto.pdf')
     Files.writeString(receipt, '%PDF-1.4 test')
 
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
     onEdt {
+      tabs.selectedIndex = 1
       panel.mcpVoucherDraftAccess.setVoucherDraft([
           accounting_date: '2030-03-20',
           description: 'AI förslag från PDF',
@@ -464,6 +466,15 @@ final class VoucherPanelNavigationTest {
               [account_number: '3010', debit: 0.00G, credit: 100.00G]
           ]
       ])
+    }
+
+    assertEquals(1, onEdt { panel.attachmentTableModel.rowCount })
+    assertEquals(receipt.fileName.toString(), onEdt { panel.attachmentTableModel.getValueAt(0, 0) })
+    assertEquals(I18n.instance.getString('voucherPanel.label.unsaved'),
+        onEdt { panel.attachmentTableModel.getValueAt(0, 4) })
+    assertEquals([], attachmentService.listAllAttachments())
+
+    onEdt {
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
     }
 
@@ -475,7 +486,6 @@ final class VoucherPanelNavigationTest {
     assertEquals(expectedToast, onEdt { panel.feedbackArea.text })
     assertEquals(0, onEdt { panel.attachmentTableModel.rowCount })
 
-    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
     onEdt {
       tabs.selectedIndex = 1
       clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
