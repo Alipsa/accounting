@@ -164,16 +164,17 @@ Add to `ReportServicesTest.groovy`, immediately after the `densePdfReportTemplat
         LocalDate.of(2026, 2, 28)
     ))
 
+    int statusColumn = report.tableHeaders.indexOf(I18n.instance.getString('transactionReport.column.status'))
     int originalRowIndex = report.rowVoucherIds.indexOf(toBeCorrected.id)
     int correctionRowIndex = report.rowVoucherIds.indexOf(correction.id)
 
     assertEquals(
         I18n.instance.format('transactionReport.status.correctedBy', correction.voucherNumber),
-        report.tableRows[originalRowIndex][8]
+        report.tableRows[originalRowIndex][statusColumn]
     )
     assertEquals(
         I18n.instance.getString('transactionReport.status.correction'),
-        report.tableRows[correctionRowIndex][8]
+        report.tableRows[correctionRowIndex][statusColumn]
     )
   }
 
@@ -187,8 +188,9 @@ Add to `ReportServicesTest.groovy`, immediately after the `densePdfReportTemplat
         LocalDate.of(2026, 1, 31)
     ))
 
+    int statusColumn = report.tableHeaders.indexOf(I18n.instance.getString('transactionReport.column.status'))
     assertTrue(report.tableRows.every { List<String> row ->
-      row[8] == I18n.instance.getString('transactionReport.status.active')
+      row[statusColumn] == I18n.instance.getString('transactionReport.status.active')
     })
   }
 
@@ -212,12 +214,13 @@ Add to `ReportServicesTest.groovy`, immediately after the `densePdfReportTemplat
         LocalDate.of(2026, 2, 28)
     ))
 
+    int statusColumn = report.tableHeaders.indexOf(I18n.instance.getString('transactionReport.column.status'))
     int originalRowIndex = report.rowVoucherIds.indexOf(toBeCorrected.id)
 
     assertEquals(
         I18n.instance.format('transactionReport.status.correctedBy',
             "${firstCorrection.voucherNumber}, ${secondCorrection.voucherNumber}"),
-        report.tableRows[originalRowIndex][8]
+        report.tableRows[originalRowIndex][statusColumn]
     )
   }
 ```
@@ -229,9 +232,11 @@ Expected: FAIL — status column still contains raw `ACTIVE`/`CORRECTION` enum t
 
 - [ ] **Step 3: Add the bulk query to `ReportSqlLoader.groovy`**
 
-Insert immediately after `loadPostingLines` (its closing brace is at line 187):
+Insert immediately after `loadPostingLines` (its closing brace is at line 187). This deliberately filters on `fiscal_year_id`, unlike `VoucherService.findCorrectionVoucherNumbers` (Task 1), which has no fiscal-year filter at all — that's safe only because a correction is always created in its original's own fiscal year (`VoucherService.createCorrectionVoucher` passes `original.fiscalYearId` straight through to `insertVoucher`, and `ensureFiscalYearOpen` is checked against that same id). If a correction could ever land in a different fiscal year than its original, this bulk report query would miss it while the single-voucher lookup used by the editor and MCP would not — worth a one-line comment in the code itself, and worth re-checking this method if `createCorrectionVoucher`'s fiscal-year handling ever changes:
 
 ```groovy
+  // Corrections always share the original's fiscal year (VoucherService.createCorrectionVoucher
+  // never lets it differ), so scoping this bulk lookup to one fiscal year is safe.
   static Map<Long, List<String>> loadCorrectionVoucherNumbersByOriginal(Sql sql, long fiscalYearId) {
     Map<Long, List<String>> correctionsByOriginal = [:]
     sql.rows('''
@@ -251,7 +256,7 @@ Insert immediately after `loadPostingLines` (its closing brace is at line 187):
 
 - [ ] **Step 4: Update `buildTransactionReport` and `transactionReportHeaders` in `ReportDataService.groovy`**
 
-Replace the existing method (lines 1067-1127) with:
+Replace the existing `buildTransactionReport` and `transactionReportHeaders` methods (as of before this task's edits, lines 1067-1127 — locate by name, since Task 1 touched a different file and can't have shifted these, but treat the line numbers as a hint, not a guarantee) with:
 
 ```groovy
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
@@ -485,7 +490,7 @@ Expected: FAIL — `findComponent` cannot find a `JLabel` with `name == 'correct
 
 - [ ] **Step 3: Add the field**
 
-In `VoucherPanel.groovy`, change line 112-113 from:
+In `VoucherPanel.groovy`, change the `correctsLabel`/`correctsOriginalVoucherNumber` field declarations (lines 112-113) from:
 
 ```groovy
   private final JLabel correctsLabel = new JLabel('')
@@ -638,7 +643,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `VoucherService.findCorrectionVoucherNumbers(long): List<String>` (Task 1).
-- Produces: `VoucherPanel.confirmRecorrectionIfNeeded(long voucherId): boolean` (private) and a `@PackageScope Closure<Boolean> recorrectionConfirmer` test seam (mirrors the existing `attachmentFileChooser` seam pattern at `VoucherPanel.groovy:104`), overridable in tests to avoid driving a real `JOptionPane`.
+- Produces: `VoucherPanel.confirmRecorrectionIfNeeded(long voucherId): boolean` (private); a `@PackageScope Closure<Boolean> recorrectionConfirmer` test seam and a `@PackageScope Closure<Boolean> cannotDeleteConfirmer` test seam (both mirror the existing `attachmentFileChooser` seam pattern at `VoucherPanel.groovy:104`, overridable in tests to avoid driving a real `JOptionPane`); `deleteOrCancelVoucher()` changes from `private` to `@PackageScope` so `VoucherPanelNavigationTest` can invoke it directly — it has no other way in, since `voidButton` is permanently disabled and a disabled `JButton.doClick()` never fires its listener.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -701,9 +706,49 @@ Add to `VoucherPanelNavigationTest.groovy`, immediately after the tests added in
 
     assertEquals(2, voucherService.findCorrectionVoucherNumbers(original.id).size())
   }
+
+  @Test
+  void deleteOrCancelVoucherWarnsBeforeASecondCorrectionEvenThoughVoidButtonIsDisabled() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 8), 'Original8',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Voucher firstCorrection = voucherService.createCorrectionVoucher(original.id)
+    panel?.dispose()
+    panel = buildPanel()
+    panel.cannotDeleteConfirmer = { Voucher voucher -> true }
+    List<String> confirmerArgument = null
+    panel.recorrectionConfirmer = { List<String> existing -> confirmerArgument = existing; false }
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.first')) }
+
+    onEdt { panel.deleteOrCancelVoucher() }
+
+    assertEquals([firstCorrection.voucherNumber], confirmerArgument)
+    assertEquals([firstCorrection.voucherNumber], voucherService.findCorrectionVoucherNumbers(original.id))
+  }
+
+  @Test
+  void deleteOrCancelVoucherCreatesASecondCorrectionWhenBothConfirmationsApprove() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 4, 9), 'Original9',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createCorrectionVoucher(original.id)
+    panel?.dispose()
+    panel = buildPanel()
+    panel.cannotDeleteConfirmer = { Voucher voucher -> true }
+    panel.recorrectionConfirmer = { List<String> existing -> true }
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.first')) }
+
+    onEdt { panel.deleteOrCancelVoucher() }
+
+    assertEquals(2, voucherService.findCorrectionVoucherNumbers(original.id).size())
+  }
 ```
 
-Each test rebuilds `panel` via `panel?.dispose(); panel = buildPanel()` before setting `recorrectionConfirmer`, since the field lives on the panel instance and the default `setUp()`-built panel isn't wired to the fixture voucher yet at that point.
+Each test rebuilds `panel` via `panel?.dispose(); panel = buildPanel()` before setting `recorrectionConfirmer`/`cannotDeleteConfirmer`, since the fields live on the panel instance and the default `setUp()`-built panel isn't wired to the fixture voucher yet at that point. The last two tests call `panel.deleteOrCancelVoucher()` directly — this is the only way to exercise that method at all today, since `voidButton` is permanently disabled (`voidButton.enabled = false` in `applyReadOnlyState()`) and Swing's `AbstractButton.doClick()` is a no-op on a disabled button.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -717,9 +762,11 @@ In `VoucherPanel.groovy`, immediately after the existing `attachmentFileChooser`
 ```groovy
   @PackageScope
   Closure<Boolean> recorrectionConfirmer = { List<String> existingNumbers -> showRecorrectionConfirmDialog(existingNumbers) }
+  @PackageScope
+  Closure<Boolean> cannotDeleteConfirmer = { Voucher voucher -> showCannotDeleteConfirmDialog(voucher) }
 ```
 
-Add two new private methods, inserted immediately before the `deleteOrCancelVoucher()` method (note: Task 3 already shifted this method's line number down from its pre-Task-3 position of 1121 by inserting the field, header-label method, and `showVoucher()`/`showEmptyVoucher()` blocks earlier in the file — locate `deleteOrCancelVoucher()` by name, not by line number):
+Add three new private methods, inserted immediately before the `deleteOrCancelVoucher()` method (note: Task 3 already shifted this method's line number down from its pre-Task-3 position of 1121 by inserting the field, header-label method, and `showVoucher()`/`showEmptyVoucher()` blocks earlier in the file — locate `deleteOrCancelVoucher()` by name, not by line number):
 
 ```groovy
   private boolean confirmRecorrectionIfNeeded(long voucherId) {
@@ -737,7 +784,20 @@ Add two new private methods, inserted immediately before the `deleteOrCancelVouc
     choice == javax.swing.JOptionPane.YES_OPTION
   }
 
+  private boolean showCannotDeleteConfirmDialog(Voucher voucher) {
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+            .replace('{0}', voucher.voucherNumber ?: ''),
+        I18n.instance.getString('voucherPanel.button.void'),
+        javax.swing.JOptionPane.YES_NO_OPTION
+    )
+    choice == javax.swing.JOptionPane.YES_OPTION
+  }
+
 ```
+
+`cannotDeleteConfirmer` extracts the dialog that already existed in `deleteOrCancelVoucher()` behind the same kind of seam as `recorrectionConfirmer`. This is what makes Step 5 below fully testable headlessly: without it, `deleteOrCancelVoucher()` would still pop a real, unstubbed `JOptionPane` even after `recorrectionConfirmer` is overridden in a test.
 
 - [ ] **Step 4: Wire the `correctionButton` listener**
 
@@ -796,34 +856,29 @@ In `VoucherPanel.groovy`, change `deleteOrCancelVoucher()` (locate by name — l
 to:
 
 ```groovy
-  private void deleteOrCancelVoucher() {
+  @PackageScope
+  void deleteOrCancelVoucher() {
     if (currentVoucher == null) {
       return
     }
     try {
-      int choice = javax.swing.JOptionPane.showConfirmDialog(
-          this,
-          I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-              .replace('{0}', currentVoucher.voucherNumber ?: ''),
-          I18n.instance.getString('voucherPanel.button.void'),
-          javax.swing.JOptionPane.YES_NO_OPTION
-      )
-      if (choice == javax.swing.JOptionPane.YES_OPTION) {
-        if (!confirmRecorrectionIfNeeded(currentVoucher.id)) {
-          return
-        }
-        Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-        showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-            correction.voucherNumber ?: ''))
-        reloadVoucherList()
+      if (!cannotDeleteConfirmer.call(currentVoucher)) {
+        return
       }
+      if (!confirmRecorrectionIfNeeded(currentVoucher.id)) {
+        return
+      }
+      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+          correction.voucherNumber ?: ''))
+      reloadVoucherList()
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
     }
   }
 ```
 
-(`voidButton` is currently hard-disabled in `applyReadOnlyState()`, so this path isn't reachable through the running GUI today, but it calls `VoucherService.createCorrectionVoucher` directly and must not silently skip the warning if that button is ever re-enabled — see spec Design §4.)
+Two changes beyond the added `confirmRecorrectionIfNeeded` check: the inline `JOptionPane.showConfirmDialog` call is replaced by `cannotDeleteConfirmer.call(currentVoucher)` (extracting it behind the same kind of seam as `recorrectionConfirmer`, added in Step 3), and the method goes from `private` to `@PackageScope`. Both changes exist solely to make this method testable — `voidButton` is currently hard-disabled in `applyReadOnlyState()`, so this path isn't reachable through the running GUI today, but it calls `VoucherService.createCorrectionVoucher` directly and must not silently skip the warning if that button is ever re-enabled (see spec Design §4). Without both changes, this task's new warning logic would ship with zero test coverage on this call site, automated or manual.
 
 - [ ] **Step 6: Add the new i18n key**
 
@@ -860,9 +915,13 @@ varna innan en andra korrigering skapas i GUI:t
 Delad bekräftelsehjälpare (confirmRecorrectionIfNeeded) används av både
 korrigeringsknappen och deleteOrCancelVoucher()/voidButton, så en
 verifikation som redan korrigerats aldrig kan korrigeras igen utan
-varning - även om voidButton skulle aktiveras i framtiden. Dialogen
-körs bakom en testbar closure-seam (recorrectionConfirmer), enligt
-samma mönster som attachmentFileChooser.
+varning - även om voidButton skulle aktiveras i framtiden. Båda
+dialogerna (bekräfta korrigering, bekräfta att man inte kan radera)
+körs nu bakom testbara closure-seams (recorrectionConfirmer,
+cannotDeleteConfirmer), enligt samma mönster som attachmentFileChooser,
+och deleteOrCancelVoucher() är @PackageScope så testerna kan anropa den
+direkt - annars hade den vägen saknat all testtäckning eftersom
+voidButton är permanent inaktiverad.
 EOF
 )"
 ```
@@ -1111,13 +1170,16 @@ Expected: BUILD SUCCESSFUL — compilation, all tests (unit, integration, accept
 
 - [ ] **Step 2: Manually verify the GUI changes**
 
-Run: `./gradlew run`. Create a voucher, create a correction against it via the pencil (✎) button, and confirm:
-- The original voucher shows "Corrected by <number>" (or "Korrigerad av <nummer>" in Swedish) when navigated to directly.
+Run: `./gradlew run`. Create a voucher, create a correction against it via the pencil (✎) button, and confirm, in the default (English) locale:
+- The original voucher shows "Corrected by <number>" when navigated to directly.
 - The correction voucher shows "Corrects <number>" as before, and does *not* also show "Corrected by".
 - Clicking the correction button again on the original voucher shows a confirmation dialog naming the existing correction; choosing "No" creates nothing, choosing "Yes" creates a second correction.
-- Run a Transaction Report covering the period and confirm the original voucher's row shows "Korrigerad av <nummer>" in the status column instead of "Aktiv".
+- Run a Transaction Report covering the period and confirm the original voucher's row shows "Corrected by <number>" in the status column instead of "Active".
+- With a corrected voucher displayed, check that the new "Corrected by" row in the header doesn't awkwardly resize or crowd the voucher editor window — `addCorrectedByHeaderLabel` (Task 3) adds a whole new `GridBagLayout` row, which is a layout change this session hasn't visually verified.
 
-This step exists because `voidButton`/`deleteOrCancelVoucher()` is currently unreachable through the GUI (hard-disabled) and the `JOptionPane` confirmation dialogs have no headless test coverage — Task 4's automated tests cover the decision logic via the `recorrectionConfirmer` seam, but the actual dialog rendering needs an eyeball check per `CLAUDE.md`'s Swing verification guidance.
+Then switch the application's language to Swedish (via its language/locale setting) and repeat the same checks, confirming the label reads "Korrigerad av <nummer>", the report's status column reads "Korrigerad av <nummer>" instead of "Aktiv", and the confirmation dialog text is in Swedish too.
+
+The `JOptionPane` confirmation dialogs still have no headless test coverage for their actual on-screen rendering, even though Task 4's automated tests now drive the full decision logic — including the `deleteOrCancelVoucher()`/`voidButton` path, via the `recorrectionConfirmer`/`cannotDeleteConfirmer` seams and calling the now-`@PackageScope` method directly — without showing a real dialog. This step is specifically about the dialogs' visual rendering and the header layout change, which is what still needs an eyeball check per `CLAUDE.md`'s Swing verification guidance.
 
 - [ ] **Step 3: No commit for this task** — it's verification only, nothing to stage.
 
@@ -1127,4 +1189,8 @@ This step exists because `voidButton`/`deleteOrCancelVoucher()` is currently unr
 
 - **Spec coverage:** Goals (surface marker in report + editor: Tasks 2, 3; handle multiple corrections: Tasks 1-3 tests; warn without hard-blocking in GUI + MCP: Tasks 4, 6) all have tasks. Non-goals (no chains, no CANCELLED handling, no migration) require no tasks — verified nothing in the plan violates them. Semantics section (informational-only, "Corrected by" wording) is reflected in every i18n key added. Design §1's "no status filter" rule is followed by both new queries (Task 1, Task 2). Design §5's testing list is fully covered by Tasks 1-6's test steps plus Task 7's manual dialog check.
 - **Placeholder scan:** no TBD/TODO; every step has concrete code or an exact command.
-- **Type consistency:** `findCorrectionVoucherNumbers(long): List<String>` (Task 1) is the exact signature used in Task 3 (`voucherService.findCorrectionVoucherNumbers(v.id)`), Task 4 (`confirmRecorrectionIfNeeded`), and Task 6 (`existingCorrections`). `loadCorrectionVoucherNumbersByOriginal(Sql, long): Map<Long, List<String>>` (Task 2) is used only within `ReportDataService`, consistent with the spec's decision to keep the report's bulk lookup separate from the single-voucher lookup. `recorrectionConfirmer` is declared as `Closure<Boolean>` in Task 4 and every test override returns a `boolean`, matching.
+- **Type consistency:** `findCorrectionVoucherNumbers(long): List<String>` (Task 1) is the exact signature used in Task 3 (`voucherService.findCorrectionVoucherNumbers(v.id)`), Task 4 (`confirmRecorrectionIfNeeded`), and Task 6 (`existingCorrections`). `loadCorrectionVoucherNumbersByOriginal(Sql, long): Map<Long, List<String>>` (Task 2) is used only within `ReportDataService`, consistent with the spec's decision to keep the report's bulk lookup separate from the single-voucher lookup. `recorrectionConfirmer` and `cannotDeleteConfirmer` are both declared as `Closure<Boolean>` in Task 4 and every test override returns a `boolean`, matching.
+
+## Review Round 2 Notes
+
+A second review pass caught: (1) several `VoucherPanel.groovy` line-number citations in Task 4 that go stale because Task 3 edits the same file first — fixed by anchoring those steps to method/field names instead, with the exact before/after code blocks doing the real work of locating the edit; (2) `report.tableRows[...][8]` in Task 2's tests was a fragile magic index — fixed to look the column up via `report.tableHeaders.indexOf(...)`; (3) `deleteOrCancelVoucher()`'s new warning check had zero test coverage, automated or manual, since `voidButton` is permanently disabled — fixed by extracting its `JOptionPane` behind a `cannotDeleteConfirmer` seam (same pattern as `recorrectionConfirmer`) and making the method `@PackageScope`, then adding two tests that call it directly; (4) `loadCorrectionVoucherNumbersByOriginal`'s fiscal-year scoping assumption is now called out with an explicit code comment, not just prose in this plan; (5) Task 7's manual verification now explicitly includes a Swedish-locale pass and a check that the new header row doesn't break the editor window's layout. `TransactionReportRow.status`/`PostingLine.status` being plain `String` (so `row.status == 'CORRECTION'` in Task 2 is type-safe) and `AccountingMcpTools.optionalBoolean` already existing (used as-is in Task 6) were both re-verified against the current source and needed no change. The spec + plan files were renamed from `superseded-voucher-marker*` to `corrected-voucher-marker*` to match the "Corrected by" terminology used throughout instead of the discarded "Superseded" wording.
