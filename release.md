@@ -9,6 +9,8 @@
 - **Kontofilter i huvudboken** — `get_general_ledger` kan nu filtreras på ett specifikt kontonummer via AI-assistenten, vilket gör det enklare att se hur ett visst konto har konterats, till exempel i ett annat företag.
 - **Kvitton/fakturor som bild kan bifogas automatiskt** — AI-assistenten kan nu ta emot en sökväg till en kvitto- eller fakturabild, föreslå en kontering utifrån den, och bilden bifogas automatiskt till verifikationen så snart användaren sparar den i skrivbordsappen — inget separat steg krävs.
 - **Kimi inte längre markerad experimentell** — Kimi-stödet i AI-assistent-launchern är nu verifierat mot en riktig installation och visas som en fullt stödd klient, precis som Claude Code och Codex. Vibe är fortsatt markerad experimentell.
+- **Rätt räkenskapsår väljs efter ändringar** — Ett nyskapat räkenskapsår väljs direkt även om det är bakåtdaterat, och det aktiva året behålls när räkenskapsår stängs eller öppnas igen. Om det aktiva året tas bort väljs nästa tillgängliga år, och komboboxen följer det aktiva året även efter bolagsbyte.
+- **AI-utkast överlever navigering** — En osparad verifikation som AI-assistenten har föreslagit finns kvar när användaren bläddrar till sparade verifikationer och tillbaka till utkastet.
 
 ### Buggfixar
 
@@ -18,6 +20,8 @@
 - **SIE-export visar rätt programversion** — SIE-filens `#PROGRAM` rad angav tidigare version `1.0.0`. Den hämtas nu från JAR-manifestets `Implementation-Version`.
 - **SIE-import/export förvalar aktuellt bokföringsår** — Dialogen för SIE-import/export öppnades tidigare utan valt räkenskapsår. Nu förvalas det aktuella räkenskapsåret.
 - **Resursläcka i rapportarkivets orphan-skanning åtgärdad** — `findOrphanFiles()` stänger nu `Stream<Path>` från `Files.walk()` ordentligt, så kataloghandtag frigörs direkt i stället för att läcka under applikationens livstid.
+- **Bilagor och historik uppdateras vid navigering** — Flikarna Bilagor och Audit-logg visar nu informationen för den verifikation som faktiskt visas, även när användaren bläddrar mellan verifikationer utan att byta flik.
+- **AI-föreslagna datum avvisas inte längre tyst** — Datumväljaren har explicita gränser från 1900 till 50 år framåt, så historiska verifikationer fungerar även utanför komponentens tidigare standardintervall. Ett datum utanför intervallet avvisas före utkastet appliceras och MCP-klienten får ett tydligt fel i stället för falsk framgång. Den ursprungliga rapporten om ett datum inom räkenskapsåret fylls i felaktigt har inte kunnat reproduceras och kvarstår för uppföljning.
 
 ## v1.7.0, 2026-07-25
 
