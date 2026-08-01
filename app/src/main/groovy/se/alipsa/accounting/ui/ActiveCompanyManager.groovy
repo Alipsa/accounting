@@ -113,7 +113,8 @@ final class ActiveCompanyManager {
   }
 
   void reloadFiscalYears(Long preferredFiscalYearId = null) {
-    setFiscalYear(resolveInitialFiscalYear(listFiscalYears(), preferredFiscalYearId))
+    Long preferredId = preferredFiscalYearId ?: fiscalYear?.id
+    setFiscalYear(resolveInitialFiscalYear(listFiscalYears(), preferredId))
   }
 
   boolean markOpeningBalanceRefreshPrompted(long fiscalYearId) {

@@ -123,6 +123,20 @@ class ActiveCompanyManagerTest {
   }
 
   @Test
+  void reloadFiscalYearsWithoutAPreferredIdKeepsTheCurrentFiscalYearWhenItStillExists() {
+    FiscalYear current = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
+    fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    ActiveCompanyManager manager = new ActiveCompanyManager(
+        companyService, fiscalYearService, CompanyService.LEGACY_COMPANY_ID, current.id)
+
+    manager.reloadFiscalYears()
+
+    assertEquals(current.id, manager.fiscalYear.id)
+  }
+
+  @Test
   void firesPropertyChangeEventOnCompanySwitch() {
     Company second = companyService.save(new Company(
         null, 'Zetterberg AB', '556000-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
