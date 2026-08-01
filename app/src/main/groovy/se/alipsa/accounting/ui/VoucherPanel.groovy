@@ -1036,10 +1036,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       applyDraft(draft)
     } catch (IllegalArgumentException exception) {
       // This draft was populated by snapshotDraft() moments earlier in the same fiscal year, so
-      // its series should always resolve - this is a should-never-happen defensive fallback, not
-      // a path with untrusted input. An uncaught exception out of a Swing navigation callback is
-      // a worse failure mode than silently starting a blank voucher.
-      log.warning("Discarding a remembered draft with an unresolvable series: ${exception.message}")
+      // its series and date should both resolve - the date was already accepted by the picker
+      // when it was snapshotted. This is a should-never-happen defensive fallback, not a path with
+      // untrusted input. An uncaught exception out of a Swing navigation callback is a worse
+      // failure mode than silently starting a blank voucher.
+      log.warning("Discarding a remembered draft after validation failure: ${exception.message}")
       showEmptyVoucher()
     }
   }
