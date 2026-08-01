@@ -495,6 +495,25 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void guiCanStageAnAttachmentOnAnUnsavedDraft() {
+    Path receipt = tempDir.resolve('gui-kvitto.pdf')
+    Files.writeString(receipt, '%PDF-1.4 test')
+    panel.attachmentFileChooser = { receipt }
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+
+    onEdt {
+      tabs.selectedIndex = 1
+      panel.addAttachmentRequested()
+    }
+
+    assertEquals(1, onEdt { panel.attachmentTableModel.rowCount })
+    assertEquals(receipt.fileName.toString(), onEdt { panel.attachmentTableModel.getValueAt(0, 0) })
+    assertEquals(I18n.instance.getString('voucherPanel.label.unsaved'),
+        onEdt { panel.attachmentTableModel.getValueAt(0, 4) })
+    assertEquals([], attachmentService.listAllAttachments())
+  }
+
+  @Test
   void navigatingToASavedVoucherPopulatesNormalBalanceSideForEachLine() {
     voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
