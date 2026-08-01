@@ -21,7 +21,7 @@ This creates a real risk: browsing a previous fiscal year's transaction report, 
 
 ## Semantics: this is an informational warning, not a correction/exclusion
 
-The original voucher **stays `ACTIVE`** and continues to appear in reports and balances exactly as it does today — this design adds a visible note next to it, nothing more. The correction voucher's reversing + replacement lines are what actually change the books; the marker just makes that fact visible at the point where a human (or an MCP-driven agent) might otherwise treat the original as still-current guidance. For that reason the wording throughout is **"Corrected by <number>"**, not "Superseded by" — "superseded" reads as if the original were excluded or invalidated, which it isn't.
+The original voucher **stays `ACTIVE`** and continues to appear in reports and balances exactly as it does today — this design adds a visible note next to it, nothing more. The correction voucher contains lines that reverse the original (mirrored debit/credit, per `VoucherService.groovy:115-127`) — it does not itself carry a "replacement"/corrected entry; that's recorded as a separate ordinary voucher if needed. The marker just makes the reversal visible at the point where a human (or an MCP-driven agent) might otherwise treat the original as still-current guidance. For that reason the wording throughout is **"Corrected by <number>"**, not "Superseded by" — "superseded" reads as if the original were excluded or invalidated, which it isn't.
 
 ## Approach
 
@@ -63,17 +63,26 @@ New i18n key: `voucherPanel.label.correctedBy` (both locale files), following th
 
 ### 4. Warn before creating another correction
 
-**GUI:** in the `correctionButton` click handler (`VoucherPanel.groovy:356-361`), before invoking `voucherEditorActions.createCorrection()`: call `voucherService.findCorrectionVoucherNumbers(currentVoucher.id)`. If non-empty, show a `JOptionPane.showConfirmDialog` (same pattern as the existing void-confirmation at `VoucherPanel.groovy:1117`) naming the existing correction voucher number(s) and asking whether to proceed. On "No" or dialog dismissal, abort without creating another correction.
+**GUI, both call sites.** `VoucherService.createCorrectionVoucher` is called from two places in `VoucherPanel`, not one:
+- the `correctionButton` click handler (`VoucherPanel.groovy:356-361`);
+- `deleteOrCancelVoucher()`, wired to `voidButton` (`VoucherPanel.groovy:1121-1133`, listener at `VoucherPanel.groovy:370`). `voidButton` is currently hard-disabled (`voidButton.enabled = false` in `applyReadOnlyState()`), so this path isn't reachable through the running GUI today — but the method exists, calls the service directly, and would silently skip the warning the moment that button is re-enabled or the method gets called some other way. The fix applies to the method, not to the button's enabled state.
 
-The confirmation predicate is extracted as a small method (e.g. `confirmRecorrection(List<String> existingNumbers): boolean`) separate from the `JOptionPane` call itself, so the decision logic is unit-testable without driving a real dialog.
+Both call sites route through one shared helper, e.g. `confirmRecorrectionIfNeeded(long voucherId): boolean`, added to `VoucherPanel`:
+- calls `voucherService.findCorrectionVoucherNumbers(voucherId)`;
+- if empty, returns `true` immediately (no dialog);
+- if non-empty, shows a `JOptionPane.showConfirmDialog` (same pattern as the existing void-confirmation dialog already in `deleteOrCancelVoucher` at `VoucherPanel.groovy:1117`) naming the existing correction voucher number(s), and returns whether the user chose to proceed.
+
+Both `correctionButton`'s listener and `deleteOrCancelVoucher()` call this helper first and abort (no call to `createCorrection()` / `createCorrectionVoucher()`) if it returns `false`. The confirmation predicate itself (given a list of existing numbers, should we proceed) is factored out as a plain method separate from the `JOptionPane` call, so the decision logic is unit-testable without driving a real dialog.
 
 New i18n key: `voucherPanel.confirm.alreadyCorrected` (with `{0}` placeholder for the existing correction voucher number(s)), both locale files.
 
-**MCP:** `AccountingMcpTools.createCorrectionVoucher` (`AccountingMcpTools.groovy:628`) calls `voucherService.createCorrectionVoucher()` directly today, with no equivalent check — an MCP-driven caller (human or AI agent) currently gets no warning before creating a redundant correction. Add an optional `force` boolean argument to the tool. Before calling the service:
+**MCP:** `AccountingMcpTools.createCorrectionVoucher` (`AccountingMcpTools.groovy:628`) calls `voucherService.createCorrectionVoucher()` directly today, with no equivalent check — an MCP-driven caller (human or AI agent) currently gets no warning before creating a redundant correction. Two changes are needed together, since the second is easy to miss:
 
-- Call `voucherService.findCorrectionVoucherNumbers(originalVoucherId)`.
-- If non-empty and `force` is not `true`: return `[ok: false, warning: true, existing_corrections: [...], errors: ["This voucher was already corrected by <numbers>. Pass force: true to create another correction anyway."]]` without creating anything.
-- Otherwise: proceed exactly as today.
+- **Schema:** the tool's parameter map is declared separately in `McpToolDefinitions.groovy:141-148` (`create_correction_voucher`'s `toolDef(...)` call), currently only `original_voucher_id` (required) and `description` (optional). Add `force: optBoolParam('Set to true to create another correction even though this voucher already has one or more. Required when create_correction_voucher previously returned ok:false with warning:true.')` to that params map — `optBoolParam` already exists as a helper (`McpToolDefinitions.groovy:245`) and is used the same way elsewhere.
+- **Behavior:** in `AccountingMcpTools.createCorrectionVoucher` (`AccountingMcpTools.groovy:628`), before calling the service:
+  - Call `voucherService.findCorrectionVoucherNumbers(originalVoucherId)`.
+  - If non-empty and `force` is not `true`: return `[ok: false, warning: true, existing_corrections: [...], errors: ["This voucher was already corrected by <numbers>. Pass force: true to create another correction anyway."]]` without creating anything.
+  - Otherwise: proceed exactly as today.
 
 This mirrors the GUI's warn-don't-block semantics as an explicit parameter instead of a dialog, and requires no change to `VoucherService.createCorrectionVoucher` itself — the check lives at each call site (GUI button handler, MCP tool method), same as today's pattern where the service has no opinion on confirmation UX.
 
@@ -82,8 +91,8 @@ This mirrors the GUI's warn-don't-block semantics as an explicit parameter inste
 - `VoucherServiceTest` / `VoucherServiceUnitTest`: `findCorrectionVoucherNumbers` — empty for an uncorrected voucher, one entry for a single correction, multiple entries (in `running_number` order) for a voucher corrected more than once.
 - `ReportDataService` test: transaction report status column shows "Korrigerad av X" (or English equivalent) for a corrected original's row; plain localized "Aktiv"/"Korrigering" otherwise; joins multiple correction numbers when more than one exists.
 - Extend `VoucherPanelNavigationTest` (which already has a `correctsLabelUpdatesAfterALocaleSwitch`-style test for `correctsLabel`) with an equivalent test for `correctedByLabel`: visibility, text content, locale-switch behavior; and a test confirming a `CORRECTION`-status voucher never shows `correctedByLabel` alongside `correctsLabel`.
-- The `JOptionPane`-driven re-correction confirmation itself has no precedent for headless testing in this codebase; verify the extracted predicate method in isolation, and manually verify the actual dialog in the running app per the project's Swing-change verification guidance.
-- MCP tool test: `create_correction_voucher` without `force` against an already-corrected voucher returns `ok: false` with the existing correction numbers and creates nothing; with `force: true` it proceeds and creates the correction as today.
+- The `JOptionPane`-driven re-correction confirmation itself has no precedent for headless testing in this codebase; verify the extracted predicate method in isolation (covering both the `correctionButton` and `deleteOrCancelVoucher` call sites use the same helper), and manually verify the actual dialog in the running app per the project's Swing-change verification guidance.
+- MCP tool test: `create_correction_voucher` without `force` against an already-corrected voucher returns `ok: false` with the existing correction numbers and creates nothing; with `force: true` it proceeds and creates the correction as today; a schema/tool-listing test confirms `force` appears as an optional boolean parameter in the published tool definition.
 
 ## Open questions
 
