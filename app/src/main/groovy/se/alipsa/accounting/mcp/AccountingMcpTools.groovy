@@ -628,7 +628,18 @@ class AccountingMcpTools {
   private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
     long originalVoucherId = requiredLong(args, 'original_voucher_id')
     String description = args.get('description') as String
+    boolean force = optionalBoolean(args, 'force', false)
     try {
+      List<String> existingCorrections = voucherService.findCorrectionVoucherNumbers(originalVoucherId)
+      if (!existingCorrections.isEmpty() && !force) {
+        String numbers = existingCorrections.join(', ')
+        return [
+            ok: false,
+            warning: true,
+            existing_corrections: existingCorrections,
+            errors: ["This voucher was already corrected by ${numbers}. Pass force: true to create another correction anyway.".toString()]
+        ]
+      }
       Voucher correction = voucherService.createCorrectionVoucher(originalVoucherId, description)
       [
           ok: true,

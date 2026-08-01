@@ -111,6 +111,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private boolean applyingSeriesProgrammatically = false
   private final JLabel correctsLabel = new JLabel('')
   private String correctsOriginalVoucherNumber
+  private final JLabel correctedByLabel = new JLabel('')
+  private String correctedByVoucherNumbers
   private final JLabel totalsLabel = new JLabel('')
 
   // Package-scoped for VoucherPanelNavigationTest's MCP feedback assertions.
@@ -315,12 +317,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void addCorrectsHeaderLabel(JPanel panel, GridBagConstraints constraints) {
     correctsLabel.visible = false
+    correctedByLabel.foreground = new Color(180, 83, 9)
+    correctedByLabel.visible = false
+    JPanel correctionLabels = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    correctionLabels.add(correctsLabel)
+    correctionLabels.add(correctedByLabel)
     constraints.gridx++
     constraints.weightx = 0.2G
     constraints.fill = GridBagConstraints.HORIZONTAL
     constraints.gridwidth = GridBagConstraints.REMAINDER
     constraints.insets = new Insets(4, 0, 4, 0)
-    panel.add(correctsLabel, constraints)
+    panel.add(correctionLabels, constraints)
     panel
   }
 
@@ -359,6 +366,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     correctionButton = new JButton('\u270E')
     correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
     correctionButton.addActionListener {
+      if (currentVoucher != null && !confirmRecorrectionIfNeeded(currentVoucher.id)) {
+        return
+      }
       if (voucherEditorActions.createCorrection() != null) {
         reloadVoucherList()
       }
@@ -789,6 +799,16 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       correctsLabel.text = ''
       correctsLabel.visible = false
     }
+    List<String> correctionNumbers = voucherService.findCorrectionVoucherNumbers(v.id)
+    if (!correctionNumbers.isEmpty()) {
+      correctedByVoucherNumbers = correctionNumbers.join(', ')
+      correctedByLabel.text = I18n.instance.format('voucherPanel.label.correctedBy', correctedByVoucherNumbers)
+      correctedByLabel.visible = true
+    } else {
+      correctedByVoucherNumbers = null
+      correctedByLabel.text = ''
+      correctedByLabel.visible = false
+    }
     lineTableModel.setRows(v.lines)
     ensureAutoRow()
     recalculateAllBalances()
@@ -824,6 +844,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     correctsOriginalVoucherNumber = null
     correctsLabel.text = ''
     correctsLabel.visible = false
+    correctedByVoucherNumbers = null
+    correctedByLabel.text = ''
+    correctedByLabel.visible = false
     lineTableModel.clear()
     lineTableModel.addBlankRows(2)
     clearAttachmentAndHistory()
@@ -1122,6 +1145,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (currentVoucher == null) {
       return
     }
+    if (!confirmRecorrectionIfNeeded(currentVoucher.id)) {
+      return
+    }
     try {
       int choice = javax.swing.JOptionPane.showConfirmDialog(
           this,
@@ -1139,6 +1165,25 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
     }
+  }
+
+  @PackageScope
+  static boolean shouldProceedWithRecorrection(List<String> existingCorrectionNumbers, boolean confirmed) {
+    existingCorrectionNumbers.isEmpty() || confirmed
+  }
+
+  private boolean confirmRecorrectionIfNeeded(long voucherId) {
+    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(voucherId)
+    if (shouldProceedWithRecorrection(existingCorrectionNumbers, false)) {
+      return true
+    }
+    int choice = javax.swing.JOptionPane.showConfirmDialog(
+        this,
+        I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
+        I18n.instance.getString('voucherPanel.button.createCorrection'),
+        javax.swing.JOptionPane.YES_NO_OPTION
+    )
+    shouldProceedWithRecorrection(existingCorrectionNumbers, choice == javax.swing.JOptionPane.YES_OPTION)
   }
 
   private void removeSelectedLine() {
@@ -1467,6 +1512,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     jumpCaptionLabel.text = I18n.instance.getString('voucherPanel.label.jump')
     if (correctsOriginalVoucherNumber != null) {
       correctsLabel.text = I18n.instance.getString('voucherPanel.label.corrects') + ' ' + correctsOriginalVoucherNumber
+    }
+    if (correctedByVoucherNumbers != null) {
+      correctedByLabel.text = I18n.instance.format('voucherPanel.label.correctedBy', correctedByVoucherNumbers)
     }
   }
 

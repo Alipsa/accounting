@@ -243,6 +243,30 @@ class VoucherServiceTest {
   }
 
   @Test
+  void correctionLookupReturnsNumbersInRunningNumberOrder() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 15),
+        'Försäljning',
+        balancedLines(100.00G)
+    )
+
+    assertEquals([], voucherService.findCorrectionVoucherNumbers(original.id))
+    Voucher firstCorrection = voucherService.createCorrectionVoucher(original.id, 'Första korrigeringen')
+    Voucher secondCorrection = voucherService.createCorrectionVoucher(original.id, 'Andra korrigeringen')
+
+    assertEquals(
+        [firstCorrection.voucherNumber, secondCorrection.voucherNumber],
+        voucherService.findCorrectionVoucherNumbers(original.id)
+    )
+    assertEquals(
+        [(original.id): [firstCorrection.voucherNumber, secondCorrection.voucherNumber]],
+        voucherService.findCorrectionVoucherNumbersForFiscalYear(fiscalYear.id)
+    )
+  }
+
+  @Test
   void closedFiscalYearRejectsVoucherCreation() {
     fiscalYearService.closeFiscalYear(fiscalYear.id)
 

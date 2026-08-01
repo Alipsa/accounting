@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
+import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.report.BalanceSheetRow
 import se.alipsa.accounting.domain.report.BalanceSheetRowType
@@ -237,6 +238,40 @@ class ReportServicesTest {
       assertTrue(html.contains(tableClass))
       assertTrue(html.contains('class="number"'))
     }
+  }
+
+  @Test
+  void transactionReportLocalizesStatusesAndMarksCorrectedOriginals() {
+    Voucher original = voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 1, 20),
+        'Original att korrigera',
+        [
+            new VoucherLine(null, null, 0, null, '1510', 'Kundfordringar', null, 100.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', 'Försäljning', null, 0.00G, 100.00G)
+        ]
+    )
+    Voucher correction = voucherService.createCorrectionVoucher(original.id, 'Korrigering')
+
+    ReportResult report = reportDataService.generate(new ReportSelection(
+        ReportType.TRANSACTION_REPORT,
+        fiscalYear.id,
+        null,
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31)
+    ))
+    String correctedStatus = I18n.instance.format('transactionReport.status.correctedBy', correction.voucherNumber)
+    String correctionStatus = I18n.instance.getString('transactionReport.status.correction')
+    String activeStatus = I18n.instance.getString('transactionReport.status.active')
+
+    report.rowVoucherIds.withIndex().each { Long voucherId, int index ->
+      String expected = voucherId == original.id
+          ? correctedStatus
+          : voucherId == correction.id ? correctionStatus : activeStatus
+      assertEquals(expected, report.tableRows[index][8])
+    }
+    assertTrue(report.tableRows.any { List<String> row -> row[8] == correctedStatus })
   }
 
   @Test

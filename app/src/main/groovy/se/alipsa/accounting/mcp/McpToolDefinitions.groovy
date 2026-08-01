@@ -143,7 +143,8 @@ final class McpToolDefinitions {
             ['original_voucher_id'],
             [
                 original_voucher_id: intParam('ID of the voucher to correct'),
-                description: optStrParam('Optional description for the correction. Defaults to "Korrigering av <original>".')
+                description: optStrParam('Optional description for the correction. Defaults to "Korrigering av <original>".'),
+                force: optBoolParam('Set to true to create another correction even though this voucher already has one or more. Required when create_correction_voucher previously returned ok:false with warning:true.')
             ]
         ),
     ]

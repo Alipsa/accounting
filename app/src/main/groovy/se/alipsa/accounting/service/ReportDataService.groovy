@@ -40,6 +40,7 @@ import java.util.logging.Logger
 /**
  * Builds reusable report data for UI previews, CSV/Excel export and Journo (FreeMarker) PDF rendering.
  */
+// codenarc-disable ClassSize
 final class ReportDataService {
 
   private static final Logger log = Logger.getLogger(ReportDataService.name)
@@ -48,13 +49,19 @@ final class ReportDataService {
   private final DatabaseService databaseService
   private final FiscalYearService fiscalYearService
   private final AccountingPeriodService accountingPeriodService
+  private final VoucherService voucherService
 
   ReportDataService() {
     this(DatabaseService.instance)
   }
 
   ReportDataService(DatabaseService databaseService) {
-    this(databaseService, new FiscalYearService(databaseService), new AccountingPeriodService(databaseService))
+    this(
+        databaseService,
+        new FiscalYearService(databaseService),
+        new AccountingPeriodService(databaseService),
+        new VoucherService(databaseService)
+    )
   }
 
   ReportDataService(
@@ -62,9 +69,19 @@ final class ReportDataService {
       FiscalYearService fiscalYearService,
       AccountingPeriodService accountingPeriodService
   ) {
+    this(databaseService, fiscalYearService, accountingPeriodService, new VoucherService(databaseService))
+  }
+
+  ReportDataService(
+      DatabaseService databaseService,
+      FiscalYearService fiscalYearService,
+      AccountingPeriodService accountingPeriodService,
+      VoucherService voucherService
+  ) {
     this.databaseService = databaseService
     this.fiscalYearService = fiscalYearService
     this.accountingPeriodService = accountingPeriodService
+    this.voucherService = voucherService
   }
 
   ReportResult generate(ReportSelection selection) {
@@ -1065,6 +1082,8 @@ final class ReportDataService {
   }
 
   private ReportResult buildTransactionReport(EffectiveSelection effective) {
+    Map<Long, List<String>> correctionsByOriginalId = voucherService.findCorrectionVoucherNumbersForFiscalYear(
+        effective.selection.fiscalYearId)
     List<TransactionReportRow> rows = databaseService.withSql { Sql sql ->
       ReportSqlLoader.loadPostingLines(sql, effective.selection.fiscalYearId, effective.startDate, effective.endDate)
           .sort { PostingLine line ->
@@ -1080,7 +1099,7 @@ final class ReportDataService {
                 line.lineDescription,
                 line.debitAmount,
                 line.creditAmount,
-                line.status
+                TransactionReportSupport.status(line, correctionsByOriginalId)
             )
           }
     }

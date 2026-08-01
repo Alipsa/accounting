@@ -867,6 +867,21 @@ class AccountingMcpToolsTest {
     assertTrue((boolean) correction.get('ok'), "Expected ok but got: ${correction.get('errors')}")
     assertNotNull(correction.get('voucher_id'))
     assertNotEquals(originalId, ((Number) correction.get('voucher_id')).longValue())
+
+    Map<String, Object> rejected = tools.callTool('create_correction_voucher', [
+        original_voucher_id: (Object) originalId
+    ])
+    assertFalse((boolean) rejected.get('ok'))
+    assertTrue((boolean) rejected.get('warning'))
+    assertEquals([correction.get('voucher_number')], rejected.get('existing_corrections'))
+    assertEquals(1, voucherService.findCorrectionVoucherNumbers(originalId).size())
+
+    Map<String, Object> forced = tools.callTool('create_correction_voucher', [
+        original_voucher_id: (Object) originalId,
+        force: (Object) true
+    ])
+    assertTrue((boolean) forced.get('ok'), "Expected forced correction but got: ${forced.get('errors')}")
+    assertEquals(2, voucherService.findCorrectionVoucherNumbers(originalId).size())
   }
 
   @Test
