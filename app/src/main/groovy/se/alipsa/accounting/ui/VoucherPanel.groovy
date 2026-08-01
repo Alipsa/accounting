@@ -105,7 +105,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private boolean applyingSeriesProgrammatically = false
   private final JLabel correctsLabel = new JLabel('')
   private final JLabel totalsLabel = new JLabel('')
-  private final JTextArea feedbackArea = new JTextArea(2, 40)
+
+  @PackageScope
+  final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
   private final JCheckBox advanceAfterSaveCheckBox = new JCheckBox()
 
@@ -126,7 +128,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   @PackageScope
   LineTableModel lineTableModel
   private JTable lineTable
-  private final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
+
+  @PackageScope
+  final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
   private final JTable attachmentTable = new JTable(attachmentTableModel)
   private final AuditLogTableModel auditLogTableModel = new AuditLogTableModel()
   private final JTable auditLogTable = new JTable(auditLogTableModel)
@@ -768,7 +772,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     lineTableModel.setRows(v.lines)
     ensureAutoRow()
     recalculateAllBalances()
-    clearAttachmentAndHistory()
+    refreshAttachmentAndHistory()
     refreshTotals()
     applyReadOnlyState()
     updateNavigationButtons()
@@ -776,6 +780,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void showBlankVoucher() {
     navigation.clearDraft()
+    navigation.showDraft()
     showEmptyVoucher()
   }
 
@@ -990,6 +995,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
+    if (datePicker.date != voucherDraft.accountingDate) {
+      showError(I18n.instance.format(
+          'voucherPanel.error.suggestedDateOutOfRange', voucherDraft.accountingDate.toString()))
+    }
     descriptionField.text = voucherDraft.description
     selectSeriesCode(requestedSeries.seriesCode)
     lineTableModel.setRows(voucherDraft.lines)

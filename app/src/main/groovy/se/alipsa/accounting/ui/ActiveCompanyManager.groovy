@@ -112,9 +112,14 @@ final class ActiveCompanyManager {
     support.firePropertyChange(new PropertyChangeEvent(this, FISCAL_YEAR_PROPERTY, fiscalYear, fiscalYear))
   }
 
-  void reloadFiscalYears() {
+  void reloadFiscalYears(Long preferredFiscalYearId = null) {
     List<FiscalYear> years = listFiscalYears()
-    FiscalYear newYear = years.isEmpty() ? null : years.first()
+    FiscalYear newYear = preferredFiscalYearId == null ? null : years.find { FiscalYear year ->
+      year.id == preferredFiscalYearId
+    }
+    if (newYear == null) {
+      newYear = years.isEmpty() ? null : years.first()
+    }
     setFiscalYear(newYear)
   }
 

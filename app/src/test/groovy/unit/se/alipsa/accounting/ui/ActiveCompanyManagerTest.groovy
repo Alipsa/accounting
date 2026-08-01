@@ -94,6 +94,35 @@ class ActiveCompanyManagerTest {
   }
 
   @Test
+  void reloadFiscalYearsPrefersAnExplicitlyCreatedYearOverTheOneWithTheLatestStartDate() {
+    FiscalYear latestByDate = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
+    manager.reloadFiscalYears()
+    assertEquals(latestByDate.id, manager.fiscalYear.id)
+
+    FiscalYear backdatedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
+
+    manager.reloadFiscalYears(backdatedYear.id)
+
+    assertEquals(backdatedYear.id, manager.fiscalYear.id)
+  }
+
+  @Test
+  void reloadFiscalYearsWithoutAPreferredIdStillPicksTheLatestByStartDate() {
+    fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2024', LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31))
+    FiscalYear latest = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    ActiveCompanyManager manager = new ActiveCompanyManager(companyService, fiscalYearService)
+
+    manager.reloadFiscalYears()
+
+    assertEquals(latest.id, manager.fiscalYear.id)
+  }
+
+  @Test
   void firesPropertyChangeEventOnCompanySwitch() {
     Company second = companyService.save(new Company(
         null, 'Zetterberg AB', '556000-0002', 'SEK', 'sv-SE', VatPeriodicity.MONTHLY, true, null, null
