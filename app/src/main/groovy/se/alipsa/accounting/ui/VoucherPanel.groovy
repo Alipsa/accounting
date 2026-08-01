@@ -81,6 +81,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
+  private static final LocalDate DATE_PICKER_RANGE_FROM = LocalDate.of(1900, 1, 1)
+  private static final LocalDate DATE_PICKER_RANGE_TO = LocalDate.now().plusYears(50)
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -106,7 +108,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JLabel correctsLabel = new JLabel('')
   private String correctsOriginalVoucherNumber
   private final JLabel totalsLabel = new JLabel('')
-  private final JTextArea feedbackArea = new JTextArea(2, 40)
+
+  // Package-scoped for VoucherPanelNavigationTest's MCP feedback assertions.
+  @PackageScope
+  final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
   private final JCheckBox advanceAfterSaveCheckBox = new JCheckBox()
   private final JLabel voucherNumberCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber'))
@@ -132,7 +137,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   @PackageScope
   LineTableModel lineTableModel
   private JTable lineTable
-  private final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
+
+  // Package-scoped for VoucherPanelNavigationTest's attachment refresh assertions.
+  @PackageScope
+  final AttachmentTableModel attachmentTableModel = new AttachmentTableModel()
   private final JTable attachmentTable = new JTable(attachmentTableModel)
   private final AuditLogTableModel auditLogTableModel = new AuditLogTableModel()
   private final JTable auditLogTable = new JTable(auditLogTableModel)
@@ -733,6 +741,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (attachmentPathToApply) {
       try {
         attachmentService.addAttachment(savedVoucher.id, Path.of(attachmentPathToApply))
+        // With advance-after-save enabled the panel already shows a blank draft, so this clears
+        // the tables. When advancing is disabled, it refreshes the selected tab for savedVoucher.
         refreshAttachmentAndHistory()
         showInfo(I18n.instance.format('voucherPanel.message.savedWithReceipt',
             savedVoucher.voucherNumber ?: '', Path.of(attachmentPathToApply).fileName.toString()))
@@ -775,7 +785,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     lineTableModel.setRows(v.lines)
     ensureAutoRow()
     recalculateAllBalances()
-    clearAttachmentAndHistory()
+    refreshAttachmentAndHistory()
     refreshTotals()
     applyReadOnlyState()
     updateNavigationButtons()
@@ -783,6 +793,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
 
   private void showBlankVoucher() {
     navigation.clearDraft()
+    navigation.showDraft()
     showEmptyVoucher()
   }
 
@@ -996,6 +1007,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       throw new IllegalArgumentException(
           "Unknown voucher series '${voucherDraft.seriesCode}' for the current fiscal year. Create it first or choose an existing series.")
     }
+    if (!datePickerAccepts(voucherDraft.accountingDate)) {
+      throw new IllegalArgumentException(
+          "accounting_date ${voucherDraft.accountingDate} is outside the allowed date range " +
+              "(${datePicker.start} to ${datePicker.end}).")
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
     descriptionField.text = voucherDraft.description
@@ -1028,10 +1044,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       applyDraft(draft)
     } catch (IllegalArgumentException exception) {
       // This draft was populated by snapshotDraft() moments earlier in the same fiscal year, so
-      // its series should always resolve - this is a should-never-happen defensive fallback, not
-      // a path with untrusted input. An uncaught exception out of a Swing navigation callback is
-      // a worse failure mode than silently starting a blank voucher.
-      log.warning("Discarding a remembered draft with an unresolvable series: ${exception.message}")
+      // its series and date should both resolve - the date was already accepted by the picker
+      // when it was snapshotted. This is a should-never-happen defensive fallback, not a path with
+      // untrusted input. An uncaught exception out of a Swing navigation callback is a worse
+      // failure mode than silently starting a blank voucher.
+      log.warning("Discarding a remembered draft after validation failure: ${exception.message}")
       showEmptyVoucher()
     }
   }
@@ -1076,7 +1093,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     List<VoucherLine> copiedLines = source.lines.collect { VoucherLine line ->
       new VoucherLine(null, null, line.lineIndex, null, line.accountNumber, line.accountName, line.description, line.debitAmount ?: BigDecimal.ZERO, line.creditAmount ?: BigDecimal.ZERO)
     }
-    navigation.showDraft()
     showBlankVoucher()
     voucherNumberLabel.text = previewNextVoucherNumber(seriesCode)
     jumpField.text = voucherNumberLabel.text
@@ -1423,9 +1439,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private static DatePicker createDatePicker() {
-    DatePicker picker = new DatePicker(null, null, null, I18n.instance.locale)
+    // DatePicker's null bounds default to a fixed ±20-year range calculated at construction.
+    // Use explicit bounds so historical vouchers and AI drafts are not silently rejected.
+    DatePicker picker = new DatePicker(
+        DATE_PICKER_RANGE_FROM, DATE_PICKER_RANGE_TO, null, I18n.instance.locale)
     picker.textFieldPosition = TextFieldPosition.RIGHT
     picker
+  }
+
+  private boolean datePickerAccepts(LocalDate date) {
+    // This panel installs no DatePicker vetoPolicy; the range is its complete acceptance rule here.
+    date == null || (!date.isBefore(datePicker.start) && !date.isAfter(datePicker.end))
   }
 
   private BigDecimal parseAmount(String value) {

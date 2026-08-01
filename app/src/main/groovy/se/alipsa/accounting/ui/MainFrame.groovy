@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import groovy.swing.SwingBuilder
 import groovy.transform.CompileDynamic
+import groovy.transform.PackageScope
 
 import com.formdev.flatlaf.FlatClientProperties
 import com.formdev.flatlaf.util.SystemFileChooser
@@ -742,7 +743,8 @@ final class MainFrame implements PropertyChangeListener {
     if (fiscalYearComboBox == null) {
       return
     }
-    FiscalYear selected = (fiscalYearComboBox.selectedItem as FiscalYear) ?: activeCompanyManager.fiscalYear
+    FiscalYear selected = resolveFiscalYearToSelect(
+        fiscalYearComboBox.selectedItem as FiscalYear, activeCompanyManager.fiscalYear)
     java.awt.event.ActionListener[] listeners = fiscalYearComboBox.actionListeners
     listeners.each { fiscalYearComboBox.removeActionListener(it) }
     try {
@@ -764,6 +766,11 @@ final class MainFrame implements PropertyChangeListener {
     } finally {
       listeners.each { fiscalYearComboBox.addActionListener(it) }
     }
+  }
+
+  @PackageScope
+  static FiscalYear resolveFiscalYearToSelect(FiscalYear comboSelection, FiscalYear activeFiscalYear) {
+    activeFiscalYear ?: comboSelection
   }
 
   private void onFiscalYearComboBoxChanged() {

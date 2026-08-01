@@ -427,6 +427,64 @@ final class VoucherPanelNavigationTest {
   }
 
   @Test
+  void attachmentsTabReloadsWhenNavigatingToAnotherVoucherWhileAlreadyOnThatTab() {
+    Voucher withAttachment = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Har bilaga',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Path receipt = tempDir.resolve('kvitto.pdf')
+    Files.writeString(receipt, '%PDF-1.4 test')
+    attachmentService.addAttachment(withAttachment.id, receipt)
+    panel?.dispose()
+    panel = buildPanel()
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+
+    onEdt {
+      tabs.selectedIndex = 1
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+
+    assertEquals(1, onEdt { panel.attachmentTableModel.rowCount })
+  }
+
+  @Test
+  void savingAnAiSuggestedVoucherWithAnAttachmentConfirmsViaToastThenShowsItAfterNavigatingBack() {
+    Path receipt = tempDir.resolve('kvitto.pdf')
+    Files.writeString(receipt, '%PDF-1.4 test')
+
+    onEdt {
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
+          accounting_date: '2030-03-20',
+          description: 'AI förslag från PDF',
+          series_code: 'A',
+          attachment_path: receipt.toString(),
+          lines: [
+              [account_number: '1510', debit: 100.00G, credit: 0.00G],
+              [account_number: '3010', debit: 0.00G, credit: 100.00G]
+          ]
+      ])
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.save'))
+    }
+
+    Voucher saved = voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, fiscalYear.id).first()
+    assertEquals(1, attachmentService.listAttachments(saved.id).size())
+
+    String expectedToast = I18n.instance.format('voucherPanel.message.savedWithReceipt',
+        saved.voucherNumber ?: '', receipt.fileName.toString())
+    assertEquals(expectedToast, onEdt { panel.feedbackArea.text })
+    assertEquals(0, onEdt { panel.attachmentTableModel.rowCount })
+
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+    onEdt {
+      tabs.selectedIndex = 1
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+
+    assertEquals(1, onEdt { panel.attachmentTableModel.rowCount })
+  }
+
+  @Test
   void navigatingToASavedVoucherPopulatesNormalBalanceSideForEachLine() {
     voucherService.createVoucher(
         fiscalYear.id, 'A', LocalDate.of(2030, 3, 15), 'Saved voucher',
@@ -441,6 +499,97 @@ final class VoucherPanelNavigationTest {
 
     assertEquals('DEBIT', onEdt { panel.lineTableModel.rows[0].normalBalanceSide })
     assertEquals('CREDIT', onEdt { panel.lineTableModel.rows[1].normalBalanceSide })
+  }
+
+  @Test
+  void suggestedDateOutsideThePickersAllowedRangeIsRejectedToTheMcpCaller() {
+    DatePicker datePicker = findComponent(panel, DatePicker) { true }
+    LocalDate suggestedDate = onEdt { datePicker.end.plusDays(1) }
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
+          accounting_date: suggestedDate.toString(),
+          description: 'AI förslag från PDF',
+          series_code: 'A',
+          lines: [
+              [account_number: '1510', debit: 100.00G, credit: 0.00G],
+              [account_number: '3010', debit: 0.00G, credit: 100.00G]
+          ]
+      ])
+    }
+
+    String expected = "accounting_date ${suggestedDate} is outside the allowed date range " +
+        "(${datePicker.start} to ${datePicker.end})."
+    assertEquals(expected, exception.message)
+  }
+
+  @Test
+  void historyTabReloadsWhenNavigatingToAnotherVoucherWhileAlreadyOnThatTab() {
+    Voucher older = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Äldre verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    Voucher newer = voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 1), 'Nyare verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
+    JTable auditLogTable = tableWithFirstColumn(
+        panel, I18n.instance.getString('voucherEditor.table.auditLog.time'))
+    JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
+
+    onEdt {
+      tabs.selectedIndex = 2
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+    }
+
+    String selectedNumber = onEdt { voucherJumpField.text }
+    Voucher selectedVoucher = [older, newer].find { Voucher voucher -> voucher.voucherNumber == selectedNumber }
+    assertNotNull(selectedVoucher)
+    assertTrue(onEdt { auditLogTable.rowCount > 0 })
+    assertTrue(onEdt {
+      String summary = auditLogTable.getValueAt(0, 2) as String
+      summary.contains(selectedVoucher.description)
+    })
+  }
+
+  @Test
+  void aiSuggestedDraftAppliedWhileViewingASavedVoucherSurvivesBrowsingAwayAndBack() {
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 2, 1), 'Äldre sparad verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
+    )
+    voucherService.createVoucher(
+        fiscalYear.id, 'A', LocalDate.of(2030, 3, 1), 'Nyare sparad verifikation',
+        [voucherLine('1510', 'Kundfordringar', '', 200.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', '', 0.00G, 200.00G)]
+    )
+    panel?.dispose()
+    panel = buildPanel()
+    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+
+    onEdt {
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      panel.mcpVoucherDraftAccess.setVoucherDraft([
+          accounting_date: '2030-04-01',
+          description: 'AI förslag från PDF',
+          series_code: 'A',
+          lines: [
+              [account_number: '1510', debit: 150.00G, credit: 0.00G],
+              [account_number: '3010', debit: 0.00G, credit: 150.00G]
+          ]
+      ])
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
+      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.next'))
+    }
+
+    assertEquals('AI förslag från PDF', onEdt { description.text })
+    assertEquals('1510', onEdt { panel.lineTableModel.rows[0].accountNumber })
   }
 
   @Test
