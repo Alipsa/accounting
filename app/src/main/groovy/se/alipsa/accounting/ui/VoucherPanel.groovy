@@ -1145,23 +1145,27 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (currentVoucher == null) {
       return
     }
-    if (!confirmRecorrectionIfNeeded(currentVoucher.id)) {
+    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(currentVoucher.id)
+    if (!confirmRecorrectionIfNeeded(existingCorrectionNumbers)) {
       return
     }
     try {
-      int choice = javax.swing.JOptionPane.showConfirmDialog(
-          this,
-          I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-              .replace('{0}', currentVoucher.voucherNumber ?: ''),
-          I18n.instance.getString('voucherPanel.button.void'),
-          javax.swing.JOptionPane.YES_NO_OPTION
-      )
-      if (choice == javax.swing.JOptionPane.YES_OPTION) {
-        Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-        showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-            correction.voucherNumber ?: ''))
-        reloadVoucherList()
+      if (existingCorrectionNumbers.isEmpty()) {
+        int choice = javax.swing.JOptionPane.showConfirmDialog(
+            this,
+            I18n.instance.getString('voucherPanel.confirm.cannotDelete')
+                .replace('{0}', currentVoucher.voucherNumber ?: ''),
+            I18n.instance.getString('voucherPanel.button.void'),
+            javax.swing.JOptionPane.YES_NO_OPTION
+        )
+        if (choice != javax.swing.JOptionPane.YES_OPTION) {
+          return
+        }
       }
+      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
+      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
+          correction.voucherNumber ?: ''))
+      reloadVoucherList()
     } catch (Exception ex) {
       showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
     }
@@ -1173,14 +1177,17 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private boolean confirmRecorrectionIfNeeded(long voucherId) {
-    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(voucherId)
+    confirmRecorrectionIfNeeded(voucherService.findCorrectionVoucherNumbers(voucherId))
+  }
+
+  private boolean confirmRecorrectionIfNeeded(List<String> existingCorrectionNumbers) {
     if (shouldProceedWithRecorrection(existingCorrectionNumbers, false)) {
       return true
     }
     int choice = javax.swing.JOptionPane.showConfirmDialog(
         this,
         I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
-        I18n.instance.getString('voucherPanel.button.createCorrection'),
+        I18n.instance.getString('voucherPanel.confirm.alreadyCorrected.title'),
         javax.swing.JOptionPane.YES_NO_OPTION
     )
     shouldProceedWithRecorrection(existingCorrectionNumbers, choice == javax.swing.JOptionPane.YES_OPTION)

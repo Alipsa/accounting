@@ -4,7 +4,9 @@
 
 **Goal:** Surface "this voucher was corrected by <number(s)>" wherever a voucher can be viewed (transaction report, voucher editor), and warn — without hard-blocking — before creating another correction against an already-corrected voucher, in both the Swing GUI and the MCP tool.
 
-**Architecture:** A single new narrow query (`VoucherService.findCorrectionVoucherNumbers`) is the source of truth everywhere, keyed off the existing `voucher.original_voucher_id` column with no status filter. The transaction report gets a bulk, fiscal-year-scoped variant of the same idea (`ReportSqlLoader.loadCorrectionVoucherNumbersByOriginal`) to avoid N+1 queries. No schema changes.
+**Architecture:** A single new narrow query (`VoucherService.findCorrectionVoucherNumbers`) is the source of truth everywhere, keyed off the existing `voucher.original_voucher_id` column with no status filter. `VoucherService.findCorrectionVoucherNumbersForFiscalYear` provides the report's bulk, fiscal-year-scoped variant to avoid N+1 queries; `ReportDataService` uses `TransactionReportSupport` to format the localized display status. No schema changes.
+
+**Implementation alignment:** The report bulk lookup belongs in `VoucherService`, not `ReportSqlLoader`. The implementation uses `VoucherService.findCorrectionVoucherNumbersForFiscalYear(long)` and calls it once per report run. Do not add a second `ReportSqlLoader.loadCorrectionVoucherNumbersByOriginal` query. `TransactionReportRow.status` is intentionally the localized display value (`Aktiv`/`Korrigering`/`Korrigerad av ...` or English equivalents), not a programmatic raw status; branch on the source `PostingLine.status` or voucher status if that distinction is needed later.
 
 **Tech Stack:** Groovy, Gradle, JUnit 6 (`groovier-junit`), H2 (embedded), Swing, FreeMarker (report templates), a local MCP tool dispatcher.
 
@@ -23,7 +25,8 @@
 ## File Structure
 
 - **Modify** `app/src/main/groovy/se/alipsa/accounting/service/VoucherService.groovy` — add `findCorrectionVoucherNumbers(long): List<String>`.
-- **Modify** `app/src/main/groovy/se/alipsa/accounting/service/ReportSqlLoader.groovy` — add `loadCorrectionVoucherNumbersByOriginal(Sql, long): Map<Long, List<String>>`.
+- **Modify** `app/src/main/groovy/se/alipsa/accounting/service/VoucherService.groovy` — add the fiscal-year-scoped bulk correction lookup.
+- **Add** `app/src/main/groovy/se/alipsa/accounting/service/TransactionReportSupport.groovy` — format localized transaction-report statuses.
 - **Modify** `app/src/main/groovy/se/alipsa/accounting/service/ReportDataService.groovy` — use the bulk lookup in `buildTransactionReport`, localize the status column.
 - **Modify** `app/src/main/resources/i18n/messages.properties` / `messages_sv.properties` — new report-status, label, and confirmation keys.
 - **Modify** `app/src/main/groovy/se/alipsa/accounting/ui/VoucherPanel.groovy` — add `correctedByLabel`, wire it into `showVoucher()`/`refreshCaptionLabels()`/`showEmptyVoucher()`, add a shared `confirmRecorrectionIfNeeded` helper wired into both `correctionButton` and `deleteOrCancelVoucher()`.
@@ -130,15 +133,18 @@ EOF
 
 ### Task 2: Transaction report status column
 
+> **Current implementation note:** The original planning draft proposed a `ReportSqlLoader` bulk query. That approach was replaced by `VoucherService.findCorrectionVoucherNumbersForFiscalYear(long)`, which is the implemented and intended query owner. The status formatter lives in `TransactionReportSupport`; do not implement the obsolete `ReportSqlLoader.loadCorrectionVoucherNumbersByOriginal` variant described in the historical step-by-step text below.
+
 **Files:**
-- Modify: `app/src/main/groovy/se/alipsa/accounting/service/ReportSqlLoader.groovy` (add method after `loadPostingLines`, which ends at line 187)
+- Modify: `app/src/main/groovy/se/alipsa/accounting/service/VoucherService.groovy` (add the fiscal-year-scoped bulk lookup beside the narrow lookup)
+- Add: `app/src/main/groovy/se/alipsa/accounting/service/TransactionReportSupport.groovy` (format localized status display values)
 - Modify: `app/src/main/groovy/se/alipsa/accounting/service/ReportDataService.groovy:1067-1127` (`buildTransactionReport` and `transactionReportHeaders`)
 - Modify: `app/src/main/resources/i18n/messages.properties` and `messages_sv.properties`
 - Test: `app/src/test/groovy/integration/se/alipsa/accounting/service/ReportServicesTest.groovy`
 
 **Interfaces:**
-- Consumes: `VoucherService.findCorrectionVoucherNumbers` is NOT used here — the report uses its own bulk query for efficiency (see below), by design (spec: Design §1).
-- Produces: `ReportSqlLoader.loadCorrectionVoucherNumbersByOriginal(Sql sql, long fiscalYearId): Map<Long, List<String>>` — map of original voucher id → correction voucher numbers, for all corrections in that fiscal year.
+- Consumes: `VoucherService.findCorrectionVoucherNumbersForFiscalYear(long): Map<Long, List<String>>` — one bulk query for all corrections in the report's fiscal year.
+- Produces: localized transaction-report status display values through `TransactionReportSupport.status(...)`; `TransactionReportRow.status` intentionally stores that display value.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1229,3 +1235,12 @@ The `JOptionPane` confirmation dialogs still have no headless test coverage for 
 ## Review Round 2 Notes
 
 A second review pass caught: (1) several `VoucherPanel.groovy` line-number citations in Task 4 that go stale because Task 3 edits the same file first — fixed by anchoring those steps to method/field names instead, with the exact before/after code blocks doing the real work of locating the edit; (2) `report.tableRows[...][8]` in Task 2's tests was a fragile magic index — fixed to look the column up via `report.tableHeaders.indexOf(...)`; (3) `deleteOrCancelVoucher()`'s new warning check had zero test coverage, automated or manual, since `voidButton` is permanently disabled — fixed by extracting its `JOptionPane` behind a `cannotDeleteConfirmer` seam (same pattern as `recorrectionConfirmer`) and making the method `@PackageScope`, then adding two tests that call it directly; (4) `loadCorrectionVoucherNumbersByOriginal`'s fiscal-year scoping assumption is now called out with an explicit code comment, not just prose in this plan; (5) Task 7's manual verification now explicitly includes a Swedish-locale pass and a check that the new header row doesn't break the editor window's layout. `TransactionReportRow.status`/`PostingLine.status` being plain `String` (so `row.status == 'CORRECTION'` in Task 2 is type-safe) and `AccountingMcpTools.optionalBoolean` already existing (used as-is in Task 6) were both re-verified against the current source and needed no change. The spec + plan files were renamed from `superseded-voucher-marker*` to `corrected-voucher-marker*` to match the "Corrected by" terminology used throughout instead of the discarded "Superseded" wording.
+
+## Implemented-state corrections
+
+The implementation completed this plan with the following deliberate differences from the original execution recipe:
+
+- The report bulk lookup is `VoucherService.findCorrectionVoucherNumbersForFiscalYear(long)`, not a `ReportSqlLoader` method. `TransactionReportSupport` owns display-status formatting.
+- `TransactionReportRow.status` contains the localized display value; raw status branching remains in the `PostingLine`/voucher domain layer.
+- `correctedByLabel` shares the existing header row with `correctsLabel`; it does not add a second `GridBagLayout` row.
+- `deleteOrCancelVoucher()` reuses the re-correction confirmation when a correction already exists, so the stale second confirmation dialog is skipped. The re-correction dialog uses the neutral localized title `voucherPanel.confirm.alreadyCorrected.title`.

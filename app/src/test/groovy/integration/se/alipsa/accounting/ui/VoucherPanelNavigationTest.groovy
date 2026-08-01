@@ -145,6 +145,7 @@ final class VoucherPanelNavigationTest {
     assertTrue(VoucherPanel.shouldProceedWithRecorrection([], false))
     assertFalse(VoucherPanel.shouldProceedWithRecorrection(['A-2'], false))
     assertTrue(VoucherPanel.shouldProceedWithRecorrection(['A-2'], true))
+    assertTrue(I18n.instance.hasString('voucherPanel.confirm.alreadyCorrected.title'))
   }
 
   @Test

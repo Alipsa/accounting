@@ -46,6 +46,8 @@ For the transaction report, a bulk variant scoped to the report's fiscal year bu
 - If the row's `voucherId` is a key in the corrections map: render `I18n.format('transactionReport.status.correctedBy', correctionNumbers.join(', '))`, e.g. "Korrigerad av A12, A15".
 - Otherwise: render via new localized keys `transactionReport.status.active` / `transactionReport.status.correction`, replacing the current unlocalized raw-enum leak.
 
+`TransactionReportRow.status` is the report's display-status field after this change, so it contains the localized text rather than the raw `ACTIVE`/`CORRECTION` value. Programmatic status branching should use the source posting line or voucher status instead.
+
 New i18n keys (`messages.properties` and `messages_sv.properties`, following the existing `transactionReport.column.*` naming):
 - `transactionReport.status.active`
 - `transactionReport.status.correction`
