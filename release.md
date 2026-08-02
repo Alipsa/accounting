@@ -11,6 +11,7 @@
 - **Kimi inte längre markerad experimentell** — Kimi-stödet i AI-assistent-launchern är nu verifierat mot en riktig installation och visas som en fullt stödd klient, precis som Claude Code och Codex. Vibe är fortsatt markerad experimentell.
 - **Rätt räkenskapsår väljs efter ändringar** — Ett nyskapat räkenskapsår väljs direkt även om det är bakåtdaterat, och det aktiva året behålls när räkenskapsår stängs eller öppnas igen. Om det aktiva året tas bort väljs nästa tillgängliga år, och komboboxen följer det aktiva året även efter bolagsbyte.
 - **AI-utkast överlever navigering** — En osparad verifikation som AI-assistenten har föreslagit finns kvar när användaren bläddrar till sparade verifikationer och tillbaka till utkastet.
+- **Tydligare korrigeringsflöde** — Verifikationer som redan har korrigerats markeras nu med "Korrigerad av" i verifikationsvyn och transaktionsrapporter. GUI:t varnar innan en ytterligare korrigering skapas, och MCP-verktyget kräver `force: true` för samma situation.
 
 ### Buggfixar
 
