@@ -23,11 +23,10 @@ final class LoopbackMcpServer implements Closeable {
   static final int PORT = 48652
   static final String PATH = '/mcp'
   static final String ENDPOINT = "http://127.0.0.1:${PORT}${PATH}"
-  private static final String LOOPBACK_HOST = "127.0.0.1:${PORT}"
-  private static final String LOCALHOST_HOST = "localhost:${PORT}"
 
   private final UserPreferencesService preferences
   private final McpDispatcher dispatcher
+  private final int configuredPort
   private final JsonSlurper jsonSlurper = new JsonSlurper()
   // Sessions are intentionally process-local and are released by DELETE or application shutdown.
   private final Set<String> sessions = ConcurrentHashMap.newKeySet()
@@ -36,13 +35,23 @@ final class LoopbackMcpServer implements Closeable {
   private final McpOperationCoordinator operationCoordinator
   private HttpServer server
 
-  LoopbackMcpServer(UserPreferencesService preferences, McpDispatcher dispatcher = new McpDispatcher(), McpUiGuard uiGuard = null) {
+  LoopbackMcpServer(
+      UserPreferencesService preferences,
+      McpDispatcher dispatcher = new McpDispatcher(),
+      McpUiGuard uiGuard = null,
+      int configuredPort = PORT) {
     this.preferences = preferences
     this.dispatcher = dispatcher
+    this.configuredPort = configuredPort
     this.operationCoordinator = new McpOperationCoordinator(uiGuard ?: new McpUiGuard() {
       @Override void beginWrite() { }
       @Override void endWrite() { }
     })
+  }
+
+  String getEndpoint() {
+    int endpointPort = server == null ? configuredPort : server.address.port
+    "http://127.0.0.1:${endpointPort}${PATH}"
   }
 
   synchronized void start() {
@@ -50,7 +59,7 @@ final class LoopbackMcpServer implements Closeable {
       return
     }
     preferences.ensureMcpToken()
-    HttpServer created = HttpServer.create(new InetSocketAddress(InetAddress.loopbackAddress, PORT), 0)
+    HttpServer created = HttpServer.create(new InetSocketAddress(InetAddress.loopbackAddress, configuredPort), 0)
     created.createContext(PATH, new McpHandler())
     created.executor = executor
     created.start()
@@ -141,8 +150,11 @@ final class LoopbackMcpServer implements Closeable {
     String authorization = exchange.requestHeaders.getFirst('Authorization')
     String host = exchange.requestHeaders.getFirst('Host')
     String origin = exchange.requestHeaders.getFirst('Origin')
-    boolean validHost = host == LOOPBACK_HOST || host == LOCALHOST_HOST
-    boolean validOrigin = origin == null || origin == "http://${LOOPBACK_HOST}" || origin == "http://${LOCALHOST_HOST}"
+    int endpointPort = server == null ? configuredPort : server.address.port
+    String loopbackHost = "127.0.0.1:${endpointPort}"
+    String localhostHost = "localhost:${endpointPort}"
+    boolean validHost = host == loopbackHost || host == localhostHost
+    boolean validOrigin = origin == null || origin == "http://${loopbackHost}" || origin == "http://${localhostHost}"
     byte[] expectedHeader = "Bearer ${expected}".getBytes('UTF-8')
     byte[] suppliedHeader = authorization == null ? new byte[0] : authorization.getBytes('UTF-8')
     validHost && validOrigin && MessageDigest.isEqual(expectedHeader, suppliedHeader)

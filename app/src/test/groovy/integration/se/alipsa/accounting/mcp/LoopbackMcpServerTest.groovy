@@ -21,6 +21,11 @@ class LoopbackMcpServerTest {
   private final UserPreferencesService preferences = new UserPreferencesService(preferencesNode)
   private LoopbackMcpServer server
 
+  private void startServer() {
+    server = new LoopbackMcpServer(preferences, new McpDispatcher(), null, 0)
+    server.start()
+  }
+
   @AfterEach
   void tearDown() {
     server?.close()
@@ -29,10 +34,9 @@ class LoopbackMcpServerTest {
 
   @Test
   void rejectsUnauthenticatedRequestsAndIssuesSessionsForInitialize() {
-    server = new LoopbackMcpServer(preferences)
-    server.start()
+    startServer()
     HttpClient client = HttpClient.newHttpClient()
-    HttpResponse<String> rejected = client.send(HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+    HttpResponse<String> rejected = client.send(HttpRequest.newBuilder(URI.create(server.endpoint))
         .POST(HttpRequest.BodyPublishers.ofString('{}')).build(), HttpResponse.BodyHandlers.ofString())
     assertEquals(401, rejected.statusCode())
 
@@ -47,8 +51,7 @@ class LoopbackMcpServerTest {
 
   @Test
   void rejectsBadOriginsAndTerminatesSessions() {
-    server = new LoopbackMcpServer(preferences)
-    server.start()
+    startServer()
     HttpClient client = HttpClient.newHttpClient()
     HttpResponse<String> badOrigin = client.send(requestBuilder('{}').header('Origin', 'https://example.invalid').build(),
         HttpResponse.BodyHandlers.ofString())
@@ -57,19 +60,18 @@ class LoopbackMcpServerTest {
         params: [protocolVersion: McpDispatcher.PROTOCOL_VERSION]])
     HttpResponse<String> response = client.send(requestBuilder(initialize).build(), HttpResponse.BodyHandlers.ofString())
     String sessionId = response.headers().firstValue('Mcp-Session-Id').orElseThrow()
-    HttpResponse<String> deleted = client.send(HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+    HttpResponse<String> deleted = client.send(HttpRequest.newBuilder(URI.create(server.endpoint))
         .header('Authorization', "Bearer ${preferences.ensureMcpToken()}")
         .header('Mcp-Session-Id', sessionId).DELETE().build(), HttpResponse.BodyHandlers.ofString())
     assertEquals(204, deleted.statusCode())
-    HttpResponse<String> get = client.send(HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+    HttpResponse<String> get = client.send(HttpRequest.newBuilder(URI.create(server.endpoint))
         .header('Authorization', "Bearer ${preferences.ensureMcpToken()}").GET().build(), HttpResponse.BodyHandlers.ofString())
     assertEquals(405, get.statusCode())
   }
 
   @Test
   void reportsMalformedJsonAsAParseError() {
-    server = new LoopbackMcpServer(preferences)
-    server.start()
+    startServer()
 
     HttpResponse<String> response = HttpClient.newHttpClient().send(requestBuilder('{').build(), HttpResponse.BodyHandlers.ofString())
 
@@ -79,7 +81,7 @@ class LoopbackMcpServerTest {
   }
 
   private HttpRequest.Builder requestBuilder(String body) {
-    HttpRequest.newBuilder(URI.create(LoopbackMcpServer.ENDPOINT))
+    HttpRequest.newBuilder(URI.create(server.endpoint))
         .header('Authorization', "Bearer ${preferences.ensureMcpToken()}")
         .POST(HttpRequest.BodyPublishers.ofString(body))
   }
