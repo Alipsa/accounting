@@ -45,10 +45,37 @@ final class AccountService {
 
   private static final Set<String> VALID_NORMAL_BALANCE_SIDES = ['DEBIT', 'CREDIT'] as Set<String>
 
+  private static final String ACCOUNT_SELECT_COLUMNS = '''
+      select id,
+             company_id as companyId,
+             account_number as accountNumber,
+             account_name as accountName,
+             account_class as accountClass,
+             normal_balance_side as normalBalanceSide,
+             vat_code as vatCode,
+             active,
+             manual_review_required as manualReviewRequired,
+             classification_note as classificationNote,
+             account_subgroup as accountSubgroup,
+             sru_code as sruCode,
+             sru_code2 as sruCode2
+        from account
+  '''
+
   private final DatabaseService databaseService
+  private final AuditLogService auditLogService
 
   AccountService(DatabaseService databaseService = DatabaseService.instance) {
     this.databaseService = databaseService
+    this.auditLogService = new AuditLogService(databaseService)
+  }
+
+  static boolean isKnownAccountClass(String accountClass) {
+    accountClass in VALID_ACCOUNT_CLASSES
+  }
+
+  static boolean isKnownNormalBalanceSide(String normalBalanceSide) {
+    normalBalanceSide in VALID_NORMAL_BALANCE_SIDES
   }
 
   static String normalizeSruCode(String value) {
@@ -100,35 +127,9 @@ final class AccountService {
   List<Account> searchAccounts(long companyId, String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
-      StringBuilder query = new StringBuilder('''
-          select id,
-                 company_id as companyId,
-                 account_number as accountNumber,
-                 account_name as accountName,
-                 account_class as accountClass,
-                 normal_balance_side as normalBalanceSide,
-                 vat_code as vatCode,
-                 active,
-                 manual_review_required as manualReviewRequired,
-                 classification_note as classificationNote,
-                 account_subgroup as accountSubgroup,
-                 sru_code as sruCode,
-                 sru_code2 as sruCode2
-            from account
-           where company_id = ?
-      ''')
+      StringBuilder query = new StringBuilder(ACCOUNT_SELECT_COLUMNS).append(' where company_id = ?')
       List<Object> params = [companyId]
-
-      String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
-      if (normalizedQuery) {
-        query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
-        String numberPattern = normalizedQuery.matches('[0-9]+')
-            ? "${normalizedQuery}%" as String
-            : "%${normalizedQuery}%" as String
-        String namePattern = "%${normalizedQuery}%"
-        params << numberPattern
-        params << namePattern
-      }
+      appendTextSearch(query, params, queryText)
 
       if (classFilter?.trim()) {
         query.append(' and account_class = ?')
@@ -146,6 +147,49 @@ final class AccountService {
         mapAccount(row)
       }
     }
+  }
+
+  /**
+   * Accounts missing account_class or normal_balance_side, regardless of active flag or
+   * manual_review_required. These are the accounts that block year-end closing when they have
+   * posted activity (see ClosingService.listUnclassifiedAccountsWithActivity).
+   */
+  List<Account> searchUnclassifiedAccounts(long companyId, String queryText, boolean manualReviewOnly = false) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      StringBuilder query = new StringBuilder(ACCOUNT_SELECT_COLUMNS)
+          .append(' where company_id = ? and (account_class is null or normal_balance_side is null)')
+      List<Object> params = [companyId]
+      appendTextSearch(query, params, queryText)
+      if (manualReviewOnly) {
+        query.append(' and manual_review_required = true')
+      }
+
+      query.append(' order by account_number')
+      sql.rows(query.toString(), params).collect { GroovyRowResult row ->
+        mapAccount(row)
+      }
+    }
+  }
+
+  private static void appendTextSearch(StringBuilder query, List<Object> params, String queryText) {
+    String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
+    if (normalizedQuery) {
+      query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
+      String numberPattern = normalizedQuery.matches('[0-9]+')
+          ? "${normalizedQuery}%" as String
+          : "%${normalizedQuery}%" as String
+      String namePattern = "%${normalizedQuery}%"
+      params << numberPattern
+      params << namePattern
+    }
+  }
+
+  /**
+   * Resolves a VAT code stored as text, or null when the name matches no enum constant.
+   */
+  static VatCode parseVatCode(String vatCodeName) {
+    VatCode.values().find { VatCode candidate -> candidate.name() == vatCodeName }
   }
 
   Account findAccount(long companyId, String accountNumber) {
@@ -178,6 +222,7 @@ final class AccountService {
     CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
+      Account previous = requireAccount(sql, companyId, normalized)
       int updated = sql.executeUpdate('''
           update account
              set active = ?,
@@ -187,6 +232,10 @@ final class AccountService {
       ''', [active, companyId, normalized])
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      }
+      if (previous.active != active) {
+        auditLogService.recordAccountUpdated(sql, companyId, previous,
+            loadAccount(sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}"))
       }
     }
   }
@@ -208,10 +257,10 @@ final class AccountService {
     if (!normalizedName) {
       throw new IllegalArgumentException('Kontots namn får inte vara tomt.')
     }
-    if (!(accountClass in VALID_ACCOUNT_CLASSES)) {
+    if (!isKnownAccountClass(accountClass)) {
       throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
     }
-    if (!(normalBalanceSide in VALID_NORMAL_BALANCE_SIDES)) {
+    if (!isKnownNormalBalanceSide(normalBalanceSide)) {
       throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
     }
     if (vatCode != null && !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
@@ -223,6 +272,7 @@ final class AccountService {
     String normalizedSruCode2 = requireValidSruCode(sruCode2)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
+      Account previous = requireAccount(sql, companyId, normalized)
       int updated = sql.executeUpdate('''
           update account
              set account_name = ?,
@@ -244,6 +294,98 @@ final class AccountService {
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }
+      Account current = loadAccount(sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      if (!sameAccountState(previous, current)) {
+        auditLogService.recordAccountUpdated(sql, companyId, previous, current)
+      }
+    }
+  }
+
+  private static boolean sameAccountState(Account a, Account b) {
+    a.accountName == b.accountName &&
+        a.accountClass == b.accountClass &&
+        a.normalBalanceSide == b.normalBalanceSide &&
+        a.vatCode == b.vatCode &&
+        a.active == b.active &&
+        a.manualReviewRequired == b.manualReviewRequired &&
+        a.classificationNote == b.classificationNote &&
+        a.sruCode == b.sruCode &&
+        a.sruCode2 == b.sruCode2
+  }
+
+  /**
+   * Reclassifies one account: sets account_class and normal_balance_side, clears
+   * manual_review_required and the classification note, and leaves every other field (name,
+   * VAT code, active flag, SRU codes) exactly as the row currently holds it - the row is read
+   * inside the same transaction as the write, so edits made elsewhere in between are never
+   * reverted. Used by the MCP update_account tool.
+   */
+  Account updateAccountClassification(long companyId, String accountNumber, String accountClass, String normalBalanceSide) {
+    CompanyService.requireValidCompanyId(companyId)
+    if (!isKnownAccountClass(accountClass)) {
+      throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
+    }
+    if (!isKnownNormalBalanceSide(normalBalanceSide)) {
+      throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
+    }
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withTransaction { Sql sql ->
+      Account previous = requireAccount(sql, companyId, normalized)
+      if (previous.vatCode) {
+        VatCode vatCode = parseVatCode(previous.vatCode)
+        if (vatCode == null) {
+          throw new IllegalArgumentException(
+              "Kontots momskod ${previous.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}."
+          )
+        }
+        if (!isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
+          throw new IllegalArgumentException(
+              "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${previous.vatCode}."
+          )
+        }
+      }
+      sql.executeUpdate('''
+          update account
+             set account_class = ?,
+                 normal_balance_side = ?,
+                 manual_review_required = false,
+                 classification_note = null,
+                 updated_at = current_timestamp
+           where company_id = ?
+             and account_number = ?
+      ''', [accountClass, normalBalanceSide, companyId, normalized])
+      Account current = loadAccount(sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      if (!sameAccountState(previous, current)) {
+        auditLogService.recordAccountUpdated(sql, companyId, previous, current)
+      }
+      current
+    }
+  }
+
+  /**
+   * How much posted data references the account: distinct posted vouchers, voucher lines and
+   * fiscal years. Used by the MCP account-update preview to show the blast radius of a
+   * classification change.
+   */
+  AccountUsageSummary summarizeAccountUsage(long companyId, String accountNumber) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withSql { Sql sql ->
+      Account account = requireAccount(sql, companyId, normalized)
+      GroovyRowResult row = sql.firstRow('''
+          select count(distinct v.id) as voucherCount,
+                 count(*) as lineCount,
+                 count(distinct v.fiscal_year_id) as fiscalYearCount
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+      ''', [account.id]) as GroovyRowResult
+      new AccountUsageSummary(
+          ((Number) row.get('voucherCount')).intValue(),
+          ((Number) row.get('lineCount')).intValue(),
+          ((Number) row.get('fiscalYearCount')).intValue()
+      )
     }
   }
 
@@ -251,10 +393,10 @@ final class AccountService {
     CompanyService.requireValidCompanyId(companyId)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
-      Account account = requireAccount(sql, companyId, normalized)
-      if (vatCode != null && !isVatCompatible(account, vatCode)) {
+      Account previous = requireAccount(sql, companyId, normalized)
+      if (vatCode != null && !isVatCompatible(previous, vatCode)) {
         throw new IllegalArgumentException(
-            "Konto ${normalized} med kontoklass ${account.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
+            "Konto ${normalized} med kontoklass ${previous.accountClass} är inte kompatibelt med momskod ${vatCode.name()}."
         )
       }
       int updated = sql.executeUpdate('''
@@ -266,6 +408,10 @@ final class AccountService {
       ''', [vatCode?.name(), companyId, normalized])
       if (updated != 1) {
         throw new IllegalStateException("Konto ${normalized} kunde inte uppdateras med momskod.")
+      }
+      if ((previous.vatCode ?: null) != (vatCode?.name() ?: null)) {
+        auditLogService.recordAccountUpdated(sql, companyId, previous,
+            loadAccount(sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}"))
       }
     }
   }
@@ -329,7 +475,7 @@ final class AccountService {
     accountClass in VAT_COMPATIBLE_CLASSES
   }
 
-  private static boolean isVatCompatible(Account account, VatCode vatCode) {
+  static boolean isVatCompatible(Account account, VatCode vatCode) {
     if (!isVatCompatibleClass(account.accountClass)) {
       return false
     }
@@ -824,5 +970,13 @@ final class AccountService {
     int totalCount
     int activeCount
     int manualReviewCount
+  }
+
+  @Canonical
+  static final class AccountUsageSummary {
+
+    int voucherCount
+    int voucherLineCount
+    int fiscalYearCount
   }
 }
