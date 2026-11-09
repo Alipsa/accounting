@@ -127,11 +127,22 @@ final class AccountEditorDialog {
       classCombo.selectedIndex = initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, account.accountClass)
       sideCombo.selectedIndex = initialIndex(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES, account.normalBalanceSide)
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
+
+      boolean initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
+      boolean[] reviewAutoCleared = [false] as boolean[]
+      Closure clearReviewFlagOnceClassified = {
+        if (initiallyUnclassified && !reviewAutoCleared[0]
+            && classCombo.selectedIndex > 0 && sideCombo.selectedIndex > 0) {
+          reviewCheckBox.selected = false
+          reviewAutoCleared[0] = true
+        }
+      }
       classCombo.addActionListener {
         populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
-        if (account.accountClass == null && classCombo.selectedIndex > 0) {
-          reviewCheckBox.selected = false
-        }
+        clearReviewFlagOnceClassified()
+      }
+      sideCombo.addActionListener {
+        clearReviewFlagOnceClassified()
       }
 
       panel = buildEditorPanel(
@@ -265,7 +276,8 @@ final class AccountEditorDialog {
     legend
   }
 
-  private static final class VatCodeChoice {
+  @PackageScope
+  static final class VatCodeChoice {
 
     final VatCode vatCode
     final String label

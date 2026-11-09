@@ -617,6 +617,7 @@ tasks.withType(GroovyCompile).configureEach {
 
 tasks.named('test') {
   useJUnitPlatform()
+  systemProperty 'java.awt.headless', 'true'
 }
 
 codenarc {
