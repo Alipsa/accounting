@@ -32,12 +32,15 @@ final class AccountEditorDialog {
 
   static AccountEditorResult show(Component parent, Account account, List<SruSuggestion> sruSuggestions = []) {
     JTextField nameField = new JTextField(account.accountName, 24)
-    JComboBox<String> classCombo = new JComboBox<>(ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { String accountClass ->
-      ChartOfAccountsPanel.displayAccountClass(accountClass)
-    } as String[])
-    JComboBox<String> sideCombo = new JComboBox<>(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.collect { String side ->
-      ChartOfAccountsPanel.displayNormalBalanceSide(side)
-    } as String[])
+    String notSpecified = I18n.instance.getString('chartOfAccountsPanel.edit.notSpecified')
+    JComboBox<String> classCombo = new JComboBox<>(
+        ([notSpecified] + ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { String accountClass ->
+          ChartOfAccountsPanel.displayAccountClass(accountClass)
+        }) as String[])
+    JComboBox<String> sideCombo = new JComboBox<>(
+        ([notSpecified] + ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.collect { String side ->
+          ChartOfAccountsPanel.displayNormalBalanceSide(side)
+        }) as String[])
     JComboBox<VatCodeChoice> vatCombo = new JComboBox<>()
     JCheckBox activeCheckBox = new JCheckBox()
     activeCheckBox.selected = account.active
@@ -47,8 +50,8 @@ final class AccountEditorDialog {
     JTextField sruCode2Field = new JTextField(account.sruCode2, 10)
     JPanel sruSuggestionPanel = buildSruSuggestionPanel(sruSuggestions, sruCodeField)
 
-    classCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf(account.accountClass))
-    sideCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide))
+    classCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf(account.accountClass)) + 1
+    sideCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide)) + 1
     populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
     classCombo.addActionListener {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
@@ -57,32 +60,50 @@ final class AccountEditorDialog {
     JPanel editorPanel = buildEditorPanel(
         nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox,
         sruCodeField, sruCode2Field, sruSuggestionPanel)
-    int result = JOptionPane.showConfirmDialog(
-        parent,
-        editorPanel,
-        I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
-        JOptionPane.OK_CANCEL_OPTION,
-        JOptionPane.PLAIN_MESSAGE
-    )
-    if (result != JOptionPane.OK_OPTION) {
-      return null
+    while (true) {
+      int result = JOptionPane.showConfirmDialog(
+          parent,
+          editorPanel,
+          I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
+          JOptionPane.OK_CANCEL_OPTION,
+          JOptionPane.PLAIN_MESSAGE
+      )
+      if (result != JOptionPane.OK_OPTION) {
+        return null
+      }
+      String accountClass = selectedAccountClass(classCombo)
+      String normalBalanceSide = selectedNormalBalanceSide(sideCombo)
+      if (!accountClass || !normalBalanceSide) {
+        JOptionPane.showMessageDialog(
+            parent,
+            I18n.instance.getString('chartOfAccountsPanel.edit.classificationRequired'),
+            I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
+            JOptionPane.WARNING_MESSAGE
+        )
+        continue
+      }
+      VatCodeChoice selectedVatChoice = vatCombo.selectedItem as VatCodeChoice
+      return new AccountEditorResult(
+          nameField.text,
+          accountClass,
+          normalBalanceSide,
+          selectedVatChoice?.vatCode,
+          activeCheckBox.selected,
+          reviewCheckBox.selected,
+          sruCodeField.text,
+          sruCode2Field.text
+      )
     }
-
-    VatCodeChoice selectedVatChoice = vatCombo.selectedItem as VatCodeChoice
-    new AccountEditorResult(
-        nameField.text,
-        selectedAccountClass(classCombo),
-        ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[sideCombo.selectedIndex],
-        selectedVatChoice?.vatCode,
-        activeCheckBox.selected,
-        reviewCheckBox.selected,
-        sruCodeField.text,
-        sruCode2Field.text
-    )
   }
 
   private static String selectedAccountClass(JComboBox<String> classCombo) {
-    ChartOfAccountsPanel.ACCOUNT_CLASSES[classCombo.selectedIndex]
+    int index = classCombo.selectedIndex
+    index <= 0 ? null : ChartOfAccountsPanel.ACCOUNT_CLASSES[index - 1]
+  }
+
+  private static String selectedNormalBalanceSide(JComboBox<String> sideCombo) {
+    int index = sideCombo.selectedIndex
+    index <= 0 ? null : ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[index - 1]
   }
 
   private static void populateVatCombo(JComboBox<VatCodeChoice> vatCombo, String accountClass, String currentVatCodeValue) {
