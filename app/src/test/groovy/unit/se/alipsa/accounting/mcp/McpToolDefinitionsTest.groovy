@@ -39,4 +39,38 @@ class McpToolDefinitionsTest {
     assertEquals('boolean', force.type)
     assertFalse((inputSchema.required as List<String>).contains('force'))
   }
+
+  @Test
+  void accountClassificationToolsFollowThePreviewConfirmPattern() {
+    Map<String, Object> previewDef = McpToolDefinitions.listTools().find { Map<String, Object> tool ->
+      tool.name == 'preview_account_update'
+    } as Map<String, Object>
+    assertNotNull(previewDef, 'preview_account_update tool definition must be registered')
+    Map<String, Object> previewSchema = previewDef.inputSchema as Map<String, Object>
+    List<String> previewRequired = previewSchema.required as List<String>
+    assertTrue(previewRequired.containsAll(['company_id', 'account_number', 'account_class', 'normal_balance_side']))
+    assertFalse(previewRequired.contains('preview_token'))
+
+    Map<String, Object> updateDef = McpToolDefinitions.listTools().find { Map<String, Object> tool ->
+      tool.name == 'update_account'
+    } as Map<String, Object>
+    assertNotNull(updateDef, 'update_account tool definition must be registered')
+    Map<String, Object> updateSchema = updateDef.inputSchema as Map<String, Object>
+    List<String> updateRequired = updateSchema.required as List<String>
+    assertTrue(updateRequired.containsAll(['company_id', 'account_number', 'account_class', 'normal_balance_side', 'preview_token']))
+  }
+
+  @Test
+  void listAccountsSchemaSupportsManualReviewFilter() {
+    Map<String, Object> listDef = McpToolDefinitions.listTools().find { Map<String, Object> tool ->
+      tool.name == 'list_accounts'
+    } as Map<String, Object>
+    assertNotNull(listDef)
+    Map<String, Object> listSchema = listDef.inputSchema as Map<String, Object>
+    Map<String, Object> properties = listSchema.get('properties') as Map<String, Object>
+
+    assertEquals('boolean', (properties.manual_review_required as Map<String, Object>).type)
+    assertTrue((listSchema.required as List<String>).contains('company_id'))
+    assertFalse((listSchema.required as List<String>).contains('manual_review_required'))
+  }
 }

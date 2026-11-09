@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.support.AppPaths
 
@@ -205,6 +206,45 @@ class AccountServiceTest {
         CompanyService.LEGACY_COMPANY_ID, '1510')
     assertEquals('LIABILITY', updated.accountClass)
     assertEquals('CREDIT', updated.normalBalanceSide)
+  }
+
+  @Test
+  void updateAccountWritesAuditEntryWithBeforeAndAfterValues() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false)
+
+    List<AuditLogEntry> entries = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+    AuditLogEntry entry = entries.find { AuditLogEntry auditEntry ->
+      auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT
+    }
+    assertNotNull(entry, 'Updating an account must write an UPDATE_ACCOUNT audit entry')
+    assertEquals('8314', AuditLogService.parseDetails(entry.details).accountNumber)
+    assertEquals('INCOME', AuditLogService.parseDetails(entry.details).accountClass)
+    assertEquals('CREDIT', AuditLogService.parseDetails(entry.details).normalBalanceSide)
+    assertNull(AuditLogService.parseDetails(entry.details).previousAccountClass)
+    assertEquals('OUTPUT_25', AuditLogService.parseDetails(entry.details).vatCode)
+    assertEquals('false', AuditLogService.parseDetails(entry.details).manualReviewRequired)
+  }
+
+  @Test
+  void summarizeAccountUsageReturnsZeroForUnusedAccount() {
+    AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(
+        CompanyService.LEGACY_COMPANY_ID, '8314')
+
+    assertEquals(0, usage.voucherCount)
+    assertEquals(0, usage.voucherLineCount)
+    assertEquals(0, usage.fiscalYearCount)
+  }
+
+  @Test
+  void summarizeAccountUsageRejectsUnknownAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.summarizeAccountUsage(CompanyService.LEGACY_COMPANY_ID, '9999')
+    }
+
+    assertTrue(exception.message.contains(AccountService.UNKNOWN_ACCOUNT_MESSAGE_PREFIX))
   }
 
   @Test

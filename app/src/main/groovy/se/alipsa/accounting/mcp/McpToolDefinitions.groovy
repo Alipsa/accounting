@@ -9,7 +9,23 @@ final class McpToolDefinitions {
   }
 
   static List<Map<String, Object>> listTools() {
-    readOnlyToolDefs() + voucherToolDefs() + vatWriteToolDefs() + yearEndToolDefs() + sieToolDefs()
+    readOnlyToolDefs() + voucherToolDefs() + accountWriteToolDefs() + vatWriteToolDefs() + yearEndToolDefs() + sieToolDefs()
+  }
+
+  private static List<Map<String, Object>> accountWriteToolDefs() {
+    [
+        toolDef('update_account',
+            'Applies a classification change to one account using the preview_token from preview_account_update for the same values. Clears manual_review_required and the classification note, and writes an audit-log entry. Name, VAT code, active flag and SRU codes are left unchanged.',
+            ['company_id', 'account_number', 'account_class', 'normal_balance_side', 'preview_token'],
+            [
+                company_id: intParam('Company ID'),
+                account_number: strParam('Four-digit account number to reclassify.'),
+                account_class: strParam('Account class: ASSET, LIABILITY, EQUITY, INCOME or EXPENSE.'),
+                normal_balance_side: strParam('Normal balance side: DEBIT or CREDIT.'),
+                preview_token: strParam('Token returned by preview_account_update for the same account and values.')
+            ]
+        ),
+    ]
   }
 
   private static List<Map<String, Object>> readOnlyToolDefs() {
@@ -34,11 +50,22 @@ final class McpToolDefinitions {
             [company_id: intParam('Company ID')]
         ),
         toolDef('list_accounts',
-            'Returns active accounts in the chart of accounts for the given company. Use this before preparing a voucher so account numbers are not guessed. Accepts an optional query string.',
+            'Returns active accounts in the chart of accounts for the given company. Use this before preparing a voucher so account numbers are not guessed. Accepts an optional query string, and optional manual_review_required: true to list only accounts lacking a verified classification (these block year-end closing). Account output includes account_class, normal_balance_side, manual_review_required, classification_note and account_subgroup.',
             ['company_id'],
             [
                 company_id: intParam('Company ID'),
-                query: optStrParam('Optional search string (account number or name)')
+                query: optStrParam('Optional search string (account number or name)'),
+                manual_review_required: optBoolParam('Optional: true returns only accounts flagged for manual review (unverified classification).')
+            ]
+        ),
+        toolDef('preview_account_update',
+            'Previews a classification change (account_class and/or normal_balance_side) for one account without writing anything. Returns the current account, the proposed values, how many posted vouchers/lines and fiscal years reference the account, any VAT-code compatibility problem, and a preview_token. Use it to clear accounts flagged manual_review_required, e.g. after a SIE import of BAS class 8 accounts. Apply with update_account.',
+            ['company_id', 'account_number', 'account_class', 'normal_balance_side'],
+            [
+                company_id: intParam('Company ID'),
+                account_number: strParam('Four-digit account number to reclassify.'),
+                account_class: strParam('Proposed account class: ASSET, LIABILITY, EQUITY, INCOME or EXPENSE.'),
+                normal_balance_side: strParam('Proposed normal balance side: DEBIT or CREDIT.')
             ]
         ),
         toolDef('list_accounting_instructions',

@@ -4,6 +4,7 @@ import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.PackageScope
 
+import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AccountingPeriod
 import se.alipsa.accounting.domain.AttachmentMetadata
 import se.alipsa.accounting.domain.AuditLogEntry
@@ -25,6 +26,7 @@ final class AuditLogService {
 
   static final String CREATE_VOUCHER = 'CREATE_VOUCHER'
   static final String UPDATE_VOUCHER = 'UPDATE_VOUCHER'
+  static final String UPDATE_ACCOUNT = 'UPDATE_ACCOUNT'
   static final String CANCEL_VOUCHER = 'CANCEL_VOUCHER'
   static final String CORRECTION_VOUCHER = 'CORRECTION_VOUCHER'
   static final String ATTACHMENT_ADDED = 'ATTACHMENT_ADDED'
@@ -498,6 +500,25 @@ final class AuditLogService {
             endDate      : fiscalYear.endDate,
             closed       : fiscalYear.closed
         ]))
+  }
+
+  @PackageScope
+  AuditLogEntry recordAccountUpdated(Sql sql, long companyId, Account account, Map<String, Object> previousValues) {
+    recordEvent(sql, UPDATE_ACCOUNT, AuditReferences.EMPTY,
+        "Konto uppdaterat: ${account.accountNumber} ${account.accountName}", formatDetails([
+            accountNumber               : account.accountNumber,
+            accountName                 : account.accountName,
+            previousAccountClass        : previousValues.accountClass,
+            accountClass                : account.accountClass,
+            previousNormalBalanceSide   : previousValues.normalBalanceSide,
+            normalBalanceSide           : account.normalBalanceSide,
+            previousVatCode             : previousValues.vatCode,
+            vatCode                     : account.vatCode,
+            active                      : account.active,
+            manualReviewRequired        : account.manualReviewRequired,
+            sruCode                     : account.sruCode,
+            sruCode2                    : account.sruCode2
+        ]), companyId)
   }
 
   @PackageScope

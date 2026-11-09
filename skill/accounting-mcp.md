@@ -21,7 +21,7 @@ Always read before you write. Gather context first, propose actions, then place 
 | `list_companies` | All companies registered in this installation, including legal form; empty list if none exist yet |
 | `get_company_info` | Company name, currency, VAT periodicity, and legal form (AB/Handelsbolag/Enskild firma) |
 | `list_fiscal_years` | All fiscal years with open/closed status |
-| `list_accounts` | Chart of accounts; supports optional query string filter |
+| `list_accounts` | Chart of accounts; supports optional query string filter and `manual_review_required: true` to list only accounts with unverified classification; output includes `account_class`, `normal_balance_side`, `manual_review_required`, `classification_note` |
 | `list_accounting_instructions` | Company-approved recurring account mappings and voucher conventions |
 | `list_vouchers` | Recent vouchers and their posting lines for a fiscal year |
 | `get_trial_balance` | Opening balance, period debit/credit, closing balance per account |
@@ -32,6 +32,7 @@ Always read before you write. Gather context first, propose actions, then place 
 | `get_active_voucher_draft` | Read the unsaved voucher draft currently shown in the desktop application |
 | `preview_year_end` | Year-end pre-checks: blocking issues, warnings, net result; returns `preview_token` only when ready |
 | `preview_sie_import` | Preview a SIE4 import; returns `import_token` only when importable |
+| `preview_account_update` | Preview a classification change (`account_class`/`normal_balance_side`) for one account: current vs proposed values, affected voucher/line/fiscal-year counts, VAT-code compatibility, and a `preview_token` |
 | `list_import_jobs` | Recent SIE import history |
 
 ### Write tools
@@ -48,6 +49,7 @@ Only call write tools after the user explicitly confirms the proposed action.
 | `lock_fiscal_year` | Lock a fiscal year as closed without year-end closing (no closing voucher or opening balances); use for imported historical years already closed in the source system; optional `reason` is audit-logged |
 | `import_sie` | Import a SIE4 file using a token from `preview_sie_import` |
 | `export_sie` | Export a fiscal year as SIE4; no token, but overwrite needs confirmation |
+| `update_account` | Apply a classification change using a token from `preview_account_update`; clears `manual_review_required` and writes an audit-log entry |
 
 ## Workflow: Voucher Entry
 
@@ -116,6 +118,23 @@ Only call write tools after the user explicitly confirms the proposed action.
    source data. Note that replacing the year via `import_sie` with `replace_existing` reopens it.
 3. Ask for confirmation and an optional reason (e.g. "Already closed in Fortnox").
 4. Only call `lock_fiscal_year` after confirmation, passing `company_id`, `fiscal_year_id` and the optional `reason`.
+
+## Workflow: Reclassify an unclassified account
+
+1. Find the accounts that block closing.
+   When `preview_year_end` reports accounts that lack `account_class` or `normal_balance_side`,
+   call `list_accounts` with `manual_review_required: true` to list them with their
+   `classification_note`.
+2. Propose a classification.
+   Decide the class from BAS conventions (account range 3xxx income, 4xxx-7xxx expense, 8xxx by
+   subgroup: 80-83 income, 84-89 expense; 8999 Årets resultat is EXPENSE/DEBIT) and the account's
+   actual usage in `get_general_ledger`. Call `preview_account_update` with the proposed
+   `account_class` and `normal_balance_side` and show the current vs proposed values, the affected
+   voucher/line/fiscal-year counts, and any VAT-code compatibility error.
+3. Ask the user to confirm the proposed classification.
+4. Only call `update_account` after confirmation, passing the `preview_token` from step 2. The
+   change clears `manual_review_required` and is written to the audit log. Re-run
+   `preview_year_end` afterwards if the account blocked year-end closing.
 
 ## Workflow: SIE Import
 

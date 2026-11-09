@@ -46,9 +46,19 @@ final class AccountService {
   private static final Set<String> VALID_NORMAL_BALANCE_SIDES = ['DEBIT', 'CREDIT'] as Set<String>
 
   private final DatabaseService databaseService
+  private final AuditLogService auditLogService
 
   AccountService(DatabaseService databaseService = DatabaseService.instance) {
     this.databaseService = databaseService
+    this.auditLogService = new AuditLogService(databaseService)
+  }
+
+  static boolean isKnownAccountClass(String accountClass) {
+    accountClass in VALID_ACCOUNT_CLASSES
+  }
+
+  static boolean isKnownNormalBalanceSide(String normalBalanceSide) {
+    normalBalanceSide in VALID_NORMAL_BALANCE_SIDES
   }
 
   static String normalizeSruCode(String value) {
@@ -208,10 +218,10 @@ final class AccountService {
     if (!normalizedName) {
       throw new IllegalArgumentException('Kontots namn får inte vara tomt.')
     }
-    if (!(accountClass in VALID_ACCOUNT_CLASSES)) {
+    if (!isKnownAccountClass(accountClass)) {
       throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
     }
-    if (!(normalBalanceSide in VALID_NORMAL_BALANCE_SIDES)) {
+    if (!isKnownNormalBalanceSide(normalBalanceSide)) {
       throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
     }
     if (vatCode != null && !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
@@ -223,6 +233,7 @@ final class AccountService {
     String normalizedSruCode2 = requireValidSruCode(sruCode2)
     String normalized = normalizeAccountNumber(accountNumber)
     databaseService.withTransaction { Sql sql ->
+      Account previous = requireAccount(sql, companyId, normalized)
       int updated = sql.executeUpdate('''
           update account
              set account_name = ?,
@@ -244,6 +255,39 @@ final class AccountService {
       if (updated != 1) {
         throw new IllegalArgumentException("${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
       }
+      auditLogService.recordAccountUpdated(sql, companyId, loadAccount(
+          sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}"), [
+          accountClass      : previous.accountClass,
+          normalBalanceSide : previous.normalBalanceSide,
+          vatCode           : previous.vatCode
+      ])
+    }
+  }
+
+  /**
+   * How much posted data references the account: distinct posted vouchers, voucher lines and
+   * fiscal years. Used by the MCP account-update preview to show the blast radius of a
+   * classification change.
+   */
+  AccountUsageSummary summarizeAccountUsage(long companyId, String accountNumber) {
+    CompanyService.requireValidCompanyId(companyId)
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withSql { Sql sql ->
+      Account account = requireAccount(sql, companyId, normalized)
+      GroovyRowResult row = sql.firstRow('''
+          select count(distinct v.id) as voucherCount,
+                 count(*) as lineCount,
+                 count(distinct v.fiscal_year_id) as fiscalYearCount
+            from voucher_line vl
+            join voucher v on v.id = vl.voucher_id
+           where vl.account_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+      ''', [account.id]) as GroovyRowResult
+      new AccountUsageSummary(
+          ((Number) row.get('voucherCount')).intValue(),
+          ((Number) row.get('lineCount')).intValue(),
+          ((Number) row.get('fiscalYearCount')).intValue()
+      )
     }
   }
 
@@ -824,5 +868,13 @@ final class AccountService {
     int totalCount
     int activeCount
     int manualReviewCount
+  }
+
+  @Canonical
+  static final class AccountUsageSummary {
+
+    int voucherCount
+    int voucherLineCount
+    int fiscalYearCount
   }
 }
