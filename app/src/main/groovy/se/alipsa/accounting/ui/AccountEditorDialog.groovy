@@ -105,6 +105,7 @@ final class AccountEditorDialog {
     final JTextField sruCode2Field
     final JPanel panel
 
+    private final boolean initiallyUnclassified
     private boolean reviewAutoCleared
 
     EditorForm(Account account, List<SruSuggestion> sruSuggestions) {
@@ -130,13 +131,13 @@ final class AccountEditorDialog {
       sideCombo.selectedIndex = initialIndex(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES, account.normalBalanceSide)
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
 
-      boolean initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
+      initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
       classCombo.addActionListener {
         populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
-        clearReviewFlagOnceClassified(initiallyUnclassified)
+        clearReviewFlagOnceClassified()
       }
       sideCombo.addActionListener {
-        clearReviewFlagOnceClassified(initiallyUnclassified)
+        clearReviewFlagOnceClassified()
       }
 
       panel = buildEditorPanel(
@@ -144,7 +145,7 @@ final class AccountEditorDialog {
           sruCodeField, sruCode2Field, buildSruSuggestionPanel(sruSuggestions, sruCodeField))
     }
 
-    private void clearReviewFlagOnceClassified(boolean initiallyUnclassified) {
+    private void clearReviewFlagOnceClassified() {
       if (initiallyUnclassified && !reviewAutoCleared
           && classCombo.selectedIndex > 0 && sideCombo.selectedIndex > 0) {
         reviewCheckBox.selected = false
