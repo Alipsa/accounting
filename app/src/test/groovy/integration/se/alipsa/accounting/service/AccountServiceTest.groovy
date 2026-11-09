@@ -225,7 +225,9 @@ class AccountServiceTest {
     assertEquals('Resultat övriga värdepapper', details.accountName)
     assertEquals('INCOME', details.accountClass)
     assertEquals('CREDIT', details.normalBalanceSide)
-    assertNull(details.previousAccountClass)
+    assertEquals('(saknas)', details.previousAccountClass)
+    assertTrue(details.changedFields.split(',').contains('accountClass'))
+    assertTrue(details.changedFields.split(',').contains('classificationNote'))
     assertEquals('OUTPUT_25', details.vatCode)
     assertEquals('false', details.manualReviewRequired)
     assertEquals('Kontot kunde inte klassificeras automatiskt från BAS-importen.', details.previousClassificationNote)
@@ -271,7 +273,7 @@ class AccountServiceTest {
     Map<String, String> details = AuditLogService.parseDetails(entries.first().details)
     assertEquals('1510', details.accountNumber)
     assertEquals('INPUT_25', details.vatCode)
-    assertNull(details.previousVatCode)
+    assertEquals('(saknas)', details.previousVatCode)
   }
 
   @Test
@@ -312,6 +314,45 @@ class AccountServiceTest {
         CompanyService.LEGACY_COMPANY_ID, null)
 
     assertEquals(['8314', '8990'], unclassified*.accountNumber)
+  }
+
+  @Test
+  void updateAccountClassificationKeepsFieldsOutsideTheClassificationFromTheCurrentRow() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'Försäljning',
+        'INCOME', 'CREDIT', null, true, false, '7210', null)
+    // The account is renamed elsewhere; a later classification change must not revert that.
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'Försäljning tjänst',
+        'INCOME', 'CREDIT', null, true, false, '7210', null)
+
+    Account updated = accountService.updateAccountClassification(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'EXPENSE', 'DEBIT')
+
+    assertEquals('EXPENSE', updated.accountClass)
+    assertEquals('DEBIT', updated.normalBalanceSide)
+    assertEquals('Försäljning tjänst', updated.accountName)
+    assertEquals('7210', updated.sruCode)
+    assertNull(updated.classificationNote)
+
+    AuditLogEntry entry = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    Map<String, String> details = AuditLogService.parseDetails(entry.details)
+    assertEquals('INCOME', details.previousAccountClass)
+    assertFalse(details.changedFields.split(',').contains('accountName'))
+  }
+
+  @Test
+  void updateAccountClassificationRejectsVatCodeIncompatibleWithNewClass() {
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '2611', VatCode.OUTPUT_25)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.updateAccountClassification(
+          CompanyService.LEGACY_COMPANY_ID, '2611', 'ASSET', 'DEBIT')
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
   }
 
   @Test

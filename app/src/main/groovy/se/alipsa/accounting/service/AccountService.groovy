@@ -107,38 +107,29 @@ final class AccountService {
     }
   }
 
+  private static final String ACCOUNT_SELECT_COLUMNS = '''
+      select id,
+             company_id as companyId,
+             account_number as accountNumber,
+             account_name as accountName,
+             account_class as accountClass,
+             normal_balance_side as normalBalanceSide,
+             vat_code as vatCode,
+             active,
+             manual_review_required as manualReviewRequired,
+             classification_note as classificationNote,
+             account_subgroup as accountSubgroup,
+             sru_code as sruCode,
+             sru_code2 as sruCode2
+        from account
+  '''
+
   List<Account> searchAccounts(long companyId, String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
-      StringBuilder query = new StringBuilder('''
-          select id,
-                 company_id as companyId,
-                 account_number as accountNumber,
-                 account_name as accountName,
-                 account_class as accountClass,
-                 normal_balance_side as normalBalanceSide,
-                 vat_code as vatCode,
-                 active,
-                 manual_review_required as manualReviewRequired,
-                 classification_note as classificationNote,
-                 account_subgroup as accountSubgroup,
-                 sru_code as sruCode,
-                 sru_code2 as sruCode2
-            from account
-           where company_id = ?
-      ''')
+      StringBuilder query = new StringBuilder(ACCOUNT_SELECT_COLUMNS).append(' where company_id = ?')
       List<Object> params = [companyId]
-
-      String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
-      if (normalizedQuery) {
-        query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
-        String numberPattern = normalizedQuery.matches('[0-9]+')
-            ? "${normalizedQuery}%" as String
-            : "%${normalizedQuery}%" as String
-        String namePattern = "%${normalizedQuery}%"
-        params << numberPattern
-        params << namePattern
-      }
+      appendTextSearch(query, params, queryText)
 
       if (classFilter?.trim()) {
         query.append(' and account_class = ?')
@@ -163,43 +154,51 @@ final class AccountService {
    * manual_review_required. These are the accounts that block year-end closing when they have
    * posted activity (see ClosingService.listUnclassifiedAccountsWithActivity).
    */
-  List<Account> searchUnclassifiedAccounts(long companyId, String queryText) {
+  List<Account> searchUnclassifiedAccounts(long companyId, String queryText, boolean manualReviewOnly = false) {
     CompanyService.requireValidCompanyId(companyId)
     databaseService.withSql { Sql sql ->
-      StringBuilder query = new StringBuilder('''
-          select id,
-                 company_id as companyId,
-                 account_number as accountNumber,
-                 account_name as accountName,
-                 account_class as accountClass,
-                 normal_balance_side as normalBalanceSide,
-                 vat_code as vatCode,
-                 active,
-                 manual_review_required as manualReviewRequired,
-                 classification_note as classificationNote,
-                 account_subgroup as accountSubgroup,
-                 sru_code as sruCode,
-                 sru_code2 as sruCode2
-            from account
-           where company_id = ?
-             and (account_class is null or normal_balance_side is null)
-      ''')
+      StringBuilder query = new StringBuilder(ACCOUNT_SELECT_COLUMNS)
+          .append(' where company_id = ? and (account_class is null or normal_balance_side is null)')
       List<Object> params = [companyId]
-
-      String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
-      if (normalizedQuery) {
-        query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
-        String numberPattern = normalizedQuery.matches('[0-9]+')
-            ? "${normalizedQuery}%" as String
-            : "%${normalizedQuery}%" as String
-        params << numberPattern
-        params << "%${normalizedQuery}%"
+      appendTextSearch(query, params, queryText)
+      if (manualReviewOnly) {
+        query.append(' and manual_review_required = true')
       }
 
       query.append(' order by account_number')
       sql.rows(query.toString(), params).collect { GroovyRowResult row ->
         mapAccount(row)
       }
+    }
+  }
+
+  private static void appendTextSearch(StringBuilder query, List<Object> params, String queryText) {
+    String normalizedQuery = queryText?.trim()?.toLowerCase(Locale.ROOT)
+    if (normalizedQuery) {
+      query.append(' and (lower(account_number) like ? or lower(account_name) like ?)')
+      String numberPattern = normalizedQuery.matches('[0-9]+')
+          ? "${normalizedQuery}%" as String
+          : "%${normalizedQuery}%" as String
+      String namePattern = "%${normalizedQuery}%"
+      params << numberPattern
+      params << namePattern
+    }
+  }
+
+  /**
+   * The id of the company's newest audit-log entry, 0 when the company has none. Account-update
+   * preview tokens include this so that a token can never repeat: every account write appends a
+   * new audit entry, so the value moves forward on every change even when the account returns
+   * to an earlier state (A→B→A→B cycles).
+   */
+  long latestAuditEventId(long companyId) {
+    CompanyService.requireValidCompanyId(companyId)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow(
+          'select coalesce(max(id), 0) as maxId from audit_log where company_id = ?',
+          [companyId]
+      ) as GroovyRowResult
+      ((Number) row.get('maxId')).longValue()
     }
   }
 
@@ -322,6 +321,50 @@ final class AccountService {
         a.classificationNote == b.classificationNote &&
         a.sruCode == b.sruCode &&
         a.sruCode2 == b.sruCode2
+  }
+
+  /**
+   * Reclassifies one account: sets account_class and normal_balance_side, clears
+   * manual_review_required and the classification note, and leaves every other field (name,
+   * VAT code, active flag, SRU codes) exactly as the row currently holds it - the row is read
+   * inside the same transaction as the write, so edits made elsewhere in between are never
+   * reverted. Used by the MCP update_account tool.
+   */
+  Account updateAccountClassification(long companyId, String accountNumber, String accountClass, String normalBalanceSide) {
+    CompanyService.requireValidCompanyId(companyId)
+    if (!isKnownAccountClass(accountClass)) {
+      throw new IllegalArgumentException("Okänd kontoklass: ${accountClass}")
+    }
+    if (!isKnownNormalBalanceSide(normalBalanceSide)) {
+      throw new IllegalArgumentException("Okänd normalsida: ${normalBalanceSide}")
+    }
+    String normalized = normalizeAccountNumber(accountNumber)
+    databaseService.withTransaction { Sql sql ->
+      Account previous = requireAccount(sql, companyId, normalized)
+      if (previous.vatCode) {
+        VatCode vatCode = VatCode.values().find { VatCode candidate -> candidate.name() == previous.vatCode }
+        if (vatCode == null || !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
+          throw new IllegalArgumentException(
+              "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${previous.vatCode}."
+          )
+        }
+      }
+      sql.executeUpdate('''
+          update account
+             set account_class = ?,
+                 normal_balance_side = ?,
+                 manual_review_required = false,
+                 classification_note = null,
+                 updated_at = current_timestamp
+           where company_id = ?
+             and account_number = ?
+      ''', [accountClass, normalBalanceSide, companyId, normalized])
+      Account current = loadAccount(sql, companyId, normalized, "${UNKNOWN_ACCOUNT_MESSAGE_PREFIX} ${normalized}")
+      if (!sameAccountState(previous, current)) {
+        auditLogService.recordAccountUpdated(sql, companyId, previous, current)
+      }
+      current
+    }
   }
 
   /**

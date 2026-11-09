@@ -56,7 +56,7 @@ final class McpToolDefinitions {
                 company_id: intParam('Company ID'),
                 query: optStrParam('Optional search string (account number or name)'),
                 manual_review_required: optBoolParam('Optional: true returns only accounts flagged for manual review (unverified classification).'),
-                unclassified: optBoolParam('Optional: true returns accounts missing account_class or normal_balance_side, including inactive ones. These block year-end closing when they have posted activity.')
+                unclassified: optBoolParam('Optional: true returns accounts missing account_class or normal_balance_side, including inactive ones. These block year-end closing when they have posted activity. If manual_review_required is also true, only accounts matching both filters are returned.')
             ]
         ),
         toolDef('preview_account_update',

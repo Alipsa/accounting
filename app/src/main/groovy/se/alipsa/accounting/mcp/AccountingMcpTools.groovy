@@ -330,11 +330,12 @@ class AccountingMcpTools {
   private Map<String, Object> listAccounts(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     String query = args.get('query') as String
+    boolean manualReviewOnly = optionalBoolean(args, 'manual_review_required', false)
     boolean unclassifiedOnly = optionalBoolean(args, 'unclassified', false)
+    // When both filters are given both must match.
     List<Account> accounts = unclassifiedOnly
-        ? accountService.searchUnclassifiedAccounts(companyId, query)
-        : accountService.searchAccounts(
-            companyId, query, null, true, optionalBoolean(args, 'manual_review_required', false))
+        ? accountService.searchUnclassifiedAccounts(companyId, query, manualReviewOnly)
+        : accountService.searchAccounts(companyId, query, null, true, manualReviewOnly)
     [
         ok: true,
         accounts: accounts.collect { Account a -> accountMap(a) }
@@ -358,15 +359,21 @@ class AccountingMcpTools {
         return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
       }
       List<String> errors = []
-      if (account.vatCode && !AccountService.isVatCompatible(
-          new Account(accountClass: accountClass), VatCode.valueOf(account.vatCode))) {
-        errors.add(
-            "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${account.vatCode}.".toString()
-        )
+      if (account.vatCode) {
+        VatCode currentVatCode = VatCode.values().find { VatCode candidate -> candidate.name() == account.vatCode }
+        if (currentVatCode == null) {
+          errors.add("Kontots momskod ${account.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}.".toString())
+        } else if (!AccountService.isVatCompatible(new Account(accountClass: accountClass), currentVatCode)) {
+          errors.add(
+              "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${account.vatCode}.".toString()
+          )
+        }
       }
       AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(companyId, accountNumber)
-      boolean unchanged =
-          account.accountClass == accountClass && account.normalBalanceSide == normalBalanceSide && !account.manualReviewRequired
+      boolean unchanged = account.accountClass == accountClass &&
+          account.normalBalanceSide == normalBalanceSide &&
+          !account.manualReviewRequired &&
+          !account.classificationNote
       boolean valid = errors.isEmpty()
       [
           ok: valid,
@@ -383,10 +390,13 @@ class AccountingMcpTools {
               fiscal_year_count: usage.fiscalYearCount
           ],
           // No token when nothing would change; re-applying an already-used state must not
-          // return the identical, consumed token. The token binds the account's current state,
-          // so a change made elsewhere after the preview invalidates it.
+          // return the identical, consumed token. The token binds the account's current state
+          // and the newest audit-log id, so a change made elsewhere after the preview
+          // invalidates it and no state sequence can ever repeat a consumed token.
           preview_token: valid && !unchanged
-              ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, account)
+              ? accountUpdateToken(
+                  companyId, accountNumber, accountClass, normalBalanceSide, account,
+                  accountService.latestAuditEventId(companyId))
               : null
       ]
     } catch (Exception exception) {
@@ -409,27 +419,17 @@ class AccountingMcpTools {
       if (current == null) {
         return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
       }
-      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, current)
+      String expectedToken = accountUpdateToken(
+          companyId, accountNumber, accountClass, normalBalanceSide, current,
+          accountService.latestAuditEventId(companyId))
       if (providedToken != expectedToken) {
-        return [ok: false, errors: ['preview_token stämmer inte — kontot har ändrats sedan förhandsgranskningen, kör preview_account_update igen.']]
+        return [ok: false, errors: ['preview_token matchar inte kontot eller de förhandsgranskade värdena — kör preview_account_update igen.']]
       }
       if (!previewTokenLedger.reserve(token)) {
         return [ok: false, errors: ['preview_token har redan använts — kör preview_account_update igen.']]
       }
       Account updated = (Account) previewTokenLedger.executeReservedWrite(token) {
-        accountService.updateAccount(
-            companyId,
-            accountNumber,
-            current.accountName,
-            accountClass,
-            normalBalanceSide,
-            current.vatCode ? VatCode.valueOf(current.vatCode) : null,
-            current.active,
-            false,
-            current.sruCode,
-            current.sruCode2
-        )
-        accountService.findAccount(companyId, accountNumber)
+        accountService.updateAccountClassification(companyId, accountNumber, accountClass, normalBalanceSide)
       }
       [ok: true, account: accountMap(updated)]
     } catch (Exception exception) {
@@ -1081,7 +1081,8 @@ class AccountingMcpTools {
       String accountNumber,
       String accountClass,
       String normalBalanceSide,
-      Account currentState
+      Account currentState,
+      long latestAuditEventId
   ) {
     computePreviewToken([
         company_id: companyId,
@@ -1089,12 +1090,15 @@ class AccountingMcpTools {
         account_class: accountClass,
         normal_balance_side: normalBalanceSide,
         // Bind the token to the account's current state so an outdated preview (changed
-        // elsewhere after previewing) no longer matches, while re-classifying the same account
-        // again later produces a fresh, distinct token.
+        // elsewhere after previewing) no longer matches. The newest audit-log id makes the
+        // token strictly increasing: every account write appends an audit entry, so even when
+        // the account returns to an earlier state (A->B->A->B) the token never repeats a
+        // consumed one.
         current_account_class: currentState?.accountClass,
         current_normal_balance_side: currentState?.normalBalanceSide,
         vat_code: currentState?.vatCode,
-        manual_review_required: currentState?.manualReviewRequired
+        manual_review_required: currentState?.manualReviewRequired,
+        latest_audit_event_id: latestAuditEventId
     ])
   }
 

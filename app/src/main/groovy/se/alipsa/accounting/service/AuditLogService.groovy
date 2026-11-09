@@ -516,20 +516,47 @@ final class AuditLogService {
         sruCode              : current.sruCode,
         sruCode2             : current.sruCode2
     ]
-    // Previous values are recorded only when they differ, so a rename shows the old name and
-    // a no-op field stays out of the entry entirely.
-    details.previousAccountName = previous.accountName != current.accountName ? previous.accountName : null
-    details.previousAccountClass = previous.accountClass != current.accountClass ? previous.accountClass : null
-    details.previousNormalBalanceSide =
-        previous.normalBalanceSide != current.normalBalanceSide ? previous.normalBalanceSide : null
-    details.previousVatCode = previous.vatCode != current.vatCode ? previous.vatCode : null
-    details.previousActive = previous.active != current.active ? previous.active : null
-    details.previousManualReviewRequired =
-        previous.manualReviewRequired != current.manualReviewRequired ? previous.manualReviewRequired : null
-    details.previousClassificationNote =
-        previous.classificationNote != current.classificationNote ? previous.classificationNote : null
-    details.previousSruCode = previous.sruCode != current.sruCode ? previous.sruCode : null
-    details.previousSruCode2 = previous.sruCode2 != current.sruCode2 ? previous.sruCode2 : null
+    // Every changed field gets an explicit previous* line. A previously-empty value is written
+    // as the (saknas) marker rather than dropped, so "was unclassified -> INCOME" is visible in
+    // the ledger and can't be confused with "field unchanged".
+    List<String> changedFields = []
+    if (previous.accountName != current.accountName) {
+      changedFields << 'accountName'
+      details.previousAccountName = previous.accountName ?: '(saknas)'
+    }
+    if (previous.accountClass != current.accountClass) {
+      changedFields << 'accountClass'
+      details.previousAccountClass = previous.accountClass ?: '(saknas)'
+    }
+    if (previous.normalBalanceSide != current.normalBalanceSide) {
+      changedFields << 'normalBalanceSide'
+      details.previousNormalBalanceSide = previous.normalBalanceSide ?: '(saknas)'
+    }
+    if (previous.vatCode != current.vatCode) {
+      changedFields << 'vatCode'
+      details.previousVatCode = previous.vatCode ?: '(saknas)'
+    }
+    if (previous.active != current.active) {
+      changedFields << 'active'
+      details.previousActive = previous.active
+    }
+    if (previous.manualReviewRequired != current.manualReviewRequired) {
+      changedFields << 'manualReviewRequired'
+      details.previousManualReviewRequired = previous.manualReviewRequired
+    }
+    if (previous.classificationNote != current.classificationNote) {
+      changedFields << 'classificationNote'
+      details.previousClassificationNote = previous.classificationNote ?: '(saknas)'
+    }
+    if (previous.sruCode != current.sruCode) {
+      changedFields << 'sruCode'
+      details.previousSruCode = previous.sruCode ?: '(saknas)'
+    }
+    if (previous.sruCode2 != current.sruCode2) {
+      changedFields << 'sruCode2'
+      details.previousSruCode2 = previous.sruCode2 ?: '(saknas)'
+    }
+    details.changedFields = changedFields.join(',')
     recordEvent(sql, UPDATE_ACCOUNT, AuditReferences.EMPTY,
         "Konto uppdaterat: ${current.accountNumber} ${current.accountName}", formatDetails(details), companyId)
   }
