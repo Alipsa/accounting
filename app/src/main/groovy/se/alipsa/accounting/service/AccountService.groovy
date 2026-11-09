@@ -45,6 +45,23 @@ final class AccountService {
 
   private static final Set<String> VALID_NORMAL_BALANCE_SIDES = ['DEBIT', 'CREDIT'] as Set<String>
 
+  private static final String ACCOUNT_SELECT_COLUMNS = '''
+      select id,
+             company_id as companyId,
+             account_number as accountNumber,
+             account_name as accountName,
+             account_class as accountClass,
+             normal_balance_side as normalBalanceSide,
+             vat_code as vatCode,
+             active,
+             manual_review_required as manualReviewRequired,
+             classification_note as classificationNote,
+             account_subgroup as accountSubgroup,
+             sru_code as sruCode,
+             sru_code2 as sruCode2
+        from account
+  '''
+
   private final DatabaseService databaseService
   private final AuditLogService auditLogService
 
@@ -106,23 +123,6 @@ final class AccountService {
       )
     }
   }
-
-  private static final String ACCOUNT_SELECT_COLUMNS = '''
-      select id,
-             company_id as companyId,
-             account_number as accountNumber,
-             account_name as accountName,
-             account_class as accountClass,
-             normal_balance_side as normalBalanceSide,
-             vat_code as vatCode,
-             active,
-             manual_review_required as manualReviewRequired,
-             classification_note as classificationNote,
-             account_subgroup as accountSubgroup,
-             sru_code as sruCode,
-             sru_code2 as sruCode2
-        from account
-  '''
 
   List<Account> searchAccounts(long companyId, String queryText, String classFilter, boolean activeOnly, boolean manualReviewOnly) {
     CompanyService.requireValidCompanyId(companyId)
@@ -186,20 +186,10 @@ final class AccountService {
   }
 
   /**
-   * The id of the company's newest audit-log entry, 0 when the company has none. Account-update
-   * preview tokens include this so that a token can never repeat: every account write appends a
-   * new audit entry, so the value moves forward on every change even when the account returns
-   * to an earlier state (A→B→A→B cycles).
+   * Resolves a VAT code stored as text, or null when the name matches no enum constant.
    */
-  long latestAuditEventId(long companyId) {
-    CompanyService.requireValidCompanyId(companyId)
-    databaseService.withSql { Sql sql ->
-      GroovyRowResult row = sql.firstRow(
-          'select coalesce(max(id), 0) as maxId from audit_log where company_id = ?',
-          [companyId]
-      ) as GroovyRowResult
-      ((Number) row.get('maxId')).longValue()
-    }
+  static VatCode parseVatCode(String vatCodeName) {
+    VatCode.values().find { VatCode candidate -> candidate.name() == vatCodeName }
   }
 
   Account findAccount(long companyId, String accountNumber) {
@@ -342,8 +332,13 @@ final class AccountService {
     databaseService.withTransaction { Sql sql ->
       Account previous = requireAccount(sql, companyId, normalized)
       if (previous.vatCode) {
-        VatCode vatCode = VatCode.values().find { VatCode candidate -> candidate.name() == previous.vatCode }
-        if (vatCode == null || !isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
+        VatCode vatCode = parseVatCode(previous.vatCode)
+        if (vatCode == null) {
+          throw new IllegalArgumentException(
+              "Kontots momskod ${previous.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}."
+          )
+        }
+        if (!isVatCompatible(new Account(accountClass: accountClass), vatCode)) {
           throw new IllegalArgumentException(
               "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${previous.vatCode}."
           )

@@ -445,6 +445,42 @@ class AccountClassificationMcpToolsTest {
   }
 
   @Test
+  void previewsOfSeveralAccountsCanBeConfirmedTogether() {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '8999', 'Årets resultat', null, null,
+              true, true, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+    }
+    Map<String, Object> preview8314 = previewClassification('INCOME', 'CREDIT')
+    Map<String, Object> preview8999 = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8999',
+        account_class: (Object) 'EXPENSE',
+        normal_balance_side: (Object) 'DEBIT'
+    ])
+    assertTrue((boolean) preview8314.get('ok'), "Expected ok but got: ${preview8314.get('errors')}")
+    assertTrue((boolean) preview8999.get('ok'), "Expected ok but got: ${preview8999.get('errors')}")
+
+    // The usual flow: both previews are confirmed one by one. Updating one account must not
+    // invalidate the other account's previewed token.
+    Map<String, Object> update8314 = tools.callTool('update_account', applyArgs('INCOME', 'CREDIT', preview8314.get('preview_token')))
+    assertTrue((boolean) update8314.get('ok'), "Expected ok but got: ${update8314.get('errors')}")
+    Map<String, Object> update8999 = tools.callTool('update_account', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8999',
+        account_class: (Object) 'EXPENSE',
+        normal_balance_side: (Object) 'DEBIT',
+        preview_token: (Object) preview8999.get('preview_token')
+    ])
+    assertTrue((boolean) update8999.get('ok'), "Expected ok but got: ${update8999.get('errors')}")
+  }
+
+  @Test
   void reclassificationCanBeRepeatedInAFullBackAndForthCycle() {
     // Tokens bind the newest audit-log id, which moves forward on every write, so no state
     // sequence can ever reproduce a consumed token.
@@ -462,7 +498,7 @@ class AccountClassificationMcpToolsTest {
   }
 
   @Test
-  void updateAccountAfterRenameElsewhereRejectsTokenAndKeepsTheNewName() {
+  void updateAccountAfterRenameElsewhereKeepsTheNewName() {
     Map<String, Object> preview = tools.callTool('preview_account_update', [
         company_id: (Object) 1L,
         account_number: (Object) '1930',
@@ -471,23 +507,24 @@ class AccountClassificationMcpToolsTest {
     ])
     assertTrue((boolean) preview.get('ok'), "Expected ok but got: ${preview.get('errors')}")
 
-    // The account is renamed in the GUI; every account write appends an audit entry, so the
-    // previewed token no longer matches.
+    // The account is renamed in the GUI between preview and update. The classification change
+    // only touches class/side/flag, reading the row inside the write transaction, so the
+    // rename must survive.
     accountService.updateAccount(
         CompanyService.LEGACY_COMPANY_ID, '1930', 'Huvudkonto',
         'ASSET', 'DEBIT', null, true, false)
 
-    Map<String, Object> stale = tools.callTool('update_account', [
+    Map<String, Object> result = tools.callTool('update_account', [
         company_id: (Object) 1L,
         account_number: (Object) '1930',
         account_class: (Object) 'LIABILITY',
         normal_balance_side: (Object) 'CREDIT',
         preview_token: (Object) preview.get('preview_token')
     ])
-    assertFalse((boolean) stale.get('ok'))
-    List<String> errors = (List<String>) stale.get('errors')
-    assertTrue(errors.any { String error -> error.contains('matchar inte') })
-    assertEquals('Huvudkonto', accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1930').accountName)
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    Map<String, Object> account = (Map<String, Object>) result.get('account')
+    assertEquals('LIABILITY', account.get('account_class'))
+    assertEquals('Huvudkonto', account.get('account_name'))
   }
 
   @Test

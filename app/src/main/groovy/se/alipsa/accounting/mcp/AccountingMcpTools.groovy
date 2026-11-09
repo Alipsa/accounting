@@ -41,6 +41,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Registry and implementation entrypoint for MCP tools, covering both read-only
@@ -61,6 +62,11 @@ class AccountingMcpTools {
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
   private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
+  // Per-account write sequence for preview tokens: raised on every successful MCP account
+  // update, so a token can never repeat even when the account returns to an earlier state
+  // (A->B->A->B). Independent per account, so previews of different accounts stay valid
+  // regardless of the order they are confirmed in.
+  private final Map<String, Integer> accountUpdateSequences = new ConcurrentHashMap<>()
 
   AccountingMcpTools() {
     this(
@@ -360,7 +366,7 @@ class AccountingMcpTools {
       }
       List<String> errors = []
       if (account.vatCode) {
-        VatCode currentVatCode = VatCode.values().find { VatCode candidate -> candidate.name() == account.vatCode }
+        VatCode currentVatCode = AccountService.parseVatCode(account.vatCode)
         if (currentVatCode == null) {
           errors.add("Kontots momskod ${account.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}.".toString())
         } else if (!AccountService.isVatCompatible(new Account(accountClass: accountClass), currentVatCode)) {
@@ -391,12 +397,10 @@ class AccountingMcpTools {
           ],
           // No token when nothing would change; re-applying an already-used state must not
           // return the identical, consumed token. The token binds the account's current state
-          // and the newest audit-log id, so a change made elsewhere after the preview
+          // and its per-account write sequence, so a change made elsewhere after the preview
           // invalidates it and no state sequence can ever repeat a consumed token.
           preview_token: valid && !unchanged
-              ? accountUpdateToken(
-                  companyId, accountNumber, accountClass, normalBalanceSide, account,
-                  accountService.latestAuditEventId(companyId))
+              ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, account)
               : null
       ]
     } catch (Exception exception) {
@@ -419,9 +423,7 @@ class AccountingMcpTools {
       if (current == null) {
         return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
       }
-      String expectedToken = accountUpdateToken(
-          companyId, accountNumber, accountClass, normalBalanceSide, current,
-          accountService.latestAuditEventId(companyId))
+      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, current)
       if (providedToken != expectedToken) {
         return [ok: false, errors: ['preview_token matchar inte kontot eller de förhandsgranskade värdena — kör preview_account_update igen.']]
       }
@@ -430,6 +432,9 @@ class AccountingMcpTools {
       }
       Account updated = (Account) previewTokenLedger.executeReservedWrite(token) {
         accountService.updateAccountClassification(companyId, accountNumber, accountClass, normalBalanceSide)
+      }
+      accountUpdateSequences.merge(accountUpdateSequenceKey(companyId, accountNumber), 1) { Integer oldValue, Integer newValue ->
+        oldValue + newValue
       }
       [ok: true, account: accountMap(updated)]
     } catch (Exception exception) {
@@ -1076,13 +1081,12 @@ class AccountingMcpTools {
     ])
   }
 
-  private static String accountUpdateToken(
+  private String accountUpdateToken(
       long companyId,
       String accountNumber,
       String accountClass,
       String normalBalanceSide,
-      Account currentState,
-      long latestAuditEventId
+      Account currentState
   ) {
     computePreviewToken([
         company_id: companyId,
@@ -1090,16 +1094,25 @@ class AccountingMcpTools {
         account_class: accountClass,
         normal_balance_side: normalBalanceSide,
         // Bind the token to the account's current state so an outdated preview (changed
-        // elsewhere after previewing) no longer matches. The newest audit-log id makes the
-        // token strictly increasing: every account write appends an audit entry, so even when
-        // the account returns to an earlier state (A->B->A->B) the token never repeats a
-        // consumed one.
+        // elsewhere after previewing) no longer matches. The per-account write sequence makes
+        // the token strictly increasing: it is raised on every successful MCP account update,
+        // so even when the account returns to an earlier state (A->B->A->B) the token never
+        // repeats a consumed one - while writes to other accounts or unrelated audit entries
+        // do not invalidate it.
         current_account_class: currentState?.accountClass,
         current_normal_balance_side: currentState?.normalBalanceSide,
         vat_code: currentState?.vatCode,
         manual_review_required: currentState?.manualReviewRequired,
-        latest_audit_event_id: latestAuditEventId
+        update_sequence: accountUpdateSequence(companyId, accountNumber)
     ])
+  }
+
+  private int accountUpdateSequence(long companyId, String accountNumber) {
+    accountUpdateSequences.getOrDefault(accountUpdateSequenceKey(companyId, accountNumber), 0)
+  }
+
+  private static String accountUpdateSequenceKey(long companyId, String accountNumber) {
+    "${companyId}:${accountNumber}"
   }
 
   private static String sieImportToken(long companyId, SieImportPreview preview) {
