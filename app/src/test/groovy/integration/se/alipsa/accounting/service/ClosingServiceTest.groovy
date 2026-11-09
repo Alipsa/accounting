@@ -253,6 +253,34 @@ class ClosingServiceTest {
   }
 
   @Test
+  void previewPlansFullYearAfterNonCalendarFiscalYear() {
+    FiscalYear brokenFiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019/2020', LocalDate.of(2019, 7, 1), LocalDate.of(2020, 6, 30))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(brokenFiscalYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2020, 7, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2021, 6, 30), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void previewPlansTwelveMonthsAfterLeapYear() {
+    FiscalYear leapYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(leapYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2021, 1, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2021, 12, 31), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
   void yearEndClosingReusesExistingNextYearWithDifferentLength() {
     FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))

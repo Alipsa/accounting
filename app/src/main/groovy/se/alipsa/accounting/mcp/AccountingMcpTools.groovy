@@ -745,18 +745,14 @@ class AccountingMcpTools {
       if (expectedCompanyId != companyId) {
         return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}.".toString()]]
       }
-      FiscalYear year = fiscalYearService.findById(fiscalYearId)
-      if (year.closed) {
-        return [ok: false, errors: ["Fiscal year ${year.name} is already closed.".toString()]]
-      }
-      FiscalYear locked = fiscalYearService.closeFiscalYear(fiscalYearId, reason)
+      FiscalYear locked = fiscalYearService.lockFiscalYear(fiscalYearId, reason)
       [
           ok: true,
           fiscal_year_id: locked.id,
           fiscal_year_name: locked.name,
           closed: locked.closed,
           closed_at: locked.closedAt?.toString(),
-          reason: reason?.trim() ?: null
+          reason: reason
       ]
     } catch (Exception exception) {
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]

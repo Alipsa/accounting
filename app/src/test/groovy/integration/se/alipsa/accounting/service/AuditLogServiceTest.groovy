@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -17,6 +18,7 @@ import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
+import java.time.LocalDate
 
 class AuditLogServiceTest {
 
@@ -64,6 +66,30 @@ class AuditLogServiceTest {
     assertTrue(entries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.BACKUP })
     assertTrue(entries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.RESTORE })
     assertEquals([], auditLogService.validateIntegrity())
+  }
+
+  @Test
+  void detailValuesCannotInjectAdditionalKeyLines() {
+    // The in-memory H2 URL used here cannot run createFiscalYear (H2 2.4 constant-list CHECK
+    // regression on vat_period.status), so insert the fiscal year row directly instead.
+    long fiscalYearId
+    databaseService.withTransaction { Sql sql ->
+      def keys = sql.executeInsert('''
+          insert into fiscal_year (company_id, name, start_date, end_date, closed, closed_at, created_at)
+          values (?, '2026', '2026-01-01', '2026-12-31', false, null, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      fiscalYearId = ((Number) keys.first().first()).longValue()
+      se.alipsa.accounting.domain.FiscalYear year = new se.alipsa.accounting.domain.FiscalYear(
+          fiscalYearId, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), false, null)
+      auditLogService.recordFiscalYearClosed(sql, year, 'x\nfiscalYearId=999\r\nreason=forged')
+    }
+
+    AuditLogEntry entry = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry candidate -> candidate.eventType == AuditLogService.CLOSE_FISCAL_YEAR }
+    assertNotNull(entry)
+    assertEquals(1, entry.details.readLines().count { String line -> line.startsWith('fiscalYearId=') },
+        'A reason must not be able to spoof additional key=value lines in the audit log')
+    assertTrue(entry.details.contains('reason=x fiscalYearId=999 reason=forged'))
   }
 
   @Test

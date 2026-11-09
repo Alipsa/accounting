@@ -484,7 +484,7 @@ final class AuditLogService {
             startDate    : fiscalYear.startDate,
             endDate      : fiscalYear.endDate,
             closedAt     : fiscalYear.closedAt,
-            reason       : reason?.trim() ?: null
+            reason       : reason
         ]))
   }
 
@@ -906,7 +906,13 @@ final class AuditLogService {
   }
 
   private static String formatDetails(Map<String, Object> details) {
-    Map<String, Object> safeDetails = details.findAll { String key, Object value ->
+    // Values come from user input (e.g. lock reasons, remediation reasons) and must not be
+    // able to inject extra key=value lines into the tamper-evident ledger.
+    Map<String, Object> sanitized = [:]
+    details.each { String key, Object value ->
+      sanitized[key] = sanitizeDetailValue(value)
+    }
+    Map<String, Object> safeDetails = sanitized.findAll { String key, Object value ->
       value != null
     }.sort { Map.Entry<String, Object> entry ->
       entry.key
@@ -914,6 +920,14 @@ final class AuditLogService {
     safeDetails.collect { String key, Object value ->
       "${key}=${value}"
     }.join('\n')
+  }
+
+  private static Object sanitizeDetailValue(Object value) {
+    if (!(value instanceof CharSequence)) {
+      return value
+    }
+    String sanitized = value.toString().replaceAll(/[\r\n]+/, ' ').trim()
+    sanitized ?: null
   }
 
   private static final class AuditReferences {

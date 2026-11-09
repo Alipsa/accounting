@@ -92,6 +92,24 @@ final class FiscalYearService {
     }
   }
 
+  /**
+   * Locks a fiscal year as closed, failing if it is already closed. Unlike
+   * {@link #closeFiscalYear(long, String)}, which is idempotent, this guards and writes in the
+   * same transaction so callers can report an exact outcome.
+   */
+  FiscalYear lockFiscalYear(long fiscalYearId, String reason) {
+    databaseService.withTransaction { Sql sql ->
+      FiscalYear year = findById(sql, fiscalYearId)
+      if (year == null) {
+        throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+      }
+      if (year.closed) {
+        throw new IllegalStateException("Räkenskapsåret ${year.name} är redan stängt.")
+      }
+      closeFiscalYear(sql, fiscalYearId, reason)
+    }
+  }
+
   FiscalYear reopenFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       reopenFiscalYear(sql, fiscalYearId)

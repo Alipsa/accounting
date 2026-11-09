@@ -10,10 +10,13 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.service.AccountService
 import se.alipsa.accounting.service.AccountingInstructionService
 import se.alipsa.accounting.service.AccountingPeriodService
+import se.alipsa.accounting.service.AttachmentService
 import se.alipsa.accounting.service.AuditLogService
+import se.alipsa.accounting.service.ClosingService
 import se.alipsa.accounting.service.CompanyService
 import se.alipsa.accounting.service.DatabaseService
 import se.alipsa.accounting.service.FiscalYearService
@@ -34,6 +37,7 @@ class FiscalYearLockMcpToolsTest {
 
   private String previousHome
   private DatabaseService databaseService
+  private AuditLogService auditLogService
   private FiscalYearService fiscalYearService
   private AccountingMcpTools tools
   private long fiscalYearId
@@ -45,13 +49,13 @@ class FiscalYearLockMcpToolsTest {
     databaseService = DatabaseService.newForTesting()
     databaseService.initialize()
 
-    AuditLogService auditLogService = new AuditLogService(databaseService)
+    auditLogService = new AuditLogService(databaseService)
     AccountingPeriodService periodService = new AccountingPeriodService(databaseService, auditLogService)
     CompanyService companyService = new CompanyService(databaseService)
     VoucherService voucherService = new VoucherService(databaseService, auditLogService)
     fiscalYearService = new FiscalYearService(databaseService, periodService, auditLogService)
     ReportIntegrityService reportIntegrityService = new ReportIntegrityService(
-        new se.alipsa.accounting.service.AttachmentService(databaseService, auditLogService),
+        new AttachmentService(databaseService, auditLogService),
         auditLogService
     )
 
@@ -61,7 +65,7 @@ class FiscalYearLockMcpToolsTest {
         new AccountService(databaseService),
         voucherService,
         new VatService(databaseService, voucherService, auditLogService),
-        new se.alipsa.accounting.service.ClosingService(
+        new ClosingService(
             databaseService,
             periodService,
             fiscalYearService,
@@ -73,7 +77,7 @@ class FiscalYearLockMcpToolsTest {
             databaseService,
             periodService,
             voucherService,
-            new CompanyService(databaseService),
+            companyService,
             reportIntegrityService,
             auditLogService,
             fiscalYearService
@@ -116,6 +120,12 @@ class FiscalYearLockMcpToolsTest {
       ) as GroovyRowResult
       assertEquals(0, ((Number) row.get('total')).intValue(), 'Locking must not create closing entries')
     }
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+    AuditLogEntry entry = auditEntries.find { AuditLogEntry auditEntry ->
+      auditEntry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && auditEntry.fiscalYearId == fiscalYearId
+    }
+    assertNotNull(entry, 'Locking must write a CLOSE_FISCAL_YEAR audit entry')
+    assertTrue(entry.details.contains('reason=Redan stängt i Fortnox'))
   }
 
   @Test
@@ -128,6 +138,12 @@ class FiscalYearLockMcpToolsTest {
     assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
     assertNull(result.get('reason'))
     assertTrue(fiscalYearService.findById(fiscalYearId).closed)
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+    AuditLogEntry entry = auditEntries.find { AuditLogEntry auditEntry ->
+      auditEntry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && auditEntry.fiscalYearId == fiscalYearId
+    }
+    assertNotNull(entry)
+    assertFalse(entry.details.contains('reason='))
   }
 
   @Test
@@ -144,7 +160,7 @@ class FiscalYearLockMcpToolsTest {
 
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
-    assertTrue(errors.any { String error -> error.contains('already closed') })
+    assertTrue(errors.any { String error -> error.contains('redan stängt') })
   }
 
   @Test

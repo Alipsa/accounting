@@ -110,9 +110,10 @@ Only call write tools after the user explicitly confirms the proposed action.
 ## Workflow: Lock an imported historical year
 
 1. Call `list_fiscal_years` and confirm the year is open.
-2. Explain that `lock_fiscal_year` only marks the year as closed (preventing new vouchers) and
-   does not create a closing voucher or opening balances - the right choice for historical years
-   imported from SIE whose closing entries already exist in the source data.
+2. Explain that `lock_fiscal_year` only marks the year as closed (the desktop application then
+   refuses new vouchers in it) and does not create a closing voucher or opening balances - the
+   right choice for historical years imported from SIE whose closing entries already exist in the
+   source data. Note that replacing the year via `import_sie` with `replace_existing` reopens it.
 3. Ask for confirmation and an optional reason (e.g. "Already closed in Fortnox").
 4. Only call `lock_fiscal_year` after confirmation, passing `company_id`, `fiscal_year_id` and the optional `reason`.
 

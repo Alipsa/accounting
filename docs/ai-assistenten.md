@@ -85,7 +85,7 @@ headers = { Authorization = "Bearer <token>" }
 
 Servern implementerar det faktiska Streamable-HTTP-MCP-protokollet (initialize-handskakning plus `Mcp-Session-Id` på varje efterföljande anrop) och avvisar anrop utan giltig session. Vibes `transport = "http"` är ett enklare, sessionslöst läge och fungerar inte mot den här servern — använd alltid `"streamable-http"`.
 
-För Claude Code seedas dessutom arbetsytans `settings.local.json` med förhandsgodkännande för de rena läs-verktygen (`get_active_context`, `list_accounts`, `get_trial_balance` osv., se `AiWorkspaceMcpSettings.READ_ONLY_TOOLS`), så klienten inte behöver bekräfta varje enskild uppslagning. Skriv-verktyg (`set_active_voucher_draft`, `create_correction_voucher`, `book_vat_transfer`, `close_fiscal_year`, `import_sie`, `export_sie`, `save_accounting_instruction`) är medvetet undantagna och kräver alltid explicit godkännande i klienten.
+För Claude Code seedas dessutom arbetsytans `settings.local.json` med förhandsgodkännande för de rena läs-verktygen (`get_active_context`, `list_accounts`, `get_trial_balance` osv., se `AiWorkspaceMcpSettings.READ_ONLY_TOOLS`), så klienten inte behöver bekräfta varje enskild uppslagning. Skriv-verktyg (`set_active_voucher_draft`, `create_correction_voucher`, `book_vat_transfer`, `close_fiscal_year`, `lock_fiscal_year`, `import_sie`, `export_sie`, `save_accounting_instruction`) är medvetet undantagna och kräver alltid explicit godkännande i klienten.
 
 ## Alternativ 2: Manuell HTTP-MCP-konfiguration
 
