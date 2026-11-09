@@ -105,6 +105,8 @@ final class AccountEditorDialog {
     final JTextField sruCode2Field
     final JPanel panel
 
+    private boolean reviewAutoCleared
+
     EditorForm(Account account, List<SruSuggestion> sruSuggestions) {
       nameField = new JTextField(account.accountName, 24)
       String notSpecified = I18n.instance.getString('chartOfAccountsPanel.edit.notSpecified')
@@ -129,25 +131,25 @@ final class AccountEditorDialog {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
 
       boolean initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
-      boolean[] reviewAutoCleared = [false] as boolean[]
-      Closure clearReviewFlagOnceClassified = {
-        if (initiallyUnclassified && !reviewAutoCleared[0]
-            && classCombo.selectedIndex > 0 && sideCombo.selectedIndex > 0) {
-          reviewCheckBox.selected = false
-          reviewAutoCleared[0] = true
-        }
-      }
       classCombo.addActionListener {
         populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
-        clearReviewFlagOnceClassified()
+        clearReviewFlagOnceClassified(initiallyUnclassified)
       }
       sideCombo.addActionListener {
-        clearReviewFlagOnceClassified()
+        clearReviewFlagOnceClassified(initiallyUnclassified)
       }
 
       panel = buildEditorPanel(
           nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox,
           sruCodeField, sruCode2Field, buildSruSuggestionPanel(sruSuggestions, sruCodeField))
+    }
+
+    private void clearReviewFlagOnceClassified(boolean initiallyUnclassified) {
+      if (initiallyUnclassified && !reviewAutoCleared
+          && classCombo.selectedIndex > 0 && sideCombo.selectedIndex > 0) {
+        reviewCheckBox.selected = false
+        reviewAutoCleared = true
+      }
     }
   }
 
