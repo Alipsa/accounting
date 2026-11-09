@@ -505,23 +505,23 @@ class ReportServicesTest {
       assertEquals(0.00D, receivablesRow.getCell(1).numericCellValue, 0.001D)
       assertEquals(1250.00D, receivablesRow.getCell(2).numericCellValue, 0.001D)
       assertEquals(1250.00D, receivablesRow.getCell(3).numericCellValue, 0.001D)
-      assertTrue(workbook.getFontAt(receivablesRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+      assertTrue(workbook.getFontAt(receivablesRow.getCell(3).cellStyle.fontIndex).bold)
 
       def subgroupTotalRow = findSheetRow(sheet, 'Kundfordringar')
       assertEquals(CellType.NUMERIC, subgroupTotalRow.getCell(3).cellType)
-      assertTrue(workbook.getFontAt(subgroupTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+      assertTrue(workbook.getFontAt(subgroupTotalRow.getCell(3).cellStyle.fontIndex).bold)
 
       def sectionTotalRow = findSheetRow(sheet, 'Totalt omsättningstillgångar')
       assertEquals(CellType.NUMERIC, sectionTotalRow.getCell(3).cellType)
-      assertTrue(workbook.getFontAt(sectionTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+      assertTrue(workbook.getFontAt(sectionTotalRow.getCell(3).cellStyle.fontIndex).bold)
 
       def grandTotalRow = findSheetRow(sheet, 'Summa tillgångar')
-      short openingFontHeight = workbook.getFontAt(grandTotalRow.getCell(1).cellStyle.fontIndexAsInt).fontHeightInPoints
-      short periodFontHeight = workbook.getFontAt(grandTotalRow.getCell(2).cellStyle.fontIndexAsInt).fontHeightInPoints
-      short closingFontHeight = workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndexAsInt).fontHeightInPoints
+      short openingFontHeight = workbook.getFontAt(grandTotalRow.getCell(1).cellStyle.fontIndex).fontHeightInPoints
+      short periodFontHeight = workbook.getFontAt(grandTotalRow.getCell(2).cellStyle.fontIndex).fontHeightInPoints
+      short closingFontHeight = workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndex).fontHeightInPoints
       assertEquals(openingFontHeight, periodFontHeight)
       assertEquals(openingFontHeight, closingFontHeight)
-      assertTrue(workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndexAsInt).bold)
+      assertTrue(workbook.getFontAt(grandTotalRow.getCell(3).cellStyle.fontIndex).bold)
     }
   }
 
