@@ -476,14 +476,15 @@ final class AuditLogService {
   }
 
   @PackageScope
-  AuditLogEntry recordFiscalYearClosed(Sql sql, FiscalYear fiscalYear) {
+  AuditLogEntry recordFiscalYearClosed(Sql sql, FiscalYear fiscalYear, String reason = null) {
     recordEvent(sql, CLOSE_FISCAL_YEAR, new AuditReferences(fiscalYearId: fiscalYear.id),
         "Räkenskapsår stängt: ${fiscalYear.name}", formatDetails([
             fiscalYearId : fiscalYear.id,
             name         : fiscalYear.name,
             startDate    : fiscalYear.startDate,
             endDate      : fiscalYear.endDate,
-            closedAt     : fiscalYear.closedAt
+            closedAt     : fiscalYear.closedAt,
+            reason       : reason?.trim() ?: null
         ]))
   }
 

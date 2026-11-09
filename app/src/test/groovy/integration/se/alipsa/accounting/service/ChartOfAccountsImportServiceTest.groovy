@@ -59,12 +59,12 @@ class ChartOfAccountsImportServiceTest {
 
     assertTrue(summary.importedCount > 1000)
     assertTrue(summary.createdCount > 1000)
-    assertTrue(summary.manualReviewCount > 0)
+    assertEquals(0, summary.manualReviewCount)
 
     Account assetAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
     Account equityAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2010')
     Account incomeAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '3000')
-    Account manualReviewAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
+    Account yearResultAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
 
     assertNotNull(assetAccount)
     assertEquals('ASSET', assetAccount.accountClass)
@@ -78,9 +78,10 @@ class ChartOfAccountsImportServiceTest {
     assertEquals('INCOME', incomeAccount.accountClass)
     assertFalse(incomeAccount.manualReviewRequired)
 
-    assertNotNull(manualReviewAccount)
-    assertTrue(manualReviewAccount.manualReviewRequired)
-    assertTrue(manualReviewAccount.accountClass == null)
+    assertNotNull(yearResultAccount)
+    assertEquals('EXPENSE', yearResultAccount.accountClass)
+    assertEquals('DEBIT', yearResultAccount.normalBalanceSide)
+    assertFalse(yearResultAccount.manualReviewRequired)
   }
 
   @Test

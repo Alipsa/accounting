@@ -12,7 +12,6 @@ import java.math.RoundingMode
 import java.sql.Date
 import java.time.Clock
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 
 /**
  * Handles year-end closing, retained earnings transfer and next-year opening balances.
@@ -488,10 +487,10 @@ final class ClosingService {
 
   private NextFiscalYearPlan planNextFiscalYear(Sql sql, long companyId, FiscalYear fiscalYear) {
     LocalDate nextStartDate = fiscalYear.endDate.plusDays(1)
-    long daySpan = ChronoUnit.DAYS.between(fiscalYear.startDate, fiscalYear.endDate)
-    LocalDate nextEndDate = nextStartDate.plusDays(daySpan)
 
-    GroovyRowResult exact = sql.firstRow('''
+    // Reuse an existing year that starts where the next year would start, even when its
+    // length differs from the current year (e.g. after a shortened first fiscal year).
+    GroovyRowResult existing = sql.firstRow('''
         select id,
                name,
                start_date as startDate,
@@ -501,12 +500,12 @@ final class ClosingService {
           from fiscal_year
          where company_id = ?
            and start_date = ?
-           and end_date = ?
-    ''', [companyId, Date.valueOf(nextStartDate), Date.valueOf(nextEndDate)]) as GroovyRowResult
-    if (exact != null) {
-      return new NextFiscalYearPlan(mapFiscalYear(exact), false, null)
+    ''', [companyId, Date.valueOf(nextStartDate)]) as GroovyRowResult
+    if (existing != null) {
+      return new NextFiscalYearPlan(mapFiscalYear(existing), false, null)
     }
 
+    LocalDate nextEndDate = nextStartDate.plusYears(1).minusDays(1)
     GroovyRowResult overlap = sql.firstRow('''
         select count(*) as total
           from fiscal_year

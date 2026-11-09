@@ -1,6 +1,7 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
@@ -220,6 +221,75 @@ class ClosingServiceTest {
     def preview = closingService.previewClosing(fiscalYear.id)
 
     assertTrue(preview.blockingIssues.any { String issue -> issue.contains('manuellt justerade ingående balanser') })
+  }
+
+  @Test
+  void previewReusesExistingNextYearEvenWhenItsLengthDiffers() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    FiscalYear existingNextYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(shortenedFirstYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertFalse(preview.nextFiscalYearWillBeCreated)
+    assertEquals(existingNextYear.id, preview.nextFiscalYear.id)
+  }
+
+  @Test
+  void previewPlansFullTwelveMonthYearAfterShortenedFirstYear() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(shortenedFirstYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2020, 1, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2020, 12, 31), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void yearEndClosingReusesExistingNextYearWithDifferentLength() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    FiscalYear existingNextYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      def accountId = sql.firstRow('select id from account where account_number = ?', ['1930']).get('id')
+      sql.executeInsert('''
+          insert into opening_balance (
+              fiscal_year_id,
+              account_id,
+              amount,
+              created_at,
+              updated_at
+          ) values (?, ?, ?, current_timestamp, current_timestamp)
+      ''', [shortenedFirstYear.id, accountId, 500.00G])
+    }
+    voucherService.createVoucher(
+        shortenedFirstYear.id,
+        'A',
+        LocalDate.of(2019, 3, 15),
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+
+    def result = closingService.closeFiscalYear(shortenedFirstYear.id)
+
+    assertEquals(existingNextYear.id, result.nextFiscalYear.id)
+    assertTrue(result.closedFiscalYear.closed)
+    databaseService.withSql { Sql sql ->
+      assertEquals(1000.00G, openingBalanceFor(sql, existingNextYear.id, '1510'))
+      assertEquals(500.00G, openingBalanceFor(sql, existingNextYear.id, '1930'))
+    }
   }
 
   private void seedClosingAccounts() {

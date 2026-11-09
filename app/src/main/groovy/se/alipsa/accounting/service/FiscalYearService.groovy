@@ -86,6 +86,12 @@ final class FiscalYearService {
     }
   }
 
+  FiscalYear closeFiscalYear(long fiscalYearId, String reason) {
+    databaseService.withTransaction { Sql sql ->
+      closeFiscalYear(sql, fiscalYearId, reason)
+    }
+  }
+
   FiscalYear reopenFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       reopenFiscalYear(sql, fiscalYearId)
@@ -136,7 +142,7 @@ final class FiscalYearService {
   }
 
   @PackageScope
-  FiscalYear closeFiscalYear(Sql sql, long fiscalYearId) {
+  FiscalYear closeFiscalYear(Sql sql, long fiscalYearId, String reason = null) {
     FiscalYear year = findById(sql, fiscalYearId)
     if (year == null) {
       throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
@@ -151,7 +157,7 @@ final class FiscalYearService {
                  where id = ?
             ''', [fiscalYearId])
     FiscalYear closedYear = findById(sql, fiscalYearId)
-    auditLogService.recordFiscalYearClosed(sql, closedYear)
+    auditLogService.recordFiscalYearClosed(sql, closedYear, reason)
     closedYear
   }
 

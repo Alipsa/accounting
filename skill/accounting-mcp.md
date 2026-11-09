@@ -45,6 +45,7 @@ Only call write tools after the user explicitly confirms the proposed action.
 | `create_correction_voucher` | Reverse a posted voucher; direct edit/delete is not exposed |
 | `book_vat_transfer` | Book the VAT settlement voucher using `report_hash` from `get_vat_report` |
 | `close_fiscal_year` | Close the fiscal year using a token from `preview_year_end` |
+| `lock_fiscal_year` | Lock a fiscal year as closed without year-end closing (no closing voucher or opening balances); use for imported historical years already closed in the source system; optional `reason` is audit-logged |
 | `import_sie` | Import a SIE4 file using a token from `preview_sie_import` |
 | `export_sie` | Export a fiscal year as SIE4; no token, but overwrite needs confirmation |
 
@@ -105,6 +106,15 @@ Only call write tools after the user explicitly confirms the proposed action.
 4. If `ready_to_close` is false or `preview_token` is missing, explain the blockers and do not call `close_fiscal_year`.
 5. If `ready_to_close` is true, ask the user to confirm closing the year.
 6. Only call `close_fiscal_year` after confirmation, passing the returned `preview_token`.
+
+## Workflow: Lock an imported historical year
+
+1. Call `list_fiscal_years` and confirm the year is open.
+2. Explain that `lock_fiscal_year` only marks the year as closed (preventing new vouchers) and
+   does not create a closing voucher or opening balances - the right choice for historical years
+   imported from SIE whose closing entries already exist in the source data.
+3. Ask for confirmation and an optional reason (e.g. "Already closed in Fortnox").
+4. Only call `lock_fiscal_year` after confirmation, passing `company_id`, `fiscal_year_id` and the optional `reason`.
 
 ## Workflow: SIE Import
 

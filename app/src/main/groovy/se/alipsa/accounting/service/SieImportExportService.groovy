@@ -1208,6 +1208,18 @@ final class SieImportExportService {
 
   private static AccountClassification classifyMixedResultAccount(String accountNumber, String accountName) {
     String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
+    String subgroupClass = ReportAccountSupport.inferIncomeAccountClassFromAccountNumber(accountNumber)
+    if (subgroupClass != null) {
+      // BAS 8xxx groups are deterministic: 80-83 financial income, 84-87 financial costs,
+      // 88 appropriations, 89 tax and year's result (e.g. 8999 Årets resultat).
+      return new AccountClassification(
+          subgroupClass,
+          ReportAccountSupport.inferNormalBalanceSide(subgroupClass),
+          false,
+          null,
+          accountSubgroup
+      )
+    }
     String normalized = stripDiacritics(accountName).toUpperCase(Locale.ROOT)
     boolean incomeMatch = INCOME_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
     boolean expenseMatch = EXPENSE_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
