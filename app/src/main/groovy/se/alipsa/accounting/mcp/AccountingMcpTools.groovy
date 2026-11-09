@@ -330,9 +330,11 @@ class AccountingMcpTools {
   private Map<String, Object> listAccounts(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     String query = args.get('query') as String
-    boolean manualReviewOnly = optionalBoolean(args, 'manual_review_required', false)
-    List<Account> accounts =
-        accountService.searchAccounts(companyId, query, null, true, manualReviewOnly)
+    boolean unclassifiedOnly = optionalBoolean(args, 'unclassified', false)
+    List<Account> accounts = unclassifiedOnly
+        ? accountService.searchUnclassifiedAccounts(companyId, query)
+        : accountService.searchAccounts(
+            companyId, query, null, true, optionalBoolean(args, 'manual_review_required', false))
     [
         ok: true,
         accounts: accounts.collect { Account a -> accountMap(a) }
@@ -342,8 +344,8 @@ class AccountingMcpTools {
   private Map<String, Object> previewAccountUpdate(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class')
-    String normalBalanceSide = requiredString(args, 'normal_balance_side')
+    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
+    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
     try {
       if (!AccountService.isKnownAccountClass(accountClass)) {
         return [ok: false, errors: ["Okänd kontoklass: ${accountClass}".toString()]]
@@ -356,17 +358,20 @@ class AccountingMcpTools {
         return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
       }
       List<String> errors = []
-      if (account.vatCode && !AccountService.compatibleVatCodes(new Account(accountClass: accountClass))
-          .any { VatCode vatCode -> vatCode.name() == account.vatCode }) {
+      if (account.vatCode && !AccountService.isVatCompatible(
+          new Account(accountClass: accountClass), VatCode.valueOf(account.vatCode))) {
         errors.add(
             "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${account.vatCode}.".toString()
         )
       }
       AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(companyId, accountNumber)
+      boolean unchanged =
+          account.accountClass == accountClass && account.normalBalanceSide == normalBalanceSide && !account.manualReviewRequired
       boolean valid = errors.isEmpty()
       [
           ok: valid,
           errors: errors,
+          unchanged: unchanged,
           account: accountMap(account),
           proposed: [
               account_class: accountClass,
@@ -377,7 +382,12 @@ class AccountingMcpTools {
               voucher_line_count: usage.voucherLineCount,
               fiscal_year_count: usage.fiscalYearCount
           ],
-          preview_token: valid ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide) : null
+          // No token when nothing would change; re-applying an already-used state must not
+          // return the identical, consumed token. The token binds the account's current state,
+          // so a change made elsewhere after the preview invalidates it.
+          preview_token: valid && !unchanged
+              ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, account)
+              : null
       ]
     } catch (Exception exception) {
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
@@ -387,26 +397,26 @@ class AccountingMcpTools {
   private Map<String, Object> updateAccount(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class')
-    String normalBalanceSide = requiredString(args, 'normal_balance_side')
+    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
+    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
       return [ok: false, errors: ['preview_token krävs — kör preview_account_update först.']]
     }
     String token = "account-update:${providedToken}"
     try {
-      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide)
+      Account current = accountService.findAccount(companyId, accountNumber)
+      if (current == null) {
+        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
+      }
+      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, current)
       if (providedToken != expectedToken) {
-        return [ok: false, errors: ['preview_token stämmer inte — kör preview_account_update igen.']]
+        return [ok: false, errors: ['preview_token stämmer inte — kontot har ändrats sedan förhandsgranskningen, kör preview_account_update igen.']]
       }
       if (!previewTokenLedger.reserve(token)) {
         return [ok: false, errors: ['preview_token har redan använts — kör preview_account_update igen.']]
       }
       Account updated = (Account) previewTokenLedger.executeReservedWrite(token) {
-        Account current = accountService.findAccount(companyId, accountNumber)
-        if (current == null) {
-          throw new IllegalArgumentException("Okänt kontonummer: ${accountNumber}")
-        }
         accountService.updateAccount(
             companyId,
             accountNumber,
@@ -1066,12 +1076,25 @@ class AccountingMcpTools {
     ])
   }
 
-  private static String accountUpdateToken(long companyId, String accountNumber, String accountClass, String normalBalanceSide) {
+  private static String accountUpdateToken(
+      long companyId,
+      String accountNumber,
+      String accountClass,
+      String normalBalanceSide,
+      Account currentState
+  ) {
     computePreviewToken([
         company_id: companyId,
         account_number: accountNumber,
         account_class: accountClass,
-        normal_balance_side: normalBalanceSide
+        normal_balance_side: normalBalanceSide,
+        // Bind the token to the account's current state so an outdated preview (changed
+        // elsewhere after previewing) no longer matches, while re-classifying the same account
+        // again later produces a fresh, distinct token.
+        current_account_class: currentState?.accountClass,
+        current_normal_balance_side: currentState?.normalBalanceSide,
+        vat_code: currentState?.vatCode,
+        manual_review_required: currentState?.manualReviewRequired
     ])
   }
 

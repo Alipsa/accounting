@@ -70,7 +70,9 @@ class McpToolDefinitionsTest {
     Map<String, Object> properties = listSchema.get('properties') as Map<String, Object>
 
     assertEquals('boolean', (properties.manual_review_required as Map<String, Object>).type)
+    assertEquals('boolean', (properties.unclassified as Map<String, Object>).type)
     assertTrue((listSchema.required as List<String>).contains('company_id'))
     assertFalse((listSchema.required as List<String>).contains('manual_review_required'))
+    assertFalse((listSchema.required as List<String>).contains('unclassified'))
   }
 }

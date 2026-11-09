@@ -503,22 +503,35 @@ final class AuditLogService {
   }
 
   @PackageScope
-  AuditLogEntry recordAccountUpdated(Sql sql, long companyId, Account account, Map<String, Object> previousValues) {
+  AuditLogEntry recordAccountUpdated(Sql sql, long companyId, Account previous, Account current) {
+    Map<String, Object> details = [
+        accountNumber        : current.accountNumber,
+        accountName          : current.accountName,
+        accountClass         : current.accountClass,
+        normalBalanceSide    : current.normalBalanceSide,
+        vatCode              : current.vatCode,
+        active               : current.active,
+        manualReviewRequired : current.manualReviewRequired,
+        classificationNote   : current.classificationNote,
+        sruCode              : current.sruCode,
+        sruCode2             : current.sruCode2
+    ]
+    // Previous values are recorded only when they differ, so a rename shows the old name and
+    // a no-op field stays out of the entry entirely.
+    details.previousAccountName = previous.accountName != current.accountName ? previous.accountName : null
+    details.previousAccountClass = previous.accountClass != current.accountClass ? previous.accountClass : null
+    details.previousNormalBalanceSide =
+        previous.normalBalanceSide != current.normalBalanceSide ? previous.normalBalanceSide : null
+    details.previousVatCode = previous.vatCode != current.vatCode ? previous.vatCode : null
+    details.previousActive = previous.active != current.active ? previous.active : null
+    details.previousManualReviewRequired =
+        previous.manualReviewRequired != current.manualReviewRequired ? previous.manualReviewRequired : null
+    details.previousClassificationNote =
+        previous.classificationNote != current.classificationNote ? previous.classificationNote : null
+    details.previousSruCode = previous.sruCode != current.sruCode ? previous.sruCode : null
+    details.previousSruCode2 = previous.sruCode2 != current.sruCode2 ? previous.sruCode2 : null
     recordEvent(sql, UPDATE_ACCOUNT, AuditReferences.EMPTY,
-        "Konto uppdaterat: ${account.accountNumber} ${account.accountName}", formatDetails([
-            accountNumber               : account.accountNumber,
-            accountName                 : account.accountName,
-            previousAccountClass        : previousValues.accountClass,
-            accountClass                : account.accountClass,
-            previousNormalBalanceSide   : previousValues.normalBalanceSide,
-            normalBalanceSide           : account.normalBalanceSide,
-            previousVatCode             : previousValues.vatCode,
-            vatCode                     : account.vatCode,
-            active                      : account.active,
-            manualReviewRequired        : account.manualReviewRequired,
-            sruCode                     : account.sruCode,
-            sruCode2                    : account.sruCode2
-        ]), companyId)
+        "Konto uppdaterat: ${current.accountNumber} ${current.accountName}", formatDetails(details), companyId)
   }
 
   @PackageScope

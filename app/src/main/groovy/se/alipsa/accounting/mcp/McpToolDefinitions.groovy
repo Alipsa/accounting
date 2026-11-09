@@ -50,16 +50,17 @@ final class McpToolDefinitions {
             [company_id: intParam('Company ID')]
         ),
         toolDef('list_accounts',
-            'Returns active accounts in the chart of accounts for the given company. Use this before preparing a voucher so account numbers are not guessed. Accepts an optional query string, and optional manual_review_required: true to list only accounts lacking a verified classification (these block year-end closing). Account output includes account_class, normal_balance_side, manual_review_required, classification_note and account_subgroup.',
+            'Returns active accounts in the chart of accounts for the given company. Use this before preparing a voucher so account numbers are not guessed. Accepts an optional query string, optional manual_review_required: true to list only accounts flagged for manual review, and optional unclassified: true to list accounts missing account_class or normal_balance_side regardless of active state - the accounts that block year-end closing when they have posted activity (see preview_year_end blocking_issues). Account output includes account_class, normal_balance_side, manual_review_required, classification_note and account_subgroup.',
             ['company_id'],
             [
                 company_id: intParam('Company ID'),
                 query: optStrParam('Optional search string (account number or name)'),
-                manual_review_required: optBoolParam('Optional: true returns only accounts flagged for manual review (unverified classification).')
+                manual_review_required: optBoolParam('Optional: true returns only accounts flagged for manual review (unverified classification).'),
+                unclassified: optBoolParam('Optional: true returns accounts missing account_class or normal_balance_side, including inactive ones. These block year-end closing when they have posted activity.')
             ]
         ),
         toolDef('preview_account_update',
-            'Previews a classification change (account_class and/or normal_balance_side) for one account without writing anything. Returns the current account, the proposed values, how many posted vouchers/lines and fiscal years reference the account, any VAT-code compatibility problem, and a preview_token. Use it to clear accounts flagged manual_review_required, e.g. after a SIE import of BAS class 8 accounts. Apply with update_account.',
+            'Previews a classification change (account_class and/or normal_balance_side) for one account without writing anything. Account class and side are case-insensitive. Returns the current account, the proposed values, how many posted vouchers/lines and fiscal years reference the account, and any VAT-code compatibility problem. Returns a preview_token when the change is applicable; when the account already has exactly these values (and no manual review flag), ok is true, unchanged is true and no token is returned. Use it to clear accounts flagged manual_review_required, e.g. after a SIE import of BAS class 8 accounts. Apply with update_account.',
             ['company_id', 'account_number', 'account_class', 'normal_balance_side'],
             [
                 company_id: intParam('Company ID'),

@@ -214,7 +214,9 @@ class AccountClassificationMcpToolsTest {
 
     assertFalse((boolean) second.get('ok'))
     List<String> errors = (List<String>) second.get('errors')
-    assertTrue(errors.any { String error -> error.contains('redan använts') })
+    // The first update changed the account state the token was bound to, so the stale token is
+    // rejected as out of date before its consumed status is even checked.
+    assertTrue(errors.any { String error -> error.contains('stämmer inte') })
   }
 
   @Test
@@ -316,6 +318,149 @@ class AccountClassificationMcpToolsTest {
     assertTrue((boolean) flagged.get('manual_review_required'))
     assertNotNull(flagged.get('classification_note'))
     assertNull(flagged.get('account_class'))
+  }
+
+  @Test
+  void listAccountsUnclassifiedFilterMatchesYearEndBlockers() {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '8990', 'Resultat', null, null,
+              false, false, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '2410', 'Överskottsfond', 'EQUITY', 'CREDIT',
+              true, true, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+    }
+
+    Map<String, Object> result = tools.callTool('list_accounts', [
+        company_id: (Object) 1L,
+        unclassified: (Object) true
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    List<String> numbers = ((List<Map<String, Object>>) result.get('accounts')).collect { Map<String, Object> account ->
+      account.get('account_number') as String
+    }
+    // The inactive 8990 blocks year-end closing when it has activity, so it must be listed;
+    // 2410 is flagged for manual review but is fully classified, so it must not.
+    assertEquals(['8314', '8990'], numbers)
+  }
+
+  @Test
+  void sameReclassificationWorksAgainAfterAnInterveningChange() {
+    Map<String, Object> firstPreview = previewIncomeCredit()
+    assertTrue((boolean) tools.callTool('update_account', applyArgs(firstPreview.get('preview_token'))).get('ok'))
+
+    // The account is changed elsewhere (e.g. in the GUI) and later set back.
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Skattefria ränteintäkter',
+        'EXPENSE', 'DEBIT', null, true, false)
+
+    Map<String, Object> secondPreview = previewIncomeCredit()
+    assertTrue((boolean) secondPreview.get('ok'), "Expected ok but got: ${secondPreview.get('errors')}")
+    assertNotNull(secondPreview.get('preview_token'))
+    Map<String, Object> second = tools.callTool('update_account', applyArgs(secondPreview.get('preview_token')))
+    assertTrue((boolean) second.get('ok'), "Expected ok but got: ${second.get('errors')}")
+    assertEquals('INCOME', ((Map<String, Object>) second.get('account')).get('account_class'))
+  }
+
+  @Test
+  void updateAccountRejectsPreviewMadeBeforeAnInterveningChange() {
+    Map<String, Object> preview = previewIncomeCredit()
+    String token = preview.get('preview_token') as String
+
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Skattefria ränteintäkter',
+        'EXPENSE', 'DEBIT', null, true, false)
+
+    Map<String, Object> stale = tools.callTool('update_account', applyArgs(token))
+    assertFalse((boolean) stale.get('ok'))
+    List<String> errors = (List<String>) stale.get('errors')
+    assertTrue(errors.any { String error -> error.contains('stämmer inte') })
+
+    // The consumed-status of the old token must not matter: a fresh preview works.
+    Map<String, Object> freshPreview = previewIncomeCredit()
+    Map<String, Object> fresh = tools.callTool('update_account', applyArgs(freshPreview.get('preview_token')))
+    assertTrue((boolean) fresh.get('ok'), "Expected ok but got: ${fresh.get('errors')}")
+  }
+
+  @Test
+  void previewAccountUpdateReportsUnchangedWithoutToken() {
+    Map<String, Object> result = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '1930',
+        account_class: (Object) 'ASSET',
+        normal_balance_side: (Object) 'DEBIT'
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    assertTrue((boolean) result.get('unchanged'))
+    assertNull(result.get('preview_token'))
+  }
+
+  @Test
+  void previewAccountUpdateStillOffersTokenWhenOnlyManualReviewFlagDiffers() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Skattefria ränteintäkter',
+        'INCOME', 'CREDIT', null, true, true)
+
+    Map<String, Object> preview = previewIncomeCredit()
+    assertTrue((boolean) preview.get('ok'), "Expected ok but got: ${preview.get('errors')}")
+    assertFalse((boolean) preview.get('unchanged'))
+    assertNotNull(preview.get('preview_token'))
+
+    Map<String, Object> result = tools.callTool('update_account', applyArgs(preview.get('preview_token')))
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    assertFalse((boolean) ((Map<String, Object>) result.get('account')).get('manual_review_required'))
+  }
+
+  @Test
+  void accountClassAndSideAreCaseInsensitive() {
+    Map<String, Object> preview = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'income',
+        normal_balance_side: (Object) 'credit'
+    ])
+    assertTrue((boolean) preview.get('ok'), "Expected ok but got: ${preview.get('errors')}")
+
+    Map<String, Object> result = tools.callTool('update_account', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'income',
+        normal_balance_side: (Object) 'credit',
+        preview_token: (Object) preview.get('preview_token')
+    ])
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    assertEquals('INCOME', ((Map<String, Object>) result.get('account')).get('account_class'))
+  }
+
+  private Map<String, Object> previewIncomeCredit() {
+    tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'INCOME',
+        normal_balance_side: (Object) 'CREDIT'
+    ])
+  }
+
+  private static Map<String, Object> applyArgs(Object previewToken) {
+    [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'INCOME',
+        normal_balance_side: (Object) 'CREDIT',
+        preview_token: previewToken
+    ]
   }
 
   private void postVoucherTouching8314() {

@@ -68,7 +68,7 @@ class AiWorkspaceMcpSettingsTest {
     Map parsed = new JsonSlurper().parseText(merged) as Map
     List<String> allow = (parsed.permissions as Map).allow as List<String>
     ['import_sie', 'export_sie', 'book_vat_transfer', 'create_correction_voucher',
-     'save_accounting_instruction', 'close_fiscal_year', 'set_active_voucher_draft'].each { String tool ->
+     'save_accounting_instruction', 'close_fiscal_year', 'set_active_voucher_draft', 'update_account'].each { String tool ->
       assertFalse(allow.contains("mcp__accounting__${tool}" as String), "should not pre-allow ${tool}")
     }
   }
