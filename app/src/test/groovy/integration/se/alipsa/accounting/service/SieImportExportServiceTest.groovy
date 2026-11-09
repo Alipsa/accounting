@@ -380,8 +380,8 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
 #ORGNR 556677-8899
 #RAR 0 20260101 20261231
 #KONTO 8070 "Nedskrivningar"
-#KONTO 8170 "Räntekostnader"
 #KONTO 8820 "Mottagna koncernbidrag"
+#KONTO 8830 "Lämnade koncernbidrag"
 ''')
     }
 
@@ -400,6 +400,13 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
       ''', ['8820']) as GroovyRowResult
       assertEquals('INCOME', incomeAccount.get('accountClass'))
       assertEquals('CREDIT', incomeAccount.get('normalBalanceSide'))
+      // Conflicting keywords (LAMNADE + BIDRAG) resolve via the subgroup: 88 -> EXPENSE/DEBIT.
+      GroovyRowResult conflictAccount = sql.firstRow('''
+          select account_class as accountClass, normal_balance_side as normalBalanceSide
+            from account where account_number = ?
+      ''', ['8830']) as GroovyRowResult
+      assertEquals('EXPENSE', conflictAccount.get('accountClass'))
+      assertEquals('DEBIT', conflictAccount.get('normalBalanceSide'))
     }
   }
 

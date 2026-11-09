@@ -113,7 +113,7 @@ final class FiscalYearService {
         }
         throw new IllegalStateException("Räkenskapsåret ${year.name} är redan stängt.")
       }
-      markClosed(sql, fiscalYearId, reason)
+      recordClosed(sql, fiscalYearId, reason)
     }
   }
 
@@ -185,6 +185,10 @@ final class FiscalYearService {
                        closed_at = current_timestamp
                  where id = ?
             ''', [fiscalYearId])
+    recordClosed(sql, fiscalYearId, reason)
+  }
+
+  private FiscalYear recordClosed(Sql sql, long fiscalYearId, String reason) {
     FiscalYear closedYear = findById(sql, fiscalYearId)
     auditLogService.recordFiscalYearClosed(sql, closedYear, reason)
     closedYear

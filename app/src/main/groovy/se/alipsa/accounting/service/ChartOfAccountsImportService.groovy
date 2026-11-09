@@ -289,6 +289,9 @@ final class ChartOfAccountsImportService {
       )
     }
 
+    // Defensive fallback: classifyAccount only routes 8xxx accounts here and every 80-89
+    // account has a subgroup, so the subgroup fallback above always resolves today and this
+    // branch is unreachable. It is kept in case the routing ever changes.
     new Classification(
         null,
         null,
