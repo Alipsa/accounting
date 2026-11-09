@@ -319,8 +319,10 @@ class ClosingServiceTest {
     def result = closingService.closeFiscalYear(fiscalYear.id)
 
     Voucher closingVoucher = voucherService.findVoucher(result.closingVoucher.id)
-    // The closing voucher zeroes the income account and 8999; with a net of exactly 0 it
-    // must not write a 0-amount line to 2099.
+    // NOTE(issue #130): the assertions below pin down the current closing-entries behaviour,
+    // which zeroes every result account. When #130 changes the closing to a single 8999
+    // transfer, the 3010/8999 assertions here are expected to change; the 2099,
+    // opening-balance and balance assertions remain valid either way.
     assertEquals(1000.00G, lineForAccount(closingVoucher, '3010').debitAmount)
     assertEquals(1000.00G, lineForAccount(closingVoucher, '8999').creditAmount)
     assertNull(lineForAccount(closingVoucher, '2099'))

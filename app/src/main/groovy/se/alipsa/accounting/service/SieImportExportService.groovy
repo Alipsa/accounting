@@ -1208,18 +1208,6 @@ final class SieImportExportService {
 
   private static AccountClassification classifyMixedResultAccount(String accountNumber, String accountName) {
     String accountSubgroup = AccountSubgroup.fromAccountNumber(accountNumber)?.name()
-    String subgroupClass = ReportAccountSupport.inferIncomeAccountClassFromAccountNumber(accountNumber)
-    if (subgroupClass != null) {
-      // BAS 8xxx groups are deterministic: 80-83 financial income, 84-87 financial costs,
-      // 88 appropriations, 89 tax and year's result (e.g. 8999 Årets resultat).
-      return new AccountClassification(
-          subgroupClass,
-          ReportAccountSupport.inferNormalBalanceSide(subgroupClass),
-          false,
-          null,
-          accountSubgroup
-      )
-    }
     String normalized = stripDiacritics(accountName).toUpperCase(Locale.ROOT)
     boolean incomeMatch = INCOME_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
     boolean expenseMatch = EXPENSE_KEYWORDS.any { String keyword -> normalized.contains(keyword) }
@@ -1228,6 +1216,21 @@ final class SieImportExportService {
     }
     if (expenseMatch && !incomeMatch) {
       return new AccountClassification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
+    }
+    // No decisive name match: fall back to the BAS subgroup. Some 8xxx accounts have the
+    // opposite sign nature of their group (e.g. 8070 Nedskrivningar in income group 80-83,
+    // 8820 Mottagna koncernbidrag in expense group 88), which is why the keyword match above
+    // takes precedence. Accounts like 8999 Årets resultat have no keyword but a deterministic
+    // subgroup (89 -> EXPENSE/DEBIT).
+    String subgroupClass = ReportAccountSupport.inferIncomeAccountClassFromAccountNumber(accountNumber)
+    if (subgroupClass != null) {
+      return new AccountClassification(
+          subgroupClass,
+          ReportAccountSupport.inferNormalBalanceSide(subgroupClass),
+          false,
+          null,
+          accountSubgroup
+      )
     }
     new AccountClassification(
         null,

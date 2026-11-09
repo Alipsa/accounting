@@ -82,6 +82,18 @@ class ChartOfAccountsImportServiceTest {
     assertEquals('EXPENSE', yearResultAccount.accountClass)
     assertEquals('DEBIT', yearResultAccount.normalBalanceSide)
     assertFalse(yearResultAccount.manualReviewRequired)
+
+    // 8xxx accounts whose name contradicts their subgroup keep the name-based class
+    // (e.g. 8070 Nedskrivningar in income group 80-83, 8440 Erhållna räntebidrag in
+    // expense group 84-87).
+    Account writeDownAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8070')
+    assertNotNull(writeDownAccount)
+    assertEquals('EXPENSE', writeDownAccount.accountClass)
+    assertEquals('DEBIT', writeDownAccount.normalBalanceSide)
+    Account interestSubsidyAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8440')
+    assertNotNull(interestSubsidyAccount)
+    assertEquals('INCOME', interestSubsidyAccount.accountClass)
+    assertEquals('CREDIT', interestSubsidyAccount.normalBalanceSide)
   }
 
   @Test

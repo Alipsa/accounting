@@ -7,6 +7,7 @@ import se.alipsa.accounting.domain.ClosingEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.support.AmountFormatter
 
 import java.math.RoundingMode
 import java.sql.Date
@@ -222,13 +223,7 @@ final class ClosingService {
     if (resultBalances.isEmpty()) {
       warnings << 'Inga resultatkonton med saldo hittades. Bokslutsverifikationen blir tom och hoppas över.'
     }
-    ResultAccountBalance yearResultTransfer = resultBalances['8999']
-    if (yearResultTransfer != null) {
-      // Imported years may already contain the year-end transfer (8999 -> 2099). The preview's
-      // net result then shows what remains to transfer (about 0), not the year's result.
-      warnings << ("Årets resultat har redan förts över via konto 8999 (${yearResultTransfer.amount}); " +
-          "bokslutet överför återstående ${netResult}." as String)
-    }
+    appendAlreadyTransferredResultWarning(resultBalances, netResult, warnings)
     LocalDate dueDate = fiscalYear.endDate.plusMonths(6)
     if (LocalDate.now(clock).isAfter(dueDate)) {
       warnings << ("Bokslutsfristen passerade ${dueDate}. Årsbokslutet borde redan vara upprättat." as String)
@@ -261,6 +256,21 @@ final class ClosingService {
         blockers,
         warnings
     )
+  }
+
+  private static void appendAlreadyTransferredResultWarning(
+      Map<String, ResultAccountBalance> resultBalances,
+      BigDecimal netResult,
+      List<String> warnings
+  ) {
+    ResultAccountBalance yearResultTransfer = resultBalances['8999']
+    if (yearResultTransfer == null) {
+      return
+    }
+    // Imported years may already contain the year-end transfer (8999 -> 2099). The preview's
+    // net result then shows what remains to transfer (about 0), not the year's result.
+    warnings << ("Årets resultat har redan förts över via konto 8999 (${AmountFormatter.format(yearResultTransfer.amount, null)}); " +
+        "bokslutet överför återstående ${AmountFormatter.format(netResult, null)}." as String)
   }
 
   private ClosingExecution executeClosing(Sql sql, YearEndClosingPreview preview) {
