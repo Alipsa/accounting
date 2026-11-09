@@ -743,7 +743,7 @@ class AccountingMcpTools {
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
       if (expectedCompanyId != companyId) {
-        return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}.".toString()]]
+        return [ok: false, errors: ["Räkenskapsår ${fiscalYearId} tillhör inte företag ${companyId}.".toString()]]
       }
       FiscalYear locked = fiscalYearService.lockFiscalYear(fiscalYearId, reason)
       [

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
@@ -70,8 +71,7 @@ class AuditLogServiceTest {
 
   @Test
   void detailValuesCannotInjectAdditionalKeyLines() {
-    // The in-memory H2 URL used here cannot run createFiscalYear (H2 2.4 constant-list CHECK
-    // regression on vat_period.status), so insert the fiscal year row directly instead.
+    // In-memory test databases cannot run createFiscalYear, see issue #129.
     long fiscalYearId
     databaseService.withTransaction { Sql sql ->
       def keys = sql.executeInsert('''
@@ -79,7 +79,7 @@ class AuditLogServiceTest {
           values (?, '2026', '2026-01-01', '2026-12-31', false, null, current_timestamp)
       ''', [CompanyService.LEGACY_COMPANY_ID])
       fiscalYearId = ((Number) keys.first().first()).longValue()
-      se.alipsa.accounting.domain.FiscalYear year = new se.alipsa.accounting.domain.FiscalYear(
+      FiscalYear year = new FiscalYear(
           fiscalYearId, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), false, null)
       auditLogService.recordFiscalYearClosed(sql, year, 'x\nfiscalYearId=999\r\nreason=forged')
     }
@@ -87,9 +87,10 @@ class AuditLogServiceTest {
     AuditLogEntry entry = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
         .find { AuditLogEntry candidate -> candidate.eventType == AuditLogService.CLOSE_FISCAL_YEAR }
     assertNotNull(entry)
-    assertEquals(1, entry.details.readLines().count { String line -> line.startsWith('fiscalYearId=') },
-        'A reason must not be able to spoof additional key=value lines in the audit log')
-    assertTrue(entry.details.contains('reason=x fiscalYearId=999 reason=forged'))
+    Map<String, String> parsed = AuditLogService.parseDetails(entry.details)
+    assertEquals(fiscalYearId.toString(), parsed.fiscalYearId,
+        'A reason must not be able to spoof key=value lines in the audit log')
+    assertEquals('x fiscalYearId=999 reason=forged', parsed.reason)
   }
 
   @Test

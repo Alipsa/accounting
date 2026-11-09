@@ -316,10 +316,8 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
     if (choice != JOptionPane.YES_OPTION) {
       return
     }
-    String reason = reasonField.text?.trim()
-    FiscalYear closed = reason
-        ? fiscalYearService.closeFiscalYear(year.id, reason)
-        : fiscalYearService.closeFiscalYear(year.id)
+    // Blank reasons are dropped by AuditLogService.formatDetails, so no branch is needed here.
+    FiscalYear closed = fiscalYearService.closeFiscalYear(year.id, reasonField.text)
     activeCompanyManager.reloadFiscalYears()
     reloadData()
     selectFiscalYear(closed.id)

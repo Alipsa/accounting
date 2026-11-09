@@ -172,6 +172,6 @@ class FiscalYearLockMcpToolsTest {
 
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
-    assertTrue(errors.any { String error -> error.contains('does not belong to company') })
+    assertTrue(errors.any { String error -> error.contains('tillhör inte företag') })
   }
 }

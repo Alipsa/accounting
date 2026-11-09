@@ -3,6 +3,7 @@ package se.alipsa.accounting.service
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -278,6 +279,72 @@ class ClosingServiceTest {
     assertTrue(preview.nextFiscalYearWillBeCreated)
     assertEquals(LocalDate.of(2021, 1, 1), preview.nextFiscalYear.startDate)
     assertEquals(LocalDate.of(2021, 12, 31), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void yearEndClosingAfterImportedResultTransferBooksResultOnce() {
+    // Real shape from issue #119: the imported year already contains the source system's
+    // year-end transfer booked as D 8999 / K 2099.
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT')
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 3, 15),
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 12, 31),
+        'Årets resultat',
+        [
+            new VoucherLine(null, null, 0, null, '8999', null, 'Årets resultat', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2099', null, 'Årets resultat', 0.00G, 1000.00G)
+        ]
+    )
+
+    def preview = closingService.previewClosing(fiscalYear.id)
+    assertEquals(0.00G, preview.netResult)
+    assertTrue(preview.warnings.any { String warning -> warning.contains('förts över via konto 8999') })
+
+    def result = closingService.closeFiscalYear(fiscalYear.id)
+
+    Voucher closingVoucher = voucherService.findVoucher(result.closingVoucher.id)
+    // The closing voucher zeroes the income account and 8999; with a net of exactly 0 it
+    // must not write a 0-amount line to 2099.
+    assertEquals(1000.00G, lineForAccount(closingVoucher, '3010').debitAmount)
+    assertEquals(1000.00G, lineForAccount(closingVoucher, '8999').creditAmount)
+    assertNull(lineForAccount(closingVoucher, '2099'))
+    databaseService.withSql { Sql sql ->
+      // 2099 carries the result exactly once in the next year's opening balances...
+      assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '1510'))
+      assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '2099'))
+      GroovyRowResult zeroedAccounts = sql.firstRow('''
+          select count(*) as total
+            from opening_balance ob
+            join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ?
+             and a.account_number in ('3010', '8999')
+      ''', [nextFiscalYear.id]) as GroovyRowResult
+      assertEquals(0, ((Number) zeroedAccounts.get('total')).intValue())
+      // ...and the opening balances balance: debit-normal classes sum to credit-normal classes.
+      GroovyRowResult balanceCheck = sql.firstRow('''
+          select coalesce(sum(case when a.account_class in ('ASSET', 'EXPENSE') then ob.amount else -ob.amount end), 0) as difference
+            from opening_balance ob
+            join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ?
+      ''', [nextFiscalYear.id]) as GroovyRowResult
+      assertEquals(0.00G, new BigDecimal(balanceCheck.get('difference').toString()))
+    }
   }
 
   @Test

@@ -734,7 +734,8 @@ final class AuditLogService {
     }
   }
 
-  private static Map<String, String> parseDetails(String details) {
+  @PackageScope
+  static Map<String, String> parseDetails(String details) {
     Map<String, String> parsed = [:]
     if (!details) {
       return parsed
