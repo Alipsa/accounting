@@ -59,12 +59,12 @@ class ChartOfAccountsImportServiceTest {
 
     assertTrue(summary.importedCount > 1000)
     assertTrue(summary.createdCount > 1000)
-    assertTrue(summary.manualReviewCount > 0)
+    assertEquals(0, summary.manualReviewCount)
 
     Account assetAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '1010')
     Account equityAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '2010')
     Account incomeAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '3000')
-    Account manualReviewAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
+    Account yearResultAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8999')
 
     assertNotNull(assetAccount)
     assertEquals('ASSET', assetAccount.accountClass)
@@ -78,9 +78,22 @@ class ChartOfAccountsImportServiceTest {
     assertEquals('INCOME', incomeAccount.accountClass)
     assertFalse(incomeAccount.manualReviewRequired)
 
-    assertNotNull(manualReviewAccount)
-    assertTrue(manualReviewAccount.manualReviewRequired)
-    assertTrue(manualReviewAccount.accountClass == null)
+    assertNotNull(yearResultAccount)
+    assertEquals('EXPENSE', yearResultAccount.accountClass)
+    assertEquals('DEBIT', yearResultAccount.normalBalanceSide)
+    assertFalse(yearResultAccount.manualReviewRequired)
+
+    // 8xxx accounts whose name contradicts their subgroup keep the name-based class
+    // (e.g. 8070 Nedskrivningar in income group 80-83, 8440 Erhållna räntebidrag in
+    // expense group 84-87).
+    Account writeDownAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8070')
+    assertNotNull(writeDownAccount)
+    assertEquals('EXPENSE', writeDownAccount.accountClass)
+    assertEquals('DEBIT', writeDownAccount.normalBalanceSide)
+    Account interestSubsidyAccount = accountService.findAccount(CompanyService.LEGACY_COMPANY_ID, '8440')
+    assertNotNull(interestSubsidyAccount)
+    assertEquals('INCOME', interestSubsidyAccount.accountClass)
+    assertEquals('CREDIT', interestSubsidyAccount.normalBalanceSide)
   }
 
   @Test

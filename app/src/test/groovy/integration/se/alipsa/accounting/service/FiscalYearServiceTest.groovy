@@ -110,6 +110,24 @@ class FiscalYearServiceTest {
   }
 
   @Test
+  void closingWithReasonRecordsItInAuditLog() {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
+        '2026',
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 12, 31)
+    )
+
+    fiscalYearService.closeFiscalYear(year.id, 'Redan stängt i Fortnox')
+
+    List<AuditLogEntry> auditEntries = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+    AuditLogEntry entry = auditEntries.find { AuditLogEntry auditEntry ->
+      auditEntry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && auditEntry.fiscalYearId == year.id
+    }
+    assertNotNull(entry)
+    assertTrue(entry.details.contains('reason=Redan stängt i Fortnox'))
+  }
+
+  @Test
   void lockingAnAlreadyLockedPeriodIsRejected() {
     FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID,
         '2026',

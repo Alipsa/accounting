@@ -2,6 +2,7 @@ package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertNotNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -14,9 +15,11 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.AuditLogEntry
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
+import java.time.LocalDate
 
 class AuditLogServiceTest {
 
@@ -64,6 +67,30 @@ class AuditLogServiceTest {
     assertTrue(entries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.BACKUP })
     assertTrue(entries.any { AuditLogEntry entry -> entry.eventType == AuditLogService.RESTORE })
     assertEquals([], auditLogService.validateIntegrity())
+  }
+
+  @Test
+  void detailValuesCannotInjectAdditionalKeyLines() {
+    // In-memory test databases cannot run createFiscalYear, see issue #129.
+    long fiscalYearId
+    databaseService.withTransaction { Sql sql ->
+      def keys = sql.executeInsert('''
+          insert into fiscal_year (company_id, name, start_date, end_date, closed, closed_at, created_at)
+          values (?, '2026', '2026-01-01', '2026-12-31', false, null, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      fiscalYearId = ((Number) keys.first().first()).longValue()
+      FiscalYear year = new FiscalYear(
+          fiscalYearId, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), false, null)
+      auditLogService.recordFiscalYearClosed(sql, year, 'x\nfiscalYearId=999\r\nreason=forged')
+    }
+
+    AuditLogEntry entry = auditLogService.listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry candidate -> candidate.eventType == AuditLogService.CLOSE_FISCAL_YEAR }
+    assertNotNull(entry)
+    Map<String, String> parsed = AuditLogService.parseDetails(entry.details)
+    assertEquals(fiscalYearId.toString(), parsed.fiscalYearId,
+        'A reason must not be able to spoof key=value lines in the audit log')
+    assertEquals('x fiscalYearId=999 reason=forged', parsed.reason)
   }
 
   @Test

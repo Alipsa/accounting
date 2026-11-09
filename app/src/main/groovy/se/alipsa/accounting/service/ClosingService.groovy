@@ -7,12 +7,12 @@ import se.alipsa.accounting.domain.ClosingEntry
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.support.AmountFormatter
 
 import java.math.RoundingMode
 import java.sql.Date
 import java.time.Clock
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 
 /**
  * Handles year-end closing, retained earnings transfer and next-year opening balances.
@@ -223,6 +223,7 @@ final class ClosingService {
     if (resultBalances.isEmpty()) {
       warnings << 'Inga resultatkonton med saldo hittades. Bokslutsverifikationen blir tom och hoppas över.'
     }
+    appendAlreadyTransferredResultWarning(resultBalances, netResult, warnings)
     LocalDate dueDate = fiscalYear.endDate.plusMonths(6)
     if (LocalDate.now(clock).isAfter(dueDate)) {
       warnings << ("Bokslutsfristen passerade ${dueDate}. Årsbokslutet borde redan vara upprättat." as String)
@@ -255,6 +256,21 @@ final class ClosingService {
         blockers,
         warnings
     )
+  }
+
+  private static void appendAlreadyTransferredResultWarning(
+      Map<String, ResultAccountBalance> resultBalances,
+      BigDecimal netResult,
+      List<String> warnings
+  ) {
+    ResultAccountBalance yearResultTransfer = resultBalances['8999']
+    if (yearResultTransfer == null) {
+      return
+    }
+    // Imported years may already contain the year-end transfer (8999 -> 2099). The preview's
+    // net result then shows what remains to transfer (about 0), not the year's result.
+    warnings << ("Årets resultat har redan förts över via konto 8999 (${AmountFormatter.format(yearResultTransfer.amount, null)}); " +
+        "bokslutet överför återstående ${AmountFormatter.format(netResult, null)}." as String)
   }
 
   private ClosingExecution executeClosing(Sql sql, YearEndClosingPreview preview) {
@@ -488,10 +504,10 @@ final class ClosingService {
 
   private NextFiscalYearPlan planNextFiscalYear(Sql sql, long companyId, FiscalYear fiscalYear) {
     LocalDate nextStartDate = fiscalYear.endDate.plusDays(1)
-    long daySpan = ChronoUnit.DAYS.between(fiscalYear.startDate, fiscalYear.endDate)
-    LocalDate nextEndDate = nextStartDate.plusDays(daySpan)
 
-    GroovyRowResult exact = sql.firstRow('''
+    // Reuse an existing year that starts where the next year would start, even when its
+    // length differs from the current year (e.g. after a shortened first fiscal year).
+    GroovyRowResult existing = sql.firstRow('''
         select id,
                name,
                start_date as startDate,
@@ -501,12 +517,12 @@ final class ClosingService {
           from fiscal_year
          where company_id = ?
            and start_date = ?
-           and end_date = ?
-    ''', [companyId, Date.valueOf(nextStartDate), Date.valueOf(nextEndDate)]) as GroovyRowResult
-    if (exact != null) {
-      return new NextFiscalYearPlan(mapFiscalYear(exact), false, null)
+    ''', [companyId, Date.valueOf(nextStartDate)]) as GroovyRowResult
+    if (existing != null) {
+      return new NextFiscalYearPlan(mapFiscalYear(existing), false, null)
     }
 
+    LocalDate nextEndDate = nextStartDate.plusYears(1).minusDays(1)
     GroovyRowResult overlap = sql.firstRow('''
         select count(*) as total
           from fiscal_year

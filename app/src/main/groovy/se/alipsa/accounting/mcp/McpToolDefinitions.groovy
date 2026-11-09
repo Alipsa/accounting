@@ -187,6 +187,15 @@ final class McpToolDefinitions {
                 preview_token: strParam('Token returned by preview_year_end.')
             ]
         ),
+        toolDef('lock_fiscal_year',
+            'Locks a fiscal year as closed without running year-end closing: no closing voucher or opening balances are created. Use for imported historical years that are already closed in the source system. The lock is audit-logged; an optional reason can be recorded.',
+            ['company_id', 'fiscal_year_id'],
+            [
+                company_id: intParam('Company ID'),
+                fiscal_year_id: intParam('Fiscal year ID to lock'),
+                reason: optStrParam('Optional reason recorded in the audit log, e.g. "Already closed in Fortnox".')
+            ]
+        ),
     ]
   }
 

@@ -476,14 +476,15 @@ final class AuditLogService {
   }
 
   @PackageScope
-  AuditLogEntry recordFiscalYearClosed(Sql sql, FiscalYear fiscalYear) {
+  AuditLogEntry recordFiscalYearClosed(Sql sql, FiscalYear fiscalYear, String reason = null) {
     recordEvent(sql, CLOSE_FISCAL_YEAR, new AuditReferences(fiscalYearId: fiscalYear.id),
         "Räkenskapsår stängt: ${fiscalYear.name}", formatDetails([
             fiscalYearId : fiscalYear.id,
             name         : fiscalYear.name,
             startDate    : fiscalYear.startDate,
             endDate      : fiscalYear.endDate,
-            closedAt     : fiscalYear.closedAt
+            closedAt     : fiscalYear.closedAt,
+            reason       : reason
         ]))
   }
 
@@ -733,7 +734,8 @@ final class AuditLogService {
     }
   }
 
-  private static Map<String, String> parseDetails(String details) {
+  @PackageScope
+  static Map<String, String> parseDetails(String details) {
     Map<String, String> parsed = [:]
     if (!details) {
       return parsed
@@ -905,7 +907,13 @@ final class AuditLogService {
   }
 
   private static String formatDetails(Map<String, Object> details) {
-    Map<String, Object> safeDetails = details.findAll { String key, Object value ->
+    // Values come from user input (e.g. lock reasons, remediation reasons) and must not be
+    // able to inject extra key=value lines into the tamper-evident ledger.
+    Map<String, Object> sanitized = [:]
+    details.each { String key, Object value ->
+      sanitized[key] = sanitizeDetailValue(value)
+    }
+    Map<String, Object> safeDetails = sanitized.findAll { String key, Object value ->
       value != null
     }.sort { Map.Entry<String, Object> entry ->
       entry.key
@@ -913,6 +921,14 @@ final class AuditLogService {
     safeDetails.collect { String key, Object value ->
       "${key}=${value}"
     }.join('\n')
+  }
+
+  private static Object sanitizeDetailValue(Object value) {
+    if (!(value instanceof CharSequence)) {
+      return value
+    }
+    String sanitized = value.toString().replaceAll(/[\r\n]+/, ' ').trim()
+    sanitized ?: null
   }
 
   private static final class AuditReferences {

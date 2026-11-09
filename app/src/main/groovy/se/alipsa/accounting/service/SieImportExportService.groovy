@@ -1217,6 +1217,24 @@ final class SieImportExportService {
     if (expenseMatch && !incomeMatch) {
       return new AccountClassification('EXPENSE', 'DEBIT', false, null, accountSubgroup)
     }
+    // No decisive name match: fall back to the BAS subgroup. Some 8xxx accounts have the
+    // opposite sign nature of their group (e.g. 8070 Nedskrivningar in income group 80-83,
+    // 8820 Mottagna koncernbidrag in expense group 88), which is why the keyword match above
+    // takes precedence. Accounts like 8999 Årets resultat have no keyword but a deterministic
+    // subgroup (89 -> EXPENSE/DEBIT).
+    String subgroupClass = ReportAccountSupport.inferIncomeAccountClassFromAccountNumber(accountNumber)
+    if (subgroupClass != null) {
+      return new AccountClassification(
+          subgroupClass,
+          ReportAccountSupport.inferNormalBalanceSide(subgroupClass),
+          false,
+          null,
+          accountSubgroup
+      )
+    }
+    // Defensive fallback: classifyAccount only routes 8xxx accounts here and every 80-89
+    // account has a subgroup, so the subgroup fallback above always resolves today and this
+    // branch is unreachable. It is kept in case the routing ever changes.
     new AccountClassification(
         null,
         null,

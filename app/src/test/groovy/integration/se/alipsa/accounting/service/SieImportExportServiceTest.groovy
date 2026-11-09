@@ -328,6 +328,89 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
   }
 
   @Test
+  void importClassifiesYearResultAccountWithoutManualReview() {
+    switchHome(tempDir.resolve('year-result-account-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('year-result-account.sie')
+    filePath.toFile().withWriter('ISO-8859-1') { Writer writer ->
+      writer.write('''#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 8999 "Årets resultat"
+''')
+    }
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select account_class as accountClass,
+                 normal_balance_side as normalBalanceSide,
+                 manual_review_required as manualReviewRequired
+            from account
+           where account_number = ?
+      ''', ['8999']) as GroovyRowResult
+      assertEquals('EXPENSE', row.get('accountClass'))
+      assertEquals('DEBIT', row.get('normalBalanceSide'))
+      assertEquals(false, row.get('manualReviewRequired'))
+    }
+  }
+
+  @Test
+  void importClassifiesMixedGroupAccountsByNameBeforeSubgroup() {
+    switchHome(tempDir.resolve('mixed-group-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('mixed-group.sie')
+    filePath.toFile().withWriter('ISO-8859-1') { Writer writer ->
+      writer.write('''#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 8070 "Nedskrivningar"
+#KONTO 8820 "Mottagna koncernbidrag"
+#KONTO 8830 "Lämnade koncernbidrag"
+''')
+    }
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult expenseAccount = sql.firstRow('''
+          select account_class as accountClass, normal_balance_side as normalBalanceSide
+            from account where account_number = ?
+      ''', ['8070']) as GroovyRowResult
+      assertEquals('EXPENSE', expenseAccount.get('accountClass'))
+      assertEquals('DEBIT', expenseAccount.get('normalBalanceSide'))
+      GroovyRowResult incomeAccount = sql.firstRow('''
+          select account_class as accountClass, normal_balance_side as normalBalanceSide
+            from account where account_number = ?
+      ''', ['8820']) as GroovyRowResult
+      assertEquals('INCOME', incomeAccount.get('accountClass'))
+      assertEquals('CREDIT', incomeAccount.get('normalBalanceSide'))
+      // Conflicting keywords (LAMNADE + BIDRAG) resolve via the subgroup: 88 -> EXPENSE/DEBIT.
+      GroovyRowResult conflictAccount = sql.firstRow('''
+          select account_class as accountClass, normal_balance_side as normalBalanceSide
+            from account where account_number = ?
+      ''', ['8830']) as GroovyRowResult
+      assertEquals('EXPENSE', conflictAccount.get('accountClass'))
+      assertEquals('DEBIT', conflictAccount.get('normalBalanceSide'))
+    }
+  }
+
+  @Test
   void importClassifiesGroup21AccountsAsLiabilities() {
     switchHome(tempDir.resolve('group21-db'))
     DatabaseService databaseService = DatabaseService.newForTesting()

@@ -1,7 +1,9 @@
 package se.alipsa.accounting.service
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 import static org.junit.jupiter.api.Assertions.assertNotNull
+import static org.junit.jupiter.api.Assertions.assertNull
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
@@ -220,6 +222,171 @@ class ClosingServiceTest {
     def preview = closingService.previewClosing(fiscalYear.id)
 
     assertTrue(preview.blockingIssues.any { String issue -> issue.contains('manuellt justerade ingående balanser') })
+  }
+
+  @Test
+  void previewReusesExistingNextYearEvenWhenItsLengthDiffers() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    FiscalYear existingNextYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(shortenedFirstYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertFalse(preview.nextFiscalYearWillBeCreated)
+    assertEquals(existingNextYear.id, preview.nextFiscalYear.id)
+  }
+
+  @Test
+  void previewPlansFullTwelveMonthYearAfterShortenedFirstYear() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(shortenedFirstYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2020, 1, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2020, 12, 31), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void previewPlansFullYearAfterNonCalendarFiscalYear() {
+    FiscalYear brokenFiscalYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019/2020', LocalDate.of(2019, 7, 1), LocalDate.of(2020, 6, 30))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(brokenFiscalYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2020, 7, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2021, 6, 30), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void previewPlansTwelveMonthsAfterLeapYear() {
+    FiscalYear leapYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+
+    def preview = closingService.previewClosing(leapYear.id)
+
+    assertEquals([], preview.blockingIssues)
+    assertTrue(preview.nextFiscalYearWillBeCreated)
+    assertEquals(LocalDate.of(2021, 1, 1), preview.nextFiscalYear.startDate)
+    assertEquals(LocalDate.of(2021, 12, 31), preview.nextFiscalYear.endDate)
+  }
+
+  @Test
+  void yearEndClosingAfterImportedResultTransferBooksResultOnce() {
+    // Real shape from issue #119: the imported year already contains the source system's
+    // year-end transfer booked as D 8999 / K 2099.
+    FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT')
+    }
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 3, 15),
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+    voucherService.createVoucher(
+        fiscalYear.id,
+        'A',
+        LocalDate.of(2026, 12, 31),
+        'Årets resultat',
+        [
+            new VoucherLine(null, null, 0, null, '8999', null, 'Årets resultat', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '2099', null, 'Årets resultat', 0.00G, 1000.00G)
+        ]
+    )
+
+    def preview = closingService.previewClosing(fiscalYear.id)
+    assertEquals(0.00G, preview.netResult)
+    assertTrue(preview.warnings.any { String warning -> warning.contains('förts över via konto 8999') })
+
+    def result = closingService.closeFiscalYear(fiscalYear.id)
+
+    Voucher closingVoucher = voucherService.findVoucher(result.closingVoucher.id)
+    // NOTE(issue #130): the assertions below pin down the current closing-entries behaviour,
+    // which zeroes every result account. When #130 changes the closing to a single 8999
+    // transfer, the 3010/8999 assertions here are expected to change; the 2099,
+    // opening-balance and balance assertions remain valid either way.
+    assertEquals(1000.00G, lineForAccount(closingVoucher, '3010').debitAmount)
+    assertEquals(1000.00G, lineForAccount(closingVoucher, '8999').creditAmount)
+    assertNull(lineForAccount(closingVoucher, '2099'))
+    databaseService.withSql { Sql sql ->
+      // 2099 carries the result exactly once in the next year's opening balances...
+      assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '1510'))
+      assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '2099'))
+      GroovyRowResult zeroedAccounts = sql.firstRow('''
+          select count(*) as total
+            from opening_balance ob
+            join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ?
+             and a.account_number in ('3010', '8999')
+      ''', [nextFiscalYear.id]) as GroovyRowResult
+      assertEquals(0, ((Number) zeroedAccounts.get('total')).intValue())
+      // ...and the opening balances balance: debit-normal classes sum to credit-normal classes.
+      GroovyRowResult balanceCheck = sql.firstRow('''
+          select coalesce(sum(case when a.account_class in ('ASSET', 'EXPENSE') then ob.amount else -ob.amount end), 0) as difference
+            from opening_balance ob
+            join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ?
+      ''', [nextFiscalYear.id]) as GroovyRowResult
+      assertEquals(0.00G, new BigDecimal(balanceCheck.get('difference').toString()))
+    }
+  }
+
+  @Test
+  void yearEndClosingReusesExistingNextYearWithDifferentLength() {
+    FiscalYear shortenedFirstYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2019', LocalDate.of(2019, 1, 17), LocalDate.of(2019, 12, 31))
+    FiscalYear existingNextYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2020', LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      def accountId = sql.firstRow('select id from account where account_number = ?', ['1930']).get('id')
+      sql.executeInsert('''
+          insert into opening_balance (
+              fiscal_year_id,
+              account_id,
+              amount,
+              created_at,
+              updated_at
+          ) values (?, ?, ?, current_timestamp, current_timestamp)
+      ''', [shortenedFirstYear.id, accountId, 500.00G])
+    }
+    voucherService.createVoucher(
+        shortenedFirstYear.id,
+        'A',
+        LocalDate.of(2019, 3, 15),
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 1000.00G, 0.00G),
+            new VoucherLine(null, null, 0, null, '3010', null, 'Försäljning', 0.00G, 1000.00G)
+        ]
+    )
+
+    def result = closingService.closeFiscalYear(shortenedFirstYear.id)
+
+    assertEquals(existingNextYear.id, result.nextFiscalYear.id)
+    assertTrue(result.closedFiscalYear.closed)
+    databaseService.withSql { Sql sql ->
+      assertEquals(1000.00G, openingBalanceFor(sql, existingNextYear.id, '1510'))
+      assertEquals(500.00G, openingBalanceFor(sql, existingNextYear.id, '1930'))
+    }
   }
 
   private void seedClosingAccounts() {

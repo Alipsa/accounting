@@ -192,6 +192,8 @@ class AccountingMcpTools {
         return previewYearEnd(arguments)
       case 'close_fiscal_year':
         return closeFiscalYear(arguments)
+      case 'lock_fiscal_year':
+        return lockFiscalYear(arguments)
       case 'preview_sie_import':
         return previewSieImport(arguments)
       case 'import_sie':
@@ -728,6 +730,29 @@ class AccountingMcpTools {
           closing_entry_count: result.closingEntryCount,
           net_result: result.netResult,
           warnings: result.warnings
+      ]
+    } catch (Exception exception) {
+      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
+    }
+  }
+
+  private Map<String, Object> lockFiscalYear(Map<String, Object> args) {
+    long companyId = requiredLong(args, 'company_id')
+    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    String reason = optionalString(args, 'reason', null)
+    try {
+      long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
+      if (expectedCompanyId != companyId) {
+        return [ok: false, errors: ["Räkenskapsår ${fiscalYearId} tillhör inte företag ${companyId}.".toString()]]
+      }
+      FiscalYear locked = fiscalYearService.lockFiscalYear(fiscalYearId, reason)
+      [
+          ok: true,
+          fiscal_year_id: locked.id,
+          fiscal_year_name: locked.name,
+          closed: locked.closed,
+          closed_at: locked.closedAt?.toString(),
+          reason: reason
       ]
     } catch (Exception exception) {
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]

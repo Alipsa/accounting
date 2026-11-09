@@ -86,6 +86,37 @@ final class FiscalYearService {
     }
   }
 
+  FiscalYear closeFiscalYear(long fiscalYearId, String reason) {
+    databaseService.withTransaction { Sql sql ->
+      closeFiscalYear(sql, fiscalYearId, reason)
+    }
+  }
+
+  /**
+   * Locks a fiscal year as closed, failing if it is already closed. Unlike
+   * {@link #closeFiscalYear(long, String)}, which is idempotent, this uses a conditional update
+   * so the guard and the write are atomic even if another session closes the year concurrently.
+   */
+  FiscalYear lockFiscalYear(long fiscalYearId, String reason) {
+    databaseService.withTransaction { Sql sql ->
+      int updated = sql.executeUpdate('''
+                update fiscal_year
+                   set closed = true,
+                       closed_at = current_timestamp
+                 where id = ?
+                   and closed = false
+            ''', [fiscalYearId])
+      if (updated == 0) {
+        FiscalYear year = findById(sql, fiscalYearId)
+        if (year == null) {
+          throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
+        }
+        throw new IllegalStateException("Räkenskapsåret ${year.name} är redan stängt.")
+      }
+      recordClosed(sql, fiscalYearId, reason)
+    }
+  }
+
   FiscalYear reopenFiscalYear(long fiscalYearId) {
     databaseService.withTransaction { Sql sql ->
       reopenFiscalYear(sql, fiscalYearId)
@@ -136,7 +167,7 @@ final class FiscalYearService {
   }
 
   @PackageScope
-  FiscalYear closeFiscalYear(Sql sql, long fiscalYearId) {
+  FiscalYear closeFiscalYear(Sql sql, long fiscalYearId, String reason = null) {
     FiscalYear year = findById(sql, fiscalYearId)
     if (year == null) {
       throw new IllegalArgumentException("Unknown fiscal year id: ${fiscalYearId}")
@@ -144,14 +175,22 @@ final class FiscalYearService {
     if (year.closed) {
       return findById(sql, fiscalYearId)
     }
+    markClosed(sql, fiscalYearId, reason)
+  }
+
+  private FiscalYear markClosed(Sql sql, long fiscalYearId, String reason) {
     sql.executeUpdate('''
                 update fiscal_year
                    set closed = true,
                        closed_at = current_timestamp
                  where id = ?
             ''', [fiscalYearId])
+    recordClosed(sql, fiscalYearId, reason)
+  }
+
+  private FiscalYear recordClosed(Sql sql, long fiscalYearId, String reason) {
     FiscalYear closedYear = findById(sql, fiscalYearId)
-    auditLogService.recordFiscalYearClosed(sql, closedYear)
+    auditLogService.recordFiscalYearClosed(sql, closedYear, reason)
     closedYear
   }
 

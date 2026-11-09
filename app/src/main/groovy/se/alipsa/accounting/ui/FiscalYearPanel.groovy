@@ -297,16 +297,27 @@ final class FiscalYearPanel extends JPanel implements PropertyChangeListener, Li
       )])
       return
     }
+    JTextField reasonField = new JTextField(24)
+    JPanel messagePanel = new JPanel(new BorderLayout(0, 8))
+    messagePanel.add(
+        new JLabel(I18n.instance.format('fiscalYearPanel.confirm.closeFiscalYear', year.name)),
+        BorderLayout.NORTH
+    )
+    JPanel reasonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0))
+    reasonRow.add(new JLabel(I18n.instance.getString('fiscalYearPanel.label.lockReason')))
+    reasonRow.add(reasonField)
+    messagePanel.add(reasonRow, BorderLayout.CENTER)
     int choice = JOptionPane.showConfirmDialog(
         this,
-        I18n.instance.format('fiscalYearPanel.confirm.closeFiscalYear', year.name),
+        messagePanel,
         I18n.instance.getString('fiscalYearPanel.confirm.closeTitle'),
         JOptionPane.YES_NO_OPTION
     )
     if (choice != JOptionPane.YES_OPTION) {
       return
     }
-    FiscalYear closed = fiscalYearService.closeFiscalYear(year.id)
+    // Blank reasons are dropped by AuditLogService.formatDetails, so no branch is needed here.
+    FiscalYear closed = fiscalYearService.closeFiscalYear(year.id, reasonField.text)
     activeCompanyManager.reloadFiscalYears()
     reloadData()
     selectFiscalYear(closed.id)
