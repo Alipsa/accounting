@@ -131,13 +131,27 @@ final class AccountEditorDialogTest {
   }
 
   @Test
-  void classifyingAccountDropsIncompatibleStoredVatCode() {
+  void classifyingAccountHidesStoredVatCodeUntilCompatibleClassIsSelected() {
     Account account = new Account(accountNumber: '8990', vatCode: 'OUTPUT_25')
     AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
 
     form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'ASSET')
-
     assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    assertEquals(VatCode.OUTPUT_25, (form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void correctingExpenseToIncomeRestoresStoredOutputVatCode() {
+    Account account = new Account(accountNumber: '8990', vatCode: 'OUTPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    assertEquals(VatCode.OUTPUT_25, (form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
   }
 
   @Test
@@ -157,6 +171,31 @@ final class AccountEditorDialogTest {
     form.vatCombo.selectedIndex = 0
 
     form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void classifiedAccountRestoresVatCodeAfterIncompatibleClass() {
+    Account account = new Account(accountNumber: '1910', accountClass: 'ASSET', vatCode: 'INPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+    assertEquals(VatCode.INPUT_25, (form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void explicitVatClearStaysClearedAcrossIncompatibleClass() {
+    Account account = new Account(accountNumber: '8990', vatCode: 'OUTPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    form.vatCombo.selectedIndex = 0
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
 
     assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
   }

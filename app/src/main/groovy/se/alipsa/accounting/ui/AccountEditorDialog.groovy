@@ -45,8 +45,6 @@ final class AccountEditorDialog {
       if (result != JOptionPane.OK_OPTION) {
         return null
       }
-      String accountClass = selectedAccountClass(form.classCombo)
-      String normalBalanceSide = selectedNormalBalanceSide(form.sideCombo)
       if (!isComplete(form)) {
         JOptionPane.showMessageDialog(
             parent,
@@ -56,6 +54,8 @@ final class AccountEditorDialog {
         )
         continue
       }
+      String accountClass = selectedAccountClass(form.classCombo)
+      String normalBalanceSide = selectedNormalBalanceSide(form.sideCombo)
       VatCodeChoice selectedVatChoice = form.vatCombo.selectedItem as VatCodeChoice
       return new AccountEditorResult(
           form.nameField.text,
@@ -111,7 +111,8 @@ final class AccountEditorDialog {
     final JPanel panel
 
     private final boolean initiallyUnclassified
-    private boolean restoreStoredVatCode
+    private String preferredVatCode
+    private boolean repopulatingVat
     private boolean reviewAutoCleared
 
     EditorForm(Account account, List<SruSuggestion> sruSuggestions) {
@@ -138,15 +139,18 @@ final class AccountEditorDialog {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
 
       initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
-      restoreStoredVatCode = classCombo.selectedIndex == 0 && account.vatCode != null
-      classCombo.addActionListener {
-        String keep = (vatCombo.selectedItem as VatCodeChoice)?.vatCode?.name()
-        if (restoreStoredVatCode) {
-          keep = keep ?: account.vatCode
+      preferredVatCode = account.vatCode
+      vatCombo.addActionListener {
+        if (!repopulatingVat) {
+          preferredVatCode = (vatCombo.selectedItem as VatCodeChoice)?.vatCode?.name()
         }
-        populateVatCombo(vatCombo, selectedAccountClass(classCombo), keep)
-        if (selectedAccountClass(classCombo)) {
-          restoreStoredVatCode = false
+      }
+      classCombo.addActionListener {
+        repopulatingVat = true
+        try {
+          populateVatCombo(vatCombo, selectedAccountClass(classCombo), preferredVatCode)
+        } finally {
+          repopulatingVat = false
         }
         clearReviewFlagOnceClassified()
       }
