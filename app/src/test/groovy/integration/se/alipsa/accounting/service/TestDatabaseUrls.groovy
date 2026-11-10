@@ -5,11 +5,6 @@ package se.alipsa.accounting.service
  * instead of a real file, so integration tests avoid disk I/O for their (throwaway) database.
  * Must be paired with {@code AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY=true}, since
  * DatabaseService.validateDatabaseUrl otherwise rejects in-memory URLs outright.
- *
- * Only safe for tests that never UPDATE a column guarded by a constant-list CHECK constraint
- * (e.g. company.vat_periodicity, voucher.status) - H2 2.4.240 has a regression where such a
- * constraint throws "the database has been closed" once the connection that created it closes
- * (https://github.com/h2database/h2database/issues/4320). Revisit once that's fixed upstream.
  */
 class TestDatabaseUrls {
 

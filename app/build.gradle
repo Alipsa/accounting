@@ -3,12 +3,12 @@ plugins {
   id 'application'
   id 'signing'
   id 'codenarc'
-  id 'com.diffplug.spotless' version '8.9.0'
-  id 'io.github.ben-manes.versions' version '0.57.0'
+  id 'com.diffplug.spotless' version '8.11.0'
+  id 'io.github.ben-manes.versions' version '0.67.0'
 }
 
 group = 'se.alipsa'
-version = '1.8.1-SNAPSHOT'
+version = '1.9.0-SNAPSHOT'
 
 repositories {
   mavenLocal()
@@ -229,11 +229,11 @@ def clearDirectory = { File directory ->
 tasks.named('jar', Jar) {
   manifest {
     attributes(
-    'Implementation-Title': releaseConfig.displayName,
-    'Implementation-Version': releaseConfig.version,
-    'Implementation-Vendor': releaseConfig.vendor,
-    'Main-Class': releaseConfig.mainClassName.get(),
-    'SplashScreen-Image': 'splash.png'
+        'Implementation-Title': releaseConfig.displayName,
+        'Implementation-Version': releaseConfig.version,
+        'Implementation-Vendor': releaseConfig.vendor,
+        'Main-Class': releaseConfig.mainClassName.get(),
+        'SplashScreen-Image': 'splash.png'
     )
   }
 }
@@ -423,7 +423,7 @@ tasks.register('packageLinuxAppImage', Exec) {
     commandLine(
         jpackageExecutable.get(),
         *buildJpackageArgs('linux', 'app-image', outputDir)
-        )
+    )
   }
 }
 
@@ -462,7 +462,7 @@ tasks.register('packageWindowsAppImage', Exec) {
     commandLine(
         jpackageExecutable.get(),
         *buildJpackageArgs('windows', 'app-image', outputDir)
-        )
+    )
   }
 }
 
@@ -487,7 +487,7 @@ tasks.register('packageWindowsInstaller', Exec) {
           '--win-dir-chooser',
           '--win-per-user-install'
         ])
-        )
+    )
   }
 }
 
@@ -500,7 +500,7 @@ tasks.register('packageMacosAppImage', Exec) {
     commandLine(
         jpackageExecutable.get(),
         *buildJpackageArgs('macos', 'app-image', outputDir)
-        )
+    )
   }
 }
 
@@ -589,13 +589,13 @@ tasks.register('verifyMacosAppImage', Exec) {
 
 tasks.register('packageCurrentPlatformRelease') {
   dependsOn(
-  isWindows ? 'packageWindowsRelease' : isMacos ? 'packageMacosRelease' : 'packageLinuxReleaseZip'
+      isWindows ? 'packageWindowsRelease' : isMacos ? 'packageMacosRelease' : 'packageLinuxReleaseZip'
   )
 }
 
 tasks.register('verifyCurrentPlatformRelease') {
   dependsOn(
-  isWindows ? 'verifyWindowsAppImage' : isMacos ? 'verifyMacosAppImage' : 'verifyLinuxAppImage'
+      isWindows ? 'verifyWindowsAppImage' : isMacos ? 'verifyMacosAppImage' : 'verifyLinuxAppImage'
   )
 }
 
@@ -652,7 +652,7 @@ spotless {
         'org.eclipse.jdt.core.formatter.tabulation.char=space',
         'org.eclipse.jdt.core.formatter.tabulation.size=2',
         'org.eclipse.jdt.core.formatter.indentation.size=2'
-        )
+    )
     leadingTabsToSpaces(2)
     trimTrailingWhitespace()
     endWithNewline()

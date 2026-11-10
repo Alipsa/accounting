@@ -1,6 +1,18 @@
 # Alipsa Accounting, Release History
 
-## v1.8.1, unreleased
+## v1.9.0, unreleased
+
+### Underhåll
+
+- Uppdaterade beroenden:
+  - Groovy 5.0.7 -> 6.0.0
+  - H2 2.4.240 -> 2.5.252
+  - Apache POI 5.5.1 -> 6.0.0
+  - FlatLaf 3.7.2 -> 3.8
+  - JUnit 6.1.2 -> 6.1.3
+  - Spotless Gradle plugin 8.9.0 -> 8.11.0
+  - Gradle Versions plugin 0.57.0 -> 0.67.0
+  - Gradle 9.6.1 -> 9.9.0
 
 ## v1.8.0, 2026-08-02
 

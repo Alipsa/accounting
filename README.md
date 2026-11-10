@@ -1,8 +1,8 @@
 # <img src="app/src/main/resources/icons/logo128.png" alt="Alipsa Accounting" width="32" height="32"> Alipsa Bokföring / Alipsa Accounting
 
-![Groovy 5.0](https://img.shields.io/badge/Groovy-5.0-blue?logo=apachegroovy)
+![Groovy 6.0](https://img.shields.io/badge/Groovy-6.0-blue?logo=apachegroovy)
 ![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
-![Gradle 9.6](https://img.shields.io/badge/Gradle-9.6-02303A?logo=gradle)
+![Gradle 9.9](https://img.shields.io/badge/Gradle-9.9-02303A?logo=gradle)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 Desktopbaserat bokföringsprogram för små svenska företag.
