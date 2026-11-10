@@ -29,6 +29,7 @@ final class AiWorkspaceMcpSettings {
       'get_active_voucher_draft',
       'preview_year_end',
       'preview_sie_import',
+      'preview_account_update',
       'list_import_jobs'
   ].asImmutable()
 

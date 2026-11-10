@@ -411,6 +411,45 @@ class SieImportExportServiceTest extends AbstractSieImportExportServiceTest {
   }
 
   @Test
+  void importClassifiesTaxFreeInterestIncomeBySubgroupFallback() {
+    switchHome(tempDir.resolve('tax-free-interest-db'))
+    DatabaseService databaseService = DatabaseService.newForTesting()
+    databaseService.initialize()
+    SieImportExportService service = createSieService(databaseService)
+    Path filePath = tempDir.resolve('tax-free-interest.sie')
+    filePath.toFile().withWriter('ISO-8859-1') { Writer writer ->
+      writer.write('''#FLAGGA 0
+#PROGRAM "Test" "1.0"
+#FORMAT PC8
+#GEN 20260101 "tester"
+#SIETYP 4
+#FNAMN "Testbolaget AB"
+#ORGNR 556677-8899
+#RAR 0 20260101 20261231
+#KONTO 8314 "Skattefria ränteintäkter"
+''')
+    }
+
+    service.importFile(CompanyService.LEGACY_COMPANY_ID, filePath)
+
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult row = sql.firstRow('''
+          select account_class as accountClass,
+                 normal_balance_side as normalBalanceSide,
+                 manual_review_required as manualReviewRequired
+            from account
+           where account_number = ?
+      ''', ['8314']) as GroovyRowResult
+      // "Skattefria ränteintäkter" matches both an income keyword (RANTEINTAKTER) and an
+      // expense keyword (SKATT as a substring), so the name match is indecisive and the
+      // BAS subgroup 83 decides: financial income -> INCOME/CREDIT.
+      assertEquals('INCOME', row.get('accountClass'))
+      assertEquals('CREDIT', row.get('normalBalanceSide'))
+      assertEquals(false, row.get('manualReviewRequired'))
+    }
+  }
+
+  @Test
   void importClassifiesGroup21AccountsAsLiabilities() {
     switchHome(tempDir.resolve('group21-db'))
     DatabaseService databaseService = DatabaseService.newForTesting()

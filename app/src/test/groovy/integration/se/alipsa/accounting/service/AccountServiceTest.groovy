@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.support.AppPaths
 
@@ -205,6 +206,172 @@ class AccountServiceTest {
         CompanyService.LEGACY_COMPANY_ID, '1510')
     assertEquals('LIABILITY', updated.accountClass)
     assertEquals('CREDIT', updated.normalBalanceSide)
+  }
+
+  @Test
+  void updateAccountWritesAuditEntryWithBeforeAndAfterValues() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '8314', 'Resultat övriga värdepapper',
+        'INCOME', 'CREDIT', VatCode.OUTPUT_25, true, false)
+
+    List<AuditLogEntry> entries = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+    AuditLogEntry entry = entries.find { AuditLogEntry auditEntry ->
+      auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT
+    }
+    assertNotNull(entry, 'Updating an account must write an UPDATE_ACCOUNT audit entry')
+    Map<String, String> details = AuditLogService.parseDetails(entry.details)
+    assertEquals('8314', details.accountNumber)
+    assertEquals('Resultat övriga värdepapper', details.accountName)
+    assertEquals('INCOME', details.accountClass)
+    assertEquals('CREDIT', details.normalBalanceSide)
+    assertEquals('(saknas)', details.previousAccountClass)
+    assertTrue(details.changedFields.split(',').contains('accountClass'))
+    assertTrue(details.changedFields.split(',').contains('classificationNote'))
+    assertEquals('OUTPUT_25', details.vatCode)
+    assertEquals('false', details.manualReviewRequired)
+    assertEquals('Kontot kunde inte klassificeras automatiskt från BAS-importen.', details.previousClassificationNote)
+  }
+
+  @Test
+  void updateAccountAuditEntryRecordsPreviousClassAndSideWhenTheyChange() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '4010', 'Varuinköp',
+        'INCOME', 'CREDIT', null, true, false)
+
+    AuditLogEntry entry = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    assertNotNull(entry)
+    Map<String, String> details = AuditLogService.parseDetails(entry.details)
+    assertEquals('EXPENSE', details.previousAccountClass)
+    assertEquals('DEBIT', details.previousNormalBalanceSide)
+    assertEquals('INCOME', details.accountClass)
+  }
+
+  @Test
+  void updateAccountWithoutChangesWritesNoAuditEntry() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '1510', 'Kundfordringar',
+        'ASSET', 'DEBIT', null, true, false)
+
+    AuditLogEntry entry = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    assertNull(entry, 'A no-op update must not add noise to the audit log')
+  }
+
+  @Test
+  void setAccountVatCodeWritesAuditEntryOnlyWhenTheCodeChanges() {
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.INPUT_25)
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '1510', VatCode.INPUT_25)
+
+    List<AuditLogEntry> entries = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .findAll { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    assertEquals(1, entries.size(), 'Setting the same VAT code twice must write one audit entry')
+    Map<String, String> details = AuditLogService.parseDetails(entries.first().details)
+    assertEquals('1510', details.accountNumber)
+    assertEquals('INPUT_25', details.vatCode)
+    assertEquals('(saknas)', details.previousVatCode)
+  }
+
+  @Test
+  void setAccountActiveWritesAuditEntryWithPreviousActiveValue() {
+    accountService.setAccountActive(CompanyService.LEGACY_COMPANY_ID, '1510', false)
+
+    AuditLogEntry entry = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    assertNotNull(entry)
+    Map<String, String> details = AuditLogService.parseDetails(entry.details)
+    assertEquals('false', details.active)
+    assertEquals('true', details.previousActive)
+  }
+
+  @Test
+  void searchUnclassifiedAccountsIncludesInactiveAccountsAndExcludesClassifiedOnes() {
+    databaseService.withTransaction { Sql sql ->
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '8990', 'Resultat', null, null,
+              false, false, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+      sql.executeInsert('''
+          insert into account (
+              company_id, account_number, account_name,
+              account_class, normal_balance_side, active,
+              manual_review_required, created_at, updated_at
+          ) values (?, '2410', 'Överskottsfond', 'EQUITY', 'CREDIT',
+              true, true, current_timestamp, current_timestamp)
+      ''', [CompanyService.LEGACY_COMPANY_ID])
+    }
+
+    List<Account> unclassified = accountService.searchUnclassifiedAccounts(
+        CompanyService.LEGACY_COMPANY_ID, null)
+
+    assertEquals(['8314', '8990'], unclassified*.accountNumber)
+  }
+
+  @Test
+  void updateAccountClassificationKeepsFieldsOutsideTheClassificationFromTheCurrentRow() {
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'Försäljning',
+        'INCOME', 'CREDIT', null, true, false, '7210', null)
+    // The account is renamed elsewhere; a later classification change must not revert that.
+    accountService.updateAccount(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'Försäljning tjänst',
+        'INCOME', 'CREDIT', null, true, false, '7210', null)
+
+    Account updated = accountService.updateAccountClassification(
+        CompanyService.LEGACY_COMPANY_ID, '3010', 'EXPENSE', 'DEBIT')
+
+    assertEquals('EXPENSE', updated.accountClass)
+    assertEquals('DEBIT', updated.normalBalanceSide)
+    assertEquals('Försäljning tjänst', updated.accountName)
+    assertEquals('7210', updated.sruCode)
+    assertNull(updated.classificationNote)
+
+    AuditLogEntry entry = new AuditLogService(databaseService)
+        .listEntries(CompanyService.LEGACY_COMPANY_ID)
+        .find { AuditLogEntry auditEntry -> auditEntry.eventType == AuditLogService.UPDATE_ACCOUNT }
+    Map<String, String> details = AuditLogService.parseDetails(entry.details)
+    assertEquals('INCOME', details.previousAccountClass)
+    assertFalse(details.changedFields.split(',').contains('accountName'))
+  }
+
+  @Test
+  void updateAccountClassificationRejectsVatCodeIncompatibleWithNewClass() {
+    accountService.setAccountVatCode(CompanyService.LEGACY_COMPANY_ID, '2611', VatCode.OUTPUT_25)
+
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.updateAccountClassification(
+          CompanyService.LEGACY_COMPANY_ID, '2611', 'ASSET', 'DEBIT')
+    }
+
+    assertTrue(exception.message.contains('inte kompatibelt'))
+  }
+
+  @Test
+  void summarizeAccountUsageReturnsZeroForUnusedAccount() {
+    AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(
+        CompanyService.LEGACY_COMPANY_ID, '8314')
+
+    assertEquals(0, usage.voucherCount)
+    assertEquals(0, usage.voucherLineCount)
+    assertEquals(0, usage.fiscalYearCount)
+  }
+
+  @Test
+  void summarizeAccountUsageRejectsUnknownAccount() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      accountService.summarizeAccountUsage(CompanyService.LEGACY_COMPANY_ID, '9999')
+    }
+
+    assertTrue(exception.message.contains(AccountService.UNKNOWN_ACCOUNT_MESSAGE_PREFIX))
   }
 
   @Test
