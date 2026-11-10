@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.Account
+import se.alipsa.accounting.domain.VatCode
 
 import javax.swing.JComboBox
 
@@ -102,5 +103,61 @@ final class AccountEditorDialogTest {
     form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'LIABILITY')
 
     assertTrue(form.reviewCheckBox.selected)
+  }
+
+  @Test
+  void saveRequiresBothClassAndNormalSide() {
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(new Account(accountNumber: '8990'), [])
+
+    assertFalse(AccountEditorDialog.isComplete(form))
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    assertFalse(AccountEditorDialog.isComplete(form))
+    form.classCombo.selectedIndex = 0
+    form.sideCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES, 'CREDIT')
+    assertFalse(AccountEditorDialog.isComplete(form))
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+    assertTrue(AccountEditorDialog.isComplete(form))
+  }
+
+  @Test
+  void classifyingAccountRetainsCompatibleStoredVatCode() {
+    Account account = new Account(accountNumber: '8990', vatCode: 'OUTPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'INCOME')
+
+    assertEquals(VatCode.OUTPUT_25, (form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void classifyingAccountDropsIncompatibleStoredVatCode() {
+    Account account = new Account(accountNumber: '8990', vatCode: 'OUTPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'ASSET')
+
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void changingClassRetainsCompatibleSelectedVatCode() {
+    Account account = new Account(accountNumber: '1910', accountClass: 'ASSET', vatCode: 'INPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+
+    assertEquals(VatCode.INPUT_25, (form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
+  }
+
+  @Test
+  void changingClassDoesNotRestoreVatCodeClearedByUser() {
+    Account account = new Account(accountNumber: '1910', accountClass: 'ASSET', vatCode: 'INPUT_25')
+    AccountEditorDialog.EditorForm form = new AccountEditorDialog.EditorForm(account, [])
+    form.vatCombo.selectedIndex = 0
+
+    form.classCombo.selectedIndex = AccountEditorDialog.initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, 'EXPENSE')
+
+    assertNull((form.vatCombo.selectedItem as AccountEditorDialog.VatCodeChoice).vatCode)
   }
 }

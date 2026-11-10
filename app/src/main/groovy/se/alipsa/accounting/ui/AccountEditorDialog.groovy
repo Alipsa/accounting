@@ -47,7 +47,7 @@ final class AccountEditorDialog {
       }
       String accountClass = selectedAccountClass(form.classCombo)
       String normalBalanceSide = selectedNormalBalanceSide(form.sideCombo)
-      if (!accountClass || !normalBalanceSide) {
+      if (!isComplete(form)) {
         JOptionPane.showMessageDialog(
             parent,
             I18n.instance.getString('chartOfAccountsPanel.edit.classificationRequired'),
@@ -93,6 +93,11 @@ final class AccountEditorDialog {
   }
 
   @PackageScope
+  static boolean isComplete(EditorForm form) {
+    selectedAccountClass(form.classCombo) && selectedNormalBalanceSide(form.sideCombo)
+  }
+
+  @PackageScope
   static final class EditorForm {
 
     final JTextField nameField
@@ -106,6 +111,7 @@ final class AccountEditorDialog {
     final JPanel panel
 
     private final boolean initiallyUnclassified
+    private boolean restoreStoredVatCode
     private boolean reviewAutoCleared
 
     EditorForm(Account account, List<SruSuggestion> sruSuggestions) {
@@ -132,8 +138,16 @@ final class AccountEditorDialog {
       populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
 
       initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
+      restoreStoredVatCode = classCombo.selectedIndex == 0 && account.vatCode != null
       classCombo.addActionListener {
-        populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
+        String keep = (vatCombo.selectedItem as VatCodeChoice)?.vatCode?.name()
+        if (restoreStoredVatCode) {
+          keep = keep ?: account.vatCode
+        }
+        populateVatCombo(vatCombo, selectedAccountClass(classCombo), keep)
+        if (selectedAccountClass(classCombo)) {
+          restoreStoredVatCode = false
+        }
         clearReviewFlagOnceClassified()
       }
       sideCombo.addActionListener {
