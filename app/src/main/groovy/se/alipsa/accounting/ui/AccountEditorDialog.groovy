@@ -1,5 +1,7 @@
 package se.alipsa.accounting.ui
 
+import groovy.transform.PackageScope
+
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.SruSignCondition
 import se.alipsa.accounting.domain.SruSuggestion
@@ -31,58 +33,143 @@ final class AccountEditorDialog {
   }
 
   static AccountEditorResult show(Component parent, Account account, List<SruSuggestion> sruSuggestions = []) {
-    JTextField nameField = new JTextField(account.accountName, 24)
-    JComboBox<String> classCombo = new JComboBox<>(ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { String accountClass ->
-      ChartOfAccountsPanel.displayAccountClass(accountClass)
-    } as String[])
-    JComboBox<String> sideCombo = new JComboBox<>(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.collect { String side ->
-      ChartOfAccountsPanel.displayNormalBalanceSide(side)
-    } as String[])
-    JComboBox<VatCodeChoice> vatCombo = new JComboBox<>()
-    JCheckBox activeCheckBox = new JCheckBox()
-    activeCheckBox.selected = account.active
-    JCheckBox reviewCheckBox = new JCheckBox()
-    reviewCheckBox.selected = account.manualReviewRequired
-    JTextField sruCodeField = new JTextField(account.sruCode, 10)
-    JTextField sruCode2Field = new JTextField(account.sruCode2, 10)
-    JPanel sruSuggestionPanel = buildSruSuggestionPanel(sruSuggestions, sruCodeField)
-
-    classCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf(account.accountClass))
-    sideCombo.selectedIndex = Math.max(0, ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.indexOf(account.normalBalanceSide))
-    populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
-    classCombo.addActionListener {
-      populateVatCombo(vatCombo, selectedAccountClass(classCombo), null)
+    EditorForm form = new EditorForm(account, sruSuggestions)
+    while (true) {
+      int result = JOptionPane.showConfirmDialog(
+          parent,
+          form.panel,
+          I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
+          JOptionPane.OK_CANCEL_OPTION,
+          JOptionPane.PLAIN_MESSAGE
+      )
+      if (result != JOptionPane.OK_OPTION) {
+        return null
+      }
+      if (!isComplete(form)) {
+        JOptionPane.showMessageDialog(
+            parent,
+            I18n.instance.getString('chartOfAccountsPanel.edit.classificationRequired'),
+            I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
+            JOptionPane.WARNING_MESSAGE
+        )
+        continue
+      }
+      String accountClass = selectedAccountClass(form.classCombo)
+      String normalBalanceSide = selectedNormalBalanceSide(form.sideCombo)
+      VatCodeChoice selectedVatChoice = form.vatCombo.selectedItem as VatCodeChoice
+      return new AccountEditorResult(
+          form.nameField.text,
+          accountClass,
+          normalBalanceSide,
+          selectedVatChoice?.vatCode,
+          form.activeCheckBox.selected,
+          form.reviewCheckBox.selected,
+          form.sruCodeField.text,
+          form.sruCode2Field.text
+      )
     }
-
-    JPanel editorPanel = buildEditorPanel(
-        nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox,
-        sruCodeField, sruCode2Field, sruSuggestionPanel)
-    int result = JOptionPane.showConfirmDialog(
-        parent,
-        editorPanel,
-        I18n.instance.format('chartOfAccountsPanel.edit.title', account.accountNumber),
-        JOptionPane.OK_CANCEL_OPTION,
-        JOptionPane.PLAIN_MESSAGE
-    )
-    if (result != JOptionPane.OK_OPTION) {
-      return null
-    }
-
-    VatCodeChoice selectedVatChoice = vatCombo.selectedItem as VatCodeChoice
-    new AccountEditorResult(
-        nameField.text,
-        selectedAccountClass(classCombo),
-        ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[sideCombo.selectedIndex],
-        selectedVatChoice?.vatCode,
-        activeCheckBox.selected,
-        reviewCheckBox.selected,
-        sruCodeField.text,
-        sruCode2Field.text
-    )
   }
 
-  private static String selectedAccountClass(JComboBox<String> classCombo) {
-    ChartOfAccountsPanel.ACCOUNT_CLASSES[classCombo.selectedIndex]
+  /**
+   * Index of a stored value in a combo whose first entry is the "(not specified)"
+   * placeholder: a known value maps to its own entry, while a null or unknown value
+   * maps to the placeholder (0) instead of silently falling back to the first real entry.
+   */
+  @PackageScope
+  static int initialIndex(List<String> values, String value) {
+    values.indexOf(value) + 1
+  }
+
+  @PackageScope
+  static String selectedAccountClass(JComboBox<String> classCombo) {
+    int index = classCombo.selectedIndex
+    index <= 0 ? null : ChartOfAccountsPanel.ACCOUNT_CLASSES[index - 1]
+  }
+
+  @PackageScope
+  static String selectedNormalBalanceSide(JComboBox<String> sideCombo) {
+    int index = sideCombo.selectedIndex
+    index <= 0 ? null : ChartOfAccountsPanel.NORMAL_BALANCE_SIDES[index - 1]
+  }
+
+  @PackageScope
+  static boolean isComplete(EditorForm form) {
+    selectedAccountClass(form.classCombo) && selectedNormalBalanceSide(form.sideCombo)
+  }
+
+  @PackageScope
+  static final class EditorForm {
+
+    final JTextField nameField
+    final JComboBox<String> classCombo
+    final JComboBox<String> sideCombo
+    final JComboBox<VatCodeChoice> vatCombo
+    final JCheckBox activeCheckBox
+    final JCheckBox reviewCheckBox
+    final JTextField sruCodeField
+    final JTextField sruCode2Field
+    final JPanel panel
+
+    private final boolean initiallyUnclassified
+    private String preferredVatCode
+    private boolean repopulatingVat
+    private boolean reviewAutoCleared
+
+    EditorForm(Account account, List<SruSuggestion> sruSuggestions) {
+      nameField = new JTextField(account.accountName, 24)
+      String notSpecified = I18n.instance.getString('chartOfAccountsPanel.edit.notSpecified')
+      classCombo = new JComboBox<>(
+          ([notSpecified] + ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { String accountClass ->
+            ChartOfAccountsPanel.displayAccountClass(accountClass)
+          }) as String[])
+      sideCombo = new JComboBox<>(
+          ([notSpecified] + ChartOfAccountsPanel.NORMAL_BALANCE_SIDES.collect { String side ->
+            ChartOfAccountsPanel.displayNormalBalanceSide(side)
+          }) as String[])
+      vatCombo = new JComboBox<>()
+      activeCheckBox = new JCheckBox()
+      activeCheckBox.selected = account.active
+      reviewCheckBox = new JCheckBox()
+      reviewCheckBox.selected = account.manualReviewRequired
+      sruCodeField = new JTextField(account.sruCode, 10)
+      sruCode2Field = new JTextField(account.sruCode2, 10)
+
+      classCombo.selectedIndex = initialIndex(ChartOfAccountsPanel.ACCOUNT_CLASSES, account.accountClass)
+      sideCombo.selectedIndex = initialIndex(ChartOfAccountsPanel.NORMAL_BALANCE_SIDES, account.normalBalanceSide)
+      populateVatCombo(vatCombo, selectedAccountClass(classCombo), account.vatCode)
+
+      initiallyUnclassified = classCombo.selectedIndex == 0 || sideCombo.selectedIndex == 0
+      preferredVatCode = account.vatCode
+      vatCombo.addActionListener {
+        if (!repopulatingVat) {
+          preferredVatCode = (vatCombo.selectedItem as VatCodeChoice)?.vatCode?.name()
+        }
+      }
+      classCombo.addActionListener {
+        repopulatingVat = true
+        try {
+          populateVatCombo(vatCombo, selectedAccountClass(classCombo), preferredVatCode)
+        } finally {
+          repopulatingVat = false
+        }
+        clearReviewFlagOnceClassified()
+      }
+      sideCombo.addActionListener {
+        clearReviewFlagOnceClassified()
+      }
+
+      panel = buildEditorPanel(
+          nameField, classCombo, sideCombo, vatCombo, activeCheckBox, reviewCheckBox,
+          sruCodeField, sruCode2Field, buildSruSuggestionPanel(sruSuggestions, sruCodeField))
+    }
+
+    private void clearReviewFlagOnceClassified() {
+      if (initiallyUnclassified && !reviewAutoCleared
+          && classCombo.selectedIndex > 0 && sideCombo.selectedIndex > 0) {
+        reviewCheckBox.selected = false
+        reviewAutoCleared = true
+      }
+    }
   }
 
   private static void populateVatCombo(JComboBox<VatCodeChoice> vatCombo, String accountClass, String currentVatCodeValue) {
@@ -210,7 +297,8 @@ final class AccountEditorDialog {
     legend
   }
 
-  private static final class VatCodeChoice {
+  @PackageScope
+  static final class VatCodeChoice {
 
     final VatCode vatCode
     final String label
