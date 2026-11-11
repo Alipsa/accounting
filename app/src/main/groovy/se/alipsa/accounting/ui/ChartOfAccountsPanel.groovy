@@ -150,17 +150,23 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     accountTable.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.doubleClickToEdit')
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
+    reloadAccounts()
     refreshOverview()
     refreshSelectedAccountDetails()
   }
 
   private void rebuildClassFilter() {
     int selectedIndex = classFilter.selectedIndex
-    classFilter.removeAllItems()
-    classFilter.addItem(allFilterLabel())
-    ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
-    if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
-      classFilter.selectedIndex = selectedIndex
+    suppressReload = true
+    try {
+      classFilter.removeAllItems()
+      classFilter.addItem(allFilterLabel())
+      ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
+      if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
+        classFilter.selectedIndex = selectedIndex
+      }
+    } finally {
+      suppressReload = false
     }
   }
 

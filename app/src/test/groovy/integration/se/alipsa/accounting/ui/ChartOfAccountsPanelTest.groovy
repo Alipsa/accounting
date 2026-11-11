@@ -132,17 +132,31 @@ class ChartOfAccountsPanelTest {
   }
 
   @Test
-  void localeChangeUpdatesReviewCheckBoxAndKeepsClassFilterEntries() {
+  void localeChangeKeepsFilterSelectionAndUpdatesLabels() {
     panel = buildPanel()
+    JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
+    JComboBox<String> classFilter = fieldValue(panel, 'classFilter') as JComboBox<String>
+    int incomeIndex = 1 + ChartOfAccountsPanel.ACCOUNT_CLASSES.indexOf('INCOME')
+    onEdt {
+      classFilter.selectedIndex = incomeIndex
+      reviewCheckBox.selected = true
+    }
+    assertEquals(['3020'], visibleAccountNumbers())
 
     I18n.instance.setLocale(Locale.ENGLISH)
     flushEdt()
 
-    JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
+    assertEquals(incomeIndex, onEdt { classFilter.selectedIndex })
+    assertTrue(onEdt { reviewCheckBox.selected })
     assertEquals('Requires review', onEdt { reviewCheckBox.text })
-    JComboBox<String> classFilter = fieldValue(panel, 'classFilter') as JComboBox<String>
-    int expectedCount = 1 + ChartOfAccountsPanel.ACCOUNT_CLASSES.size()
-    assertEquals(expectedCount, onEdt { classFilter.itemCount })
+    assertEquals(['3020'], visibleAccountNumbers())
+    List<String> expectedItems = onEdt {
+      ['All'] + ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { ChartOfAccountsPanel.displayAccountClass(it) }
+    }
+    List<String> items = onEdt {
+      (0..<classFilter.itemCount).collect { classFilter.getItemAt(it) }
+    }
+    assertEquals(expectedItems, items)
   }
 
   private ChartOfAccountsPanel buildPanel() {
