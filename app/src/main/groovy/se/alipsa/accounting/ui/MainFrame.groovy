@@ -60,7 +60,7 @@ import java.awt.event.WindowEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.function.Function
+import java.util.function.BiFunction
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -82,6 +82,16 @@ final class MainFrame implements PropertyChangeListener {
   ]
   private static final String TASKBAR_ICON_PATH = '/icons/logo512.png'
   private static final int NAV_ICON_SIZE = 18
+  static final List<String> NAV_ICON_FILES = [
+      'overview.svg',
+      'vouchers.svg',
+      'vat.svg',
+      'reports.svg',
+      'accounts.svg',
+      'fiscal-years.svg',
+      'ai-assistant.svg',
+      'settings.svg'
+  ]
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
@@ -832,11 +842,11 @@ final class MainFrame implements PropertyChangeListener {
     ]
   }
 
-  private static Icon navIcon(String fileName) {
+  static Icon navIcon(String fileName) {
     FlatSVGIcon icon = new FlatSVGIcon("icons/nav/${fileName}", NAV_ICON_SIZE, NAV_ICON_SIZE)
-    icon.setColorFilter(new FlatSVGIcon.ColorFilter({ Color ignored ->
-      UIManager.getColor('Label.foreground') ?: Color.DARK_GRAY
-    } as Function<Color, Color>))
+    icon.setColorFilter(new FlatSVGIcon.ColorFilter({ Component component, Color ignored ->
+      component?.foreground ?: UIManager.getColor('Label.foreground')
+    } as BiFunction<Component, Color, Color>))
     icon
   }
 
