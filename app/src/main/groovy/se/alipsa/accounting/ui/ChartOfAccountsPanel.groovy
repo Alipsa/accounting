@@ -69,7 +69,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly'), true)
   private final JCheckBox manualReviewCheckBox = new JCheckBox(
       I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'))
-  private boolean suppressReload = false
+  private int suppressReloadDepth = 0
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel overviewLabel = new JLabel('')
   private final JLabel detailsLabel = new JLabel('')
@@ -148,16 +148,16 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     setVatCodeButton.text = I18n.instance.getString('chartOfAccountsPanel.button.setVatCode')
     setVatCodeButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.setVatCode')
     accountTable.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.doubleClickToEdit')
+    String selectedAccountNumber = selectedAccount()?.accountNumber
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
     reloadAccounts()
-    refreshOverview()
-    refreshSelectedAccountDetails()
+    selectAccount(selectedAccountNumber)
   }
 
   private void rebuildClassFilter() {
     int selectedIndex = classFilter.selectedIndex
-    suppressReload = true
+    suppressReloadDepth += 1
     try {
       classFilter.removeAllItems()
       classFilter.addItem(allFilterLabel())
@@ -166,7 +166,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         classFilter.selectedIndex = selectedIndex
       }
     } finally {
-      suppressReload = false
+      suppressReloadDepth -= 1
     }
   }
 
@@ -288,7 +288,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void reloadAccountsUnlessSuppressed() {
-    if (!suppressReload) {
+    if (suppressReloadDepth == 0) {
       reloadAccounts()
     }
   }
@@ -296,6 +296,8 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private void reloadAccounts() {
     if (!activeCompanyManager.hasActiveCompany()) {
       accountTableModel.setRows([])
+      refreshOverview()
+      refreshSelectedAccountDetails()
       return
     }
     int selectedFilterIndex = classFilter.selectedIndex
@@ -497,14 +499,14 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void resetFilters() {
-    suppressReload = true
+    suppressReloadDepth += 1
     try {
       searchField.text = ''
       classFilter.selectedItem = allFilterLabel()
       activeOnlyCheckBox.selected = true
       manualReviewCheckBox.selected = false
     } finally {
-      suppressReload = false
+      suppressReloadDepth -= 1
     }
     reloadAccounts()
   }

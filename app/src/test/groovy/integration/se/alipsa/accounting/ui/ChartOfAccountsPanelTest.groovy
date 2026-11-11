@@ -159,6 +159,25 @@ class ChartOfAccountsPanelTest {
     assertEquals(expectedItems, items)
   }
 
+  @Test
+  void localeChangeKeepsSelectedAccount() {
+    panel = buildPanel()
+    JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
+    JTable table = fieldValue(panel, 'accountTable') as JTable
+    onEdt {
+      reviewCheckBox.selected = true
+      table.setRowSelectionInterval(1, 1)
+    }
+    assertEquals('4010', selectedAccountNumber())
+
+    I18n.instance.setLocale(Locale.ENGLISH)
+    flushEdt()
+
+    assertEquals(['3020', '4010'], visibleAccountNumbers())
+    assertEquals('4010', selectedAccountNumber())
+    assertTrue(onEdt { reviewCheckBox.selected })
+  }
+
   private ChartOfAccountsPanel buildPanel() {
     onEdt {
       panel = new ChartOfAccountsPanel(
@@ -174,6 +193,14 @@ class ChartOfAccountsPanelTest {
     JTable table = fieldValue(panel, 'accountTable') as JTable
     onEdt {
       (0..<table.rowCount).collect { table.getValueAt(it, 0).toString() }
+    }
+  }
+
+  private String selectedAccountNumber() {
+    JTable table = fieldValue(panel, 'accountTable') as JTable
+    onEdt {
+      int row = table.selectedRow
+      row < 0 ? null : table.getValueAt(row, 0).toString()
     }
   }
 
