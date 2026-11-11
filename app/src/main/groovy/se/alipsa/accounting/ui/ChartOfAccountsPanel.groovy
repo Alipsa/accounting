@@ -29,6 +29,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 import javax.swing.BorderFactory
+import javax.swing.Box
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -66,6 +67,9 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private final JComboBox<String> classFilter = new JComboBox<>()
   private final JCheckBox activeOnlyCheckBox = new JCheckBox(
       I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly'), true)
+  private final JCheckBox manualReviewCheckBox = new JCheckBox(
+      I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'))
+  private int suppressReloadDepth = 0
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel overviewLabel = new JLabel('')
   private final JLabel detailsLabel = new JLabel('')
@@ -134,6 +138,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     classLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.class')
     filterLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.filter')
     activeOnlyCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly')
+    manualReviewCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired')
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
     importButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.import')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
@@ -143,29 +148,30 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     setVatCodeButton.text = I18n.instance.getString('chartOfAccountsPanel.button.setVatCode')
     setVatCodeButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.setVatCode')
     accountTable.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.doubleClickToEdit')
+    String selectedAccountNumber = selectedAccount()?.accountNumber
     rebuildClassFilter()
     accountTableModel.fireTableStructureChanged()
-    refreshOverview()
-    refreshSelectedAccountDetails()
+    reloadAccounts()
+    selectAccount(selectedAccountNumber)
   }
 
   private void rebuildClassFilter() {
     int selectedIndex = classFilter.selectedIndex
-    classFilter.removeAllItems()
-    classFilter.addItem(allFilterLabel())
-    ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
-    classFilter.addItem(reviewFilterLabel())
-    if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
-      classFilter.selectedIndex = selectedIndex
+    suppressReloadDepth += 1
+    try {
+      classFilter.removeAllItems()
+      classFilter.addItem(allFilterLabel())
+      ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
+      if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
+        classFilter.selectedIndex = selectedIndex
+      }
+    } finally {
+      suppressReloadDepth -= 1
     }
   }
 
   private String allFilterLabel() {
     I18n.instance.getString('chartOfAccountsPanel.filter.all')
-  }
-
-  private String reviewFilterLabel() {
-    I18n.instance.getString('chartOfAccountsPanel.filter.reviewRequired')
   }
 
   private void buildUi() {
@@ -226,15 +232,20 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     fieldConstraints.gridx = 3
     classLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.class'))
     filterPanel.add(classLabel, labelConstraints)
-    classFilter.addActionListener { reloadAccounts() }
+    classFilter.addActionListener { reloadAccountsUnlessSuppressed() }
     filterPanel.add(classFilter, fieldConstraints)
 
     labelConstraints.gridx = 4
     fieldConstraints.gridx = 5
     filterLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.filter'))
     filterPanel.add(filterLabel, labelConstraints)
-    activeOnlyCheckBox.addItemListener { reloadAccounts() }
-    filterPanel.add(activeOnlyCheckBox, fieldConstraints)
+    activeOnlyCheckBox.addItemListener { reloadAccountsUnlessSuppressed() }
+    manualReviewCheckBox.addItemListener { reloadAccountsUnlessSuppressed() }
+    JPanel checkBoxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0))
+    checkBoxPanel.add(activeOnlyCheckBox)
+    checkBoxPanel.add(Box.createHorizontalStrut(12))
+    checkBoxPanel.add(manualReviewCheckBox)
+    filterPanel.add(checkBoxPanel, fieldConstraints)
 
     filterPanel
   }
@@ -276,13 +287,20 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     metaPanel
   }
 
+  private void reloadAccountsUnlessSuppressed() {
+    if (suppressReloadDepth == 0) {
+      reloadAccounts()
+    }
+  }
+
   private void reloadAccounts() {
     if (!activeCompanyManager.hasActiveCompany()) {
       accountTableModel.setRows([])
+      refreshOverview()
+      refreshSelectedAccountDetails()
       return
     }
     int selectedFilterIndex = classFilter.selectedIndex
-    boolean manualReviewOnly = selectedFilterIndex == classFilter.itemCount - 1
     boolean classSelected = selectedFilterIndex >= 1 && selectedFilterIndex <= ACCOUNT_CLASSES.size()
     String accountClass = classSelected ? ACCOUNT_CLASSES[selectedFilterIndex - 1] : ''
 
@@ -291,7 +309,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         searchField.text,
         accountClass,
         activeOnlyCheckBox.selected,
-        manualReviewOnly
+        manualReviewCheckBox.selected
     )
     accountTableModel.setRows(accounts)
     if (accountTable.rowCount > 0) {
@@ -481,9 +499,15 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void resetFilters() {
-    searchField.text = ''
-    classFilter.selectedItem = allFilterLabel()
-    activeOnlyCheckBox.selected = true
+    suppressReloadDepth += 1
+    try {
+      searchField.text = ''
+      classFilter.selectedItem = allFilterLabel()
+      activeOnlyCheckBox.selected = true
+      manualReviewCheckBox.selected = false
+    } finally {
+      suppressReloadDepth -= 1
+    }
     reloadAccounts()
   }
 
