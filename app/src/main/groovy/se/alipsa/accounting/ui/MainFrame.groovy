@@ -5,6 +5,7 @@ import groovy.transform.CompileDynamic
 import groovy.transform.PackageScope
 
 import com.formdev.flatlaf.FlatClientProperties
+import com.formdev.flatlaf.extras.FlatSVGIcon
 import com.formdev.flatlaf.util.SystemFileChooser
 import com.formdev.flatlaf.util.SystemFileChooser.FileNameExtensionFilter
 import com.formdev.flatlaf.util.UIScale
@@ -46,23 +47,20 @@ import se.alipsa.accounting.support.AppPaths
 import se.alipsa.accounting.support.I18n
 import se.alipsa.accounting.support.LoggingConfigurer
 
-import java.awt.BasicStroke
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.FlowLayout
-import java.awt.Graphics
-import java.awt.Graphics2D
 import java.awt.Image
-import java.awt.RenderingHints
 import java.awt.Taskbar
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.function.BiFunction
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -83,16 +81,27 @@ final class MainFrame implements PropertyChangeListener {
       '/icons/logo128.png'
   ]
   private static final String TASKBAR_ICON_PATH = '/icons/logo512.png'
-  private static final List<NavigationIcon> NAVIGATION_ICONS = [
-      new NavigationIcon(NavigationIcon.Type.OVERVIEW),
-      new NavigationIcon(NavigationIcon.Type.VOUCHERS),
-      new NavigationIcon(NavigationIcon.Type.VAT),
-      new NavigationIcon(NavigationIcon.Type.REPORTS),
-      new NavigationIcon(NavigationIcon.Type.ACCOUNTS),
-      new NavigationIcon(NavigationIcon.Type.FISCAL_YEARS),
-      new NavigationIcon(NavigationIcon.Type.SETTINGS),
-      new NavigationIcon(NavigationIcon.Type.SETTINGS)
-  ]
+  private static final int NAV_ICON_SIZE = 18
+  private static final String NAV_OVERVIEW_ICON = 'overview.svg'
+  private static final String NAV_VOUCHERS_ICON = 'vouchers.svg'
+  private static final String NAV_VAT_ICON = 'vat.svg'
+  private static final String NAV_REPORTS_ICON = 'reports.svg'
+  private static final String NAV_ACCOUNTS_ICON = 'accounts.svg'
+  private static final String NAV_FISCAL_YEARS_ICON = 'fiscal-years.svg'
+  private static final String NAV_AI_ASSISTANT_ICON = 'ai-assistant.svg'
+  private static final String NAV_SETTINGS_ICON = 'settings.svg'
+
+  @PackageScope
+  static final List<String> NAV_ICON_FILES = [
+      NAV_OVERVIEW_ICON,
+      NAV_VOUCHERS_ICON,
+      NAV_VAT_ICON,
+      NAV_REPORTS_ICON,
+      NAV_ACCOUNTS_ICON,
+      NAV_FISCAL_YEARS_ICON,
+      NAV_AI_ASSISTANT_ICON,
+      NAV_SETTINGS_ICON
+  ].asImmutable()
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
@@ -376,9 +385,6 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.setToolTipTextAt(5, I18n.instance.getString('mainFrame.tab.fiscalYears.tooltip'))
     tabbedPane.setToolTipTextAt(6, I18n.instance.getString('mainFrame.tab.aiAssistant.tooltip'))
     tabbedPane.setToolTipTextAt(7, I18n.instance.getString('mainFrame.tab.settings.tooltip'))
-    NAVIGATION_ICONS.eachWithIndex { NavigationIcon icon, int index ->
-      tabbedPane.setIconAt(index, icon)
-    }
   }
 
   private JFrame buildFrame() {
@@ -403,7 +409,7 @@ final class MainFrame implements PropertyChangeListener {
     tabbedPane.tabLayoutPolicy = JTabbedPane.SCROLL_TAB_LAYOUT
     tabbedPane.putClientProperty(FlatClientProperties.STYLE, 'tabAlignment: leading')
     buildMainTabs().each { Map<String, Object> tab ->
-      tabbedPane.addTab(tab.title as String, tab.component as JComponent)
+      tabbedPane.addTab(tab.title as String, tab.icon as Icon, tab.component as JComponent)
     }
     applyTabLocale()
     tabbedPane.addChangeListener { javax.swing.event.ChangeEvent ignored ->
@@ -826,10 +832,10 @@ final class MainFrame implements PropertyChangeListener {
 
   private List<Map<String, Object>> buildMainTabs() {
     [
-        [title: I18n.instance.getString('mainFrame.tab.overview'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager, userPreferencesService)],
-        [title: I18n.instance.getString('mainFrame.tab.vat'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.reports'), component: new ReportPanel(
+        [title: I18n.instance.getString('mainFrame.tab.overview'), icon: navIcon(NAV_OVERVIEW_ICON), component: buildOverviewPanel()],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), icon: navIcon(NAV_VOUCHERS_ICON), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager, userPreferencesService)],
+        [title: I18n.instance.getString('mainFrame.tab.vat'), icon: navIcon(NAV_VAT_ICON), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.reports'), icon: navIcon(NAV_REPORTS_ICON), component: new ReportPanel(
             reportDataService,
             journoReportService,
             reportExportService,
@@ -839,11 +845,20 @@ final class MainFrame implements PropertyChangeListener {
             voucherService,
             activeCompanyManager
         )],
-        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.aiAssistant'), component: buildAiAssistantPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.settings'), component: buildSettingsPanel()]
+        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), icon: navIcon(NAV_ACCOUNTS_ICON), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), icon: navIcon(NAV_FISCAL_YEARS_ICON), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.aiAssistant'), icon: navIcon(NAV_AI_ASSISTANT_ICON), component: buildAiAssistantPanel()],
+        [title: I18n.instance.getString('mainFrame.tab.settings'), icon: navIcon(NAV_SETTINGS_ICON), component: buildSettingsPanel()]
     ]
+  }
+
+  @PackageScope
+  static Icon navIcon(String fileName) {
+    FlatSVGIcon icon = new FlatSVGIcon("icons/nav/${fileName}", NAV_ICON_SIZE, NAV_ICON_SIZE)
+    icon.setColorFilter(new FlatSVGIcon.ColorFilter({ Component component, Color ignored ->
+      component?.foreground ?: UIManager.getColor('Label.foreground')
+    } as BiFunction<Component, Color, Color>))
+    icon
   }
 
   private void showSystemDialog() {
@@ -1179,121 +1194,6 @@ final class MainFrame implements PropertyChangeListener {
         (int) (baseWidth * scale),
         (int) (baseHeight * scale)
     ]
-  }
-
-  private static final class NavigationIcon implements Icon {
-
-    enum Type {
-      OVERVIEW, VOUCHERS, VAT, REPORTS, ACCOUNTS, FISCAL_YEARS, SETTINGS
-    }
-
-    private static final int SIZE = 18
-    private final Type type
-
-    NavigationIcon(Type type) {
-      this.type = type
-    }
-
-    @Override
-    @SuppressWarnings('GetterMethodCouldBeProperty')
-    int getIconWidth() {
-      SIZE
-    }
-
-    @Override
-    @SuppressWarnings('GetterMethodCouldBeProperty')
-    int getIconHeight() {
-      SIZE
-    }
-
-    @Override
-    void paintIcon(Component component, Graphics graphics, int x, int y) {
-      Graphics2D graphics2d = (Graphics2D) graphics.create()
-      try {
-        graphics2d.color = component?.foreground ?: Color.DARK_GRAY
-        graphics2d.stroke = new BasicStroke(1.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-        graphics2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        switch (type) {
-          case Type.OVERVIEW:
-            drawOverview(graphics2d, x, y)
-            break
-          case Type.VOUCHERS:
-            drawDocument(graphics2d, x, y)
-            break
-          case Type.VAT:
-            drawVat(graphics2d, x, y)
-            break
-          case Type.REPORTS:
-            drawReports(graphics2d, x, y)
-            break
-          case Type.ACCOUNTS:
-            drawAccounts(graphics2d, x, y)
-            break
-          case Type.FISCAL_YEARS:
-            drawCalendar(graphics2d, x, y)
-            break
-          case Type.SETTINGS:
-            drawSettings(graphics2d, x, y)
-            break
-        }
-      } finally {
-        graphics2d.dispose()
-      }
-    }
-
-    private static void drawOverview(Graphics2D graphics, int x, int y) {
-      graphics.drawRect(x + 2, y + 2, 14, 14)
-      graphics.fillRect(x + 5, y + 10, 2, 3)
-      graphics.fillRect(x + 9, y + 7, 2, 6)
-      graphics.fillRect(x + 13, y + 5, 2, 8)
-    }
-
-    private static void drawDocument(Graphics2D graphics, int x, int y) {
-      graphics.drawRect(x + 3, y + 2, 12, 14)
-      graphics.drawLine(x + 6, y + 7, x + 12, y + 7)
-      graphics.drawLine(x + 6, y + 10, x + 12, y + 10)
-      graphics.drawLine(x + 6, y + 13, x + 10, y + 13)
-    }
-
-    private static void drawVat(Graphics2D graphics, int x, int y) {
-      graphics.drawOval(x + 2, y + 2, 14, 14)
-      graphics.drawLine(x + 5, y + 13, x + 13, y + 5)
-      graphics.fillOval(x + 4, y + 4, 2, 2)
-      graphics.fillOval(x + 12, y + 12, 2, 2)
-    }
-
-    private static void drawReports(Graphics2D graphics, int x, int y) {
-      graphics.drawLine(x + 3, y + 15, x + 15, y + 15)
-      graphics.drawLine(x + 3, y + 15, x + 3, y + 3)
-      graphics.fillRect(x + 6, y + 9, 2, 5)
-      graphics.fillRect(x + 10, y + 6, 2, 8)
-      graphics.fillRect(x + 14, y + 3, 2, 11)
-    }
-
-    private static void drawAccounts(Graphics2D graphics, int x, int y) {
-      graphics.drawRoundRect(x + 2, y + 2, 14, 14, 2, 2)
-      graphics.drawLine(x + 5, y + 6, x + 13, y + 6)
-      graphics.drawLine(x + 5, y + 10, x + 13, y + 10)
-      graphics.drawLine(x + 5, y + 14, x + 10, y + 14)
-    }
-
-    private static void drawCalendar(Graphics2D graphics, int x, int y) {
-      graphics.drawRoundRect(x + 2, y + 3, 14, 13, 2, 2)
-      graphics.drawLine(x + 2, y + 7, x + 16, y + 7)
-      graphics.drawLine(x + 6, y + 1, x + 6, y + 5)
-      graphics.drawLine(x + 12, y + 1, x + 12, y + 5)
-      graphics.fillRect(x + 6, y + 10, 2, 2)
-      graphics.fillRect(x + 10, y + 10, 2, 2)
-    }
-
-    private static void drawSettings(Graphics2D graphics, int x, int y) {
-      graphics.drawOval(x + 3, y + 3, 12, 12)
-      graphics.drawOval(x + 7, y + 7, 4, 4)
-      graphics.drawLine(x + 9, y + 1, x + 9, y + 4)
-      graphics.drawLine(x + 9, y + 14, x + 9, y + 17)
-      graphics.drawLine(x + 1, y + 9, x + 4, y + 9)
-      graphics.drawLine(x + 14, y + 9, x + 17, y + 9)
-    }
   }
 
 }

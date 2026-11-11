@@ -26,6 +26,8 @@ dependencies {
   implementation libs.poi.ooxml
   implementation libs.journo.runtime
   implementation libs.flatlaf
+  implementation libs.flatlaf.extras
+  implementation libs.jsvg
   implementation libs.swing.widgets
   implementation libs.jna.platform
 
