@@ -29,6 +29,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 import javax.swing.BorderFactory
+import javax.swing.Box
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -68,6 +69,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly'), true)
   private final JCheckBox manualReviewCheckBox = new JCheckBox(
       I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'))
+  private boolean suppressReload = false
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel overviewLabel = new JLabel('')
   private final JLabel detailsLabel = new JLabel('')
@@ -224,17 +226,18 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     fieldConstraints.gridx = 3
     classLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.class'))
     filterPanel.add(classLabel, labelConstraints)
-    classFilter.addActionListener { reloadAccounts() }
+    classFilter.addActionListener { reloadAccountsUnlessSuppressed() }
     filterPanel.add(classFilter, fieldConstraints)
 
     labelConstraints.gridx = 4
     fieldConstraints.gridx = 5
     filterLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.filter'))
     filterPanel.add(filterLabel, labelConstraints)
-    activeOnlyCheckBox.addItemListener { reloadAccounts() }
-    manualReviewCheckBox.addItemListener { reloadAccounts() }
-    JPanel checkBoxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0))
+    activeOnlyCheckBox.addItemListener { reloadAccountsUnlessSuppressed() }
+    manualReviewCheckBox.addItemListener { reloadAccountsUnlessSuppressed() }
+    JPanel checkBoxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0))
     checkBoxPanel.add(activeOnlyCheckBox)
+    checkBoxPanel.add(Box.createHorizontalStrut(12))
     checkBoxPanel.add(manualReviewCheckBox)
     filterPanel.add(checkBoxPanel, fieldConstraints)
 
@@ -276,6 +279,12 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     metaPanel.add(detailsLabel, BorderLayout.CENTER)
     metaPanel.add(feedbackArea, BorderLayout.SOUTH)
     metaPanel
+  }
+
+  private void reloadAccountsUnlessSuppressed() {
+    if (!suppressReload) {
+      reloadAccounts()
+    }
   }
 
   private void reloadAccounts() {
@@ -482,10 +491,15 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   }
 
   private void resetFilters() {
-    searchField.text = ''
-    classFilter.selectedItem = allFilterLabel()
-    activeOnlyCheckBox.selected = true
-    manualReviewCheckBox.selected = false
+    suppressReload = true
+    try {
+      searchField.text = ''
+      classFilter.selectedItem = allFilterLabel()
+      activeOnlyCheckBox.selected = true
+      manualReviewCheckBox.selected = false
+    } finally {
+      suppressReload = false
+    }
     reloadAccounts()
   }
 

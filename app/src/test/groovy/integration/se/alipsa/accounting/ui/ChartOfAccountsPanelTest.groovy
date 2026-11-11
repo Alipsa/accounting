@@ -51,10 +51,11 @@ class ChartOfAccountsPanelTest {
     CompanyService companyService = new CompanyService(databaseService)
     FiscalYearService fiscalYearService = new FiscalYearService(databaseService)
     activeCompanyManager = new ActiveCompanyManager(companyService, fiscalYearService, CompanyService.LEGACY_COMPANY_ID)
-    insertAccount('1510', 'Kundfordringar', 'ASSET', false)
-    insertAccount('3010', 'Försäljning', 'INCOME', false)
-    insertAccount('3020', 'Annan försäljning', 'INCOME', true)
-    insertAccount('4010', 'Varuinköp', 'EXPENSE', true)
+    insertAccount('1510', 'Kundfordringar', 'ASSET', true, false)
+    insertAccount('3010', 'Försäljning', 'INCOME', true, false)
+    insertAccount('3020', 'Annan försäljning', 'INCOME', true, true)
+    insertAccount('4010', 'Varuinköp', 'EXPENSE', true, true)
+    insertAccount('4020', 'Inaktivt konto', 'EXPENSE', false, true)
   }
 
   @AfterEach
@@ -69,10 +70,14 @@ class ChartOfAccountsPanelTest {
     panel = buildPanel()
 
     JComboBox<String> classFilter = fieldValue(panel, 'classFilter') as JComboBox<String>
-    int expectedCount = 1 + ChartOfAccountsPanel.ACCOUNT_CLASSES.size()
-    assertEquals(expectedCount, classFilter.itemCount)
-    List<String> items = (0..<classFilter.itemCount).collect { classFilter.getItemAt(it) }
-    assertFalse(items.contains(I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired')))
+    List<String> expected = onEdt {
+      [I18n.instance.getString('chartOfAccountsPanel.filter.all')] +
+          ChartOfAccountsPanel.ACCOUNT_CLASSES.collect { ChartOfAccountsPanel.displayAccountClass(it) }
+    }
+    List<String> items = onEdt {
+      (0..<classFilter.itemCount).collect { classFilter.getItemAt(it) }
+    }
+    assertEquals(expected, items)
   }
 
   @Test
@@ -80,7 +85,8 @@ class ChartOfAccountsPanelTest {
     panel = buildPanel()
     JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
     assertNotNull(reviewCheckBox)
-    assertEquals(I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'), reviewCheckBox.text)
+    assertEquals(I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'),
+        onEdt { reviewCheckBox.text })
 
     onEdt { reviewCheckBox.selected = true }
 
@@ -93,16 +99,50 @@ class ChartOfAccountsPanelTest {
   }
 
   @Test
-  void resetFiltersClearsReviewCheckBox() {
+  void activeOnlyCheckBoxCombinesWithReviewCheckBox() {
     panel = buildPanel()
+    JCheckBox activeOnlyCheckBox = fieldValue(panel, 'activeOnlyCheckBox') as JCheckBox
     JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
     onEdt { reviewCheckBox.selected = true }
+
+    assertEquals(['3020', '4010'], visibleAccountNumbers())
+
+    onEdt { activeOnlyCheckBox.selected = false }
+
+    assertEquals(['3020', '4010', '4020'], visibleAccountNumbers())
+  }
+
+  @Test
+  void resetFiltersClearsReviewCheckBoxAndRestoresActiveOnly() {
+    panel = buildPanel()
+    JCheckBox activeOnlyCheckBox = fieldValue(panel, 'activeOnlyCheckBox') as JCheckBox
+    JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
+    onEdt {
+      activeOnlyCheckBox.selected = false
+      reviewCheckBox.selected = true
+    }
     assertTrue(onEdt { reviewCheckBox.selected })
+    assertFalse(onEdt { activeOnlyCheckBox.selected })
 
     onEdt { invoke(panel, 'resetFilters') }
 
     assertFalse(onEdt { reviewCheckBox.selected })
+    assertTrue(onEdt { activeOnlyCheckBox.selected })
     assertEquals(['1510', '3010', '3020', '4010'], visibleAccountNumbers())
+  }
+
+  @Test
+  void localeChangeUpdatesReviewCheckBoxAndKeepsClassFilterEntries() {
+    panel = buildPanel()
+
+    I18n.instance.setLocale(Locale.ENGLISH)
+    flushEdt()
+
+    JCheckBox reviewCheckBox = fieldValue(panel, 'manualReviewCheckBox') as JCheckBox
+    assertEquals('Requires review', onEdt { reviewCheckBox.text })
+    JComboBox<String> classFilter = fieldValue(panel, 'classFilter') as JComboBox<String>
+    int expectedCount = 1 + ChartOfAccountsPanel.ACCOUNT_CLASSES.size()
+    assertEquals(expectedCount, onEdt { classFilter.itemCount })
   }
 
   private ChartOfAccountsPanel buildPanel() {
@@ -123,7 +163,8 @@ class ChartOfAccountsPanelTest {
     }
   }
 
-  private void insertAccount(String accountNumber, String accountName, String accountClass, boolean manualReview) {
+  private void insertAccount(
+      String accountNumber, String accountName, String accountClass, boolean active, boolean manualReview) {
     databaseService.withTransaction { Sql sql ->
       sql.executeInsert('''
           insert into account (
@@ -138,9 +179,9 @@ class ChartOfAccountsPanelTest {
               classification_note,
               created_at,
               updated_at
-          ) values (?, ?, ?, ?, ?, null, true, ?, null, current_timestamp, current_timestamp)
+          ) values (?, ?, ?, ?, ?, null, ?, ?, null, current_timestamp, current_timestamp)
       ''', [CompanyService.LEGACY_COMPANY_ID, accountNumber, accountName, accountClass,
-            accountClass in ['ASSET', 'EXPENSE'] ? 'DEBIT' : 'CREDIT', manualReview])
+            accountClass in ['ASSET', 'EXPENSE'] ? 'DEBIT' : 'CREDIT', active, manualReview])
     }
   }
 
@@ -173,6 +214,10 @@ class ChartOfAccountsPanelTest {
       throw failure.get()
     }
     result.get()
+  }
+
+  private static void flushEdt() {
+    onEdt { true }
   }
 
   private static void restoreProperty(String name, String value) {
