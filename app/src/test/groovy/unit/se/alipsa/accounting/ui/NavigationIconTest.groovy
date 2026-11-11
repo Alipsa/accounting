@@ -1,11 +1,9 @@
-package unit.se.alipsa.accounting.ui
+package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.*
 
 import com.formdev.flatlaf.extras.FlatSVGIcon
 import org.junit.jupiter.api.Test
-
-import se.alipsa.accounting.ui.MainFrame
 
 final class NavigationIconTest {
 

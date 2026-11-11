@@ -82,16 +82,26 @@ final class MainFrame implements PropertyChangeListener {
   ]
   private static final String TASKBAR_ICON_PATH = '/icons/logo512.png'
   private static final int NAV_ICON_SIZE = 18
+  private static final String NAV_OVERVIEW_ICON = 'overview.svg'
+  private static final String NAV_VOUCHERS_ICON = 'vouchers.svg'
+  private static final String NAV_VAT_ICON = 'vat.svg'
+  private static final String NAV_REPORTS_ICON = 'reports.svg'
+  private static final String NAV_ACCOUNTS_ICON = 'accounts.svg'
+  private static final String NAV_FISCAL_YEARS_ICON = 'fiscal-years.svg'
+  private static final String NAV_AI_ASSISTANT_ICON = 'ai-assistant.svg'
+  private static final String NAV_SETTINGS_ICON = 'settings.svg'
+
+  @PackageScope
   static final List<String> NAV_ICON_FILES = [
-      'overview.svg',
-      'vouchers.svg',
-      'vat.svg',
-      'reports.svg',
-      'accounts.svg',
-      'fiscal-years.svg',
-      'ai-assistant.svg',
-      'settings.svg'
-  ]
+      NAV_OVERVIEW_ICON,
+      NAV_VOUCHERS_ICON,
+      NAV_VAT_ICON,
+      NAV_REPORTS_ICON,
+      NAV_ACCOUNTS_ICON,
+      NAV_FISCAL_YEARS_ICON,
+      NAV_AI_ASSISTANT_ICON,
+      NAV_SETTINGS_ICON
+  ].asImmutable()
 
   private final SwingBuilder swing = new SwingBuilder()
   private final CompanyService companyService = new CompanyService()
@@ -822,10 +832,10 @@ final class MainFrame implements PropertyChangeListener {
 
   private List<Map<String, Object>> buildMainTabs() {
     [
-        [title: I18n.instance.getString('mainFrame.tab.overview'), icon: navIcon('overview.svg'), component: buildOverviewPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.vouchers'), icon: navIcon('vouchers.svg'), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager, userPreferencesService)],
-        [title: I18n.instance.getString('mainFrame.tab.vat'), icon: navIcon('vat.svg'), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.reports'), icon: navIcon('reports.svg'), component: new ReportPanel(
+        [title: I18n.instance.getString('mainFrame.tab.overview'), icon: navIcon(NAV_OVERVIEW_ICON), component: buildOverviewPanel()],
+        [title: I18n.instance.getString('mainFrame.tab.vouchers'), icon: navIcon(NAV_VOUCHERS_ICON), component: voucherPanel = new VoucherPanel(voucherService, accountService, accountingPeriodService, attachmentService, auditLogService, activeCompanyManager, userPreferencesService)],
+        [title: I18n.instance.getString('mainFrame.tab.vat'), icon: navIcon(NAV_VAT_ICON), component: new VatPeriodPanel(vatService, fiscalYearService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.reports'), icon: navIcon(NAV_REPORTS_ICON), component: new ReportPanel(
             reportDataService,
             journoReportService,
             reportExportService,
@@ -835,13 +845,14 @@ final class MainFrame implements PropertyChangeListener {
             voucherService,
             activeCompanyManager
         )],
-        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), icon: navIcon('accounts.svg'), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), icon: navIcon('fiscal-years.svg'), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
-        [title: I18n.instance.getString('mainFrame.tab.aiAssistant'), icon: navIcon('ai-assistant.svg'), component: buildAiAssistantPanel()],
-        [title: I18n.instance.getString('mainFrame.tab.settings'), icon: navIcon('settings.svg'), component: buildSettingsPanel()]
+        [title: I18n.instance.getString('mainFrame.tab.chartOfAccounts'), icon: navIcon(NAV_ACCOUNTS_ICON), component: new ChartOfAccountsPanel(accountService, chartOfAccountsImportService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.fiscalYears'), icon: navIcon(NAV_FISCAL_YEARS_ICON), component: new FiscalYearPanel(fiscalYearService, accountingPeriodService, closingService, openingBalanceService, fiscalYearDeletionService, activeCompanyManager)],
+        [title: I18n.instance.getString('mainFrame.tab.aiAssistant'), icon: navIcon(NAV_AI_ASSISTANT_ICON), component: buildAiAssistantPanel()],
+        [title: I18n.instance.getString('mainFrame.tab.settings'), icon: navIcon(NAV_SETTINGS_ICON), component: buildSettingsPanel()]
     ]
   }
 
+  @PackageScope
   static Icon navIcon(String fileName) {
     FlatSVGIcon icon = new FlatSVGIcon("icons/nav/${fileName}", NAV_ICON_SIZE, NAV_ICON_SIZE)
     icon.setColorFilter(new FlatSVGIcon.ColorFilter({ Component component, Color ignored ->

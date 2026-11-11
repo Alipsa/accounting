@@ -22,6 +22,9 @@ poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 journo-runtime = { module = "se.alipsa.journo:journo-runtime", version.ref = "journo" }
 flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
 flatlaf-extras = { module = "com.formdev:flatlaf-extras", version.ref = "flatlaf" }
+# jsvg must stay in step with the version flatlaf-extras is built against
+# (flatlaf-extras declares it runtime-scope only; the explicit declaration
+# puts it on the compile classpath for @CompileStatic code using FlatSVGIcon)
 jsvg = { module = "com.github.weisj:jsvg", version = "2.2.0" }
 swing-widgets = { module = "se.alipsa:swing-widgets", version.ref = "swing-widgets" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
