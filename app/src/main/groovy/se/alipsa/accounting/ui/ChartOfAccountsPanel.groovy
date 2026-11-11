@@ -66,6 +66,8 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
   private final JComboBox<String> classFilter = new JComboBox<>()
   private final JCheckBox activeOnlyCheckBox = new JCheckBox(
       I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly'), true)
+  private final JCheckBox manualReviewCheckBox = new JCheckBox(
+      I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired'))
   private final JTextArea feedbackArea = new JTextArea(3, 40)
   private final JLabel overviewLabel = new JLabel('')
   private final JLabel detailsLabel = new JLabel('')
@@ -134,6 +136,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     classLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.class')
     filterLabel.text = I18n.instance.getString('chartOfAccountsPanel.label.filter')
     activeOnlyCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.activeOnly')
+    manualReviewCheckBox.text = I18n.instance.getString('chartOfAccountsPanel.checkbox.reviewRequired')
     importButton.text = I18n.instance.getString('chartOfAccountsPanel.button.import')
     importButton.toolTipText = I18n.instance.getString('chartOfAccountsPanel.tooltip.import')
     resetButton.text = I18n.instance.getString('chartOfAccountsPanel.button.reset')
@@ -154,7 +157,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     classFilter.removeAllItems()
     classFilter.addItem(allFilterLabel())
     ACCOUNT_CLASSES.each { String accountClass -> classFilter.addItem(displayAccountClass(accountClass)) }
-    classFilter.addItem(reviewFilterLabel())
     if (selectedIndex >= 0 && selectedIndex < classFilter.itemCount) {
       classFilter.selectedIndex = selectedIndex
     }
@@ -162,10 +164,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
 
   private String allFilterLabel() {
     I18n.instance.getString('chartOfAccountsPanel.filter.all')
-  }
-
-  private String reviewFilterLabel() {
-    I18n.instance.getString('chartOfAccountsPanel.filter.reviewRequired')
   }
 
   private void buildUi() {
@@ -234,7 +232,11 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     filterLabel = new JLabel(I18n.instance.getString('chartOfAccountsPanel.label.filter'))
     filterPanel.add(filterLabel, labelConstraints)
     activeOnlyCheckBox.addItemListener { reloadAccounts() }
-    filterPanel.add(activeOnlyCheckBox, fieldConstraints)
+    manualReviewCheckBox.addItemListener { reloadAccounts() }
+    JPanel checkBoxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0))
+    checkBoxPanel.add(activeOnlyCheckBox)
+    checkBoxPanel.add(manualReviewCheckBox)
+    filterPanel.add(checkBoxPanel, fieldConstraints)
 
     filterPanel
   }
@@ -282,7 +284,6 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
       return
     }
     int selectedFilterIndex = classFilter.selectedIndex
-    boolean manualReviewOnly = selectedFilterIndex == classFilter.itemCount - 1
     boolean classSelected = selectedFilterIndex >= 1 && selectedFilterIndex <= ACCOUNT_CLASSES.size()
     String accountClass = classSelected ? ACCOUNT_CLASSES[selectedFilterIndex - 1] : ''
 
@@ -291,7 +292,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
         searchField.text,
         accountClass,
         activeOnlyCheckBox.selected,
-        manualReviewOnly
+        manualReviewCheckBox.selected
     )
     accountTableModel.setRows(accounts)
     if (accountTable.rowCount > 0) {
@@ -484,6 +485,7 @@ final class ChartOfAccountsPanel extends JPanel implements PropertyChangeListene
     searchField.text = ''
     classFilter.selectedItem = allFilterLabel()
     activeOnlyCheckBox.selected = true
+    manualReviewCheckBox.selected = false
     reloadAccounts()
   }
 
