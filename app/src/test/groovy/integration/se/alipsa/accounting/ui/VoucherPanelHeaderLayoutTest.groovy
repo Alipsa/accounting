@@ -1,8 +1,8 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
-import static org.junit.jupiter.api.Assertions.assertTrue
 
+import com.formdev.flatlaf.util.UIScale
 import org.junit.jupiter.api.Test
 
 import se.alipsa.datepicker.DatePicker
@@ -26,8 +26,8 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
       headerBar.doLayout()
       datePicker.doLayout()
 
-      assertEquals(datePicker.minimumSize.width, datePicker.width)
-      assertTrue(datePicker.textField.width > 0)
+      assertEquals(datePicker.preferredSize.width as int, datePicker.width)
+      assertEquals(datePicker.textField.preferredSize.width as int, datePicker.textField.width)
     }
   }
 
@@ -37,6 +37,6 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
       field.columns == 30
     }
 
-    assertEquals(120, onEdt { descriptionField.minimumSize.width })
+    assertEquals(UIScale.scale(120), onEdt { descriptionField.minimumSize.width })
   }
 }

@@ -32,25 +32,25 @@ import javax.swing.SwingUtilities
 /**
  * Shared fixture for integration tests that exercise a VoucherPanel against a real database.
  */
-class VoucherPanelTestSupport {
+abstract class VoucherPanelTestSupport {
 
   @TempDir
-  Path tempDir
+  protected Path tempDir
 
-  String previousHome
-  DatabaseService databaseService
-  AuditLogService auditLogService
-  AccountingPeriodService accountingPeriodService
-  FiscalYearService fiscalYearService
-  VoucherService voucherService
-  AttachmentService attachmentService
-  ActiveCompanyManager activeCompanyManager
-  FiscalYear fiscalYear
-  VoucherPanel panel
-  List<List<Integer>> moves
-  int dateFocusRequests
-  Preferences userPreferencesNode
-  UserPreferencesService userPreferencesService
+  protected String previousHome
+  protected DatabaseService databaseService
+  protected AuditLogService auditLogService
+  protected AccountingPeriodService accountingPeriodService
+  protected FiscalYearService fiscalYearService
+  protected VoucherService voucherService
+  protected AttachmentService attachmentService
+  protected ActiveCompanyManager activeCompanyManager
+  protected FiscalYear fiscalYear
+  protected VoucherPanel panel
+  protected List<List<Integer>> moves
+  protected int dateFocusRequests
+  protected Preferences userPreferencesNode
+  protected UserPreferencesService userPreferencesService
 
   @BeforeEach
   void setUp() {

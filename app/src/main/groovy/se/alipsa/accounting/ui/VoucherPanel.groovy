@@ -311,7 +311,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     constraints.weightx = 1.0G
     constraints.fill = GridBagConstraints.HORIZONTAL
     descriptionField.minimumSize =
-        new Dimension(DESCRIPTION_FIELD_MIN_WIDTH, descriptionField.preferredSize.height as int)
+        new Dimension(UIScale.scale(DESCRIPTION_FIELD_MIN_WIDTH), descriptionField.preferredSize.height as int)
     panel.add(descriptionField, constraints)
   }
 
