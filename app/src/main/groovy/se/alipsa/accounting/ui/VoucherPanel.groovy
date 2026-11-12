@@ -84,7 +84,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
   private static final LocalDate DATE_PICKER_RANGE_FROM = LocalDate.of(1900, 1, 1)
   private static final LocalDate DATE_PICKER_RANGE_TO = LocalDate.now().plusYears(50)
-  private static final int DESCRIPTION_FIELD_MIN_WIDTH = 120
+
+  @PackageScope
+  static final int DESCRIPTION_FIELD_MIN_WIDTH = 120
 
   private final VoucherService voucherService
   private final AccountService accountService

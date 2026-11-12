@@ -37,6 +37,6 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
       field.columns == 30
     }
 
-    assertEquals(UIScale.scale(120), onEdt { descriptionField.minimumSize.width })
+    assertEquals(UIScale.scale(VoucherPanel.DESCRIPTION_FIELD_MIN_WIDTH), onEdt { descriptionField.minimumSize.width })
   }
 }
