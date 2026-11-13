@@ -40,7 +40,7 @@ final class VoucherToolbar {
   }
 
   static JToggleButton advanceToggle() {
-    JToggleButton button = new CommandToggleButton()
+    JToggleButton button = new AdvanceToggleButton()
     configure(button, 'new-after-save', 'voucherPanel.toggle.advanceAfterSave')
     button.margin = new Insets(0, 8, 0, 8)
     button.addItemListener { updateAdvanceToggleLabel(button) }
@@ -93,7 +93,7 @@ final class VoucherToolbar {
   }
 
   /** Keep labelled mode controls aligned with commands without fixing their text width. */
-  private static final class CommandToggleButton extends JToggleButton {
+  private static final class AdvanceToggleButton extends JToggleButton {
 
     @Override
     Dimension getPreferredSize() {
