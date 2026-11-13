@@ -38,6 +38,15 @@ final class VoucherDraftMapperTest {
   }
 
   @Test
+  void invalidAmountsHaveActionableErrorsInsteadOfJdkMessages() {
+    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+      VoucherDraftMapper.fromDraft([accounting_date: '2030-03-15',
+                                   lines: [[account_number: '1930', debit: 'abc']]])
+    }
+    assertEquals('Line 1: debit must be a valid amount.', exception.message)
+  }
+
+  @Test
   void rejectsMalformedDraftValuesWithActionableErrors() {
     IllegalArgumentException missingLines = assertThrows(IllegalArgumentException) {
       VoucherDraftMapper.fromDraft([accounting_date: '2026-07-21'])

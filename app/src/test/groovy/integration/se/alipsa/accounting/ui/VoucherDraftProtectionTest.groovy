@@ -2,19 +2,24 @@ package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 import static org.junit.jupiter.api.Assertions.assertFalse
+import static org.junit.jupiter.api.Assertions.assertSame
 import static org.junit.jupiter.api.Assertions.assertThrows
 import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.VoucherSeries
 import se.alipsa.accounting.support.I18n
+import se.alipsa.datepicker.DatePicker
 
 import java.awt.Container
 import java.nio.file.Files
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicInteger
 
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JTable
 import javax.swing.JTextField
 
@@ -60,6 +65,63 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
     panel.mcpVoucherDraftAccess.setVoucherDraft(proposal([replace_unsaved: true]))
     assertFalse(onEdt { table.editing })
     assertEquals([], panel.mcpVoucherDraftAccess.getVoucherDraft().lines)
+  }
+
+  @Test
+  void readingAnActiveCellLeavesTextModelAndListenersUntouched() {
+    JTable table = findComponent(panel, JTable) { JTable candidate -> candidate.model == panel.lineTableModel }
+    for (int column : [0, 2]) {
+      onEdt {
+        assertTrue(table.editCellAt(0, column))
+        ((JTextField) table.editorComponent).text = column == 0 ? '19' : '12,'
+      }
+      def editor = onEdt { table.editorComponent }
+      AtomicInteger events = new AtomicInteger()
+      panel.lineTableModel.addTableModelListener { events.incrementAndGet() }
+      int rowCount = onEdt { table.rowCount }
+      Map<String, Object> draft = panel.mcpVoucherDraftAccess.getVoucherDraft()
+      assertEquals(true, draft.editing)
+      assertEquals([], draft.lines)
+      assertTrue(onEdt { table.editing })
+      assertSame(editor, onEdt { table.editorComponent })
+      assertEquals(column == 0 ? '19' : '12,', onEdt { ((JTextField) table.editorComponent).text })
+      assertEquals(rowCount, onEdt { table.rowCount })
+      assertEquals(0, events.get())
+      onEdt { table.cellEditor.cancelCellEditing() }
+    }
+  }
+
+  @Test
+  void emptyActiveCellDoesNotCountAsUnsavedContentOrGetCommittedByReading() {
+    JTable table = findComponent(panel, JTable) { JTable candidate -> candidate.model == panel.lineTableModel }
+    onEdt { assertTrue(table.editCellAt(0, 4)) }
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+    assertTrue(onEdt { table.editing })
+    panel.mcpVoucherDraftAccess.setVoucherDraft(proposal())
+    assertFalse(onEdt { table.editing })
+    assertEquals('AI proposal', panel.mcpVoucherDraftAccess.getVoucherDraft().description)
+  }
+
+  @Test
+  void deliberateDateAndSeriesChangesAreProtectedButInitialDefaultsAreBlank() {
+    voucherService.ensureSeries(fiscalYear.id, 'B')
+    panel.dispose()
+    panel = buildPanel()
+    DatePicker picker = findComponent(panel, DatePicker) { true }
+    JComboBox series = findComponent(panel, JComboBox) { JComboBox candidate ->
+      candidate.itemCount > 0 && candidate.getItemAt(0) instanceof VoucherSeries
+    }
+    LocalDate initialDate = onEdt { picker.date }
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+    onEdt { picker.date = initialDate.plusDays(1) }
+    assertReplacementRefused()
+    assertEquals(initialDate.plusDays(1).toString(), panel.mcpVoucherDraftAccess.getVoucherDraft().accounting_date)
+    onEdt {
+      picker.date = initialDate
+      series.selectedIndex = 1
+    }
+    assertReplacementRefused()
+    assertEquals('B', panel.mcpVoucherDraftAccess.getVoucherDraft().series_code)
   }
 
   @Test

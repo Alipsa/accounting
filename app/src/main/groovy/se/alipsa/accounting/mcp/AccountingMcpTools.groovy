@@ -235,11 +235,17 @@ class AccountingMcpTools {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
     }
-    Map<String, Object> draft = voucherDraftAccess.getVoucherDraft()
+    Map<String, Object> draft
+    try {
+      draft = voucherDraftAccess.getVoucherDraft()
+    } catch (IllegalArgumentException ignored) {
+      return [ok: false, has_unsaved_changes: null, error_code: 'draft_unavailable',
+              errors: ['The voucher draft could not be read. Finish editing it in the application and try again.']]
+    }
     if (draft == null || draft.isEmpty()) {
       return [ok: false, has_unsaved_changes: false, errors: ['No unsaved voucher draft is active.']]
     }
-    [ok: true, saved: false, has_unsaved_changes: true, draft: draft]
+    [ok: true, saved: false, has_unsaved_changes: true, editing: draft.get('editing') == true, draft: draft]
   }
 
   private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {
@@ -275,8 +281,8 @@ class AccountingMcpTools {
     }
     try {
       voucherDraftAccess.setVoucherDraft(draft)
-    } catch (IllegalArgumentException exception) {
-      return [ok: false, errors: [exception.message]]
+    } catch (UnsavedVoucherDraftException exception) {
+      return [ok: false, has_unsaved_changes: true, error_code: 'unsaved_changes', errors: [exception.message]]
     }
     [ok: true, saved: false, awaiting_user_save: true]
   }
@@ -1075,7 +1081,7 @@ class AccountingMcpTools {
   }
 
   private static Map<String, Object> voucherEditorUnavailable() {
-    [ok: false, errors: ['Voucher editor is not available.']]
+    [ok: false, has_unsaved_changes: null, error_code: 'editor_unavailable', errors: ['Voucher editor is not available.']]
   }
 
   private static String yearEndPreviewToken(long fiscalYearId, String closingAccount) {

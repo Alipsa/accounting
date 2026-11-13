@@ -36,7 +36,7 @@ final class VoucherDraftMapper {
       }
       Map line = (Map) value
       lines << new VoucherLine(null, null, index, null, line.account_number as String, line.account_name as String,
-          line.description as String, decimal(line.debit), decimal(line.credit))
+          line.description as String, decimal(line.debit, 'debit', index), decimal(line.credit, 'credit', index))
     }
     LocalDate accountingDate
     try {
@@ -48,8 +48,12 @@ final class VoucherDraftMapper {
         (draft.get('attachment_path') as String)?.trim() ?: null)
   }
 
-  private static BigDecimal decimal(Object value) {
-    value == null || value.toString().trim().isEmpty() ? BigDecimal.ZERO : new BigDecimal(value.toString())
+  private static BigDecimal decimal(Object value, String field, int index) {
+    try {
+      value == null || value.toString().trim().isEmpty() ? BigDecimal.ZERO : new BigDecimal(value.toString())
+    } catch (NumberFormatException exception) {
+      throw new IllegalArgumentException("Line ${index + 1}: ${field} must be a valid amount.", exception)
+    }
   }
 
   static final class VoucherDraft {

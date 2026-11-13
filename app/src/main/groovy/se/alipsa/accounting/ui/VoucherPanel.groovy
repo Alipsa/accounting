@@ -156,6 +156,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JTable auditLogTable = new JTable(auditLogTableModel)
 
   private Voucher currentVoucher
+  private LocalDate blankDraftDate
+  private String blankDraftSeriesCode
   private String pendingAttachmentPath
   private AttachmentMetadata pendingAttachmentPreview
   private final VoucherNavigation navigation = new VoucherNavigation()
@@ -824,6 +826,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     datePicker.date = defaultDate()
     ensureDefaultSeriesForNewVoucher()
     VoucherSeries selectedSeries = seriesComboBox.selectedItem as VoucherSeries
+    blankDraftDate = datePicker.date
+    blankDraftSeriesCode = selectedSeries?.seriesCode
     String nextNumber = selectedSeries != null ? previewNextVoucherNumber(selectedSeries.seriesCode) : ''
     voucherNumberLabel.text = nextNumber
     unsavedLabel.visible = true
@@ -1012,10 +1016,15 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private boolean hasUnsavedDraftContent() {
     if (currentVoucher != null) {
       VoucherDraftMapper.VoucherDraft draft = navigation.draft()
-      return draft != null && (hasText(draft.description) || hasText(draft.attachmentPath) || !draft.lines.isEmpty())
+      return draft != null && (hasText(draft.description) || hasText(draft.attachmentPath) || !draft.lines.isEmpty() ||
+          draft.accountingDate != blankDraftDate || draft.seriesCode != blankDraftSeriesCode)
     }
     // An active cell editor may contain text that has not reached the table model yet.
-    lineTable.editing || hasText(descriptionField.text) || hasText(pendingAttachmentPath) ||
+    boolean editorHasText = lineTable.editing && lineTable.editorComponent instanceof javax.swing.text.JTextComponent &&
+        hasText(((javax.swing.text.JTextComponent) lineTable.editorComponent).text)
+    editorHasText || datePicker.date != blankDraftDate ||
+        (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode != blankDraftSeriesCode ||
+        hasText(descriptionField.text) || hasText(pendingAttachmentPath) ||
         lineTableModel.rows.any { LineEntry row -> isRowFilled(row) }
   }
 
@@ -1025,10 +1034,10 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       return VoucherDraftMapper.toDraft(draft.accountingDate, draft.description, draft.seriesCode, draft.lines,
           draft.attachmentPath)
     }
-    if (lineTable.editing && !lineTable.cellEditor.stopCellEditing()) {
-      throw new IllegalArgumentException('Finish editing the voucher line before reading the draft.')
-    }
-    snapshotDraft()
+    // Reading must leave the user's active cell editor and its listeners untouched.
+    Map<String, Object> draft = snapshotDraft()
+    draft.editing = lineTable.editing
+    draft
   }
 
   private Map<String, Object> snapshotDraft() {

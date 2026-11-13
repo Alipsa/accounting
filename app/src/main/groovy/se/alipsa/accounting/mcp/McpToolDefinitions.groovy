@@ -140,11 +140,11 @@ final class McpToolDefinitions {
             ]
         ),
         toolDef('get_active_voucher_draft',
-            'Gets the unsaved voucher draft, including a draft retained while browsing saved vouchers. Returns has_unsaved_changes; a blank editor with only date/series defaults has no unsaved changes.',
+            'Reads the unsaved voucher draft without changing the editor, including a draft retained while browsing saved vouchers. Returns has_unsaved_changes (null if unavailable). When editing is true, draft lines contain committed model values only; in-progress cell text is not included. Initial date/series defaults alone are blank; deliberate changes count as unsaved content.',
             [], [:]
         ),
         toolDef('set_active_voucher_draft',
-            'Fills the GUI voucher draft. Refuses to overwrite unsaved content unless replace_unsaved is true. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool. If attachment_path is provided, the file is validated immediately and shown in the draft\'s Attachments tab; it is automatically registered when the user saves the voucher.',
+            'Fills the GUI voucher draft. Refuses to overwrite unsaved content unless replace_unsaved is true; refusal returns error_code: unsaved_changes and has_unsaved_changes: true. This never saves; the user must review and press Save in the application. Resolve account numbers through list_accounts before calling this tool. If attachment_path is provided, the file is validated immediately and shown in the draft\'s Attachments tab; it is automatically registered when the user saves the voucher.',
             ['accounting_date', 'description', 'lines'],
             [
                 accounting_date: strParam('Accounting date in ISO format YYYY-MM-DD'),

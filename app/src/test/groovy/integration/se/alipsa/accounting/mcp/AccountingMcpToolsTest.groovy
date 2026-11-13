@@ -811,8 +811,7 @@ class AccountingMcpToolsTest {
     List<Map<String, Object>> appliedLines = (List<Map<String, Object>>) appliedDraft[0].lines
     assertEquals('Företagskonto', appliedLines.first().account_name)
     assertEquals('Leverantörsskulder', appliedLines.last().account_name)
-    assertEquals([ok: false, errors: ['accounting_date must be an ISO date (YYYY-MM-DD).']],
-        tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []]))
+    assertThrows(IllegalArgumentException) { tools.callTool('set_active_voucher_draft', [description: 'invalid', lines: []]) }
     boolean noDraft = true
     tools.setVoucherDraftAccess(new VoucherDraftAccess() {
       @Override Map<String, Object> getVoucherDraft() { noDraft ? null : [:] }
@@ -826,7 +825,7 @@ class AccountingMcpToolsTest {
         { VoucherDraftMapper.VoucherDraft draft -> appliedDraft[0] = [description: draft.description] }))
     Map<String, Object> rejected = tools.callTool('set_active_voucher_draft', replacement)
     assertEquals(false, rejected.ok)
-    assertTrue(rejected.errors.toString().contains('replace_unsaved: true'))
+    assertEquals('unsaved_changes', rejected.error_code)
     replacement.replace_unsaved = true
     assertEquals(true, tools.callTool('set_active_voucher_draft', replacement).ok)
     assertEquals('Prepared by AI', appliedDraft[0].description)
