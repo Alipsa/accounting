@@ -247,7 +247,7 @@ class AccountingMcpTools {
     } catch (RuntimeException exception) {
       log.log(Level.WARNING, 'Could not read the voucher draft.', exception)
       return [ok: false, has_unsaved_changes: null, error_code: 'draft_unavailable',
-              errors: ['The voucher draft could not be read. Finish editing it in the application and try again.']]
+              errors: ['An unexpected error occurred while reading the voucher draft; see the application log.']]
     }
     if (draft == null || draft.isEmpty()) {
       return [ok: false, has_unsaved_changes: false, error_code: 'no_draft', errors: ['No unsaved voucher draft is active.']]

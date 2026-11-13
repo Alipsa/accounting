@@ -12,9 +12,11 @@ import org.junit.jupiter.api.Test
 import se.alipsa.accounting.ui.VoucherDraftEditorAccess
 import se.alipsa.accounting.ui.VoucherDraftMapper
 
+import java.util.logging.Formatter
 import java.util.logging.Handler
 import java.util.logging.LogRecord
 import java.util.logging.Logger
+import java.util.logging.StreamHandler
 
 final class VoucherDraftToolErrorsTest {
 
@@ -35,7 +37,12 @@ final class VoucherDraftToolErrorsTest {
     tools.setVoucherDraftAccess(new VoucherDraftEditorAccess({ throw failure }, { true },
         { VoucherDraftMapper.VoucherDraft ignored -> }))
     List<LogRecord> records = []
-    Handler handler = new RecordingHandler(records)
+    Handler handler = new StreamHandler(OutputStream.nullOutputStream(), new Formatter() {
+      @Override String format(LogRecord record) {
+        records.add(record)
+        ''
+      }
+    })
     Logger logger = Logger.getLogger(AccountingMcpTools.name)
     logger.addHandler(handler)
     try {
@@ -46,6 +53,7 @@ final class VoucherDraftToolErrorsTest {
       assertSame(failure, records.last().thrown)
     } finally {
       logger.removeHandler(handler)
+      handler.close()
     }
   }
 
@@ -80,15 +88,4 @@ final class VoucherDraftToolErrorsTest {
     }
   }
 
-  private static final class RecordingHandler extends Handler implements AutoCloseable {
-    private final List<LogRecord> records
-
-    RecordingHandler(List<LogRecord> records) {
-      this.records = records
-    }
-
-    @Override void publish(LogRecord record) { records.add(record) }
-    @Override void flush() { }
-    @Override void close() { }
-  }
 }
