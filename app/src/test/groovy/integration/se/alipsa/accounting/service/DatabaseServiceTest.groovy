@@ -160,31 +160,39 @@ class DatabaseServiceTest {
   }
 
   @Test
-  void inMemoryDatabaseSupportsFiscalYearCreationAndVatStatusUpdatesAcrossConnections() {
+  void inMemoryFiscalYearCreatesVatPeriodsAfterSchemaConnectionCloses() {
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     System.setProperty(AppPaths.DATABASE_URL_PROPERTY, TestDatabaseUrls.uniqueInMemoryUrl('fiscal-year-vat'))
     System.setProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, 'true')
 
-    // initialize closes the connection that created the CHECK constraints. H2 2.4.240
-    // retained that closed session in constant-list checks (issue #129 / H2 #4320).
-    databaseService.initialize()
-    FiscalYearService fiscalYearService = new FiscalYearService(databaseService)
-    FiscalYear year = fiscalYearService.createFiscalYear(
-        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
-    VatService vatService = new VatService(databaseService)
+    try {
+      // initialize closes the schema connection. H2 2.4.240 then failed the
+      // vat_period.status CHECK on insertion (issue #129 / H2 #4320).
+      databaseService.initialize()
+      FiscalYearService fiscalYearService = new FiscalYearService(databaseService)
+      FiscalYear year = fiscalYearService.createFiscalYear(
+          CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+      VatService vatService = new VatService(databaseService)
 
-    assertEquals(year, fiscalYearService.findById(year.id))
-    assertEquals(12, new AccountingPeriodService(databaseService).listPeriods(year.id).size())
-    List<VatPeriod> periods = vatService.listPeriods(year.id)
-    assertEquals(12, periods.size())
-    assertTrue(periods.every { VatPeriod period -> period.status == VatService.OPEN })
+      assertEquals(year, fiscalYearService.findById(year.id))
+      assertEquals(12, new AccountingPeriodService(databaseService).listPeriods(year.id).size())
+      // Count before listPeriods, which would create any missing VAT periods itself.
+      assertEquals(12, databaseService.withSql { Sql sql ->
+        ((Number) sql.firstRow('select count(*) as c from vat_period where fiscal_year_id = ?', [year.id]).get('c')).intValue()
+      })
+      List<VatPeriod> periods = vatService.listPeriods(year.id)
+      assertEquals(12, periods.size())
+      assertTrue(periods.every { VatPeriod period -> period.status == VatService.OPEN })
 
-    VatPeriod reported = vatService.reportPeriod(periods.first().id)
+      VatPeriod reported = vatService.reportPeriod(periods.first().id)
 
-    assertEquals(VatService.REPORTED, reported.status)
-    assertEquals(VatService.REPORTED, vatService.findPeriod(reported.id).status)
-    assertTrue(vatService.validateReport(reported.id).isEmpty())
-    assertTrue(new AuditLogService(databaseService).validateIntegrity().isEmpty())
+      assertEquals(VatService.REPORTED, reported.status)
+      assertEquals(VatService.REPORTED, vatService.findPeriod(reported.id).status)
+      assertTrue(vatService.validateReport(reported.id).isEmpty())
+      assertTrue(new AuditLogService(databaseService).validateIntegrity().isEmpty())
+    } finally {
+      databaseService.shutdown()
+    }
   }
 
   private static void restoreProperty(String name, String value) {

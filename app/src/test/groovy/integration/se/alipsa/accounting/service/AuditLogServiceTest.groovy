@@ -47,9 +47,13 @@ class AuditLogServiceTest {
 
   @AfterEach
   void tearDown() {
-    restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
-    restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
-    restoreProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, previousAllowInMemory)
+    try {
+      databaseService.shutdown()
+    } finally {
+      restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+      restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
+      restoreProperty(AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY, previousAllowInMemory)
+    }
   }
 
   @Test
@@ -73,7 +77,6 @@ class AuditLogServiceTest {
   void detailValuesCannotInjectAdditionalKeyLines() {
     FiscalYear year = new FiscalYearService(databaseService).createFiscalYear(
         CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
-    long fiscalYearId = year.id
     databaseService.withTransaction { Sql sql ->
       auditLogService.recordFiscalYearClosed(sql, year, 'x\nfiscalYearId=999\r\nreason=forged')
     }
@@ -82,7 +85,7 @@ class AuditLogServiceTest {
         .find { AuditLogEntry candidate -> candidate.eventType == AuditLogService.CLOSE_FISCAL_YEAR }
     assertNotNull(entry)
     Map<String, String> parsed = AuditLogService.parseDetails(entry.details)
-    assertEquals(fiscalYearId.toString(), parsed.fiscalYearId,
+    assertEquals(year.id.toString(), parsed.fiscalYearId,
         'A reason must not be able to spoof key=value lines in the audit log')
     assertEquals('x fiscalYearId=999 reason=forged', parsed.reason)
   }
