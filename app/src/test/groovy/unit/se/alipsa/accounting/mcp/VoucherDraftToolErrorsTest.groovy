@@ -12,11 +12,10 @@ import org.junit.jupiter.api.Test
 import se.alipsa.accounting.ui.VoucherDraftEditorAccess
 import se.alipsa.accounting.ui.VoucherDraftMapper
 
-import java.util.logging.Formatter
 import java.util.logging.Handler
+import java.util.logging.Level
 import java.util.logging.LogRecord
 import java.util.logging.Logger
-import java.util.logging.StreamHandler
 
 final class VoucherDraftToolErrorsTest {
 
@@ -37,12 +36,7 @@ final class VoucherDraftToolErrorsTest {
     tools.setVoucherDraftAccess(new VoucherDraftEditorAccess({ throw failure }, { true },
         { VoucherDraftMapper.VoucherDraft ignored -> }))
     List<LogRecord> records = []
-    Handler handler = new StreamHandler(OutputStream.nullOutputStream(), new Formatter() {
-      @Override String format(LogRecord record) {
-        records.add(record)
-        ''
-      }
-    })
+    Handler handler = new RecordingHandler(records)
     Logger logger = Logger.getLogger(AccountingMcpTools.name)
     logger.addHandler(handler)
     try {
@@ -88,4 +82,25 @@ final class VoucherDraftToolErrorsTest {
     }
   }
 
+  private static final class RecordingHandler extends Handler {
+    private final List<LogRecord> records
+
+    RecordingHandler(List<LogRecord> records) {
+      this.records = records
+      level = Level.ALL
+    }
+
+    @Override
+    void publish(LogRecord record) {
+      if (isLoggable(record)) {
+        records.add(record)
+      }
+    }
+
+    @Override void flush() { }
+
+    // Handler requires close() without implementing Closeable or AutoCloseable.
+    @SuppressWarnings('CloseWithoutCloseable')
+    @Override void close() { }
+  }
 }
