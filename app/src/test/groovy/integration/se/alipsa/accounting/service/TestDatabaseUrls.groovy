@@ -5,6 +5,9 @@ package se.alipsa.accounting.service
  * instead of a real file, so integration tests avoid disk I/O for their (throwaway) database.
  * Must be paired with {@code AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY=true}, since
  * DatabaseService.validateDatabaseUrl otherwise rejects in-memory URLs outright.
+ * The fix for H2 #4320 (included in 2.5.252) allows fiscal-year creation across connections.
+ * DatabaseServiceTest covers the vat_period.status CHECK after the schema connection closes.
+ * Call DatabaseService.shutdown() before restoring the URL property to release the database.
  */
 class TestDatabaseUrls {
 
