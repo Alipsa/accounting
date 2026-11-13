@@ -48,7 +48,7 @@ class AuditLogServiceTest {
   @AfterEach
   void tearDown() {
     try {
-      databaseService.shutdown()
+      databaseService?.shutdown()
     } finally {
       restoreProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
       restoreProperty(AppPaths.DATABASE_URL_PROPERTY, previousUrl)
