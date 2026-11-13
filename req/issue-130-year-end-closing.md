@@ -43,3 +43,15 @@ implemented in a separate previewable, audited workflow. Opening balances must
 continue to match the preceding year's closing balances; reallocations belong in
 new-year vouchers. Later allocations to retained earnings or dividends require
 the applicable profit-allocation decision and must not be inferred by year closing.
+
+## Preview and MCP amounts
+
+The preview separates operating income and expenses (excluding 8999), the actual
+annual result (`net_result`), prior transfers (`transferred_result`), and the amount
+still to post (`remaining_result`). Both preview and closing responses use
+`result_accounts_with_balance_count` for the count of nonzero result-account balances,
+including 8999 when nonzero. The closing response retains the preview figures: `remaining_result` is the amount
+posted by that operation. The former `result_account_count` field is removed.
+The dialog resolves its default account inside the preview worker and displays errors
+without enabling closing. Account 8999 is excluded from the income statement regardless
+of its subgroup. SIE result records omit zero balances.

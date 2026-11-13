@@ -479,7 +479,7 @@ final class ReportDataService {
         log.warning("Konto ${accountNumber} (${info.accountName}) saknar undergrupp och exkluderas från resultatrapporten.")
         return
       }
-      if (shouldExcludeFromIncomeStatement(accountNumber, subgroup)) {
+      if (shouldExcludeFromIncomeStatement(accountNumber)) {
         return
       }
       String incomeAccountClass = resolveIncomeAccountClass(accountNumber, info, subgroup)

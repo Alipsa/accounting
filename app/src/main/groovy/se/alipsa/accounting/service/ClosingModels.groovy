@@ -12,10 +12,12 @@ final class YearEndClosingPreview {
   FiscalYear nextFiscalYear
   boolean nextFiscalYearWillBeCreated
   String closingAccountNumber
-  int resultAccountCount
+  int resultAccountsWithBalanceCount
   BigDecimal incomeTotal
   BigDecimal expenseTotal
   BigDecimal netResult
+  BigDecimal transferredResult
+  BigDecimal remainingResult
   List<String> blockingIssues = []
   List<String> warnings = []
 }
@@ -26,10 +28,12 @@ final class YearEndClosingResult {
   FiscalYear closedFiscalYear
   FiscalYear nextFiscalYear
   Voucher closingVoucher
-  int resultAccountCount
+  int resultAccountsWithBalanceCount
   int openingBalanceCount
   int closingEntryCount
   BigDecimal netResult
+  BigDecimal transferredResult
+  BigDecimal remainingResult
   List<String> warnings = []
 }
 
@@ -67,4 +71,14 @@ final class ClosingExecution {
   Voucher closingVoucher
   int openingBalanceCount
   int closingEntryCount
+}
+
+@Canonical
+final class ClosingResultTotals {
+
+  BigDecimal incomeTotal
+  BigDecimal expenseTotal
+  BigDecimal netResult
+  BigDecimal transferredResult
+  BigDecimal remainingResult
 }

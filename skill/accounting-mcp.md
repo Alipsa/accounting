@@ -104,7 +104,7 @@ Only call write tools after the user explicitly confirms the proposed action.
 
 1. Call `list_fiscal_years` and confirm the year is open.
 2. Call `preview_year_end`.
-3. Show `blocking_issues`, `warnings`, `net_result`, and whether the next fiscal year will be created automatically.
+3. Show `blocking_issues`, `warnings`, the year’s result (`net_result`), the amount already transferred via 8999 (`transferred_result`), the remaining transfer (`remaining_result`), and whether the next fiscal year will be created automatically. `income_total` and `expense_total` exclude 8999; `result_accounts_with_balance_count` counts result accounts with nonzero balances.
 4. If `ready_to_close` is false or `preview_token` is missing, explain the blockers and do not call `close_fiscal_year`.
 5. If `ready_to_close` is true, ask the user to confirm closing the year.
 6. Only call `close_fiscal_year` after confirmation, passing the returned `preview_token`.

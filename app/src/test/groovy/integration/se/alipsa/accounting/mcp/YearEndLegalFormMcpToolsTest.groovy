@@ -73,17 +73,21 @@ class YearEndLegalFormMcpToolsTest {
       insertAccount(sql, '2019', 'Årets resultat, delägare 1', 'EQUITY', 'CREDIT')
       insertAccount(sql, '2099', 'Årets resultat', 'EQUITY', 'CREDIT')
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
+      insertAccount(sql, '4010', 'Varukostnad', 'EXPENSE', 'DEBIT')
       insertAccount(sql, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT')
     }
   }
 
   @AfterEach
   void tearDown() {
-    databaseService?.shutdown()
-    if (previousHome == null) {
-      System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
-    } else {
-      System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+    try {
+      databaseService?.shutdown()
+    } finally {
+      if (previousHome == null) {
+        System.clearProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
+      } else {
+        System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, previousHome)
+      }
     }
   }
 
@@ -133,6 +137,37 @@ class YearEndLegalFormMcpToolsTest {
     assertEquals(false, result.get('ok'))
     assertTrue(result.get('errors').toString().contains('preview_token'))
     assertFalse(fiscalYearService.findById(fiscalYearId).closed)
+  }
+
+  @Test
+  void yearEndReportsActualResultAndRemainingTransferSeparately() {
+    voucherService.createVoucher(fiscalYearId, 'A', LocalDate.of(2026, 12, 31), 'Delvis överfört årsresultat', [
+        new VoucherLine(null, null, 0, null, '1930', null, null, 1000.00G, 0.00G),
+        new VoucherLine(null, null, 0, null, '3010', null, null, 0.00G, 1000.00G),
+        new VoucherLine(null, null, 0, null, '4010', null, null, 300.00G, 0.00G),
+        new VoucherLine(null, null, 0, null, '1930', null, null, 0.00G, 300.00G),
+        new VoucherLine(null, null, 0, null, '8999', null, null, 400.00G, 0.00G),
+        new VoucherLine(null, null, 0, null, '2099', null, null, 0.00G, 400.00G)
+    ])
+    Map<String, Object> args = [company_id: (Object) CompanyService.LEGACY_COMPANY_ID, fiscal_year_id: (Object) fiscalYearId]
+
+    Map<String, Object> preview = tools.callTool('preview_year_end', args)
+
+    assertEquals(1000.00G, preview.get('income_total'))
+    assertEquals(300.00G, preview.get('expense_total'))
+    assertEquals(700.00G, preview.get('net_result'))
+    assertEquals(400.00G, preview.get('transferred_result'))
+    assertEquals(300.00G, preview.get('remaining_result'))
+    assertEquals(3, preview.get('result_accounts_with_balance_count'))
+    assertFalse(preview.containsKey('result_account_count'))
+    args.put('preview_token', preview.get('preview_token'))
+    Map<String, Object> result = tools.callTool('close_fiscal_year', args)
+    assertEquals(true, result.get('ok'), result.toString())
+    assertEquals(700.00G, result.get('net_result'))
+    assertEquals(400.00G, result.get('transferred_result'))
+    assertEquals(300.00G, result.get('remaining_result'))
+    assertEquals(3, result.get('result_accounts_with_balance_count'))
+    assertFalse(result.containsKey('result_account_count'))
   }
 
   private static void insertAccount(Sql sql, String number, String name, String accountClass, String side) {

@@ -4,9 +4,15 @@ import se.alipsa.accounting.support.I18n
 
 enum LegalForm {
 
-  AKTIEBOLAG,
-  ENSKILD_FIRMA,
-  HANDELSBOLAG_KB
+  AKTIEBOLAG('2099'),
+  ENSKILD_FIRMA('2019'),
+  HANDELSBOLAG_KB('2019')
+
+  final String defaultResultAccount
+
+  private LegalForm(String defaultResultAccount) {
+    this.defaultResultAccount = defaultResultAccount
+  }
 
   String getDisplayName() {
     I18n.instance.getString("legalForm.${name()}")

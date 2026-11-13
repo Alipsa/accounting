@@ -5,6 +5,7 @@ import groovy.sql.Sql
 
 import se.alipsa.accounting.domain.ClosingEntry
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.support.AmountFormatter
@@ -19,7 +20,7 @@ import java.time.LocalDate
  */
 final class ClosingService {
 
-  static final String DEFAULT_CLOSING_ACCOUNT = '2099'
+  static final String DEFAULT_CLOSING_ACCOUNT = LegalForm.AKTIEBOLAG.defaultResultAccount
   static final String DEFAULT_CLOSING_SERIES = 'YE'
   static final String RESULT_CLOSING = 'RESULT_CLOSING'
   static final String OPENING_BALANCE = 'OPENING_BALANCE'
@@ -109,7 +110,7 @@ final class ClosingService {
 
   private static String defaultClosingAccount(Sql sql, long companyId) {
     String legalForm = sql.firstRow('select legal_form from company where id = ?', [companyId]).get('legal_form') as String
-    legalForm in ['ENSKILD_FIRMA', 'HANDELSBOLAG_KB'] ? '2019' : DEFAULT_CLOSING_ACCOUNT
+    LegalForm.fromDatabaseValue(legalForm)?.defaultResultAccount ?: DEFAULT_CLOSING_ACCOUNT
   }
 
   YearEndClosingPreview previewClosing(long fiscalYearId, String closingAccountNumber = null) {
@@ -142,10 +143,12 @@ final class ClosingService {
           nextFiscalYear,
           false,
           preview.closingAccountNumber,
-          preview.resultAccountCount,
+          preview.resultAccountsWithBalanceCount,
           preview.incomeTotal,
           preview.expenseTotal,
           preview.netResult,
+          preview.transferredResult,
+          preview.remainingResult,
           preview.blockingIssues,
           preview.warnings
       )
@@ -155,10 +158,12 @@ final class ClosingService {
           closedYear,
           nextFiscalYear,
           execution.closingVoucher,
-          executionPreview.resultAccountCount,
+          executionPreview.resultAccountsWithBalanceCount,
           execution.openingBalanceCount,
           execution.closingEntryCount,
           executionPreview.netResult,
+          executionPreview.transferredResult,
+          executionPreview.remainingResult,
           executionPreview.warnings
       )
     }
@@ -224,17 +229,9 @@ final class ClosingService {
     appendUnclassifiedAccountBlocker(sql, fiscalYear.id, blockers)
 
     Map<String, ResultAccountBalance> resultBalances = loadResultBalances(sql, fiscalYear.id)
-    BigDecimal incomeTotal = resultBalances.values()
-        .findAll { ResultAccountBalance balance -> balance.accountClass == 'INCOME' }
-        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
-    BigDecimal expenseTotal = resultBalances.values()
-        .findAll { ResultAccountBalance balance -> balance.accountClass == 'EXPENSE' }
-        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
-    BigDecimal netResult = scale(incomeTotal - expenseTotal)
-
-    appendTransferAccountBlocker(sql, companyId, netResult, blockers)
-
-    appendClosingWarnings(fiscalYear, resultBalances, netResult, warnings)
+    ClosingResultTotals totals = calculateResultTotals(resultBalances)
+    appendTransferAccountBlocker(sql, companyId, totals.remainingResult, blockers)
+    appendClosingWarnings(fiscalYear, resultBalances, totals.remainingResult, warnings)
 
     NextFiscalYearPlan nextPlan = planNextFiscalYear(sql, companyId, fiscalYear)
     if (nextPlan.conflictMessage != null) {
@@ -257,32 +254,50 @@ final class ClosingService {
         nextPlan.willCreate,
         safeClosingAccount,
         resultBalances.size(),
-        scale(incomeTotal),
-        scale(expenseTotal),
-        netResult,
+        totals.incomeTotal,
+        totals.expenseTotal,
+        totals.netResult,
+        totals.transferredResult,
+        totals.remainingResult,
         blockers,
         warnings
     )
   }
 
+  private static ClosingResultTotals calculateResultTotals(Map<String, ResultAccountBalance> resultBalances) {
+    Collection<ResultAccountBalance> operatingBalances = resultBalances.values().findAll { ResultAccountBalance balance ->
+      balance.accountNumber != '8999'
+    }
+    BigDecimal incomeTotal = operatingBalances.findAll { ResultAccountBalance balance -> balance.accountClass == 'INCOME' }
+        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
+    BigDecimal expenseTotal = operatingBalances.findAll { ResultAccountBalance balance -> balance.accountClass == 'EXPENSE' }
+        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
+    BigDecimal netResult = scale(incomeTotal - expenseTotal)
+    ResultAccountBalance transfer = resultBalances['8999']
+    BigDecimal transferredResult = transfer == null ? BigDecimal.ZERO :
+        (transfer.normalBalanceSide == 'DEBIT' ? transfer.amount : -transfer.amount)
+    new ClosingResultTotals(scale(incomeTotal), scale(expenseTotal), netResult,
+        scale(transferredResult), scale(netResult - transferredResult))
+  }
+
   private void appendClosingWarnings(
       FiscalYear fiscalYear,
       Map<String, ResultAccountBalance> resultBalances,
-      BigDecimal netResult,
+      BigDecimal remainingResult,
       List<String> warnings
   ) {
-    if (netResult == BigDecimal.ZERO) {
+    if (remainingResult == BigDecimal.ZERO) {
       warnings << 'Inget återstående resultat att överföra. Bokslutsverifikationen hoppas över.'
     }
-    appendAlreadyTransferredResultWarning(resultBalances, netResult, warnings)
+    appendAlreadyTransferredResultWarning(resultBalances, remainingResult, warnings)
     LocalDate dueDate = fiscalYear.endDate.plusMonths(6)
     if (LocalDate.now(clock).isAfter(dueDate)) {
       warnings << ("Bokslutsfristen passerade ${dueDate}. Årsbokslutet borde redan vara upprättat." as String)
     }
   }
 
-  private static void appendTransferAccountBlocker(Sql sql, long companyId, BigDecimal netResult, List<String> blockers) {
-    if (netResult != BigDecimal.ZERO) {
+  private static void appendTransferAccountBlocker(Sql sql, long companyId, BigDecimal remainingResult, List<String> blockers) {
+    if (remainingResult != BigDecimal.ZERO) {
       BalanceAccountSeed transferAccount = loadAccount(sql, companyId, '8999')
       if (transferAccount == null || !transferAccount.active || transferAccount.accountClass != 'EXPENSE' ||
           transferAccount.normalBalanceSide != 'DEBIT') {
@@ -293,23 +308,22 @@ final class ClosingService {
 
   private static void appendAlreadyTransferredResultWarning(
       Map<String, ResultAccountBalance> resultBalances,
-      BigDecimal netResult,
+      BigDecimal remainingResult,
       List<String> warnings
   ) {
     ResultAccountBalance yearResultTransfer = resultBalances['8999']
     if (yearResultTransfer == null) {
       return
     }
-    // Imported years may already contain the year-end transfer (8999 -> 2099). The preview's
-    // net result then shows what remains to transfer (about 0), not the year's result.
+    // Imported years may already contain some or all of the year-end transfer.
     warnings << ("Årets resultat har redan förts över via konto 8999 (${AmountFormatter.format(yearResultTransfer.amount, null)}); " +
-        "bokslutet överför återstående ${AmountFormatter.format(netResult, null)}." as String)
+        "bokslutet överför återstående ${AmountFormatter.format(remainingResult, null)}." as String)
   }
 
   private ClosingExecution executeClosing(Sql sql, YearEndClosingPreview preview) {
-    Voucher closingVoucher = preview.netResult == BigDecimal.ZERO
+    Voucher closingVoucher = preview.remainingResult == BigDecimal.ZERO
         ? null
-        : createClosingVoucher(sql, preview.fiscalYear, preview.closingAccountNumber, preview.netResult)
+        : createClosingVoucher(sql, preview.fiscalYear, preview.closingAccountNumber, preview.remainingResult)
 
     long companyId = resolveCompanyId(sql, preview.fiscalYear.id)
     int closingEntryCount = persistResultClosingEntries(
@@ -317,7 +331,7 @@ final class ClosingService {
         preview.fiscalYear.id,
         closingVoucher?.id,
         preview.closingAccountNumber,
-        preview.netResult
+        preview.remainingResult
     )
     Map<String, BigDecimal> closingBalances = openingBalanceService.loadBalanceClosingBalances(sql, preview.fiscalYear.id)
     int openingBalanceCount = openingBalanceService.replaceYearEndClosingBalances(

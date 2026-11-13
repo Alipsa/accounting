@@ -1,5 +1,7 @@
 package se.alipsa.accounting.mcp
 
+import se.alipsa.accounting.domain.LegalForm
+
 /**
  * Builds MCP tool schemas exposed by the local accounting MCP server.
  */
@@ -195,24 +197,31 @@ final class McpToolDefinitions {
     ]
   }
 
+  private static String closingAccountDescription() {
+    String defaults = LegalForm.values().collect { LegalForm form ->
+      "${form.name()}: ${form.defaultResultAccount}".toString()
+    }.join(', ')
+    "Optional closing account number. Defaults by legal form (${defaults}); an unset legal form uses ${LegalForm.AKTIEBOLAG.defaultResultAccount}."
+  }
+
   private static List<Map<String, Object>> yearEndToolDefs() {
     [
         toolDef('preview_year_end',
-            'Runs year-end closing pre-checks. Returns blocking issues, warnings, totals, net result, and a preview_token.',
+            'Runs year-end closing pre-checks. Returns blocking issues, warnings, income_total and expense_total excluding 8999, net_result for the year, transferred_result via 8999, remaining_result to transfer, result_accounts_with_balance_count, and a preview_token.',
             ['company_id', 'fiscal_year_id'],
             [
                 company_id: intParam('Company ID'),
                 fiscal_year_id: intParam('Fiscal year ID to preview'),
-                closing_account: optStrParam('Optional closing account number. Defaults to 2099 for AKTIEBOLAG or an unset legal form, and 2019 for ENSKILD_FIRMA or HANDELSBOLAG_KB.')
+                closing_account: optStrParam(closingAccountDescription())
             ]
         ),
         toolDef('close_fiscal_year',
-            'Closes the fiscal year. Requires the preview_token returned by preview_year_end for the same fiscal year and closing account.',
+            'Closes the fiscal year. Requires the preview_token returned by preview_year_end for the same fiscal year and closing account. Returns the preview\'s net_result, prior transferred_result, remaining_result posted by this closing, and result_accounts_with_balance_count.',
             ['company_id', 'fiscal_year_id', 'preview_token'],
             [
                 company_id: intParam('Company ID'),
                 fiscal_year_id: intParam('Fiscal year ID to close'),
-                closing_account: optStrParam('Optional closing account number. Defaults to 2099 for AKTIEBOLAG or an unset legal form, and 2019 for ENSKILD_FIRMA or HANDELSBOLAG_KB.'),
+                closing_account: optStrParam(closingAccountDescription()),
                 preview_token: strParam('Token returned by preview_year_end.')
             ]
         ),

@@ -1036,7 +1036,7 @@ final class SieImportExportService {
 
   private static List<SiePeriodValue> buildResultBalances(Sql sql, long fiscalYearId, SieDocument document) {
     sql.rows('''
-        select a.account_number as accountNumber,
+        select vl.account_number as accountNumber,
                sum(vl.debit_amount - vl.credit_amount) as amount
           from voucher v
           join voucher_line vl on vl.voucher_id = v.id
@@ -1044,8 +1044,9 @@ final class SieImportExportService {
          where v.fiscal_year_id = ?
            and v.status in ('ACTIVE', 'CORRECTION')
            and a.account_class in ('INCOME', 'EXPENSE')
-         group by a.account_number
-         order by a.account_number
+         group by vl.account_number
+        having sum(vl.debit_amount - vl.credit_amount) <> 0
+         order by vl.account_number
     ''', [fiscalYearId]).collect { GroovyRowResult row ->
       SiePeriodValue value = new SiePeriodValue()
       value.yearNr = 0

@@ -117,7 +117,7 @@ class ClosingServiceTest {
     def result = closingService.closeFiscalYear(fiscalYear.id)
 
     assertEquals('YE-1', result.closingVoucher.voucherNumber)
-    assertEquals(2, result.resultAccountCount)
+    assertEquals(2, result.resultAccountsWithBalanceCount)
     assertEquals(3, result.openingBalanceCount)
     assertEquals(4, result.closingEntryCount)
     assertTrue(result.closedFiscalYear.closed)
@@ -321,7 +321,10 @@ class ClosingServiceTest {
     )
 
     def preview = closingService.previewClosing(fiscalYear.id)
-    assertEquals(0.00G, preview.netResult)
+    assertEquals(1000.00G, preview.netResult)
+    assertEquals(0.00G, preview.expenseTotal)
+    assertEquals(1000.00G, preview.transferredResult)
+    assertEquals(0.00G, preview.remainingResult)
     assertTrue(preview.warnings.any { String warning -> warning.contains('förts över via konto 8999') })
 
     def result = closingService.closeFiscalYear(fiscalYear.id)
@@ -392,10 +395,14 @@ class ClosingServiceTest {
 
   @ParameterizedTest
   @CsvSource(['1000, 0', '-1000, 0', '1000, 400', '-1000, -400', '1000, 1200', '1000, 1000', '0, 0'])
-  void closingPreservesReportsAndTransfersOnlyRemainingResult(BigDecimal earned, BigDecimal transferred) {
+  void closingPreservesReportsWithMisgroupedTransferAccount(BigDecimal earned, BigDecimal transferred) {
     FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
         LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     seedClosingAccounts()
+    // An explicit subgroup must never turn the transfer account into an operating expense.
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate("update account set account_subgroup = 'FINANCIAL_COSTS' where account_number = '8999'")
+    }
     postSignedTransfer(year, '1930', '3010', earned)
     if (transferred != 0G) {
       postSignedTransfer(year, '8999', '2099', transferred)
@@ -408,7 +415,9 @@ class ClosingServiceTest {
     }
     def result = closingService.closeFiscalYear(year.id)
     BigDecimal remaining = earned - transferred
-    assertEquals(remaining, result.netResult)
+    assertEquals(earned, result.netResult)
+    assertEquals(transferred, result.transferredResult)
+    assertEquals(remaining, result.remainingResult)
     if (remaining == 0G) {
       assertNull(result.closingVoucher)
     } else {
@@ -525,6 +534,38 @@ class ClosingServiceTest {
     assertEquals(100.00G, lineForAccount(result.closingVoucher, '2099').creditAmount)
   }
 
+  @ParameterizedTest
+  @CsvSource(['1000, 300, 0', '1000, 300, 400', '1000, 300, 700', '1000, 300, 900',
+      '300, 1000, -400', '300, 1000, -700'])
+  void previewSeparatesOperatingResultFromPriorTransfers(BigDecimal income, BigDecimal expense, BigDecimal transferred) {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    postSignedTransfer(year, '1930', '3010', income)
+    postSignedTransfer(year, '4010', '1930', expense)
+    postSignedTransfer(year, '8999', '2099', transferred)
+
+    def preview = closingService.previewClosing(year.id)
+
+    assertEquals(income, preview.incomeTotal)
+    assertEquals(expense, preview.expenseTotal)
+    assertEquals(income - expense, preview.netResult)
+    assertEquals(transferred, preview.transferredResult)
+    assertEquals(income - expense - transferred, preview.remainingResult)
+    assertTrue(preview.blockingIssues.isEmpty())
+  }
+
+  @Test
+  void fullyReversedActivityDoesNotExportZeroResultBalances() {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    postSignedTransfer(year, '1930', '3010', 100.00G)
+    postSignedTransfer(year, '1930', '3010', -100.00G)
+
+    assertYearExport(year, 0.00G, 0.00G)
+  }
+
   private void postSignedTransfer(FiscalYear year, String debitAccount, String creditAccount, BigDecimal amount) {
     if (amount == 0G) {
       return
@@ -546,8 +587,12 @@ class ClosingServiceTest {
     String content = target.toFile().getText('IBM437')
     String sales = content.readLines().find { String line -> line.startsWith('#RES 0 3010 ') }
     String transfer = content.readLines().find { String line -> line.startsWith('#RES 0 8999 ') }
-    assertNotNull(sales)
-    assertEquals(-earned, new BigDecimal(sales.split(/\s+/)[3]))
+    if (earned == 0G) {
+      assertNull(sales)
+    } else {
+      assertNotNull(sales)
+      assertEquals(-earned, new BigDecimal(sales.split(/\s+/)[3]))
+    }
     if (transferred == 0G) {
       assertNull(transfer)
     } else {
