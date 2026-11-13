@@ -23,13 +23,13 @@ import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.JToggleButton
 
 final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
 
@@ -49,8 +49,7 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
     }
 
     assertNotNull(saveButton.icon)
-    assertEquals(6, saveButton.margin.left)
-    assertEquals(6, saveButton.margin.right)
+    assertEquals(I18n.instance.getString('voucherPanel.button.save'), saveButton.text)
   }
 
   @Test
@@ -213,8 +212,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
     assertEquals('Försäljning', onEdt { panel.lineTableModel.rows[1].accountName })
     assertEquals('Rad två', onEdt { panel.lineTableModel.rows[1].description })
 
-    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
-      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton toggle ->
+      toggle.toolTipText == I18n.instance.getString('voucherPanel.toggle.advanceAfterSave')
     }
     assertTrue(onEdt { advanceAfterSave.selected })
     onEdt {
@@ -285,8 +284,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
   void savingWithDefaultAdvanceAfterSaveShowsANewBlankDraft() {
     JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
-    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
-      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton toggle ->
+      toggle.toolTipText == I18n.instance.getString('voucherPanel.toggle.advanceAfterSave')
     }
     JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
       label.text == I18n.instance.getString('voucherPanel.label.unsaved')
@@ -645,60 +644,6 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
 
     onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.next')) }
     assertFalse(onEdt { correctedBy.visible })
-  }
-
-  @Test
-  void deleteOrCancelVoucherSkipsCannotDeleteConfirmationForAlreadyCorrectedVoucher() {
-    Voucher original = voucherService.createVoucher(
-        fiscalYear.id, 'A', LocalDate.of(2030, 4, 8), 'Original',
-        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
-         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
-    )
-    Voucher firstCorrection = voucherService.createCorrectionVoucher(original.id)
-    panel?.dispose()
-    panel = buildPanel()
-    boolean cannotDeleteConfirmationShown = false
-    panel.recorrectionConfirmer = { List<String> existing -> true }
-    panel.cannotDeleteConfirmer = { Voucher voucher ->
-      cannotDeleteConfirmationShown = true
-      false
-    }
-
-    onEdt {
-      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
-      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
-      panel.deleteOrCancelVoucher()
-    }
-
-    assertFalse(cannotDeleteConfirmationShown)
-    assertEquals(2, voucherService.findCorrectionVoucherNumbers(original.id).size())
-    assertEquals(firstCorrection.voucherNumber,
-        voucherService.findCorrectionVoucherNumbers(original.id).first())
-  }
-
-  @Test
-  void deleteOrCancelVoucherUsesCannotDeleteConfirmationBeforeFirstCorrection() {
-    Voucher original = voucherService.createVoucher(
-        fiscalYear.id, 'A', LocalDate.of(2030, 4, 9), 'Original',
-        [voucherLine('1510', 'Kundfordringar', '', 100.00G, 0.00G),
-         voucherLine('3010', 'Försäljning', '', 0.00G, 100.00G)]
-    )
-    panel?.dispose()
-    panel = buildPanel()
-    int cannotDeleteConfirmationCount = 0
-    panel.cannotDeleteConfirmer = { Voucher voucher ->
-      cannotDeleteConfirmationCount++
-      cannotDeleteConfirmationCount > 1
-    }
-
-    onEdt {
-      clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.prev'))
-      panel.deleteOrCancelVoucher()
-      panel.deleteOrCancelVoucher()
-    }
-
-    assertEquals(2, cannotDeleteConfirmationCount)
-    assertEquals(1, voucherService.findCorrectionVoucherNumbers(original.id).size())
   }
 
   @Test

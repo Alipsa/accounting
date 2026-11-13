@@ -26,6 +26,7 @@ import se.alipsa.datepicker.TextFieldPosition
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Desktop
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -48,9 +49,7 @@ import java.util.logging.Logger
 import javax.swing.AbstractAction
 import javax.swing.BorderFactory
 import javax.swing.DefaultCellEditor
-import javax.swing.Icon
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JEditorPane
 import javax.swing.JLabel
@@ -58,10 +57,12 @@ import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
 import javax.swing.JScrollPane
+import javax.swing.JSeparator
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.JToggleButton
 import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
@@ -80,7 +81,6 @@ import javax.swing.table.DefaultTableCellRenderer
 final class VoucherPanel extends JPanel implements PropertyChangeListener, ListenerLifecycle {
 
   private static final Logger log = Logger.getLogger(VoucherPanel.name)
-  private static final Icon SAVE_ICON = new VoucherSaveIcon()
   private static final LocalDate DATE_PICKER_RANGE_FROM = LocalDate.of(1900, 1, 1)
   private static final LocalDate DATE_PICKER_RANGE_TO = LocalDate.now().plusYears(50)
 
@@ -108,11 +108,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     showRecorrectionConfirmDialog(existingNumbers)
   }
 
-  @PackageScope
-  Closure<Boolean> cannotDeleteConfirmer = { Voucher voucher ->
-    showCannotDeleteConfirmDialog(voucher)
-  }
-
   private final JLabel voucherNumberLabel = new JLabel('')
   private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
@@ -129,7 +124,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   @PackageScope
   final JTextArea feedbackArea = new JTextArea(2, 40)
   private final JTextField jumpField = new JTextField(8)
-  private final JCheckBox advanceAfterSaveCheckBox = new JCheckBox()
+  private final JToggleButton advanceAfterSaveToggle = VoucherToolbar.advanceToggle()
   private final JLabel voucherNumberCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.voucherNumber'))
   private final JLabel dateCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.date'))
   private final JLabel descriptionCaptionLabel = new JLabel(I18n.instance.getString('voucherPanel.label.description'))
@@ -144,7 +139,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private JButton printButton
   private JButton duplicateButton
   private JButton correctionButton
-  private JButton voidButton
   private JButton addAttachmentButton
   private JButton openAttachmentButton
   private JButton newSeriesButton
@@ -320,7 +314,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     seriesComboBox.addActionListener { onSeriesSelectionChanged() }
     constraints.gridx++
     panel.add(seriesComboBox, constraints)
-    newSeriesButton = navigationButton('+', 'voucherPanel.button.newSeries') { createNewSeries() }
+    newSeriesButton = VoucherToolbar.button('new-series', 'voucherPanel.button.newSeries') { createNewSeries() }
     constraints.gridx++
     panel.add(newSeriesButton, constraints)
   }
@@ -342,12 +336,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private JPanel buildNavigationToolbar() {
-    JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2))
+    JPanel panel = new VoucherToolbarPanel()
 
-    firstButton = navigationButton('\u23EE', 'voucherPanel.button.first') { navigateFirst() }
+    firstButton = VoucherToolbar.button('first', 'voucherPanel.button.first') { navigateFirst() }
     panel.add(firstButton)
 
-    prevButton = navigationButton('\u25C0', 'voucherPanel.button.prev') { navigatePrev() }
+    prevButton = VoucherToolbar.button('prev', 'voucherPanel.button.prev') { navigatePrev() }
     panel.add(prevButton)
 
     panel.add(jumpCaptionLabel)
@@ -355,27 +349,23 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
     panel.add(jumpField)
 
-    nextButton = navigationButton('\u25B6', 'voucherPanel.button.next') { navigateNext() }
+    nextButton = VoucherToolbar.button('next', 'voucherPanel.button.next') { navigateNext() }
     panel.add(nextButton)
 
-    lastButton = navigationButton('\u23ED', 'voucherPanel.button.last') { navigateLast() }
+    lastButton = VoucherToolbar.button('last', 'voucherPanel.button.last') { navigateLast() }
     panel.add(lastButton)
 
+    addToolbarSeparator(panel)
     addSaveControls(panel)
+    addToolbarSeparator(panel)
 
-    printButton = new JButton('\u2399')
-    printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
-    printButton.addActionListener { printCurrentVoucher() }
+    printButton = VoucherToolbar.button('print', 'voucherPanel.button.print') { printCurrentVoucher() }
     panel.add(printButton)
 
-    duplicateButton = new JButton('\u29C9')
-    duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
-    duplicateButton.addActionListener { duplicateVoucher() }
+    duplicateButton = VoucherToolbar.button('duplicate', 'voucherPanel.button.duplicate') { duplicateVoucher() }
     panel.add(duplicateButton)
 
-    correctionButton = new JButton('\u270E')
-    correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
-    correctionButton.addActionListener {
+    correctionButton = VoucherToolbar.button('correction', 'voucherPanel.button.createCorrection') {
       if (currentVoucher != null && !confirmRecorrectionIfNeeded(currentVoucher.id)) {
         return
       }
@@ -385,31 +375,19 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
     panel.add(correctionButton)
 
-    voidButton = new JButton('\u2716')
-    voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
-    voidButton.addActionListener { deleteOrCancelVoucher() }
-    panel.add(voidButton)
-
     panel
   }
 
   private void addSaveControls(JPanel panel) {
-    saveButton = new JButton(SAVE_ICON)
-    saveButton.margin = new Insets(5, 6, 5, 6)
-    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
-    saveButton.addActionListener { voucherEditorActions.save() }
+    saveButton = VoucherToolbar.saveButton { voucherEditorActions.save() }
     panel.add(saveButton)
-
-    advanceAfterSaveCheckBox.text = I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
-    advanceAfterSaveCheckBox.selected = true
-    panel.add(advanceAfterSaveCheckBox)
+    panel.add(advanceAfterSaveToggle)
   }
 
-  private static JButton navigationButton(String symbol, String tooltipKey, Closure<Void> action) {
-    JButton button = new JButton(symbol)
-    button.toolTipText = I18n.instance.getString(tooltipKey)
-    button.addActionListener { action.call() }
-    button
+  private static void addToolbarSeparator(JPanel panel) {
+    JSeparator separator = new JSeparator(SwingConstants.VERTICAL)
+    separator.preferredSize = UIScale.scale(new Dimension(1, 22))
+    panel.add(separator)
   }
 
   private JTabbedPane buildMainTabs() {
@@ -763,7 +741,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     String attachmentPathToApply = pendingAttachmentPath
     pendingAttachmentPath = null
     pendingAttachmentPreview = null
-    reloadVoucherList(advanceAfterSaveCheckBox.selected ? null : savedVoucher)
+    reloadVoucherList(advanceAfterSaveToggle.selected ? null : savedVoucher)
     if (attachmentPathToApply) {
       try {
         attachmentService.addAttachment(savedVoucher.id, Path.of(attachmentPathToApply))
@@ -1152,28 +1130,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   @PackageScope
-  void deleteOrCancelVoucher() {
-    if (currentVoucher == null) {
-      return
-    }
-    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(currentVoucher.id)
-    if (!confirmRecorrectionIfNeeded(existingCorrectionNumbers)) {
-      return
-    }
-    try {
-      if (existingCorrectionNumbers.isEmpty() && !cannotDeleteConfirmer.call(currentVoucher)) {
-        return
-      }
-      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-          correction.voucherNumber ?: ''))
-      reloadVoucherList()
-    } catch (Exception ex) {
-      showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
-    }
-  }
-
-  @PackageScope
   static boolean shouldProceedWithRecorrection(List<String> existingCorrectionNumbers, boolean confirmed) {
     existingCorrectionNumbers.isEmpty() || confirmed
   }
@@ -1194,17 +1150,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         this,
         I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
         I18n.instance.getString('voucherPanel.confirm.alreadyCorrected.title'),
-        javax.swing.JOptionPane.YES_NO_OPTION
-    )
-    choice == javax.swing.JOptionPane.YES_OPTION
-  }
-
-  private boolean showCannotDeleteConfirmDialog(Voucher voucher) {
-    int choice = javax.swing.JOptionPane.showConfirmDialog(
-        this,
-        I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-            .replace('{0}', voucher.voucherNumber ?: ''),
-        I18n.instance.getString('voucherPanel.button.void'),
         javax.swing.JOptionPane.YES_NO_OPTION
     )
     choice == javax.swing.JOptionPane.YES_OPTION
@@ -1254,7 +1199,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     saveButton.enabled = !readOnly
     printButton.enabled = true
     duplicateButton.enabled = currentVoucher != null
-    voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
         && currentVoucher.accountingDate != null
         && currentVoucher.status == VoucherStatus.ACTIVE
@@ -1503,17 +1447,18 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private void updateLabels() {
     datePicker.locale = I18n.instance.locale
     refreshCaptionLabels()
-    prevButton.toolTipText = I18n.instance.getString('voucherPanel.button.prev')
-    nextButton.toolTipText = I18n.instance.getString('voucherPanel.button.next')
-    firstButton.toolTipText = I18n.instance.getString('voucherPanel.button.first')
-    lastButton.toolTipText = I18n.instance.getString('voucherPanel.button.last')
-    saveButton.toolTipText = I18n.instance.getString('voucherPanel.button.save')
-    advanceAfterSaveCheckBox.text = I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
-    printButton.toolTipText = I18n.instance.getString('voucherPanel.button.print')
-    duplicateButton.toolTipText = I18n.instance.getString('voucherPanel.button.duplicate')
-    correctionButton.toolTipText = I18n.instance.getString('voucherPanel.button.createCorrection')
-    voidButton.toolTipText = I18n.instance.getString('voucherPanel.button.void')
-    newSeriesButton.toolTipText = I18n.instance.getString('voucherPanel.button.newSeries')
+    VoucherToolbar.updateLabel(prevButton, 'voucherPanel.button.prev')
+    VoucherToolbar.updateLabel(nextButton, 'voucherPanel.button.next')
+    VoucherToolbar.updateLabel(firstButton, 'voucherPanel.button.first')
+    VoucherToolbar.updateLabel(lastButton, 'voucherPanel.button.last')
+    VoucherToolbar.updateLabel(saveButton, 'voucherPanel.button.save')
+    saveButton.text = I18n.instance.getString('voucherPanel.button.save')
+    VoucherToolbar.updateAdvanceToggleLabel(advanceAfterSaveToggle)
+    VoucherToolbar.updateLabel(datePicker.calendarButton, 'voucherPanel.button.chooseDate')
+    VoucherToolbar.updateLabel(printButton, 'voucherPanel.button.print')
+    VoucherToolbar.updateLabel(duplicateButton, 'voucherPanel.button.duplicate')
+    VoucherToolbar.updateLabel(correctionButton, 'voucherPanel.button.createCorrection')
+    VoucherToolbar.updateLabel(newSeriesButton, 'voucherPanel.button.newSeries')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
     jumpField.toolTipText = I18n.instance.getString('voucherPanel.label.jump')
@@ -1547,7 +1492,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     // Use explicit bounds so historical vouchers and AI drafts are not silently rejected.
     DatePicker picker = new DatePicker(
         DATE_PICKER_RANGE_FROM, DATE_PICKER_RANGE_TO, null, I18n.instance.locale)
-    picker.textFieldPosition = TextFieldPosition.RIGHT
+    picker.textFieldPosition = TextFieldPosition.LEFT
+    VoucherToolbar.configure(picker.calendarButton, 'calendar', 'voucherPanel.button.chooseDate')
     picker
   }
 
