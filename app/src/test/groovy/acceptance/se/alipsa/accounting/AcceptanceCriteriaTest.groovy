@@ -258,6 +258,7 @@ class AcceptanceCriteriaTest {
       insertAccountIfMissing(sql, companyId, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccountIfMissing(sql, companyId, '1930', 'Företagskonto', 'ASSET', 'DEBIT', null)
       insertAccountIfMissing(sql, companyId, '2099', 'Årets resultat', 'EQUITY', 'CREDIT', null)
+      insertAccountIfMissing(sql, companyId, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT', null)
       insertAccountIfMissing(sql, companyId, '2611', 'Utgående moms 25%', 'LIABILITY', 'CREDIT', VatCode.OUTPUT_25.name())
       insertAccountIfMissing(sql, companyId, '2650', 'Redovisningskonto för moms', 'LIABILITY', 'CREDIT', null)
       insertAccountIfMissing(sql, companyId, '3010', 'Försäljning', 'INCOME', 'CREDIT', VatCode.OUTPUT_25.name())
@@ -431,6 +432,8 @@ class AcceptanceCriteriaTest {
       sheet.createRow(3).with {
         createCell(0).setCellValue('4010')
         createCell(1).setCellValue('Varukostnad')
+        createCell(2).setCellValue('8999')
+        createCell(3).setCellValue('Årets resultat')
       }
       Files.newOutputStream(workbookPath).withCloseable { output ->
         workbook.write(output)

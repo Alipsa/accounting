@@ -14,11 +14,19 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 import se.alipsa.accounting.domain.AuditLogEntry
+import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
+import se.alipsa.accounting.domain.report.IncomeStatementRow
+import se.alipsa.accounting.domain.report.IncomeStatementRowType
+import se.alipsa.accounting.domain.report.ReportSelection
+import se.alipsa.accounting.domain.report.ReportType
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
@@ -110,15 +118,17 @@ class ClosingServiceTest {
     assertEquals('YE-1', result.closingVoucher.voucherNumber)
     assertEquals(2, result.resultAccountCount)
     assertEquals(3, result.openingBalanceCount)
-    assertEquals(5, result.closingEntryCount)
+    assertEquals(4, result.closingEntryCount)
     assertTrue(result.closedFiscalYear.closed)
     assertEquals('2027', result.nextFiscalYear.name)
 
     Voucher closingVoucher = voucherService.findVoucher(result.closingVoucher.id)
     assertNotNull(closingVoucher)
     assertEquals(LocalDate.of(2026, 12, 31), closingVoucher.accountingDate)
-    assertEquals(1000.00G, lineForAccount(closingVoucher, '3010').debitAmount)
-    assertEquals(300.00G, lineForAccount(closingVoucher, '4010').creditAmount)
+    assertEquals(2, closingVoucher.lines.size())
+    assertEquals(700.00G, lineForAccount(closingVoucher, '8999').debitAmount)
+    assertNull(lineForAccount(closingVoucher, '3010'))
+    assertNull(lineForAccount(closingVoucher, '4010'))
     assertEquals(700.00G, lineForAccount(closingVoucher, '2099').creditAmount)
 
     databaseService.withSql { Sql sql ->
@@ -131,7 +141,7 @@ class ClosingServiceTest {
     assertTrue(auditEntries.any { AuditLogEntry entry ->
       entry.eventType == AuditLogService.CLOSE_FISCAL_YEAR && entry.fiscalYearId == fiscalYear.id
     })
-    assertEquals(5, closingService.listClosingEntries(fiscalYear.id).size())
+    assertEquals(4, closingService.listClosingEntries(fiscalYear.id).size())
   }
 
   @Test
@@ -288,9 +298,6 @@ class ClosingServiceTest {
     FiscalYear fiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
     FiscalYear nextFiscalYear = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2027', LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31))
     seedClosingAccounts()
-    databaseService.withTransaction { Sql sql ->
-      insertAccount(sql, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT')
-    }
     voucherService.createVoucher(
         fiscalYear.id,
         'A',
@@ -318,14 +325,7 @@ class ClosingServiceTest {
 
     def result = closingService.closeFiscalYear(fiscalYear.id)
 
-    Voucher closingVoucher = voucherService.findVoucher(result.closingVoucher.id)
-    // NOTE(issue #130): the assertions below pin down the current closing-entries behaviour,
-    // which zeroes every result account. When #130 changes the closing to a single 8999
-    // transfer, the 3010/8999 assertions here are expected to change; the 2099,
-    // opening-balance and balance assertions remain valid either way.
-    assertEquals(1000.00G, lineForAccount(closingVoucher, '3010').debitAmount)
-    assertEquals(1000.00G, lineForAccount(closingVoucher, '8999').creditAmount)
-    assertNull(lineForAccount(closingVoucher, '2099'))
+    assertNull(result.closingVoucher)
     databaseService.withSql { Sql sql ->
       // 2099 carries the result exactly once in the next year's opening balances...
       assertEquals(1000.00G, openingBalanceFor(sql, nextFiscalYear.id, '1510'))
@@ -389,6 +389,123 @@ class ClosingServiceTest {
     }
   }
 
+  @ParameterizedTest
+  @CsvSource(['1000, 0', '-1000, 0', '1000, 400', '-1000, -400', '1000, 1200', '1000, 1000', '0, 0'])
+  void closingPreservesReportsAndTransfersOnlyRemainingResult(BigDecimal earned, BigDecimal transferred) {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    postSignedTransfer(year, '1930', '3010', earned)
+    if (transferred != 0G) {
+      postSignedTransfer(year, '8999', '2099', transferred)
+    }
+    ReportDataService reports = new ReportDataService(databaseService)
+    assertEquals(earned, reports.generate(new ReportSelection(ReportType.INCOME_STATEMENT, year.id)).templateModel.result)
+
+    if (earned != 0G) {
+      assertYearExport(year, earned, transferred)
+    }
+    def result = closingService.closeFiscalYear(year.id)
+    BigDecimal remaining = earned - transferred
+    assertEquals(remaining, result.netResult)
+    if (remaining == 0G) {
+      assertNull(result.closingVoucher)
+    } else {
+      Voucher closing = voucherService.findVoucher(result.closingVoucher.id)
+      assertEquals(2, closing.lines.size())
+      VoucherLine transfer = lineForAccount(closing, '8999')
+      assertEquals(remaining, transfer.debitAmount - transfer.creditAmount)
+      assertEquals(1, closingService.listClosingEntries(year.id).count { entry -> entry.entryType == ClosingService.RESULT_CLOSING })
+    }
+    assertEquals(earned, reports.generate(new ReportSelection(ReportType.INCOME_STATEMENT, year.id)).templateModel.result)
+    def nextReport = reports.generate(new ReportSelection(ReportType.INCOME_STATEMENT, result.nextFiscalYear.id))
+    List<IncomeStatementRow> rows = nextReport.templateModel.typedRows as List<IncomeStatementRow>
+    assertEquals(earned == 0G ? null : earned, rows.find { IncomeStatementRow row -> row.rowType == IncomeStatementRowType.GRAND_TOTAL }.previousYearToDateAmount)
+    databaseService.withSql { Sql sql ->
+      assertEquals(0, ((Number) sql.firstRow('''
+          select count(*) as total from opening_balance ob join account a on a.id = ob.account_id
+           where ob.fiscal_year_id = ? and a.account_class in ('INCOME', 'EXPENSE')
+      ''', [result.nextFiscalYear.id]).get('total')).intValue())
+      if (earned != 0G) {
+        assertEquals(earned, openingBalanceFor(sql, result.nextFiscalYear.id, '2099'))
+      }
+    }
+    assertTrue(auditLogService.validateIntegrity(CompanyService.LEGACY_COMPANY_ID).isEmpty())
+    if (earned != 0G) {
+      assertYearExport(year, earned, earned)
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource(['8998, true, EXPENSE, DEBIT', '8999, false, EXPENSE, DEBIT',
+      '8999, true, EQUITY, CREDIT', '8999, true, EXPENSE, CREDIT'])
+  void previewBlocksInvalidTransferAccountBeforeWritingAnything(String number, boolean active, String accountClass, String side) {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    postSignedTransfer(year, '1930', '3010', 100.00G)
+    databaseService.withTransaction { Sql sql ->
+      sql.executeUpdate('''
+          update account set account_number = ?, active = ?, account_class = ?, normal_balance_side = ?
+           where account_number = '8999'
+      ''', [number, active, accountClass, side])
+    }
+    assertTrue(closingService.previewClosing(year.id).blockingIssues.any { String issue -> issue.contains('8999') })
+    assertThrows(IllegalStateException) { closingService.closeFiscalYear(year.id) }
+    assertFalse(fiscalYearService.findById(year.id).closed)
+    assertEquals(1, voucherService.listVouchers(CompanyService.LEGACY_COMPANY_ID, year.id).size())
+  }
+
+  @Test
+  void closingSupportsSelectedEquityAccount() {
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '2019', 'Årets resultat, delägare 1', 'EQUITY', 'CREDIT')
+    }
+    postSignedTransfer(year, '1930', '3010', 100.00G)
+
+    def result = closingService.closeFiscalYear(year.id, '2019')
+
+    assertEquals(100.00G, lineForAccount(result.closingVoucher, '2019').creditAmount)
+    assertNull(lineForAccount(result.closingVoucher, '2099'))
+    databaseService.withSql { Sql sql ->
+      assertEquals(100.00G, openingBalanceFor(sql, result.nextFiscalYear.id, '2019'))
+    }
+  }
+
+  private void postSignedTransfer(FiscalYear year, String debitAccount, String creditAccount, BigDecimal amount) {
+    if (amount == 0G) {
+      return
+    }
+    voucherService.createVoucher(year.id, 'A', year.endDate, 'Testtransaktion', [
+        new VoucherLine(null, null, 0, null, debitAccount, null, null, amount.max(0.00G), (-amount).max(0.00G)),
+        new VoucherLine(null, null, 0, null, creditAccount, null, null, (-amount).max(0.00G), amount.max(0.00G))
+    ])
+  }
+
+  private void assertYearExport(FiscalYear year, BigDecimal earned, BigDecimal transferred) {
+    CompanyService companies = new CompanyService(databaseService)
+    companies.save(new Company(CompanyService.LEGACY_COMPANY_ID, 'Test AB', '556677-8899', 'SEK', 'sv-SE',
+        VatPeriodicity.MONTHLY, true, null, null))
+    SieImportExportService sie = new SieImportExportService(databaseService, accountingPeriodService, voucherService,
+        companies, reportIntegrityService, auditLogService, fiscalYearService)
+    Path target = tempDir.resolve('closed.sie')
+    sie.exportFiscalYear(year.id, target)
+    String content = target.toFile().getText('IBM437')
+    String sales = content.readLines().find { String line -> line.startsWith('#RES 0 3010 ') }
+    String transfer = content.readLines().find { String line -> line.startsWith('#RES 0 8999 ') }
+    assertNotNull(sales)
+    assertEquals(-earned, new BigDecimal(sales.split(/\s+/)[3]))
+    if (transferred == 0G) {
+      assertNull(transfer)
+    } else {
+      assertNotNull(transfer)
+      assertEquals(transferred, new BigDecimal(transfer.split(/\s+/)[3]))
+    }
+  }
+
   private void seedClosingAccounts() {
     databaseService.withTransaction { Sql sql ->
       insertAccount(sql, '1510', 'Kundfordringar', 'ASSET', 'DEBIT')
@@ -396,6 +513,7 @@ class ClosingServiceTest {
       insertAccount(sql, '2099', 'Årets resultat', 'EQUITY', 'CREDIT')
       insertAccount(sql, '3010', 'Försäljning', 'INCOME', 'CREDIT')
       insertAccount(sql, '4010', 'Varukostnad', 'EXPENSE', 'DEBIT')
+      insertAccount(sql, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT')
     }
   }
 

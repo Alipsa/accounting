@@ -1218,6 +1218,7 @@ class AccountingMcpToolsTest {
 
   private void insertClosingAccount() {
     insertAccount('2099', 'Årets resultat', 'EQUITY', 'CREDIT', null)
+    insertAccount('8999', 'Årets resultat', 'EXPENSE', 'DEBIT', null)
   }
 
   private long insertAccount(
