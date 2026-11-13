@@ -1019,7 +1019,7 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
   void directlyCallingCreateSeriesWhileLockedShowsAnErrorAndCreatesNothing() {
     // Switch the active fiscal year to the closed one itself, not just the date picker's value -
     // createNewSeries() reads activeCompanyManager.fiscalYear directly. fiscalYear (2030) already
-    // has its own auto-seeded 'A' from setUp()'s panel construction, so asserting against it here
+    // has its own auto-seeded 'A' from setUpVoucherPanelFixture()'s panel construction, so asserting against it here
     // would fail regardless of whether createNewSeries() behaves correctly; closedYear is the one
     // fiscal year in this test that's guaranteed to never receive any series.
     FiscalYear closedYear = fiscalYearService.createFiscalYear(
