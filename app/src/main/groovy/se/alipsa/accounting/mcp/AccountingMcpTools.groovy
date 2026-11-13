@@ -237,9 +237,9 @@ class AccountingMcpTools {
     }
     Map<String, Object> draft = voucherDraftAccess.getVoucherDraft()
     if (draft == null || draft.isEmpty()) {
-      return [ok: false, errors: ['No unsaved voucher draft is active.']]
+      return [ok: false, has_unsaved_changes: false, errors: ['No unsaved voucher draft is active.']]
     }
-    [ok: true, saved: false, draft: draft]
+    [ok: true, saved: false, has_unsaved_changes: true, draft: draft]
   }
 
   private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {
@@ -273,7 +273,11 @@ class AccountingMcpTools {
       }
       draft.lines = enrichedLines
     }
-    voucherDraftAccess.setVoucherDraft(draft)
+    try {
+      voucherDraftAccess.setVoucherDraft(draft)
+    } catch (IllegalArgumentException exception) {
+      return [ok: false, errors: [exception.message]]
+    }
     [ok: true, saved: false, awaiting_user_save: true]
   }
 

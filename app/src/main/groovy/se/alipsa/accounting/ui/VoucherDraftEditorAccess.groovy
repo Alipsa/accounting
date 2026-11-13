@@ -34,6 +34,12 @@ final class VoucherDraftEditorAccess implements VoucherDraftAccess {
   @Override
   void setVoucherDraft(Map<String, Object> draft) {
     VoucherDraftMapper.VoucherDraft voucherDraft = VoucherDraftMapper.fromDraft(draft)
-    SwingThreading.runOnEdt { draftConsumer.accept(voucherDraft) }
+    SwingThreading.runOnEdt {
+      if (unsavedDraftSupplier.get() && draft.get('replace_unsaved') != Boolean.TRUE) {
+        throw new IllegalArgumentException(
+            'The voucher editor has unsaved changes. Save or clear them first, or pass replace_unsaved: true.')
+      }
+      draftConsumer.accept(voucherDraft)
+    }
   }
 }

@@ -190,7 +190,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     lineTable = new JTable(lineTableModel)
     registerListenersOnce()
     buildUi()
-    mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
+    mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotMcpDraft, this::hasUnsavedDraftContent, this::applyDraft)
     VoucherOperations voucherOperations = new VoucherOperations() {
       @Override
       Voucher createVoucher(long fiscalYearId, String seriesCode, LocalDate accountingDate,
@@ -1009,6 +1009,28 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
   }
 
+  private boolean hasUnsavedDraftContent() {
+    if (currentVoucher != null) {
+      VoucherDraftMapper.VoucherDraft draft = navigation.draft()
+      return draft != null && (hasText(draft.description) || hasText(draft.attachmentPath) || !draft.lines.isEmpty())
+    }
+    // An active cell editor may contain text that has not reached the table model yet.
+    lineTable.editing || hasText(descriptionField.text) || hasText(pendingAttachmentPath) ||
+        lineTableModel.rows.any { LineEntry row -> isRowFilled(row) }
+  }
+
+  private Map<String, Object> snapshotMcpDraft() {
+    if (currentVoucher != null) {
+      VoucherDraftMapper.VoucherDraft draft = navigation.draft()
+      return VoucherDraftMapper.toDraft(draft.accountingDate, draft.description, draft.seriesCode, draft.lines,
+          draft.attachmentPath)
+    }
+    if (lineTable.editing && !lineTable.cellEditor.stopCellEditing()) {
+      throw new IllegalArgumentException('Finish editing the voucher line before reading the draft.')
+    }
+    snapshotDraft()
+  }
+
   private Map<String, Object> snapshotDraft() {
     String seriesCode = (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode
     VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesCode, lineTableModel.toVoucherLines(),
@@ -1034,6 +1056,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     AttachmentMetadata attachmentPreview = voucherDraft.attachmentPath
         ? attachmentService.previewAttachment(Path.of(voucherDraft.attachmentPath))
         : null
+    if (lineTable.editing) {
+      lineTable.cellEditor.cancelCellEditing()
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
     descriptionField.text = voucherDraft.description
