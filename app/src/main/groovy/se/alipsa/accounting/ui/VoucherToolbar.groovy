@@ -9,6 +9,7 @@ import se.alipsa.accounting.support.I18n
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.FontMetrics
 import java.awt.Insets
 import java.util.function.BiFunction
 
@@ -96,7 +97,13 @@ final class VoucherToolbar {
 
     @Override
     Dimension getPreferredSize() {
-      commandSize(super.getPreferredSize())
+      Dimension preferred = super.getPreferredSize()
+      FontMetrics metrics = getFontMetrics(font)
+      int widestLabel = Math.max(
+          metrics.stringWidth(I18n.instance.getString('voucherPanel.toggle.advanceAfterSave.on')),
+          metrics.stringWidth(I18n.instance.getString('voucherPanel.toggle.advanceAfterSave.off')))
+      int extraWidth = Math.max(0, widestLabel - metrics.stringWidth(text ?: ''))
+      commandSize(new Dimension((preferred.width as int) + extraWidth, preferred.height as int))
     }
   }
 }

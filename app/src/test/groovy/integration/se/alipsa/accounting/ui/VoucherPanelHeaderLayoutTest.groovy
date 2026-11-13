@@ -10,6 +10,7 @@ import se.alipsa.datepicker.DatePicker
 
 import java.awt.Component
 import java.awt.Container
+import java.awt.FlowLayout
 
 import javax.swing.AbstractButton
 import javax.swing.JButton
@@ -60,9 +61,11 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
         assertEquals(I18n.instance.getString('voucherPanel.toggle.advanceAfterSave.on'), toggle.text)
         assertTrue(toggle.selected)
         VoucherToolbarPanel toolbar = findComponent(panel, VoucherToolbarPanel) { true }
-        assertFalse(toolbar.components.any { Component child ->
-          child instanceof AbstractButton && child.toolTipText == I18n.instance.getString('voucherPanel.button.void')
-        })
+        Set<String> commandIcons = toolbar.components.findAll { Component child ->
+          child instanceof AbstractButton
+        }.collect { Component child -> ((child as AbstractButton).icon as FlatSVGIcon).name }.toSet()
+        assertEquals(['first', 'prev', 'next', 'last', 'save', 'new-after-save', 'print', 'duplicate', 'correction']
+            .collect { String name -> "icons/voucher/${name}.svg".toString() }.toSet(), commandIcons)
       }
     }
   }
@@ -73,7 +76,8 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
       onEdt {
         VoucherToolbarPanel toolbar = findComponent(panel, VoucherToolbarPanel) { true }
         JTabbedPane tabs = findComponent(panel, JTabbedPane) { true }
-        [1200, 900, 800, 700, 600, 400, 1200].each { int width ->
+        JToggleButton toggle = findComponent(panel, JToggleButton) { true }
+        ((300..1300).toList() + [400, 300, 1300]).each { int width ->
           panel.setSize(width, 600)
           layoutTree(panel)
           toolbar.components.findAll { Component child -> child.visible }.each { Component child ->
@@ -82,6 +86,14 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
             assertTrue(child.y >= 0 && child.y + child.height <= toolbar.height,
                 "Wrapped command must fit vertically at width ${width}".toString())
           }
+          int lastBottom = toolbar.components.collect { Component child -> child.y + child.height }.max() as int
+          assertEquals(lastBottom + toolbar.insets.bottom + (toolbar.layout as FlowLayout).vgap, toolbar.height,
+              "Toolbar must reserve exactly the wrapped rows at width ${width}".toString())
+          def positions = toolbar.components.collect { Component child -> child.bounds }
+          toggle.selected = !toggle.selected
+          layoutTree(panel)
+          assertEquals(positions, toolbar.components.collect { Component child -> child.bounds },
+              "Toggling must not move commands at width ${width}".toString())
           assertTrue(tabs.y >= toolbar.y + toolbar.height)
         }
       }

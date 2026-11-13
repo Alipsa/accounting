@@ -20,6 +20,7 @@ import javax.swing.JButton
 import javax.swing.JToggleButton
 import javax.swing.LookAndFeel
 import javax.swing.SwingUtilities
+import javax.swing.UIDefaults
 import javax.swing.UIManager
 
 final class VoucherToolbarTest {
@@ -79,6 +80,45 @@ final class VoucherToolbarTest {
         button.font = button.font.deriveFont(36F)
         assertTrue(button.preferredSize.height > originalHeight)
         assertTrue(button.preferredSize.width > originalWidth)
+      }
+    }
+  }
+
+  @Test
+  void advanceToggleHasTheSameWidthForBothStatesInBothLanguages() {
+    withThemes {
+      Locale original = I18n.instance.locale
+      try {
+        [Locale.ENGLISH, Locale.forLanguageTag('sv')].each { Locale locale ->
+          I18n.instance.locale = locale
+          JToggleButton toggle = VoucherToolbar.advanceToggle()
+          [12F, 36F].each { float fontSize ->
+            toggle.font = toggle.font.deriveFont(fontSize)
+            def selectedSize = toggle.preferredSize
+            toggle.selected = false
+            assertEquals(selectedSize, toggle.preferredSize)
+            toggle.selected = true
+          }
+        }
+      } finally {
+        I18n.instance.locale = original
+      }
+    }
+  }
+
+  @Test
+  void selectedToggleIconHonorsADistinctThemeSelectionColor() {
+    withThemes {
+      UIDefaults defaults = UIManager.lookAndFeelDefaults
+      Object original = defaults.get('ToggleButton.selectedForeground')
+      try {
+        defaults.put('ToggleButton.selectedForeground', Color.MAGENTA)
+        JToggleButton toggle = VoucherToolbar.advanceToggle()
+        assertIconColor(toggle, Color.MAGENTA)
+        toggle.selected = false
+        assertIconColor(toggle, toggle.foreground)
+      } finally {
+        defaults.put('ToggleButton.selectedForeground', original)
       }
     }
   }

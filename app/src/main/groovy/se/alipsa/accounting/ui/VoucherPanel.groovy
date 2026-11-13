@@ -108,11 +108,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     showRecorrectionConfirmDialog(existingNumbers)
   }
 
-  @PackageScope
-  Closure<Boolean> cannotDeleteConfirmer = { Voucher voucher ->
-    showCannotDeleteConfirmDialog(voucher)
-  }
-
   private final JLabel voucherNumberLabel = new JLabel('')
   private final JLabel unsavedLabel = new JLabel()
   private final DatePicker datePicker = createDatePicker()
@@ -1135,28 +1130,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   @PackageScope
-  void deleteOrCancelVoucher() {
-    if (currentVoucher == null) {
-      return
-    }
-    List<String> existingCorrectionNumbers = voucherService.findCorrectionVoucherNumbers(currentVoucher.id)
-    if (!confirmRecorrectionIfNeeded(existingCorrectionNumbers)) {
-      return
-    }
-    try {
-      if (existingCorrectionNumbers.isEmpty() && !cannotDeleteConfirmer.call(currentVoucher)) {
-        return
-      }
-      Voucher correction = voucherService.createCorrectionVoucher(currentVoucher.id, null)
-      showInfo(I18n.instance.format('voucherPanel.message.correctionCreated',
-          correction.voucherNumber ?: ''))
-      reloadVoucherList()
-    } catch (Exception ex) {
-      showError(ex.message ?: I18n.instance.getString('voucherPanel.error.voidFailed'))
-    }
-  }
-
-  @PackageScope
   static boolean shouldProceedWithRecorrection(List<String> existingCorrectionNumbers, boolean confirmed) {
     existingCorrectionNumbers.isEmpty() || confirmed
   }
@@ -1177,17 +1150,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
         this,
         I18n.instance.format('voucherPanel.confirm.alreadyCorrected', existingCorrectionNumbers.join(', ')),
         I18n.instance.getString('voucherPanel.confirm.alreadyCorrected.title'),
-        javax.swing.JOptionPane.YES_NO_OPTION
-    )
-    choice == javax.swing.JOptionPane.YES_OPTION
-  }
-
-  private boolean showCannotDeleteConfirmDialog(Voucher voucher) {
-    int choice = javax.swing.JOptionPane.showConfirmDialog(
-        this,
-        I18n.instance.getString('voucherPanel.confirm.cannotDelete')
-            .replace('{0}', voucher.voucherNumber ?: ''),
-        I18n.instance.getString('voucherPanel.button.void'),
         javax.swing.JOptionPane.YES_NO_OPTION
     )
     choice == javax.swing.JOptionPane.YES_OPTION

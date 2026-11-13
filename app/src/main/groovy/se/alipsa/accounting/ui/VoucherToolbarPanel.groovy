@@ -24,8 +24,8 @@ final class VoucherToolbarPanel extends JPanel {
     }
     FlowLayout flow = layout as FlowLayout
     Insets padding = insets
-    int available = parent.width - parent.insets.left - parent.insets.right
-        - padding.left - padding.right - 2 * flow.hgap
+    int available = parent.width - parent.insets.left - parent.insets.right -
+        padding.left - padding.right - 2 * flow.hgap
     int height = padding.top + padding.bottom + 2 * flow.vgap
     int rowWidth = 0
     int rowHeight = 0
@@ -34,7 +34,7 @@ final class VoucherToolbarPanel extends JPanel {
         continue
       }
       Dimension size = component.preferredSize
-      if (rowWidth > 0 && rowWidth + flow.hgap + size.width > available) {
+      if (rowWidth > 0 && rowWidth + size.width > available) {
         height += rowHeight + flow.vgap
         rowWidth = 0
         rowHeight = 0
