@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue
 
 import org.junit.jupiter.api.Test
 
+import se.alipsa.accounting.mcp.UnsavedVoucherDraftException
+
 import java.util.concurrent.atomic.AtomicBoolean
 
 import javax.swing.SwingUtilities
@@ -28,10 +30,10 @@ final class VoucherDraftEditorAccessTest {
     )
     Map<String, Object> draft = [accounting_date: '2030-03-15', description: 'AI proposal', lines: []]
 
-    assertThrows(IllegalArgumentException) { access.setVoucherDraft(draft) }
+    assertThrows(UnsavedVoucherDraftException) { access.setVoucherDraft(draft) }
     assertFalse(applied.get())
     draft.replace_unsaved = 'true'
-    assertThrows(IllegalArgumentException) { access.setVoucherDraft(draft) }
+    assertThrows(UnsavedVoucherDraftException) { access.setVoucherDraft(draft) }
     draft.replace_unsaved = true
     access.setVoucherDraft(draft)
     assertTrue(applied.get())

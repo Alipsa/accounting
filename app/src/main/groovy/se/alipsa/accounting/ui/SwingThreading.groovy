@@ -2,7 +2,7 @@ package se.alipsa.accounting.ui
 
 import javax.swing.SwingUtilities
 
-/** Runs UI mutations on the Event Dispatch Thread while preserving validation errors. */
+/** Runs actions on the Event Dispatch Thread while preserving runtime exception types. */
 final class SwingThreading {
 
   static void runOnEdt(Closure action) {
@@ -14,8 +14,8 @@ final class SwingThreading {
       SwingUtilities.invokeAndWait(action as Runnable)
     } catch (java.lang.reflect.InvocationTargetException exception) {
       Throwable cause = exception.cause
-      if (cause instanceof IllegalArgumentException) {
-        throw (IllegalArgumentException) cause
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause
       }
       throw new IllegalStateException(cause?.message ?: exception.message, cause)
     }

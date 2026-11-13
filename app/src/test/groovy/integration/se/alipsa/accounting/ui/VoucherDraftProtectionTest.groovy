@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.domain.VoucherSeries
+import se.alipsa.accounting.mcp.UnsavedVoucherDraftException
 import se.alipsa.accounting.support.I18n
 import se.alipsa.datepicker.DatePicker
 
@@ -20,8 +21,10 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import javax.swing.JButton
 import javax.swing.JComboBox
+import javax.swing.JLabel
 import javax.swing.JTable
 import javax.swing.JTextField
+import javax.swing.event.TableModelListener
 
 final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
 
@@ -40,7 +43,7 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
 
   @Test
   void descriptionOnlyAndIncompleteLineContentAreProtected() {
-    JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
+    JTextField description = descriptionEditor()
     onEdt { description.text = 'Manual work' }
     assertReplacementRefused()
     assertEquals('Manual work', onEdt { description.text })
@@ -77,17 +80,24 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
       }
       def editor = onEdt { table.editorComponent }
       AtomicInteger events = new AtomicInteger()
-      panel.lineTableModel.addTableModelListener { events.incrementAndGet() }
-      int rowCount = onEdt { table.rowCount }
-      Map<String, Object> draft = panel.mcpVoucherDraftAccess.getVoucherDraft()
-      assertEquals(true, draft.editing)
-      assertEquals([], draft.lines)
-      assertTrue(onEdt { table.editing })
-      assertSame(editor, onEdt { table.editorComponent })
-      assertEquals(column == 0 ? '19' : '12,', onEdt { ((JTextField) table.editorComponent).text })
-      assertEquals(rowCount, onEdt { table.rowCount })
-      assertEquals(0, events.get())
-      onEdt { table.cellEditor.cancelCellEditing() }
+      TableModelListener listener = { events.incrementAndGet() } as TableModelListener
+      onEdt { panel.lineTableModel.addTableModelListener(listener) }
+      try {
+        int rowCount = onEdt { table.rowCount }
+        Map<String, Object> draft = panel.mcpVoucherDraftAccess.getVoucherDraft()
+        assertEquals(true, draft.editing)
+        assertEquals([], draft.lines)
+        assertTrue(onEdt { table.editing })
+        assertSame(editor, onEdt { table.editorComponent })
+        assertEquals(column == 0 ? '19' : '12,', onEdt { ((JTextField) table.editorComponent).text })
+        assertEquals(rowCount, onEdt { table.rowCount })
+        assertEquals(0, events.get())
+      } finally {
+        onEdt {
+          panel.lineTableModel.removeTableModelListener(listener)
+          table.cellEditor.cancelCellEditing()
+        }
+      }
     }
   }
 
@@ -111,6 +121,7 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
     JComboBox series = findComponent(panel, JComboBox) { JComboBox candidate ->
       candidate.itemCount > 0 && candidate.getItemAt(0) instanceof VoucherSeries
     }
+    String changedSeries = onEdt { (series.selectedItem as VoucherSeries).seriesCode == 'A' ? 'B' : 'A' }
     LocalDate initialDate = onEdt { picker.date }
     assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
     onEdt { picker.date = initialDate.plusDays(1) }
@@ -118,10 +129,10 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
     assertEquals(initialDate.plusDays(1).toString(), panel.mcpVoucherDraftAccess.getVoucherDraft().accounting_date)
     onEdt {
       picker.date = initialDate
-      series.selectedIndex = 1
+      selectSeries(changedSeries)
     }
     assertReplacementRefused()
-    assertEquals('B', panel.mcpVoucherDraftAccess.getVoucherDraft().series_code)
+    assertEquals(changedSeries, panel.mcpVoucherDraftAccess.getVoucherDraft().series_code)
   }
 
   @Test
@@ -149,12 +160,88 @@ final class VoucherDraftProtectionTest extends VoucherPanelTestSupport {
     assertEquals('AI proposal', panel.mcpVoucherDraftAccess.getVoucherDraft().description)
   }
 
+  @Test
+  void blankDraftStaysBlankAcrossBrowsingAnotherSeries() {
+    prepareCrossSeriesVoucher()
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+    browse('prev')
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+    browse('next')
+    assertEquals([:], panel.mcpVoucherDraftAccess.getVoucherDraft())
+    panel.mcpVoucherDraftAccess.setVoucherDraft(proposal())
+    assertEquals('AI proposal', panel.mcpVoucherDraftAccess.getVoucherDraft().description)
+  }
+
+  @Test
+  void deliberateSeriesChoiceRemainsProtectedWhileBrowsingAndAfterRepeatedReturns() {
+    String savedSeries = prepareCrossSeriesVoucher()
+    onEdt { selectSeries(savedSeries) }
+    2.times {
+      assertReplacementRefused()
+      browse('prev')
+      assertReplacementRefused()
+      assertEquals(savedSeries, panel.mcpVoucherDraftAccess.getVoucherDraft().series_code)
+      browse('next')
+      assertReplacementRefused()
+      assertEquals(savedSeries, panel.mcpVoucherDraftAccess.getVoucherDraft().series_code)
+    }
+  }
+
+  @Test
+  void deliberateDateRemainsProtectedWhileBrowsingAndAfterReturning() {
+    prepareCrossSeriesVoucher()
+    DatePicker picker = findComponent(panel, DatePicker) { true }
+    LocalDate changedDate = onEdt { picker.date.plusDays(1) }
+    onEdt { picker.date = changedDate }
+    browse('prev')
+    assertReplacementRefused()
+    assertEquals(changedDate.toString(), panel.mcpVoucherDraftAccess.getVoucherDraft().accounting_date)
+    browse('next')
+    assertReplacementRefused()
+    assertEquals(changedDate.toString(), panel.mcpVoucherDraftAccess.getVoucherDraft().accounting_date)
+  }
+
+  private String prepareCrossSeriesVoucher() {
+    voucherService.ensureSeries(fiscalYear.id, 'B')
+    onEdt { panel.applyVoucherSortOrderPreference() }
+    JComboBox series = seriesCombo()
+    String otherSeries = onEdt { (series.selectedItem as VoucherSeries).seriesCode == 'A' ? 'B' : 'A' }
+    voucherService.createVoucher(fiscalYear.id, otherSeries, LocalDate.of(2030, 3, 15), 'Other series',
+        [voucherLine('1510', 'Kundfordringar', 'Saved line', 100.00G, 0.00G),
+         voucherLine('3010', 'Försäljning', 'Saved line', 0.00G, 100.00G)])
+    onEdt { panel.applyVoucherSortOrderPreference() }
+    otherSeries
+  }
+
+  private void browse(String direction) {
+    onEdt { clickButtonWithTooltip(panel, I18n.instance.getString('voucherPanel.button.' + direction)) }
+  }
+
+  private JComboBox seriesCombo() {
+    findComponent(panel, JComboBox) { JComboBox candidate ->
+      candidate.itemCount > 0 && candidate.getItemAt(0) instanceof VoucherSeries
+    }
+  }
+
+  private void selectSeries(String code) {
+    JComboBox series = seriesCombo()
+    series.selectedItem = (0..<series.itemCount).collect { int index -> series.getItemAt(index) }
+        .find { Object item -> (item as VoucherSeries).seriesCode == code }
+  }
+
+  private JTextField descriptionEditor() {
+    JLabel label = findComponent(panel, JLabel) { JLabel candidate ->
+      candidate.text == I18n.instance.getString('voucherPanel.label.description')
+    }
+    label.labelFor as JTextField
+  }
+
   private void assertReplacementRefused() {
-    IllegalArgumentException exception = assertThrows(IllegalArgumentException) {
+    UnsavedVoucherDraftException exception = assertThrows(UnsavedVoucherDraftException) {
       panel.mcpVoucherDraftAccess.setVoucherDraft(proposal())
     }
     assertTrue(exception.message.contains('replace_unsaved: true'))
-    assertThrows(IllegalArgumentException) {
+    assertThrows(UnsavedVoucherDraftException) {
       panel.mcpVoucherDraftAccess.setVoucherDraft(proposal([replace_unsaved: false]))
     }
   }

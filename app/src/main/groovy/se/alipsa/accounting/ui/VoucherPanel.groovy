@@ -298,6 +298,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void addDescriptionHeaderField(JPanel panel, GridBagConstraints constraints) {
+    descriptionCaptionLabel.labelFor = descriptionField
     constraints.gridx++
     panel.add(descriptionCaptionLabel, constraints)
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
@@ -1017,7 +1018,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (currentVoucher != null) {
       VoucherDraftMapper.VoucherDraft draft = navigation.draft()
       return draft != null && (hasText(draft.description) || hasText(draft.attachmentPath) || !draft.lines.isEmpty() ||
-          draft.accountingDate != blankDraftDate || draft.seriesCode != blankDraftSeriesCode)
+          draft.accountingDate != navigation.draftBaselineDate || draft.seriesCode != navigation.draftBaselineSeriesCode)
     }
     // An active cell editor may contain text that has not reached the table model yet.
     boolean editorHasText = lineTable.editing && lineTable.editorComponent instanceof javax.swing.text.JTextComponent &&
@@ -1089,7 +1090,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (lineTable.editing) {
       lineTable.cellEditor.stopCellEditing()
     }
-    navigation.rememberDraft(VoucherDraftMapper.fromDraft(snapshotDraft()))
+    navigation.rememberDraft(VoucherDraftMapper.fromDraft(snapshotDraft()), blankDraftDate, blankDraftSeriesCode)
   }
 
   private void restoreNavigationDraft() {
@@ -1098,8 +1099,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showEmptyVoucher()
       return
     }
+    LocalDate baselineDate = navigation.draftBaselineDate
+    String baselineSeriesCode = navigation.draftBaselineSeriesCode
     try {
       applyDraft(draft)
+      blankDraftDate = baselineDate
+      blankDraftSeriesCode = baselineSeriesCode
     } catch (IllegalArgumentException exception) {
       // This draft was populated by snapshotDraft() moments earlier in the same fiscal year, so
       // its series and date should both resolve - the date was already accepted by the picker
@@ -1122,7 +1127,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
    */
   @PackageScope
   void rememberDraftForTest(VoucherDraftMapper.VoucherDraft draft) {
-    navigation.rememberDraft(draft)
+    navigation.rememberDraft(draft, blankDraftDate, blankDraftSeriesCode)
   }
 
   /** Lets tests simulate exactly what createNewSeries() does once NewVoucherSeriesDialog

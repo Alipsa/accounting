@@ -42,12 +42,16 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Registry and implementation entrypoint for MCP tools, covering both read-only
  * and write tools (see McpOperationCoordinator.WRITE_TOOLS for the write set).
  */
 class AccountingMcpTools {
+
+  private static final Logger log = Logger.getLogger(AccountingMcpTools.name)
 
   private final CompanyService companyService
   private final FiscalYearService fiscalYearService
@@ -231,6 +235,8 @@ class AccountingMcpTools {
     [ok: false, error: 'No active company or fiscal year is selected.']
   }
 
+  // This parameterless read boundary logs unexpected EDT failures and returns a tool error.
+  @SuppressWarnings('CatchRuntimeException')
   private Map<String, Object> getActiveVoucherDraft() {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
@@ -238,14 +244,17 @@ class AccountingMcpTools {
     Map<String, Object> draft
     try {
       draft = voucherDraftAccess.getVoucherDraft()
-    } catch (IllegalArgumentException ignored) {
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Could not read the voucher draft.', exception)
       return [ok: false, has_unsaved_changes: null, error_code: 'draft_unavailable',
               errors: ['The voucher draft could not be read. Finish editing it in the application and try again.']]
     }
     if (draft == null || draft.isEmpty()) {
-      return [ok: false, has_unsaved_changes: false, errors: ['No unsaved voucher draft is active.']]
+      return [ok: false, has_unsaved_changes: false, error_code: 'no_draft', errors: ['No unsaved voucher draft is active.']]
     }
-    [ok: true, saved: false, has_unsaved_changes: true, editing: draft.get('editing') == true, draft: draft]
+    Map<String, Object> payload = new LinkedHashMap<>(draft)
+    boolean editing = payload.remove('editing') == true
+    [ok: true, saved: false, has_unsaved_changes: true, editing: editing, draft: payload]
   }
 
   private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {
