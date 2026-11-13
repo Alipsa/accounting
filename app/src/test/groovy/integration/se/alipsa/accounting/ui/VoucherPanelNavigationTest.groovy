@@ -212,8 +212,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
     assertEquals('Försäljning', onEdt { panel.lineTableModel.rows[1].accountName })
     assertEquals('Rad två', onEdt { panel.lineTableModel.rows[1].description })
 
-    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton checkBox ->
-      checkBox.toolTipText == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton toggle ->
+      toggle.toolTipText == I18n.instance.getString('voucherPanel.toggle.advanceAfterSave')
     }
     assertTrue(onEdt { advanceAfterSave.selected })
     onEdt {
@@ -284,8 +284,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
   void savingWithDefaultAdvanceAfterSaveShowsANewBlankDraft() {
     JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
-    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton checkBox ->
-      checkBox.toolTipText == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton toggle ->
+      toggle.toolTipText == I18n.instance.getString('voucherPanel.toggle.advanceAfterSave')
     }
     JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
       label.text == I18n.instance.getString('voucherPanel.label.unsaved')

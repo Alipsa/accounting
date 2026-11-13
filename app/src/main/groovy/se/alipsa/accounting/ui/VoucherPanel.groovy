@@ -2,7 +2,6 @@ package se.alipsa.accounting.ui
 
 import groovy.transform.PackageScope
 
-import com.formdev.flatlaf.FlatClientProperties
 import com.formdev.flatlaf.util.SystemFileChooser
 import com.formdev.flatlaf.util.UIScale
 
@@ -145,7 +144,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private JButton printButton
   private JButton duplicateButton
   private JButton correctionButton
-  private JButton voidButton
   private JButton addAttachmentButton
   private JButton openAttachmentButton
   private JButton newSeriesButton
@@ -343,7 +341,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private JPanel buildNavigationToolbar() {
-    JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2))
+    JPanel panel = new VoucherToolbarPanel()
 
     firstButton = VoucherToolbar.button('first', 'voucherPanel.button.first') { navigateFirst() }
     panel.add(firstButton)
@@ -382,24 +380,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
     panel.add(correctionButton)
 
-    voidButton = VoucherToolbar.button('void', 'voucherPanel.button.void') { deleteOrCancelVoucher() }
-    voidButton.putClientProperty(FlatClientProperties.STYLE,
-        'minimumWidth: 34; minimumHeight: 34; foreground: $Actions.Red')
-    JPanel toolbar = new JPanel(new BorderLayout(18, 0))
-    toolbar.add(panel, BorderLayout.CENTER)
-    JPanel deleteGroup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 2))
-    deleteGroup.add(voidButton)
-    toolbar.add(deleteGroup, BorderLayout.EAST)
-    toolbar
+    panel
   }
 
   private void addSaveControls(JPanel panel) {
-    saveButton = VoucherToolbar.button('save', 'voucherPanel.button.save') { voucherEditorActions.save() }
-    saveButton.text = I18n.instance.getString('voucherPanel.button.save')
-    saveButton.margin = new Insets(0, 10, 0, 10)
-    saveButton.putClientProperty(FlatClientProperties.STYLE,
-        'minimumHeight: 34; background: $List.selectionBackground; foreground: $List.selectionForeground; focusedBackground: $List.selectionBackground')
-    resizeSaveButton()
+    saveButton = VoucherToolbar.saveButton { voucherEditorActions.save() }
     panel.add(saveButton)
     panel.add(advanceAfterSaveToggle)
   }
@@ -1252,7 +1237,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     saveButton.enabled = !readOnly
     printButton.enabled = true
     duplicateButton.enabled = currentVoucher != null
-    voidButton.enabled = false
     correctionButton.enabled = currentVoucher != null
         && currentVoucher.accountingDate != null
         && currentVoucher.status == VoucherStatus.ACTIVE
@@ -1507,13 +1491,11 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     VoucherToolbar.updateLabel(lastButton, 'voucherPanel.button.last')
     VoucherToolbar.updateLabel(saveButton, 'voucherPanel.button.save')
     saveButton.text = I18n.instance.getString('voucherPanel.button.save')
-    resizeSaveButton()
-    VoucherToolbar.updateLabel(advanceAfterSaveToggle, 'voucherPanel.checkbox.advanceAfterSave')
-    VoucherToolbar.updateLabel(datePicker.calendarButton, 'voucherPanel.label.date')
+    VoucherToolbar.updateAdvanceToggleLabel(advanceAfterSaveToggle)
+    VoucherToolbar.updateLabel(datePicker.calendarButton, 'voucherPanel.button.chooseDate')
     VoucherToolbar.updateLabel(printButton, 'voucherPanel.button.print')
     VoucherToolbar.updateLabel(duplicateButton, 'voucherPanel.button.duplicate')
     VoucherToolbar.updateLabel(correctionButton, 'voucherPanel.button.createCorrection')
-    VoucherToolbar.updateLabel(voidButton, 'voucherPanel.button.void')
     VoucherToolbar.updateLabel(newSeriesButton, 'voucherPanel.button.newSeries')
     addAttachmentButton.text = I18n.instance.getString('voucherPanel.button.addAttachment')
     openAttachmentButton.text = I18n.instance.getString('voucherPanel.button.openAttachment')
@@ -1543,18 +1525,13 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
   }
 
-  private void resizeSaveButton() {
-    saveButton.preferredSize = null
-    saveButton.preferredSize = new Dimension(saveButton.preferredSize.width as int, UIScale.scale(34))
-  }
-
   private static DatePicker createDatePicker() {
     // DatePicker's null bounds default to a fixed ±20-year range calculated at construction.
     // Use explicit bounds so historical vouchers and AI drafts are not silently rejected.
     DatePicker picker = new DatePicker(
         DATE_PICKER_RANGE_FROM, DATE_PICKER_RANGE_TO, null, I18n.instance.locale)
     picker.textFieldPosition = TextFieldPosition.LEFT
-    VoucherToolbar.configure(picker.calendarButton, 'calendar', 'voucherPanel.label.date')
+    VoucherToolbar.configure(picker.calendarButton, 'calendar', 'voucherPanel.button.chooseDate')
     picker
   }
 

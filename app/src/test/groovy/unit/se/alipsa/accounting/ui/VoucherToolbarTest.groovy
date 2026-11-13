@@ -8,10 +8,16 @@ import com.formdev.flatlaf.extras.FlatSVGIcon
 import com.formdev.flatlaf.util.UIScale
 import org.junit.jupiter.api.Test
 
+import se.alipsa.accounting.support.I18n
+
 import java.awt.Color
+import java.awt.Graphics2D
 import java.awt.image.BufferedImage
 
+import javax.swing.AbstractButton
+import javax.swing.Icon
 import javax.swing.JButton
+import javax.swing.JToggleButton
 import javax.swing.LookAndFeel
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
@@ -19,30 +25,71 @@ import javax.swing.UIManager
 final class VoucherToolbarTest {
 
   @Test
-  void svgCommandsHaveConsistentSizesAndFollowForegroundInBothThemes() {
+  void commandIconsLoadAndFollowComponentForegroundInBothThemes() {
+    withThemes {
+      Map<String, String> actions = [first: 'first', prev: 'prev', next: 'next', last: 'last',
+          print: 'print', duplicate: 'duplicate', correction: 'createCorrection', 'new-series': 'newSeries']
+      actions.each { String iconName, String action ->
+        String label = I18n.instance.getString("voucherPanel.button.${action}")
+        JButton button = VoucherToolbar.button(iconName, "voucherPanel.button.${action}") { null }
+        assertTrue((button.icon as FlatSVGIcon).hasFound())
+        assertEquals(UIScale.scale(34), button.preferredSize.height as int)
+        assertEquals(UIScale.scale(34), button.preferredSize.width as int)
+        assertEquals(label, button.toolTipText)
+        assertEquals(label, button.accessibleContext.accessibleName)
+        button.foreground = Color.MAGENTA
+        assertIconColor(button, Color.MAGENTA)
+      }
+    }
+  }
+
+  @Test
+  void disabledSaveIconUsesDisabledTextWithoutAnAdditionalGrayFilter() {
+    withThemes {
+      JButton button = VoucherToolbar.saveButton { null }
+      assertIconColor(button, button.foreground)
+      button.enabled = false
+      assertIconColor(button, UIManager.getColor('Button.disabledText'))
+    }
+  }
+
+  @Test
+  void advanceToggleShowsItsStateInTextAndUsesTheThemeToggleForeground() {
+    withThemes {
+      JToggleButton toggle = VoucherToolbar.advanceToggle()
+      assertTrue(toggle.selected)
+      assertEquals(I18n.instance.getString('voucherPanel.toggle.advanceAfterSave.on'), toggle.text)
+      assertIconColor(toggle, UIManager.getColor('ToggleButton.selectedForeground') ?: toggle.foreground)
+      toggle.enabled = false
+      assertIconColor(toggle, UIManager.getColor('Button.disabledText'))
+      toggle.enabled = true
+      toggle.doClick()
+      assertFalse(toggle.selected)
+      assertEquals(I18n.instance.getString('voucherPanel.toggle.advanceAfterSave.off'), toggle.text)
+      assertIconColor(toggle, toggle.foreground)
+    }
+  }
+
+  @Test
+  void labelledButtonsRecomputeTheirSizeWhenTheFontChanges() {
+    withThemes {
+      [VoucherToolbar.saveButton { null }, VoucherToolbar.advanceToggle()].each { AbstractButton button ->
+        int originalHeight = button.preferredSize.height as int
+        int originalWidth = button.preferredSize.width as int
+        button.font = button.font.deriveFont(36F)
+        assertTrue(button.preferredSize.height > originalHeight)
+        assertTrue(button.preferredSize.width > originalWidth)
+      }
+    }
+  }
+
+  private static void withThemes(Closure<?> test) {
     SwingUtilities.invokeAndWait {
       LookAndFeel original = UIManager.lookAndFeel
       try {
         [new FlatLightLaf(), new FlatDarkLaf()].each { LookAndFeel theme ->
           UIManager.setLookAndFeel(theme)
-          ['first', 'prev', 'next', 'last', 'save', 'new-after-save', 'print',
-           'duplicate', 'correction', 'void', 'calendar', 'new-series'].each { String name ->
-            JButton button = VoucherToolbar.button(name, 'voucherPanel.button.save') { null }
-            FlatSVGIcon icon = button.icon as FlatSVGIcon
-            assertTrue(icon.hasFound(), "Missing voucher icon ${name}".toString())
-            assertEquals(UIScale.scale(34), button.preferredSize.height as int)
-            assertEquals(UIScale.scale(34), button.preferredSize.width as int)
-            assertEquals(button.toolTipText, button.accessibleContext.accessibleName)
-            button.foreground = Color.MAGENTA
-            BufferedImage image = new BufferedImage(icon.iconWidth, icon.iconHeight, BufferedImage.TYPE_INT_ARGB)
-            def graphics = image.createGraphics()
-            try {
-              icon.paintIcon(button, graphics, 0, 0)
-            } finally {
-              graphics.dispose()
-            }
-            assertTrue(hasForeground(image), "Voucher icon ${name} must use the component foreground".toString())
-          }
+          test.call()
         }
       } finally {
         UIManager.setLookAndFeel(original)
@@ -50,11 +97,23 @@ final class VoucherToolbarTest {
     }
   }
 
-  private static boolean hasForeground(BufferedImage image) {
+  private static void assertIconColor(AbstractButton button, Color color) {
+    Icon icon = button.enabled ? button.icon : button.disabledIcon
+    BufferedImage image = new BufferedImage(icon.iconWidth, icon.iconHeight, BufferedImage.TYPE_INT_ARGB)
+    Graphics2D graphics = image.createGraphics()
+    try {
+      icon.paintIcon(button, graphics, 0, 0)
+    } finally {
+      graphics.dispose()
+    }
+    assertTrue(containsColor(image, color), "Icon must render with ${color}".toString())
+  }
+
+  private static boolean containsColor(BufferedImage image, Color color) {
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
         Color pixel = new Color(image.getRGB(x, y), true)
-        if (pixel.alpha > 0 && pixel.red == 255 && pixel.green == 0 && pixel.blue == 255) {
+        if (pixel.alpha > 0 && pixel.red == color.red && pixel.green == color.green && pixel.blue == color.blue) {
           return true
         }
       }
