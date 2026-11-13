@@ -20,6 +20,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import se.alipsa.accounting.domain.AuditLogEntry
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
+import se.alipsa.accounting.domain.LegalForm
 import se.alipsa.accounting.domain.VatPeriodicity
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -473,6 +474,55 @@ class ClosingServiceTest {
     databaseService.withSql { Sql sql ->
       assertEquals(100.00G, openingBalanceFor(sql, result.nextFiscalYear.id, '2019'))
     }
+  }
+
+  @ParameterizedTest
+  @CsvSource(['AKTIEBOLAG, 2099', 'ENSKILD_FIRMA, 2019', 'HANDELSBOLAG_KB, 2019', ', 2099'])
+  void closingDefaultsToTheCompanyLegalForm(String legalForm, String expectedAccount) {
+    CompanyService companies = new CompanyService(databaseService)
+    Company company = companies.findById(CompanyService.LEGACY_COMPANY_ID)
+    company.legalForm = LegalForm.fromDatabaseValue(legalForm)
+    companies.save(company)
+    FiscalYear year = fiscalYearService.createFiscalYear(company.id, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '2019', 'Årets resultat, delägare 1', 'EQUITY', 'CREDIT')
+    }
+    postSignedTransfer(year, '1930', '3010', 100.00G)
+
+    assertEquals(expectedAccount, closingService.defaultClosingAccount(year.id))
+    assertEquals(expectedAccount, closingService.previewClosing(year.id).closingAccountNumber)
+    String overrideAccount = expectedAccount == '2019' ? '2099' : '2019'
+    assertEquals(overrideAccount, closingService.previewClosing(year.id, overrideAccount).closingAccountNumber)
+
+    def result = closingService.closeFiscalYear(year.id)
+
+    assertEquals(100.00G, lineForAccount(result.closingVoucher, expectedAccount).creditAmount)
+    assertNull(lineForAccount(result.closingVoucher, overrideAccount))
+    databaseService.withSql { Sql sql ->
+      assertEquals(100.00G, openingBalanceFor(sql, result.nextFiscalYear.id, expectedAccount))
+    }
+  }
+
+  @Test
+  void missingLegalFormDefaultAccountBlocksClosingInsteadOfFallingBack() {
+    CompanyService companies = new CompanyService(databaseService)
+    Company company = companies.findById(CompanyService.LEGACY_COMPANY_ID)
+    company.legalForm = LegalForm.ENSKILD_FIRMA
+    companies.save(company)
+    FiscalYear year = fiscalYearService.createFiscalYear(company.id, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    postSignedTransfer(year, '1930', '3010', 100.00G)
+
+    def preview = closingService.previewClosing(year.id)
+
+    assertEquals('2019', preview.closingAccountNumber)
+    assertTrue(preview.blockingIssues.any { String issue -> issue.contains('2019') })
+    assertThrows(IllegalStateException) { closingService.closeFiscalYear(year.id) }
+    def result = closingService.closeFiscalYear(year.id, '2099')
+    assertEquals(100.00G, lineForAccount(result.closingVoucher, '2099').creditAmount)
   }
 
   private void postSignedTransfer(FiscalYear year, String debitAccount, String creditAccount, BigDecimal amount) {

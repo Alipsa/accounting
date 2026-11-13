@@ -35,8 +35,9 @@ a separate, reviewed application workflow:
 
 ## Separate equity workflows
 
-The selectable equity account still defaults to 2099. Users can select 2019 for
-sole proprietorships or partnerships. Legal-form defaults and new-year transfers
+The selectable equity account defaults to 2099 for AB and to 2019 for EF/HB/KB,
+in the service, closing dialog, and MCP tools. An unset legal form retains the
+2099 fallback. Explicit account selections override the default. New-year transfers
 (2099 to 2098 for AB, or 2019/2013/2018 to 2010 for a sole proprietorship) should be
 implemented in a separate previewable, audited workflow. Opening balances must
 continue to match the preceding year's closing balances; reallocations belong in

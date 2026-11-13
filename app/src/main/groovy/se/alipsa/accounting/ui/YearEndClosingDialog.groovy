@@ -50,7 +50,7 @@ final class YearEndClosingDialog extends JDialog {
     this.fiscalYear = fiscalYear
     this.locale = locale
     this.onClosed = onClosed ?: ({ } as Runnable)
-    closingAccountField.text = ClosingService.DEFAULT_CLOSING_ACCOUNT
+    closingAccountField.text = closingService.defaultClosingAccount(fiscalYear.id)
     buildUi()
     reloadPreview()
   }

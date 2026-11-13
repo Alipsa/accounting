@@ -203,7 +203,7 @@ final class McpToolDefinitions {
             [
                 company_id: intParam('Company ID'),
                 fiscal_year_id: intParam('Fiscal year ID to preview'),
-                closing_account: optStrParam('Optional closing account number. Defaults to "2099".')
+                closing_account: optStrParam('Optional closing account number. Defaults to 2099 for AKTIEBOLAG or an unset legal form, and 2019 for ENSKILD_FIRMA or HANDELSBOLAG_KB.')
             ]
         ),
         toolDef('close_fiscal_year',
@@ -212,7 +212,7 @@ final class McpToolDefinitions {
             [
                 company_id: intParam('Company ID'),
                 fiscal_year_id: intParam('Fiscal year ID to close'),
-                closing_account: optStrParam('Optional closing account number. Defaults to "2099".'),
+                closing_account: optStrParam('Optional closing account number. Defaults to 2099 for AKTIEBOLAG or an unset legal form, and 2019 for ENSKILD_FIRMA or HANDELSBOLAG_KB.'),
                 preview_token: strParam('Token returned by preview_year_end.')
             ]
         ),

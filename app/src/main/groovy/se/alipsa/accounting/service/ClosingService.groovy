@@ -101,7 +101,18 @@ final class ClosingService {
     this.clock = clock
   }
 
-  YearEndClosingPreview previewClosing(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
+  String defaultClosingAccount(long fiscalYearId) {
+    databaseService.withSql { Sql sql ->
+      defaultClosingAccount(sql, resolveCompanyId(sql, fiscalYearId))
+    }
+  }
+
+  private static String defaultClosingAccount(Sql sql, long companyId) {
+    String legalForm = sql.firstRow('select legal_form from company where id = ?', [companyId]).get('legal_form') as String
+    legalForm in ['ENSKILD_FIRMA', 'HANDELSBOLAG_KB'] ? '2019' : DEFAULT_CLOSING_ACCOUNT
+  }
+
+  YearEndClosingPreview previewClosing(long fiscalYearId, String closingAccountNumber = null) {
     long companyId = databaseService.withSql { Sql sql ->
       resolveCompanyId(sql, fiscalYearId)
     }
@@ -111,7 +122,7 @@ final class ClosingService {
     }
   }
 
-  YearEndClosingResult closeFiscalYear(long fiscalYearId, String closingAccountNumber = DEFAULT_CLOSING_ACCOUNT) {
+  YearEndClosingResult closeFiscalYear(long fiscalYearId, String closingAccountNumber = null) {
     long companyId = databaseService.withSql { Sql sql ->
       resolveCompanyId(sql, fiscalYearId)
     }
@@ -181,7 +192,9 @@ final class ClosingService {
       List<String> integrityProblems
   ) {
     FiscalYear fiscalYear = requireFiscalYear(sql, fiscalYearId)
-    String safeClosingAccount = normalizeAccountNumber(closingAccountNumber)
+    long companyId = resolveCompanyId(sql, fiscalYear.id)
+    String safeClosingAccount = normalizeAccountNumber(
+        closingAccountNumber == null ? defaultClosingAccount(sql, companyId) : closingAccountNumber)
     List<String> blockers = []
     List<String> warnings = []
 
@@ -196,7 +209,6 @@ final class ClosingService {
       blockers << ("Integritetskontrollerna måste vara gröna före årsstängning:\n${summary}" as String)
     }
 
-    long companyId = resolveCompanyId(sql, fiscalYear.id)
     BalanceAccountSeed closingAccount = loadAccount(sql, companyId, safeClosingAccount)
     if (closingAccount == null) {
       blockers << ("Resultat förs mot konto ${safeClosingAccount}, men kontot saknas i kontoplanen." as String)

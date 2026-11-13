@@ -44,7 +44,7 @@ Programmet kan hantera flera företag i samma installation. Varje företag har s
 
 - Lås alla perioder innan årsbokslut genomförs.
 - Kör `Årsbokslut...` i fliken `Räkenskapsår`.
-- Systemet överför återstående årsresultat via konto `8999` mot konto `2099` som standard och skapar nästa års ingående balanser. Konto `8999` måste vara aktivt och klassat som kostnad med debet som normalsida när ett resultat återstår att överföra. Ett annat eget-kapital-konto, till exempel `2019`, kan väljas vid bokslut.
+- Systemet överför återstående årsresultat via konto `8999` mot konto `2099` för aktiebolag eller `2019` för enskild firma och handels-/kommanditbolag som standard och skapar nästa års ingående balanser. Konto `8999` måste vara aktivt och klassat som kostnad med debet som normalsida när ett resultat återstår att överföra. Om företagsformen inte är angiven används `2099`. Ett annat eget-kapital-konto kan väljas vid bokslut.
 - Intäkts- och kostnadskonton behåller sina saldon i det stängda året. Resultaträkningen visar resultatet före överföringen via `8999`; endast balanskonton förs vidare till nästa års ingående balanser.
 - Förhandsgranskningen visar blockerande fel och varningar innan bokslutet genomförs.
 - Räkenskapsår kan raderas från fliken `Räkenskapsår` när bevarandespärren har passerat och inga blockerande beroenden finns. Förhandsgranskningen visar hur många verifikationer, bilagor, rapporter, momsperioder och andra poster som tas bort.
