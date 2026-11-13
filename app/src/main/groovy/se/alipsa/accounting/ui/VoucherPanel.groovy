@@ -26,7 +26,6 @@ import se.alipsa.datepicker.TextFieldPosition
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Desktop
-import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Frame
 import java.awt.GridBagConstraints
@@ -84,9 +83,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private static final Icon SAVE_ICON = new VoucherSaveIcon()
   private static final LocalDate DATE_PICKER_RANGE_FROM = LocalDate.of(1900, 1, 1)
   private static final LocalDate DATE_PICKER_RANGE_TO = LocalDate.now().plusYears(50)
-
-  @PackageScope
-  static final int DESCRIPTION_FIELD_MIN_WIDTH = 120
 
   private final VoucherService voucherService
   private final AccountService accountService
@@ -312,8 +308,6 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     constraints.gridx++
     constraints.weightx = 1.0G
     constraints.fill = GridBagConstraints.HORIZONTAL
-    descriptionField.minimumSize =
-        new Dimension(UIScale.scale(DESCRIPTION_FIELD_MIN_WIDTH), descriptionField.preferredSize.height as int)
     panel.add(descriptionField, constraints)
   }
 

@@ -53,7 +53,7 @@ abstract class VoucherPanelTestSupport {
   protected UserPreferencesService userPreferencesService
 
   @BeforeEach
-  void setUp() {
+  final void setUpVoucherPanelFixture() {
     previousHome = System.getProperty(AppPaths.HOME_OVERRIDE_PROPERTY)
     System.setProperty(AppPaths.HOME_OVERRIDE_PROPERTY, tempDir.toString())
     databaseService = DatabaseService.newForTesting()
@@ -80,7 +80,7 @@ abstract class VoucherPanelTestSupport {
   }
 
   @AfterEach
-  void tearDown() {
+  final void tearDownVoucherPanelFixture() {
     if (panel != null) {
       panel.dispose()
       onEdt { null }

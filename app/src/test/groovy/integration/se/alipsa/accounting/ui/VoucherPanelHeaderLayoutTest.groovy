@@ -2,14 +2,11 @@ package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
 
-import com.formdev.flatlaf.util.UIScale
 import org.junit.jupiter.api.Test
 
 import se.alipsa.datepicker.DatePicker
 
 import java.awt.Container
-
-import javax.swing.JTextField
 
 final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
 
@@ -29,14 +26,5 @@ final class VoucherPanelHeaderLayoutTest extends VoucherPanelTestSupport {
       assertEquals(datePicker.preferredSize.width as int, datePicker.width)
       assertEquals(datePicker.textField.preferredSize.width as int, datePicker.textField.width)
     }
-  }
-
-  @Test
-  void descriptionFieldDeclaresAMinimumWidthSoItShrinksBeforeTheDatePicker() {
-    JTextField descriptionField = findComponent(panel, JTextField) { JTextField field ->
-      field.columns == 30
-    }
-
-    assertEquals(UIScale.scale(VoucherPanel.DESCRIPTION_FIELD_MIN_WIDTH), onEdt { descriptionField.minimumSize.width })
   }
 }
