@@ -5,6 +5,8 @@ package se.alipsa.accounting.service
  * instead of a real file, so integration tests avoid disk I/O for their (throwaway) database.
  * Must be paired with {@code AppPaths.ALLOW_IN_MEMORY_DATABASE_PROPERTY=true}, since
  * DatabaseService.validateDatabaseUrl otherwise rejects in-memory URLs outright.
+ * The configured H2 2.5.252 supports constant-list CHECK constraints across connections,
+ * including fiscal-year creation and VAT status updates (regression coverage in DatabaseServiceTest).
  */
 class TestDatabaseUrls {
 

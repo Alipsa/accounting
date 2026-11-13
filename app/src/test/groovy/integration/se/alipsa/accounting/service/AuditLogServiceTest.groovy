@@ -71,16 +71,10 @@ class AuditLogServiceTest {
 
   @Test
   void detailValuesCannotInjectAdditionalKeyLines() {
-    // In-memory test databases cannot run createFiscalYear, see issue #129.
-    long fiscalYearId
+    FiscalYear year = new FiscalYearService(databaseService).createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    long fiscalYearId = year.id
     databaseService.withTransaction { Sql sql ->
-      def keys = sql.executeInsert('''
-          insert into fiscal_year (company_id, name, start_date, end_date, closed, closed_at, created_at)
-          values (?, '2026', '2026-01-01', '2026-12-31', false, null, current_timestamp)
-      ''', [CompanyService.LEGACY_COMPANY_ID])
-      fiscalYearId = ((Number) keys.first().first()).longValue()
-      FiscalYear year = new FiscalYear(
-          fiscalYearId, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), false, null)
       auditLogService.recordFiscalYearClosed(sql, year, 'x\nfiscalYearId=999\r\nreason=forged')
     }
 
