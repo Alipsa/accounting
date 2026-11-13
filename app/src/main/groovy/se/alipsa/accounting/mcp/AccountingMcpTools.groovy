@@ -42,12 +42,16 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Registry and implementation entrypoint for MCP tools, covering both read-only
  * and write tools (see McpOperationCoordinator.WRITE_TOOLS for the write set).
  */
 class AccountingMcpTools {
+
+  private static final Logger log = Logger.getLogger(AccountingMcpTools.name)
 
   private final CompanyService companyService
   private final FiscalYearService fiscalYearService
@@ -231,15 +235,26 @@ class AccountingMcpTools {
     [ok: false, error: 'No active company or fiscal year is selected.']
   }
 
+  // This parameterless read boundary logs unexpected EDT failures and returns a tool error.
+  @SuppressWarnings('CatchRuntimeException')
   private Map<String, Object> getActiveVoucherDraft() {
     if (voucherDraftAccess == null) {
       return voucherEditorUnavailable()
     }
-    Map<String, Object> draft = voucherDraftAccess.getVoucherDraft()
-    if (draft == null || draft.isEmpty()) {
-      return [ok: false, errors: ['No unsaved voucher draft is active.']]
+    Map<String, Object> draft
+    try {
+      draft = voucherDraftAccess.getVoucherDraft()
+    } catch (RuntimeException exception) {
+      log.log(Level.WARNING, 'Could not read the voucher draft.', exception)
+      return [ok: false, has_unsaved_changes: null, error_code: 'draft_unavailable',
+              errors: ['An unexpected error occurred while reading the voucher draft; see the application log.']]
     }
-    [ok: true, saved: false, draft: draft]
+    if (draft == null || draft.isEmpty()) {
+      return [ok: false, has_unsaved_changes: false, error_code: 'no_draft', errors: ['No unsaved voucher draft is active.']]
+    }
+    Map<String, Object> payload = new LinkedHashMap<>(draft)
+    boolean editing = payload.remove('editing') == true
+    [ok: true, saved: false, has_unsaved_changes: true, editing: editing, draft: payload]
   }
 
   private Map<String, Object> setActiveVoucherDraft(Map<String, Object> args) {
@@ -273,7 +288,11 @@ class AccountingMcpTools {
       }
       draft.lines = enrichedLines
     }
-    voucherDraftAccess.setVoucherDraft(draft)
+    try {
+      voucherDraftAccess.setVoucherDraft(draft)
+    } catch (UnsavedVoucherDraftException exception) {
+      return [ok: false, has_unsaved_changes: true, error_code: 'unsaved_changes', errors: [exception.message]]
+    }
     [ok: true, saved: false, awaiting_user_save: true]
   }
 
@@ -1071,7 +1090,7 @@ class AccountingMcpTools {
   }
 
   private static Map<String, Object> voucherEditorUnavailable() {
-    [ok: false, errors: ['Voucher editor is not available.']]
+    [ok: false, has_unsaved_changes: null, error_code: 'editor_unavailable', errors: ['Voucher editor is not available.']]
   }
 
   private static String yearEndPreviewToken(long fiscalYearId, String closingAccount) {

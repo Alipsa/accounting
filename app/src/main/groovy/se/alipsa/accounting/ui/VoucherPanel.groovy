@@ -156,6 +156,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   private final JTable auditLogTable = new JTable(auditLogTableModel)
 
   private Voucher currentVoucher
+  private LocalDate blankDraftDate
+  private String blankDraftSeriesCode
   private String pendingAttachmentPath
   private AttachmentMetadata pendingAttachmentPreview
   private final VoucherNavigation navigation = new VoucherNavigation()
@@ -190,7 +192,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     lineTable = new JTable(lineTableModel)
     registerListenersOnce()
     buildUi()
-    mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotDraft, { currentVoucher == null }, this::applyDraft)
+    mcpVoucherDraftAccess = new VoucherDraftEditorAccess(this::snapshotMcpDraft, this::hasUnsavedDraftContent, this::applyDraft)
     VoucherOperations voucherOperations = new VoucherOperations() {
       @Override
       Voucher createVoucher(long fiscalYearId, String seriesCode, LocalDate accountingDate,
@@ -296,6 +298,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
   }
 
   private void addDescriptionHeaderField(JPanel panel, GridBagConstraints constraints) {
+    descriptionCaptionLabel.labelFor = descriptionField
     constraints.gridx++
     panel.add(descriptionCaptionLabel, constraints)
     descriptionField.addActionListener { moveCursorToCell(0, 0) }
@@ -824,6 +827,8 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     datePicker.date = defaultDate()
     ensureDefaultSeriesForNewVoucher()
     VoucherSeries selectedSeries = seriesComboBox.selectedItem as VoucherSeries
+    blankDraftDate = datePicker.date
+    blankDraftSeriesCode = selectedSeries?.seriesCode
     String nextNumber = selectedSeries != null ? previewNextVoucherNumber(selectedSeries.seriesCode) : ''
     voucherNumberLabel.text = nextNumber
     unsavedLabel.visible = true
@@ -1009,6 +1014,33 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     }
   }
 
+  private boolean hasUnsavedDraftContent() {
+    if (currentVoucher != null) {
+      VoucherDraftMapper.VoucherDraft draft = navigation.draft()
+      return draft != null && (hasText(draft.description) || hasText(draft.attachmentPath) || !draft.lines.isEmpty() ||
+          draft.accountingDate != navigation.draftBaselineDate || draft.seriesCode != navigation.draftBaselineSeriesCode)
+    }
+    // An active cell editor may contain text that has not reached the table model yet.
+    boolean editorHasText = lineTable.editing && lineTable.editorComponent instanceof javax.swing.text.JTextComponent &&
+        hasText(((javax.swing.text.JTextComponent) lineTable.editorComponent).text)
+    editorHasText || datePicker.date != blankDraftDate ||
+        (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode != blankDraftSeriesCode ||
+        hasText(descriptionField.text) || hasText(pendingAttachmentPath) ||
+        lineTableModel.rows.any { LineEntry row -> isRowFilled(row) }
+  }
+
+  private Map<String, Object> snapshotMcpDraft() {
+    if (currentVoucher != null) {
+      VoucherDraftMapper.VoucherDraft draft = navigation.draft()
+      return VoucherDraftMapper.toDraft(draft.accountingDate, draft.description, draft.seriesCode, draft.lines,
+          draft.attachmentPath)
+    }
+    // Reading must leave the user's active cell editor and its listeners untouched.
+    Map<String, Object> draft = snapshotDraft()
+    draft.editing = lineTable.editing
+    draft
+  }
+
   private Map<String, Object> snapshotDraft() {
     String seriesCode = (seriesComboBox.selectedItem as VoucherSeries)?.seriesCode
     VoucherDraftMapper.toDraft(datePicker.date, descriptionField.text, seriesCode, lineTableModel.toVoucherLines(),
@@ -1034,6 +1066,9 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     AttachmentMetadata attachmentPreview = voucherDraft.attachmentPath
         ? attachmentService.previewAttachment(Path.of(voucherDraft.attachmentPath))
         : null
+    if (lineTable.editing) {
+      lineTable.cellEditor.cancelCellEditing()
+    }
     showBlankVoucher()
     datePicker.date = voucherDraft.accountingDate
     descriptionField.text = voucherDraft.description
@@ -1055,7 +1090,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
     if (lineTable.editing) {
       lineTable.cellEditor.stopCellEditing()
     }
-    navigation.rememberDraft(VoucherDraftMapper.fromDraft(snapshotDraft()))
+    navigation.rememberDraft(VoucherDraftMapper.fromDraft(snapshotDraft()), blankDraftDate, blankDraftSeriesCode)
   }
 
   private void restoreNavigationDraft() {
@@ -1064,8 +1099,12 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
       showEmptyVoucher()
       return
     }
+    LocalDate baselineDate = navigation.draftBaselineDate
+    String baselineSeriesCode = navigation.draftBaselineSeriesCode
     try {
       applyDraft(draft)
+      blankDraftDate = baselineDate
+      blankDraftSeriesCode = baselineSeriesCode
     } catch (IllegalArgumentException exception) {
       // This draft was populated by snapshotDraft() moments earlier in the same fiscal year, so
       // its series and date should both resolve - the date was already accepted by the picker
@@ -1088,7 +1127,7 @@ final class VoucherPanel extends JPanel implements PropertyChangeListener, Liste
    */
   @PackageScope
   void rememberDraftForTest(VoucherDraftMapper.VoucherDraft draft) {
-    navigation.rememberDraft(draft)
+    navigation.rememberDraft(draft, blankDraftDate, blankDraftSeriesCode)
   }
 
   /** Lets tests simulate exactly what createNewSeries() does once NewVoucherSeriesDialog

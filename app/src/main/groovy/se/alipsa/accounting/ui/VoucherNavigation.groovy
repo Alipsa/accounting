@@ -2,6 +2,7 @@ package se.alipsa.accounting.ui
 
 import se.alipsa.accounting.domain.Voucher
 
+import java.time.LocalDate
 import java.util.function.Consumer
 
 /** Keeps voucher navigation state separate from the editor's Swing controls. */
@@ -10,11 +11,13 @@ final class VoucherNavigation {
   private List<Voucher> vouchers = []
   private int currentIndex = -1
   private VoucherDraftMapper.VoucherDraft draft
+  private LocalDate draftBaselineDate
+  private String draftBaselineSeriesCode
 
   void reset(List<Voucher> values) {
     vouchers = values
     currentIndex = -1
-    draft = null
+    clearDraft()
   }
 
   List<Voucher> getVouchers() {
@@ -25,14 +28,26 @@ final class VoucherNavigation {
     currentIndex < 0
   }
 
-  void rememberDraft(VoucherDraftMapper.VoucherDraft value) {
+  void rememberDraft(VoucherDraftMapper.VoucherDraft value, LocalDate baselineDate, String baselineSeriesCode) {
     if (isOnDraft()) {
       draft = value
+      draftBaselineDate = baselineDate
+      draftBaselineSeriesCode = baselineSeriesCode
     }
   }
 
   void clearDraft() {
     draft = null
+    draftBaselineDate = null
+    draftBaselineSeriesCode = null
+  }
+
+  LocalDate getDraftBaselineDate() {
+    draftBaselineDate
+  }
+
+  String getDraftBaselineSeriesCode() {
+    draftBaselineSeriesCode
   }
 
   void showDraft() {
