@@ -23,13 +23,13 @@ import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.JToggleButton
 
 final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
 
@@ -49,8 +49,7 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
     }
 
     assertNotNull(saveButton.icon)
-    assertEquals(6, saveButton.margin.left)
-    assertEquals(6, saveButton.margin.right)
+    assertEquals(I18n.instance.getString('voucherPanel.button.save'), saveButton.text)
   }
 
   @Test
@@ -213,8 +212,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
     assertEquals('Försäljning', onEdt { panel.lineTableModel.rows[1].accountName })
     assertEquals('Rad två', onEdt { panel.lineTableModel.rows[1].description })
 
-    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
-      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton checkBox ->
+      checkBox.toolTipText == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
     }
     assertTrue(onEdt { advanceAfterSave.selected })
     onEdt {
@@ -285,8 +284,8 @@ final class VoucherPanelNavigationTest extends VoucherPanelTestSupport {
   void savingWithDefaultAdvanceAfterSaveShowsANewBlankDraft() {
     JTextField description = findComponent(panel, JTextField) { JTextField field -> field.columns == 30 }
     JTextField voucherJumpField = findComponent(panel, JTextField) { JTextField field -> field.columns == 8 }
-    JCheckBox advanceAfterSave = findComponent(panel, JCheckBox) { JCheckBox checkBox ->
-      checkBox.text == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
+    JToggleButton advanceAfterSave = findComponent(panel, JToggleButton) { JToggleButton checkBox ->
+      checkBox.toolTipText == I18n.instance.getString('voucherPanel.checkbox.advanceAfterSave')
     }
     JLabel unsaved = findComponent(panel, JLabel) { JLabel label ->
       label.text == I18n.instance.getString('voucherPanel.label.unsaved')
