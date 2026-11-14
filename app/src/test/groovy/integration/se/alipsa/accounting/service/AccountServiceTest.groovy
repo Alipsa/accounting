@@ -11,10 +11,13 @@ import org.junit.jupiter.api.io.TempDir
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AuditLogEntry
+import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.VatCode
+import se.alipsa.accounting.domain.VoucherLine
 import se.alipsa.accounting.support.AppPaths
 
 import java.nio.file.Path
+import java.time.LocalDate
 
 class AccountServiceTest {
 
@@ -363,6 +366,31 @@ class AccountServiceTest {
     assertEquals(0, usage.voucherCount)
     assertEquals(0, usage.voucherLineCount)
     assertEquals(0, usage.fiscalYearCount)
+    assertEquals(0, usage.closedFiscalYearCount)
+    assertEquals(0, usage.openingBalanceYearCount)
+  }
+
+  @Test
+  void summarizeAccountUsageCountsOnlyClosedFiscalYears() {
+    FiscalYearService fiscalYearService = new FiscalYearService(databaseService)
+    VoucherService voucherService = new VoucherService(databaseService)
+    FiscalYear closedYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2025', LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))
+    FiscalYear openYear = fiscalYearService.createFiscalYear(
+        CompanyService.LEGACY_COMPANY_ID, '2026', LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    postVoucherTouching3010(voucherService, closedYear.id, LocalDate.of(2025, 3, 1))
+    postVoucherTouching3010(voucherService, openYear.id, LocalDate.of(2026, 3, 1))
+    insertOpeningBalance(openYear.id, '3010', 100.00G)
+    fiscalYearService.lockFiscalYear(closedYear.id, 'Teststängning')
+
+    AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(
+        CompanyService.LEGACY_COMPANY_ID, '3010')
+
+    assertEquals(2, usage.voucherCount)
+    assertEquals(2, usage.voucherLineCount)
+    assertEquals(2, usage.fiscalYearCount)
+    assertEquals(1, usage.closedFiscalYearCount)
+    assertEquals(1, usage.openingBalanceYearCount)
   }
 
   @Test
@@ -526,6 +554,31 @@ class AccountServiceTest {
     Account equity = accountService.findAccount(
         CompanyService.LEGACY_COMPANY_ID, '2010')
     assertTrue(AccountService.compatibleVatCodes(equity).isEmpty())
+  }
+
+  private void insertOpeningBalance(long fiscalYearId, String accountNumber, BigDecimal amount) {
+    databaseService.withTransaction { Sql sql ->
+      long accountId = ((Number) sql.firstRow(
+          'select id from account where company_id = ? and account_number = ?',
+          [CompanyService.LEGACY_COMPANY_ID, accountNumber]).get('id')).longValue()
+      sql.executeInsert('''
+          insert into opening_balance (fiscal_year_id, account_id, amount, created_at, updated_at)
+          values (?, ?, ?, current_timestamp, current_timestamp)
+      ''', [fiscalYearId, accountId, amount])
+    }
+  }
+
+  private void postVoucherTouching3010(VoucherService voucherService, long yearId, LocalDate voucherDate) {
+    voucherService.createVoucher(
+        yearId,
+        'A',
+        voucherDate,
+        'Försäljning',
+        [
+            new VoucherLine(null, null, 0, null, '1510', null, 'Kundfordran', 100.00G, 0.00G),
+            new VoucherLine(null, null, 1, null, '3010', null, 'Försäljning', 0.00G, 100.00G)
+        ]
+    )
   }
 
   private void insertTestAccounts() {

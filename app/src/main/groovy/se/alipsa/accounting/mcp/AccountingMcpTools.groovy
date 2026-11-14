@@ -1,13 +1,13 @@
 package se.alipsa.accounting.mcp
 
 import groovy.json.JsonOutput
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AccountingInstruction
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
-import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -41,7 +41,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -66,11 +65,7 @@ class AccountingMcpTools {
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
   private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
-  // Per-account write sequence for preview tokens: raised on every successful MCP account
-  // update, so a token can never repeat even when the account returns to an earlier state
-  // (A->B->A->B). Independent per account, so previews of different accounts stay valid
-  // regardless of the order they are confirmed in.
-  private final Map<String, Integer> accountUpdateSequences = new ConcurrentHashMap<>()
+  private final AccountUpdateMcpSupport accountUpdateSupport
 
   AccountingMcpTools() {
     this(
@@ -149,6 +144,7 @@ class AccountingMcpTools {
     this.reportDataService = reportDataService
     this.sieImportExportService = sieImportExportService
     this.accountingInstructionService = accountingInstructionService
+    this.accountUpdateSupport = new AccountUpdateMcpSupport(accountService)
   }
 
   List<Map<String, Object>> listTools() {
@@ -176,9 +172,9 @@ class AccountingMcpTools {
       case 'list_accounts':
         return listAccounts(arguments)
       case 'preview_account_update':
-        return previewAccountUpdate(arguments)
+        return accountUpdateSupport.preview(arguments)
       case 'update_account':
-        return updateAccount(arguments)
+        return accountUpdateSupport.apply(arguments)
       case 'list_accounting_instructions':
         return listAccountingInstructions(arguments)
       case 'list_vouchers':
@@ -298,11 +294,11 @@ class AccountingMcpTools {
 
   private Map<String, Object> saveAccountingInstruction(Map<String, Object> args) {
     AccountingInstruction instruction = accountingInstructionService.save(
-        requiredLong(args, 'company_id'),
-        requiredString(args, 'trigger_text'),
+        McpArgs.requiredLong(args, 'company_id'),
+        McpArgs.requiredString(args, 'trigger_text'),
         args.get('description') as String,
-        requiredString(args, 'debit_account_number'),
-        requiredString(args, 'credit_account_number'),
+        McpArgs.requiredString(args, 'debit_account_number'),
+        McpArgs.requiredString(args, 'credit_account_number'),
         args.get('series_code') as String
     )
     [ok: true, instruction: instructionMap(instruction)]
@@ -313,7 +309,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getCompanyInfo(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     Company company = companyService.findById(companyId)
     if (company == null) {
       return [ok: false, error: "Company ${companyId} not found."]
@@ -336,7 +332,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listFiscalYears(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     List<FiscalYear> years = fiscalYearService.listFiscalYears(companyId)
     [
         ok: true,
@@ -353,7 +349,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listAccounts(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     String query = args.get('query') as String
     boolean manualReviewOnly = optionalBoolean(args, 'manual_review_required', false)
     boolean unclassifiedOnly = optionalBoolean(args, 'unclassified', false)
@@ -367,101 +363,8 @@ class AccountingMcpTools {
     ]
   }
 
-  private Map<String, Object> previewAccountUpdate(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
-    try {
-      if (!AccountService.isKnownAccountClass(accountClass)) {
-        return [ok: false, errors: ["Okänd kontoklass: ${accountClass}".toString()]]
-      }
-      if (!AccountService.isKnownNormalBalanceSide(normalBalanceSide)) {
-        return [ok: false, errors: ["Okänd normalsida: ${normalBalanceSide}".toString()]]
-      }
-      Account account = accountService.findAccount(companyId, accountNumber)
-      if (account == null) {
-        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
-      }
-      List<String> errors = []
-      if (account.vatCode) {
-        VatCode currentVatCode = AccountService.parseVatCode(account.vatCode)
-        if (currentVatCode == null) {
-          errors.add("Kontots momskod ${account.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}.".toString())
-        } else if (!AccountService.isVatCompatible(new Account(accountClass: accountClass), currentVatCode)) {
-          errors.add(
-              "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${account.vatCode}.".toString()
-          )
-        }
-      }
-      AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(companyId, accountNumber)
-      boolean unchanged = account.accountClass == accountClass &&
-          account.normalBalanceSide == normalBalanceSide &&
-          !account.manualReviewRequired &&
-          !account.classificationNote
-      boolean valid = errors.isEmpty()
-      [
-          ok: valid,
-          errors: errors,
-          unchanged: unchanged,
-          account: accountMap(account),
-          proposed: [
-              account_class: accountClass,
-              normal_balance_side: normalBalanceSide
-          ],
-          usage: [
-              voucher_count: usage.voucherCount,
-              voucher_line_count: usage.voucherLineCount,
-              fiscal_year_count: usage.fiscalYearCount
-          ],
-          // No token when nothing would change; re-applying an already-used state must not
-          // return the identical, consumed token. The token binds the account's current state
-          // and its per-account write sequence, so a change made elsewhere after the preview
-          // invalidates it and no state sequence can ever repeat a consumed token.
-          preview_token: valid && !unchanged
-              ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, account)
-              : null
-      ]
-    } catch (Exception exception) {
-      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
-    }
-  }
-
-  private Map<String, Object> updateAccount(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
-    String providedToken = args.get('preview_token') as String
-    if (!providedToken) {
-      return [ok: false, errors: ['preview_token krävs — kör preview_account_update först.']]
-    }
-    String token = "account-update:${providedToken}"
-    try {
-      Account current = accountService.findAccount(companyId, accountNumber)
-      if (current == null) {
-        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
-      }
-      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, current)
-      if (providedToken != expectedToken) {
-        return [ok: false, errors: ['preview_token matchar inte kontot eller de förhandsgranskade värdena — kör preview_account_update igen.']]
-      }
-      if (!previewTokenLedger.reserve(token)) {
-        return [ok: false, errors: ['preview_token har redan använts — kör preview_account_update igen.']]
-      }
-      Account updated = (Account) previewTokenLedger.executeReservedWrite(token) {
-        accountService.updateAccountClassification(companyId, accountNumber, accountClass, normalBalanceSide)
-      }
-      accountUpdateSequences.merge(accountUpdateSequenceKey(companyId, accountNumber), 1) { Integer oldValue, Integer newValue ->
-        oldValue + newValue
-      }
-      [ok: true, account: accountMap(updated)]
-    } catch (Exception exception) {
-      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
-    }
-  }
-
-  private static Map<String, Object> accountMap(Account account) {
+  @PackageScope
+  static Map<String, Object> accountMap(Account account) {
     [
         id: account.id,
         account_number: account.accountNumber,
@@ -477,7 +380,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listAccountingInstructions(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     [
         ok: true,
         instructions: accountingInstructionService.list(companyId).collect { AccountingInstruction instruction ->
@@ -499,8 +402,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listVouchers(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -533,8 +436,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getTrialBalance(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
@@ -563,8 +466,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getGeneralLedger(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
@@ -605,8 +508,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listVatPeriods(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -629,8 +532,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getVatReport(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long vatPeriodId = requiredLong(args, 'vat_period_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long vatPeriodId = McpArgs.requiredLong(args, 'vat_period_id')
     try {
       VatPeriod period = vatService.findPeriod(vatPeriodId)
       long expectedCompanyId = companyService.resolveFromFiscalYear(period.fiscalYearId)
@@ -664,8 +567,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> bookVatTransfer(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long vatPeriodId = requiredLong(args, 'vat_period_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long vatPeriodId = McpArgs.requiredLong(args, 'vat_period_id')
     String providedHash = args.get('report_hash') as String
     if (!providedHash) {
       return [ok: false, errors: ['report_hash krävs — kör get_vat_report först och skicka med det returnerade report_hash.']]
@@ -712,11 +615,11 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewVoucher(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    String seriesCode = requiredString(args, 'series_code')
-    String dateText = requiredString(args, 'accounting_date')
-    String description = requiredString(args, 'description')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
+    String seriesCode = McpArgs.requiredString(args, 'series_code')
+    String dateText = McpArgs.requiredString(args, 'accounting_date')
+    String description = McpArgs.requiredString(args, 'description')
     List<Map<String, Object>> rawLines = linesArg(args)
 
     List<String> errors = []
@@ -762,7 +665,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
-    long originalVoucherId = requiredLong(args, 'original_voucher_id')
+    long originalVoucherId = McpArgs.requiredLong(args, 'original_voucher_id')
     String description = args.get('description') as String
     boolean force = optionalBoolean(args, 'force', false)
     try {
@@ -794,8 +697,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewYearEnd(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String closingAccount = optionalString(args, 'closing_account', null)
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -829,8 +732,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> closeFiscalYear(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String closingAccount = optionalString(args, 'closing_account', null)
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
@@ -875,8 +778,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> lockFiscalYear(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String reason = optionalString(args, 'reason', null)
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -898,8 +801,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewSieImport(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    Path filePath = Path.of(requiredString(args, 'file_path'))
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    Path filePath = Path.of(McpArgs.requiredString(args, 'file_path'))
     boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
     try {
       SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
@@ -913,8 +816,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> importSie(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    Path filePath = Path.of(requiredString(args, 'file_path'))
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    Path filePath = Path.of(McpArgs.requiredString(args, 'file_path'))
     boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
     String providedToken = args.get('import_token') as String
     if (!providedToken) {
@@ -966,7 +869,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> exportSie(Map<String, Object> args) {
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     boolean overwrite = optionalBoolean(args, 'overwrite', false)
     try {
       Path outputPath = args.get('output_path') == null
@@ -998,7 +901,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listImportJobs(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     int limit = Math.min(Math.max(optionalInt(args, 'limit', 20), 1), 50)
     try {
       [
@@ -1022,17 +925,6 @@ class AccountingMcpTools {
 
   // ---- helpers ----
 
-  private static long requiredLong(Map<String, Object> args, String key) {
-    Object value = args.get(key)
-    if (value == null) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    if (!(value instanceof Number)) {
-      throw new IllegalArgumentException("Argument ${key} must be a number.")
-    }
-    ((Number) value).longValue()
-  }
-
   private static Long optionalLong(Map<String, Object> args, String key) {
     Object value = args.get(key)
     if (value == null) {
@@ -1053,14 +945,6 @@ class AccountingMcpTools {
       throw new IllegalArgumentException("Argument ${key} must be a number.")
     }
     ((Number) value).intValue()
-  }
-
-  private static String requiredString(Map<String, Object> args, String key) {
-    String value = args.get(key) as String
-    if (!value?.trim()) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    value.trim()
   }
 
   private static String optionalString(Map<String, Object> args, String key, String defaultValue) {
@@ -1103,40 +987,6 @@ class AccountingMcpTools {
         fiscal_year_id: fiscalYearId,
         closing_account: closingAccount
     ])
-  }
-
-  private String accountUpdateToken(
-      long companyId,
-      String accountNumber,
-      String accountClass,
-      String normalBalanceSide,
-      Account currentState
-  ) {
-    computePreviewToken([
-        company_id: companyId,
-        account_number: accountNumber,
-        account_class: accountClass,
-        normal_balance_side: normalBalanceSide,
-        // Bind the token to the account's current state so an outdated preview (changed
-        // elsewhere after previewing) no longer matches. The per-account write sequence makes
-        // the token strictly increasing: it is raised on every successful MCP account update,
-        // so even when the account returns to an earlier state (A->B->A->B) the token never
-        // repeats a consumed one - while writes to other accounts or unrelated audit entries
-        // do not invalidate it.
-        current_account_class: currentState?.accountClass,
-        current_normal_balance_side: currentState?.normalBalanceSide,
-        vat_code: currentState?.vatCode,
-        manual_review_required: currentState?.manualReviewRequired,
-        update_sequence: accountUpdateSequence(companyId, accountNumber)
-    ])
-  }
-
-  private int accountUpdateSequence(long companyId, String accountNumber) {
-    accountUpdateSequences.getOrDefault(accountUpdateSequenceKey(companyId, accountNumber), 0)
-  }
-
-  private static String accountUpdateSequenceKey(long companyId, String accountNumber) {
-    "${companyId}:${accountNumber}"
   }
 
   private static String sieImportToken(long companyId, SieImportPreview preview) {

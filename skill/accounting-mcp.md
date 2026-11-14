@@ -32,7 +32,7 @@ Always read before you write. Gather context first, propose actions, then place 
 | `get_active_voucher_draft` | Read the unsaved voucher draft currently shown in the desktop application |
 | `preview_year_end` | Year-end pre-checks: blocking issues, warnings, net result; returns `preview_token` only when ready |
 | `preview_sie_import` | Preview a SIE4 import; returns `import_token` only when importable |
-| `preview_account_update` | Preview a classification change (`account_class`/`normal_balance_side`) for one account: current vs proposed values, affected voucher/line/fiscal-year counts, VAT-code compatibility, and a `preview_token` |
+| `preview_account_update` | Preview a classification change (`account_class`/`normal_balance_side`) for one account: current vs proposed values, affected voucher/line/fiscal-year counts, a warning when the account is used in closed fiscal years, VAT-code compatibility, and a `preview_token` |
 | `list_import_jobs` | Recent SIE import history |
 
 ### Write tools
@@ -130,7 +130,13 @@ Only call write tools after the user explicitly confirms the proposed action.
    subgroup: 80-83 income, 84-89 expense; 8999 Årets resultat is EXPENSE/DEBIT) and the account's
    actual usage in `get_general_ledger`. Call `preview_account_update` with the proposed
    `account_class` and `normal_balance_side` and show the current vs proposed values, the affected
-   voucher/line/fiscal-year counts, and any VAT-code compatibility error. If it returns
+   voucher/line/fiscal-year counts, any VAT-code compatibility error, and any closed-fiscal-year
+   warning (`closed_fiscal_year_count` in `usage`): reclassifying an account used in closed years
+   changes the reports for those years after the fact, so surface that to the user before
+   confirming. The count covers posted vouchers only — an account with opening balances but no
+   vouchers in a closed year is not counted. A side change on an account with stored opening
+   balances also triggers a warning, because flipping `normal_balance_side` inverts the sign of
+   those stored balances in every fiscal year, open and closed alike. If it returns
    `unchanged: true` with no `preview_token`, the account already has these values — tell the
    user instead of calling `update_account`.
 3. Ask the user to confirm the proposed classification.

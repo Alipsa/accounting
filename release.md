@@ -2,6 +2,25 @@
 
 ## v1.9.0, unreleased
 
+### Förbättringar
+
+- **Årsbokslutet nollställer inte längre resultatkontona** — Vid årsbokslut behålls intäkts- och kostnadskontonas saldon, och endast årets resultat förs över via konto 8999 mot det egna-kapitalkonto som väljs i dialogen. SIE-exporten innehåller nu även `#RES`-poster för årets resultat. (#130)
+- **Förvalt resultatkonto följer bolagsformen** — 2099 för aktiebolag, 2019 för enskild firma, handelsbolag och kommanditbolag. Företag utan angiven bolagsform faller tillbaka på aktiebolagets 2099.
+- **Låsa räkenskapsår via AI-assistenten** — Nytt MCP-verktyg `lock_fiscal_year` med valfri anledning som sparas i auditloggen. Nästa räkenskapsår planeras korrekt även efter ett förkortat första räkenskapsår, och 8xxx-konton klassificeras automatiskt vid behov (8999 som kostnad med debet som normalsida). (#119)
+- **Ändra konton via AI-assistenten** — Nya MCP-verktyg `preview_account_update` och `update_account`. `list_accounts` kan filtrera på oklassificerade konton och konton som kräver granskning. Kontoändringar skrivs till auditloggen (UPDATE_ACCOUNT). Förhandsgranskningen varnar när kontot har bokföring i stängda räkenskapsår, eftersom omklassificering då ändrar rapporterna för dessa år i efterhand. (#120)
+- **Tydligare kontoredigering** — Kontodialogen kräver nu kontoklass och normalsida, och momskoden behålls när kontoklassen ändras.
+- **Granskningsfilter i kontoplanen** — Filtrering på konton som kräver granskning har flyttats till en egen kryssruta. (#122)
+- **SVG-ikoner** — Navigeringssidomenyn och verifikationsverktygsraden använder nu skalbara SVG-ikoner i stället för handritade bitmapper. (#125)
+- **Datumfältet kollapsar inte längre** — Datumväljaren i verifikationspanelen behåller sin bredd även i smala fönster. (#124)
+- **AI-assistenten skriver inte över osparat innehåll** — MCP-verktygen som fyller i en verifikation kräver nu `replace_unsaved: true` för att ersätta innehåll som användaren redan matat in. Nya fält `has_unsaved_changes` och `error_code` visar läget. (#126)
+
+### Viktigt att veta vid uppgraderingen
+
+- **Brytande MCP-ändring** — Fältet `result_account_count` har tagits bort från `preview_year_end` och `close_fiscal_year` och ersatts med `result_accounts_with_balance_count`. Nya fält `transferred_result` och `remaining_result` tillkommer. Externa MCP-klienter eller promptar som läser det gamla fältet måste uppdateras.
+- **Redan stängda räkenskapsår ändras inte** — År som stängts med v1.8.0 eller tidigare har fortfarande sina intäkts- och kostnadskonton nollställda, och gamla resultaträkningar ändras inte av uppgraderingen. Korrigering av tidigare stängda år kräver ett separat arbetsflöde med granskade korrigeringsverifikationer.
+- **Ange bolagsform före årsbokslutet** — Eftersom det förvalda resultatkontot följer bolagsformen bör bolagsformen vara satt i företagsinställningarna innan årsbokslutet görs. Ett företag utan bolagsform får 2099 (aktiebolag) som förval, vilket kan bli fel för en enskild firma eller ett handelsbolag.
+- **Handelsbolag/kommanditbolag: fördela resultatet manuellt** — För HB/KB bokförs hela årets resultat på delägare 1:s konto 2019 och måste fördelas för hand mellan delägarna, till respektive delägares resultat- eller kapital-konto, enligt användarmanualen.
+
 ### Underhåll
 
 - Uppdaterade beroenden:
