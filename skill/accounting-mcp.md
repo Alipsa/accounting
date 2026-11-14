@@ -133,8 +133,11 @@ Only call write tools after the user explicitly confirms the proposed action.
    voucher/line/fiscal-year counts, any VAT-code compatibility error, and any closed-fiscal-year
    warning (`closed_fiscal_year_count` in `usage`): reclassifying an account used in closed years
    changes the reports for those years after the fact, so surface that to the user before
-   confirming. If it returns `unchanged: true` with no `preview_token`, the account already has
-   these values — tell the user instead of calling `update_account`.
+   confirming. The count covers posted vouchers only — an account with opening balances but no
+   vouchers in a closed year is not counted, and flipping `normal_balance_side` also changes how
+   already stored opening balances combine with later movements. If it returns
+   `unchanged: true` with no `preview_token`, the account already has these values — tell the
+   user instead of calling `update_account`.
 3. Ask the user to confirm the proposed classification.
 4. Only call `update_account` after confirmation, passing the `preview_token` from step 2. The
    change clears `manual_review_required` and is written to the audit log. Re-run

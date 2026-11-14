@@ -24,20 +24,20 @@ final class AccountUpdateMcpSupport {
   }
 
   Map<String, Object> preview(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    String accountNumber = McpArgs.requiredString(args, 'account_number')
+    String accountClass = McpArgs.requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
+    String normalBalanceSide = McpArgs.requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
     try {
       if (!AccountService.isKnownAccountClass(accountClass)) {
-        return [ok: false, errors: ["Okänd kontoklass: ${accountClass}".toString()]]
+        return [ok: false, errors: ["Okänd kontoklass: ${accountClass}".toString()], warnings: []]
       }
       if (!AccountService.isKnownNormalBalanceSide(normalBalanceSide)) {
-        return [ok: false, errors: ["Okänd normalsida: ${normalBalanceSide}".toString()]]
+        return [ok: false, errors: ["Okänd normalsida: ${normalBalanceSide}".toString()], warnings: []]
       }
       Account account = accountService.findAccount(companyId, accountNumber)
       if (account == null) {
-        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
+        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()], warnings: []]
       }
       List<String> errors = []
       if (account.vatCode) {
@@ -58,7 +58,8 @@ final class AccountUpdateMcpSupport {
       boolean valid = errors.isEmpty()
       List<String> warnings = []
       if (usage.closedFiscalYearCount > 0) {
-        warnings << ("Kontot har bokförda transaktioner i ${usage.closedFiscalYearCount} stängda räkenskapsår; " +
+        String years = usage.closedFiscalYearCount == 1 ? 'stängt räkenskapsår' : 'stängda räkenskapsår'
+        warnings << ("Kontot har bokförda transaktioner i ${usage.closedFiscalYearCount} ${years}; " +
             'omklassificering ändrar rapporterna för dessa år i efterhand.' as String)
       }
       [
@@ -66,7 +67,7 @@ final class AccountUpdateMcpSupport {
           errors: errors,
           warnings: warnings,
           unchanged: unchanged,
-          account: accountMap(account),
+          account: AccountingMcpTools.accountMap(account),
           proposed: [
               account_class: accountClass,
               normal_balance_side: normalBalanceSide
@@ -91,10 +92,10 @@ final class AccountUpdateMcpSupport {
   }
 
   Map<String, Object> apply(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    String accountNumber = McpArgs.requiredString(args, 'account_number')
+    String accountClass = McpArgs.requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
+    String normalBalanceSide = McpArgs.requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
       return [ok: false, errors: ['preview_token krävs — kör preview_account_update först.']]
@@ -118,7 +119,7 @@ final class AccountUpdateMcpSupport {
       accountUpdateSequences.merge(accountUpdateSequenceKey(companyId, accountNumber), 1) { Integer oldValue, Integer newValue ->
         oldValue + newValue
       }
-      [ok: true, account: accountMap(updated)]
+      [ok: true, account: AccountingMcpTools.accountMap(updated)]
     } catch (Exception exception) {
       [ok: false, errors: [exception.message ?: exception.class.simpleName]]
     }
@@ -156,39 +157,5 @@ final class AccountUpdateMcpSupport {
 
   private static String accountUpdateSequenceKey(long companyId, String accountNumber) {
     "${companyId}:${accountNumber}"
-  }
-
-  private static Map<String, Object> accountMap(Account account) {
-    [
-        id: account.id,
-        account_number: account.accountNumber,
-        account_name: account.accountName,
-        account_class: account.accountClass,
-        normal_balance_side: account.normalBalanceSide,
-        vat_code: account.vatCode,
-        active: account.active,
-        manual_review_required: account.manualReviewRequired,
-        classification_note: account.classificationNote,
-        account_subgroup: account.accountSubgroup
-    ]
-  }
-
-  private static long requiredLong(Map<String, Object> args, String key) {
-    Object value = args.get(key)
-    if (value == null) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    if (!(value instanceof Number)) {
-      throw new IllegalArgumentException("Argument ${key} must be a number.")
-    }
-    ((Number) value).longValue()
-  }
-
-  private static String requiredString(Map<String, Object> args, String key) {
-    String value = args.get(key) as String
-    if (!value?.trim()) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    value.trim()
   }
 }

@@ -170,7 +170,7 @@ class AccountClassificationMcpToolsTest {
     assertEquals(1, usage.get('fiscal_year_count'))
     assertEquals(1, usage.get('closed_fiscal_year_count'))
     List<String> warnings = (List<String>) result.get('warnings')
-    assertTrue(warnings.any { String warning -> warning.contains('1 stängda räkenskapsår') })
+    assertTrue(warnings.any { String warning -> warning.contains('1 stängt räkenskapsår') })
     assertNotNull(result.get('preview_token'))
   }
 
@@ -283,6 +283,7 @@ class AccountClassificationMcpToolsTest {
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
     assertTrue(errors.any { String error -> error.contains('Okänt kontonummer') })
+    assertEquals([], result.get('warnings'))
     assertNull(result.get('preview_token'))
   }
 
@@ -298,6 +299,7 @@ class AccountClassificationMcpToolsTest {
     assertFalse((boolean) result.get('ok'))
     List<String> errors = (List<String>) result.get('errors')
     assertTrue(errors.any { String error -> error.contains('NOT_A_CLASS') })
+    assertEquals([], result.get('warnings'))
   }
 
   @Test

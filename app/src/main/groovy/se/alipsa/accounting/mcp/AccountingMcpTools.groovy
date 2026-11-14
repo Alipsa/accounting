@@ -64,7 +64,7 @@ class AccountingMcpTools {
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
   private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
-  private final AccountUpdateMcpSupport accountUpdateSupport = new AccountUpdateMcpSupport(accountService)
+  private final AccountUpdateMcpSupport accountUpdateSupport
 
   AccountingMcpTools() {
     this(
@@ -143,6 +143,7 @@ class AccountingMcpTools {
     this.reportDataService = reportDataService
     this.sieImportExportService = sieImportExportService
     this.accountingInstructionService = accountingInstructionService
+    this.accountUpdateSupport = new AccountUpdateMcpSupport(accountService)
   }
 
   List<Map<String, Object>> listTools() {
@@ -292,11 +293,11 @@ class AccountingMcpTools {
 
   private Map<String, Object> saveAccountingInstruction(Map<String, Object> args) {
     AccountingInstruction instruction = accountingInstructionService.save(
-        requiredLong(args, 'company_id'),
-        requiredString(args, 'trigger_text'),
+        McpArgs.requiredLong(args, 'company_id'),
+        McpArgs.requiredString(args, 'trigger_text'),
         args.get('description') as String,
-        requiredString(args, 'debit_account_number'),
-        requiredString(args, 'credit_account_number'),
+        McpArgs.requiredString(args, 'debit_account_number'),
+        McpArgs.requiredString(args, 'credit_account_number'),
         args.get('series_code') as String
     )
     [ok: true, instruction: instructionMap(instruction)]
@@ -307,7 +308,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getCompanyInfo(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     Company company = companyService.findById(companyId)
     if (company == null) {
       return [ok: false, error: "Company ${companyId} not found."]
@@ -330,7 +331,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listFiscalYears(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     List<FiscalYear> years = fiscalYearService.listFiscalYears(companyId)
     [
         ok: true,
@@ -347,7 +348,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listAccounts(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     String query = args.get('query') as String
     boolean manualReviewOnly = optionalBoolean(args, 'manual_review_required', false)
     boolean unclassifiedOnly = optionalBoolean(args, 'unclassified', false)
@@ -361,7 +362,7 @@ class AccountingMcpTools {
     ]
   }
 
-  private static Map<String, Object> accountMap(Account account) {
+  static Map<String, Object> accountMap(Account account) {
     [
         id: account.id,
         account_number: account.accountNumber,
@@ -377,7 +378,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listAccountingInstructions(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     [
         ok: true,
         instructions: accountingInstructionService.list(companyId).collect { AccountingInstruction instruction ->
@@ -399,8 +400,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listVouchers(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -433,8 +434,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getTrialBalance(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
@@ -463,8 +464,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getGeneralLedger(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     Long periodId = optionalLong(args, 'accounting_period_id')
     LocalDate startDate = args.get('start_date') ? LocalDate.parse((String) args.get('start_date')) : null
     LocalDate endDate = args.get('end_date') ? LocalDate.parse((String) args.get('end_date')) : null
@@ -505,8 +506,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listVatPeriods(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
     if (expectedCompanyId != companyId) {
       return [ok: false, error: "Fiscal year ${fiscalYearId} does not belong to company ${companyId}."]
@@ -529,8 +530,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> getVatReport(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long vatPeriodId = requiredLong(args, 'vat_period_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long vatPeriodId = McpArgs.requiredLong(args, 'vat_period_id')
     try {
       VatPeriod period = vatService.findPeriod(vatPeriodId)
       long expectedCompanyId = companyService.resolveFromFiscalYear(period.fiscalYearId)
@@ -564,8 +565,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> bookVatTransfer(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long vatPeriodId = requiredLong(args, 'vat_period_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long vatPeriodId = McpArgs.requiredLong(args, 'vat_period_id')
     String providedHash = args.get('report_hash') as String
     if (!providedHash) {
       return [ok: false, errors: ['report_hash krävs — kör get_vat_report först och skicka med det returnerade report_hash.']]
@@ -612,11 +613,11 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewVoucher(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    String seriesCode = requiredString(args, 'series_code')
-    String dateText = requiredString(args, 'accounting_date')
-    String description = requiredString(args, 'description')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
+    String seriesCode = McpArgs.requiredString(args, 'series_code')
+    String dateText = McpArgs.requiredString(args, 'accounting_date')
+    String description = McpArgs.requiredString(args, 'description')
     List<Map<String, Object>> rawLines = linesArg(args)
 
     List<String> errors = []
@@ -662,7 +663,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> createCorrectionVoucher(Map<String, Object> args) {
-    long originalVoucherId = requiredLong(args, 'original_voucher_id')
+    long originalVoucherId = McpArgs.requiredLong(args, 'original_voucher_id')
     String description = args.get('description') as String
     boolean force = optionalBoolean(args, 'force', false)
     try {
@@ -694,8 +695,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewYearEnd(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String closingAccount = optionalString(args, 'closing_account', null)
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -729,8 +730,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> closeFiscalYear(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String closingAccount = optionalString(args, 'closing_account', null)
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
@@ -775,8 +776,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> lockFiscalYear(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     String reason = optionalString(args, 'reason', null)
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
@@ -798,8 +799,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> previewSieImport(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    Path filePath = Path.of(requiredString(args, 'file_path'))
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    Path filePath = Path.of(McpArgs.requiredString(args, 'file_path'))
     boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
     try {
       SieImportPreview preview = sieImportExportService.previewSieImport(companyId, filePath, replaceExisting)
@@ -813,8 +814,8 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> importSie(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    Path filePath = Path.of(requiredString(args, 'file_path'))
+    long companyId = McpArgs.requiredLong(args, 'company_id')
+    Path filePath = Path.of(McpArgs.requiredString(args, 'file_path'))
     boolean replaceExisting = optionalBoolean(args, 'replace_existing', false)
     String providedToken = args.get('import_token') as String
     if (!providedToken) {
@@ -866,7 +867,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> exportSie(Map<String, Object> args) {
-    long fiscalYearId = requiredLong(args, 'fiscal_year_id')
+    long fiscalYearId = McpArgs.requiredLong(args, 'fiscal_year_id')
     boolean overwrite = optionalBoolean(args, 'overwrite', false)
     try {
       Path outputPath = args.get('output_path') == null
@@ -898,7 +899,7 @@ class AccountingMcpTools {
   }
 
   private Map<String, Object> listImportJobs(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
+    long companyId = McpArgs.requiredLong(args, 'company_id')
     int limit = Math.min(Math.max(optionalInt(args, 'limit', 20), 1), 50)
     try {
       [
@@ -922,17 +923,6 @@ class AccountingMcpTools {
 
   // ---- helpers ----
 
-  private static long requiredLong(Map<String, Object> args, String key) {
-    Object value = args.get(key)
-    if (value == null) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    if (!(value instanceof Number)) {
-      throw new IllegalArgumentException("Argument ${key} must be a number.")
-    }
-    ((Number) value).longValue()
-  }
-
   private static Long optionalLong(Map<String, Object> args, String key) {
     Object value = args.get(key)
     if (value == null) {
@@ -953,14 +943,6 @@ class AccountingMcpTools {
       throw new IllegalArgumentException("Argument ${key} must be a number.")
     }
     ((Number) value).intValue()
-  }
-
-  private static String requiredString(Map<String, Object> args, String key) {
-    String value = args.get(key) as String
-    if (!value?.trim()) {
-      throw new IllegalArgumentException("Missing required argument: ${key}")
-    }
-    value.trim()
   }
 
   private static String optionalString(Map<String, Object> args, String key, String defaultValue) {
