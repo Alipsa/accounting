@@ -156,7 +156,7 @@ Kör alla kommandon från rotmappen.
 | Databas       | H2 (inbäddad)                           |
 | PDF-rapporter | Alipsa Journo (FreeMarker + HTML → PDF) |
 | SIE-parsning  | Alipsa SieParser                        |
-| Bygg          | Gradle 9.6                              |
+| Bygg          | Gradle 9.9                              |
 | Kodstil       | Spotless + CodeNarc                     |
 | Tester        | JUnit 6 + groovier-junit                |
 
