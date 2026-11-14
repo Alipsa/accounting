@@ -10,9 +10,9 @@ final class ReportAccountSupport {
   private ReportAccountSupport() {
   }
 
-  static boolean shouldExcludeFromIncomeStatement(String accountNumber, AccountSubgroup subgroup) {
+  static boolean shouldExcludeFromIncomeStatement(String accountNumber) {
     // 8999 = "Årets resultat" (BAS): balance-sheet result transfer, not an income statement line.
-    subgroup == AccountSubgroup.TAX_AND_RESULT && accountNumber == '8999'
+    accountNumber == '8999'
   }
 
   static String inferIncomeAccountClass(AccountSubgroup subgroup) {

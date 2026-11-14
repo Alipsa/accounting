@@ -42,6 +42,7 @@ final class YearEndClosingDialog extends JDialog {
   private final JTextArea messageArea = new JTextArea(6, 48)
   private final JButton previewButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.preview'))
   private final JButton executeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.execute'))
+  private final YearEndClosingAccountGuard accountGuard = new YearEndClosingAccountGuard(closingAccountField, executeButton)
   private boolean workInProgress
 
   YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Locale locale, Runnable onClosed) {
@@ -50,7 +51,6 @@ final class YearEndClosingDialog extends JDialog {
     this.fiscalYear = fiscalYear
     this.locale = locale
     this.onClosed = onClosed ?: ({ } as Runnable)
-    closingAccountField.text = ClosingService.DEFAULT_CLOSING_ACCOUNT
     buildUi()
     reloadPreview()
   }
@@ -138,7 +138,7 @@ final class YearEndClosingDialog extends JDialog {
   }
 
   private void reloadPreview() {
-    String closingAccountNumber = closingAccountField.text
+    String closingAccountNumber = closingAccountField.text?.trim() ?: null
     setWorkingState(true)
     summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.runningPreview')
     messageArea.text = ''
@@ -151,8 +151,12 @@ final class YearEndClosingDialog extends JDialog {
       @Override
       protected void done() {
         setWorkingState(false)
+        executeButton.enabled = false
+        summaryArea.text = ''
         try {
-          renderPreview(get())
+          YearEndClosingPreview preview = get()
+          accountGuard.previewCompleted(preview.closingAccountNumber)
+          renderPreview(preview)
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
           renderMessage(new Color(153, 27, 27), I18n.instance.getString('yearEndClosingDialog.status.previewInterrupted'))
@@ -172,13 +176,7 @@ final class YearEndClosingDialog extends JDialog {
         ? I18n.instance.format('yearEndClosingDialog.status.nextFiscalYear.creating', preview.nextFiscalYear.name)
         : I18n.instance.format('yearEndClosingDialog.status.nextFiscalYear.exists', preview.nextFiscalYear.name)
 
-    List<String> rows = [
-        I18n.instance.format('yearEndClosingDialog.summary.income', AmountFormatter.format(preview.incomeTotal, locale)),
-        I18n.instance.format('yearEndClosingDialog.summary.expenses', AmountFormatter.format(preview.expenseTotal, locale)),
-        I18n.instance.format('yearEndClosingDialog.summary.netResult', AmountFormatter.format(preview.netResult, locale)),
-        I18n.instance.format('yearEndClosingDialog.summary.resultAccounts', preview.resultAccountCount as Object)
-    ]
-    summaryArea.text = rows.join('\n')
+    summaryArea.text = summaryLines(preview, locale).join('\n')
 
     if (!preview.blockingIssues.isEmpty()) {
       executeButton.enabled = false
@@ -194,6 +192,17 @@ final class YearEndClosingDialog extends JDialog {
     }
   }
 
+  static List<String> summaryLines(YearEndClosingPreview preview, Locale locale) {
+    [
+        I18n.instance.format('yearEndClosingDialog.summary.income', AmountFormatter.format(preview.incomeTotal, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.expenses', AmountFormatter.format(preview.expenseTotal, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.netResult', AmountFormatter.format(preview.netResult, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.transferredResult', AmountFormatter.format(preview.transferredResult, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.remainingResult', AmountFormatter.format(preview.remainingResult, locale)),
+        I18n.instance.format('yearEndClosingDialog.summary.resultAccounts', preview.resultAccountsWithBalanceCount as Object)
+    ]
+  }
+
   private void executeRequested() {
     int choice = javax.swing.JOptionPane.showConfirmDialog(
         this,
@@ -205,7 +214,7 @@ final class YearEndClosingDialog extends JDialog {
       return
     }
 
-    String closingAccountNumber = closingAccountField.text
+    String closingAccountNumber = accountGuard.accountForExecution()
     setWorkingState(true)
     summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.executing')
     new SwingWorker<YearEndClosingResult, Void>() {

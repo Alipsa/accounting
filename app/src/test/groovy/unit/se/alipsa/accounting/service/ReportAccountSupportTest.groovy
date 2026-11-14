@@ -14,17 +14,12 @@ class ReportAccountSupportTest {
 
   @Test
   void shouldExclude8999FromIncomeStatement() {
-    assertTrue(ReportAccountSupport.shouldExcludeFromIncomeStatement('8999', AccountSubgroup.TAX_AND_RESULT))
+    assertTrue(ReportAccountSupport.shouldExcludeFromIncomeStatement('8999'))
   }
 
   @Test
   void shouldNotExclude8910FromIncomeStatement() {
-    assertFalse(ReportAccountSupport.shouldExcludeFromIncomeStatement('8910', AccountSubgroup.TAX_AND_RESULT))
-  }
-
-  @Test
-  void shouldNotExclude8999WithOtherSubgroup() {
-    assertFalse(ReportAccountSupport.shouldExcludeFromIncomeStatement('8999', AccountSubgroup.FINANCIAL_COSTS))
+    assertFalse(ReportAccountSupport.shouldExcludeFromIncomeStatement('8910'))
   }
 
   @Test

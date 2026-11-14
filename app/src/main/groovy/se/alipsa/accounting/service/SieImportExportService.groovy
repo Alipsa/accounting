@@ -902,6 +902,7 @@ final class SieImportExportService {
     document.setKONTO(konto)
     document.setIB(buildOpeningBalances(document, openings))
     document.setUB(buildClosingBalances(document, closings))
+    document.setRES(buildResultBalances(sql, fiscalYearId, document))
     document.setVER(buildExportVouchers(document, vouchers))
 
     new ExportPayload(
@@ -1031,6 +1032,29 @@ final class SieImportExportService {
       rows << value
     }
     rows
+  }
+
+  private static List<SiePeriodValue> buildResultBalances(Sql sql, long fiscalYearId, SieDocument document) {
+    sql.rows('''
+        select vl.account_number as accountNumber,
+               sum(vl.debit_amount - vl.credit_amount) as amount
+          from voucher v
+          join voucher_line vl on vl.voucher_id = v.id
+          join account a on a.id = vl.account_id
+         where v.fiscal_year_id = ?
+           and v.status in ('ACTIVE', 'CORRECTION')
+           and a.account_class in ('INCOME', 'EXPENSE')
+         group by vl.account_number
+        having sum(vl.debit_amount - vl.credit_amount) <> 0
+         order by vl.account_number
+    ''', [fiscalYearId]).collect { GroovyRowResult row ->
+      SiePeriodValue value = new SiePeriodValue()
+      value.yearNr = 0
+      value.account = document.getKONTO().get(row.get('accountNumber') as String)
+      value.amount = scale(new BigDecimal(row.get('amount').toString()))
+      value.token = SIE.RES
+      value
+    }
   }
 
   private static List<SieVoucher> buildExportVouchers(SieDocument document, List<ExportVoucherSeed> vouchers) {

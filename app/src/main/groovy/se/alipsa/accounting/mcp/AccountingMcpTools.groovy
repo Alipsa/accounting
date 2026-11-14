@@ -796,7 +796,7 @@ class AccountingMcpTools {
   private Map<String, Object> previewYearEnd(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    String closingAccount = optionalString(args, 'closing_account', ClosingService.DEFAULT_CLOSING_ACCOUNT)
+    String closingAccount = optionalString(args, 'closing_account', null)
     try {
       long expectedCompanyId = companyService.resolveFromFiscalYear(fiscalYearId)
       if (expectedCompanyId != companyId) {
@@ -812,10 +812,12 @@ class AccountingMcpTools {
           next_fiscal_year_name: preview.nextFiscalYear?.name,
           next_fiscal_year_will_be_created: preview.nextFiscalYearWillBeCreated,
           closing_account: preview.closingAccountNumber,
-          result_account_count: preview.resultAccountCount,
+          result_accounts_with_balance_count: preview.resultAccountsWithBalanceCount,
           income_total: preview.incomeTotal,
           expense_total: preview.expenseTotal,
           net_result: preview.netResult,
+          transferred_result: preview.transferredResult,
+          remaining_result: preview.remainingResult,
           blocking_issues: preview.blockingIssues,
           warnings: preview.warnings,
           ready_to_close: readyToClose,
@@ -829,7 +831,7 @@ class AccountingMcpTools {
   private Map<String, Object> closeFiscalYear(Map<String, Object> args) {
     long companyId = requiredLong(args, 'company_id')
     long fiscalYearId = requiredLong(args, 'fiscal_year_id')
-    String closingAccount = optionalString(args, 'closing_account', ClosingService.DEFAULT_CLOSING_ACCOUNT)
+    String closingAccount = optionalString(args, 'closing_account', null)
     String providedToken = args.get('preview_token') as String
     if (!providedToken) {
       return [ok: false, errors: ['preview_token krävs — kör preview_year_end först.']]
@@ -840,6 +842,7 @@ class AccountingMcpTools {
       if (expectedCompanyId != companyId) {
         return [ok: false, errors: ["Fiscal year ${fiscalYearId} does not belong to company ${companyId}.".toString()]]
       }
+      closingAccount = closingAccount == null ? closingService.defaultClosingAccount(fiscalYearId) : closingAccount
       String expectedToken = yearEndPreviewToken(fiscalYearId, closingAccount)
       if (providedToken != expectedToken) {
         return [ok: false, errors: ['preview_token stämmer inte — kör preview_year_end igen.']]
@@ -858,10 +861,12 @@ class AccountingMcpTools {
           next_fiscal_year_name: result.nextFiscalYear?.name,
           closing_voucher_id: result.closingVoucher?.id,
           closing_voucher_number: result.closingVoucher?.voucherNumber,
-          result_account_count: result.resultAccountCount,
+          result_accounts_with_balance_count: result.resultAccountsWithBalanceCount,
           opening_balance_count: result.openingBalanceCount,
           closing_entry_count: result.closingEntryCount,
           net_result: result.netResult,
+          transferred_result: result.transferredResult,
+          remaining_result: result.remainingResult,
           warnings: result.warnings
       ]
     } catch (Exception exception) {

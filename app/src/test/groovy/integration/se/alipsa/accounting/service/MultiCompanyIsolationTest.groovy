@@ -315,6 +315,7 @@ class MultiCompanyIsolationTest {
       insertAccount(sql, companyId, '1510', 'Kundfordringar', 'ASSET', 'DEBIT', null)
       insertAccount(sql, companyId, '1930', 'Företagskonto', 'ASSET', 'DEBIT', null)
       insertAccount(sql, companyId, '2099', 'Årets resultat', 'EQUITY', 'CREDIT', null)
+      insertAccount(sql, companyId, '8999', 'Årets resultat', 'EXPENSE', 'DEBIT', null)
       insertAccount(sql, companyId, '3010', 'Försäljning', 'INCOME', 'CREDIT', null)
       insertAccount(sql, companyId, '4010', 'Varukostnad', 'EXPENSE', 'DEBIT', null)
     }
