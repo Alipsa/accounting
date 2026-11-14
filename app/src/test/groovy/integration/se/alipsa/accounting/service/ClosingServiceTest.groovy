@@ -556,6 +556,44 @@ class ClosingServiceTest {
   }
 
   @Test
+  void closingComputesResultFromEntryDirectionWhenClassificationContradictsNormalSide() {
+    // Regression for PR #141: an income account with a debit normal side must not flip the
+    // sign of the result; the transfer is derived from the debit/credit direction per entry.
+    FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
+        LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))
+    seedClosingAccounts()
+    databaseService.withTransaction { Sql sql ->
+      insertAccount(sql, '3740', 'Övriga inkomster', 'INCOME', 'DEBIT')
+    }
+    postSignedTransfer(year, '1510', '3740', 1000.00G)
+
+    def preview = closingService.previewClosing(year.id)
+
+    assertEquals(1000.00G, preview.netResult)
+    assertEquals(1000.00G, preview.remainingResult)
+    assertTrue(preview.warnings.any { String warning -> warning.contains('3740') })
+
+    def result = closingService.closeFiscalYear(year.id)
+
+    assertEquals(1000.00G, lineForAccount(result.closingVoucher, '8999').debitAmount)
+    assertEquals(0.00G, lineForAccount(result.closingVoucher, '8999').creditAmount)
+    assertEquals(1000.00G, lineForAccount(result.closingVoucher, '2099').creditAmount)
+    databaseService.withSql { Sql sql ->
+      GroovyRowResult netRow = sql.firstRow('''
+          select coalesce(sum(vl.debit_amount - vl.credit_amount), 0) as net
+            from voucher v
+            join voucher_line vl on vl.voucher_id = v.id
+            join account a on a.id = vl.account_id
+           where v.fiscal_year_id = ?
+             and v.status in ('ACTIVE', 'CORRECTION')
+             and a.account_class in ('INCOME', 'EXPENSE')
+      ''', [year.id]) as GroovyRowResult
+      assertEquals(0.00G, new BigDecimal(netRow.get('net').toString()))
+      assertEquals(1000.00G, openingBalanceFor(sql, result.nextFiscalYear.id, '2099'))
+    }
+  }
+
+  @Test
   void fullyReversedActivityDoesNotExportZeroResultBalances() {
     FiscalYear year = fiscalYearService.createFiscalYear(CompanyService.LEGACY_COMPANY_ID, '2026',
         LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))

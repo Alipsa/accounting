@@ -43,6 +43,7 @@ final class YearEndClosingDialog extends JDialog {
   private final JButton previewButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.preview'))
   private final JButton executeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.execute'))
   private boolean workInProgress
+  private String previewedAccountNumber
 
   YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Locale locale, Runnable onClosed) {
     super(owner, I18n.instance.getString('yearEndClosingDialog.title'), true)
@@ -79,6 +80,11 @@ final class YearEndClosingDialog extends JDialog {
 
     previewButton.addActionListener { reloadPreview() }
     closingAccountField.addActionListener { reloadPreview() }
+    closingAccountField.document.addDocumentListener([
+        insertUpdate: { executeButton.enabled = false },
+        removeUpdate: { executeButton.enabled = false },
+        changedUpdate: { executeButton.enabled = false }
+    ] as javax.swing.event.DocumentListener)
     executeButton.addActionListener { executeRequested() }
 
     pack()
@@ -154,6 +160,7 @@ final class YearEndClosingDialog extends JDialog {
         summaryArea.text = ''
         try {
           YearEndClosingPreview preview = get()
+          previewedAccountNumber = preview.closingAccountNumber
           closingAccountField.text = preview.closingAccountNumber
           renderPreview(preview)
         } catch (InterruptedException exception) {
@@ -213,7 +220,7 @@ final class YearEndClosingDialog extends JDialog {
       return
     }
 
-    String closingAccountNumber = closingAccountField.text
+    String closingAccountNumber = previewedAccountNumber
     setWorkingState(true)
     summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.executing')
     new SwingWorker<YearEndClosingResult, Void>() {

@@ -231,7 +231,7 @@ final class ClosingService {
     Map<String, ResultAccountBalance> resultBalances = loadResultBalances(sql, fiscalYear.id)
     ClosingResultTotals totals = calculateResultTotals(resultBalances)
     appendTransferAccountBlocker(sql, companyId, totals.remainingResult, blockers)
-    appendClosingWarnings(fiscalYear, resultBalances, totals.remainingResult, warnings)
+    appendClosingWarnings(fiscalYear, resultBalances, totals, warnings)
 
     NextFiscalYearPlan nextPlan = planNextFiscalYear(sql, companyId, fiscalYear)
     if (nextPlan.conflictMessage != null) {
@@ -272,27 +272,55 @@ final class ClosingService {
         .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
     BigDecimal expenseTotal = operatingBalances.findAll { ResultAccountBalance balance -> balance.accountClass == 'EXPENSE' }
         .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
-    BigDecimal netResult = scale(incomeTotal - expenseTotal)
+    // The class-based totals are display-only. The transfer must be derived from the
+    // debit/credit direction of the entries, otherwise an account whose normal side
+    // contradicts its class flips the sign of the result.
+    BigDecimal naturalNet = operatingBalances.sum(BigDecimal.ZERO) { ResultAccountBalance balance ->
+      naturalAmount(balance)
+    } as BigDecimal
     ResultAccountBalance transfer = resultBalances['8999']
-    BigDecimal transferredResult = transfer == null ? BigDecimal.ZERO :
-        (transfer.normalBalanceSide == 'DEBIT' ? transfer.amount : -transfer.amount)
+    BigDecimal netResult = scale(-naturalNet)
+    BigDecimal transferredResult = transfer == null ? BigDecimal.ZERO : naturalAmount(transfer)
     new ClosingResultTotals(scale(incomeTotal), scale(expenseTotal), netResult,
         scale(transferredResult), scale(netResult - transferredResult))
+  }
+
+  private static BigDecimal naturalAmount(ResultAccountBalance balance) {
+    // amount is signed by the account's normal side, so flipping credit-normal accounts
+    // yields the debit-minus-credit direction regardless of classification.
+    balance.normalBalanceSide == 'DEBIT' ? balance.amount : -balance.amount
   }
 
   private void appendClosingWarnings(
       FiscalYear fiscalYear,
       Map<String, ResultAccountBalance> resultBalances,
-      BigDecimal remainingResult,
+      ClosingResultTotals totals,
       List<String> warnings
   ) {
-    if (remainingResult == BigDecimal.ZERO) {
+    if (totals.remainingResult == BigDecimal.ZERO) {
       warnings << 'Inget återstående resultat att överföra. Bokslutsverifikationen hoppas över.'
     }
-    appendAlreadyTransferredResultWarning(resultBalances, remainingResult, warnings)
+    appendMisclassifiedResultAccountWarning(resultBalances, warnings)
+    appendAlreadyTransferredResultWarning(totals, warnings)
     LocalDate dueDate = fiscalYear.endDate.plusMonths(6)
     if (LocalDate.now(clock).isAfter(dueDate)) {
       warnings << ("Bokslutsfristen passerade ${dueDate}. Årsbokslutet borde redan vara upprättat." as String)
+    }
+  }
+
+  private static void appendMisclassifiedResultAccountWarning(
+      Map<String, ResultAccountBalance> resultBalances,
+      List<String> warnings
+  ) {
+    List<String> mismatched = resultBalances.values()
+        .findAll { ResultAccountBalance balance ->
+          (balance.accountClass == 'INCOME' && balance.normalBalanceSide == 'DEBIT') ||
+              (balance.accountClass == 'EXPENSE' && balance.normalBalanceSide == 'CREDIT')
+        }
+        .collect { ResultAccountBalance balance -> "${balance.accountNumber} (${balance.accountClass}/${balance.normalBalanceSide})" as String }
+    if (!mismatched.isEmpty()) {
+      warnings << ("Följande resultatkonton har en normalsida som avviker från kontoklassen: ${mismatched.join(', ')}. " +
+          'Resultatöverföringen beräknas från debet/kredit per konto och påverkas inte, men kontona bör rättas i kontoplanen.' as String)
     }
   }
 
@@ -306,18 +334,13 @@ final class ClosingService {
     }
   }
 
-  private static void appendAlreadyTransferredResultWarning(
-      Map<String, ResultAccountBalance> resultBalances,
-      BigDecimal remainingResult,
-      List<String> warnings
-  ) {
-    ResultAccountBalance yearResultTransfer = resultBalances['8999']
-    if (yearResultTransfer == null) {
+  private static void appendAlreadyTransferredResultWarning(ClosingResultTotals totals, List<String> warnings) {
+    if (totals.transferredResult == BigDecimal.ZERO) {
       return
     }
     // Imported years may already contain some or all of the year-end transfer.
-    warnings << ("Årets resultat har redan förts över via konto 8999 (${AmountFormatter.format(yearResultTransfer.amount, null)}); " +
-        "bokslutet överför återstående ${AmountFormatter.format(remainingResult, null)}." as String)
+    warnings << ("Årets resultat har redan förts över via konto 8999 (${AmountFormatter.format(totals.transferredResult, null)}); " +
+        "bokslutet överför återstående ${AmountFormatter.format(totals.remainingResult, null)}." as String)
   }
 
   private ClosingExecution executeClosing(Sql sql, YearEndClosingPreview preview) {
