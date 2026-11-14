@@ -364,9 +364,11 @@ final class AccountService {
 
   /**
    * How much posted data references the account: distinct posted vouchers, voucher lines and
-   * fiscal years, including how many of those fiscal years are closed. Used by the MCP
-   * account-update preview to show the blast radius of a classification change; closed years
-   * matter because reclassification restates their reports after the fact.
+   * fiscal years, including how many of those fiscal years are closed, plus how many fiscal
+   * years have an opening balance stored for the account. Used by the MCP account-update
+   * preview to show the blast radius of a classification change; closed years matter because
+   * reclassification restates their reports after the fact, and stored opening balances change
+   * sign interpretation when the normal balance side flips.
    */
   AccountUsageSummary summarizeAccountUsage(long companyId, String accountNumber) {
     CompanyService.requireValidCompanyId(companyId)
@@ -384,11 +386,17 @@ final class AccountService {
            where vl.account_id = ?
              and v.status in ('ACTIVE', 'CORRECTION')
       ''', [account.id]) as GroovyRowResult
+      GroovyRowResult openingRow = sql.firstRow('''
+          select count(distinct fiscal_year_id) as openingBalanceYearCount
+            from opening_balance
+           where account_id = ?
+      ''', [account.id]) as GroovyRowResult
       new AccountUsageSummary(
           ((Number) row.get('voucherCount')).intValue(),
           ((Number) row.get('lineCount')).intValue(),
           ((Number) row.get('fiscalYearCount')).intValue(),
-          ((Number) row.get('closedFiscalYearCount')).intValue()
+          ((Number) row.get('closedFiscalYearCount')).intValue(),
+          ((Number) openingRow.get('openingBalanceYearCount')).intValue()
       )
     }
   }
@@ -983,5 +991,6 @@ final class AccountService {
     int voucherLineCount
     int fiscalYearCount
     int closedFiscalYearCount
+    int openingBalanceYearCount
   }
 }

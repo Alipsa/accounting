@@ -62,6 +62,10 @@ final class AccountUpdateMcpSupport {
         warnings << ("Kontot har bokförda transaktioner i ${usage.closedFiscalYearCount} ${years}; " +
             'omklassificering ändrar rapporterna för dessa år i efterhand.' as String)
       }
+      if (account.normalBalanceSide != normalBalanceSide && usage.openingBalanceYearCount > 0) {
+        warnings << ("Byte av normalsida vänder tecknet på kontots ingående balanser i " +
+            "${usage.openingBalanceYearCount} räkenskapsår." as String)
+      }
       [
           ok: valid,
           errors: errors,
@@ -76,7 +80,8 @@ final class AccountUpdateMcpSupport {
               voucher_count: usage.voucherCount,
               voucher_line_count: usage.voucherLineCount,
               fiscal_year_count: usage.fiscalYearCount,
-              closed_fiscal_year_count: usage.closedFiscalYearCount
+              closed_fiscal_year_count: usage.closedFiscalYearCount,
+              opening_balance_year_count: usage.openingBalanceYearCount
           ],
           // No token when nothing would change; re-applying an already-used state must not
           // return the identical, consumed token. The token binds the account's current state

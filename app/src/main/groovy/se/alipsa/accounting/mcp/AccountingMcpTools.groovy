@@ -1,6 +1,7 @@
 package se.alipsa.accounting.mcp
 
 import groovy.json.JsonOutput
+import groovy.transform.PackageScope
 
 import se.alipsa.accounting.domain.Account
 import se.alipsa.accounting.domain.AccountingInstruction
@@ -362,6 +363,7 @@ class AccountingMcpTools {
     ]
   }
 
+  @PackageScope
   static Map<String, Object> accountMap(Account account) {
     [
         id: account.id,

@@ -134,8 +134,9 @@ Only call write tools after the user explicitly confirms the proposed action.
    warning (`closed_fiscal_year_count` in `usage`): reclassifying an account used in closed years
    changes the reports for those years after the fact, so surface that to the user before
    confirming. The count covers posted vouchers only — an account with opening balances but no
-   vouchers in a closed year is not counted, and flipping `normal_balance_side` also changes how
-   already stored opening balances combine with later movements. If it returns
+   vouchers in a closed year is not counted. A side change on an account with stored opening
+   balances also triggers a warning, because flipping `normal_balance_side` inverts the sign of
+   those stored balances in every fiscal year, open and closed alike. If it returns
    `unchanged: true` with no `preview_token`, the account already has these values — tell the
    user instead of calling `update_account`.
 3. Ask the user to confirm the proposed classification.
