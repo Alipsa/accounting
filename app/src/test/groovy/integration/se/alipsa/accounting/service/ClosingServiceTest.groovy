@@ -569,6 +569,8 @@ class ClosingServiceTest {
 
     def preview = closingService.previewClosing(year.id)
 
+    assertEquals(1000.00G, preview.incomeTotal)
+    assertEquals(0.00G, preview.expenseTotal)
     assertEquals(1000.00G, preview.netResult)
     assertEquals(1000.00G, preview.remainingResult)
     assertTrue(preview.warnings.any { String warning -> warning.contains('3740') })

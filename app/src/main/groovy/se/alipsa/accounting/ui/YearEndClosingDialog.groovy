@@ -42,8 +42,8 @@ final class YearEndClosingDialog extends JDialog {
   private final JTextArea messageArea = new JTextArea(6, 48)
   private final JButton previewButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.preview'))
   private final JButton executeButton = new JButton(I18n.instance.getString('yearEndClosingDialog.button.execute'))
+  private final YearEndClosingAccountGuard accountGuard = new YearEndClosingAccountGuard(closingAccountField, executeButton)
   private boolean workInProgress
-  private String previewedAccountNumber
 
   YearEndClosingDialog(Frame owner, ClosingService closingService, FiscalYear fiscalYear, Locale locale, Runnable onClosed) {
     super(owner, I18n.instance.getString('yearEndClosingDialog.title'), true)
@@ -80,11 +80,6 @@ final class YearEndClosingDialog extends JDialog {
 
     previewButton.addActionListener { reloadPreview() }
     closingAccountField.addActionListener { reloadPreview() }
-    closingAccountField.document.addDocumentListener([
-        insertUpdate: { executeButton.enabled = false },
-        removeUpdate: { executeButton.enabled = false },
-        changedUpdate: { executeButton.enabled = false }
-    ] as javax.swing.event.DocumentListener)
     executeButton.addActionListener { executeRequested() }
 
     pack()
@@ -160,8 +155,7 @@ final class YearEndClosingDialog extends JDialog {
         summaryArea.text = ''
         try {
           YearEndClosingPreview preview = get()
-          previewedAccountNumber = preview.closingAccountNumber
-          closingAccountField.text = preview.closingAccountNumber
+          accountGuard.previewCompleted(preview.closingAccountNumber)
           renderPreview(preview)
         } catch (InterruptedException exception) {
           Thread.currentThread().interrupt()
@@ -220,7 +214,7 @@ final class YearEndClosingDialog extends JDialog {
       return
     }
 
-    String closingAccountNumber = previewedAccountNumber
+    String closingAccountNumber = accountGuard.accountForExecution()
     setWorkingState(true)
     summaryArea.text = I18n.instance.getString('yearEndClosingDialog.status.executing')
     new SwingWorker<YearEndClosingResult, Void>() {

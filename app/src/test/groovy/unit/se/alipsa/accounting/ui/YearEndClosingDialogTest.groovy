@@ -1,11 +1,15 @@
 package se.alipsa.accounting.ui
 
 import static org.junit.jupiter.api.Assertions.assertEquals
+import static org.junit.jupiter.api.Assertions.assertFalse
 
 import org.junit.jupiter.api.Test
 
 import se.alipsa.accounting.service.YearEndClosingPreview
 import se.alipsa.accounting.support.I18n
+
+import javax.swing.JButton
+import javax.swing.JTextField
 
 class YearEndClosingDialogTest {
 
@@ -34,5 +38,21 @@ class YearEndClosingDialogTest {
     } finally {
       I18n.instance.locale = previousLocale
     }
+  }
+
+  @Test
+  void executionUsesPreviewedAccountEvenWhenFieldTextWasEdited() {
+    JTextField accountField = new JTextField(8)
+    JButton executeButton = new JButton()
+    YearEndClosingAccountGuard guard = new YearEndClosingAccountGuard(accountField, executeButton)
+    guard.previewCompleted('2099')
+    assertEquals('2099', accountField.text)
+    // renderPreview re-enables Execute after the previewed account is applied.
+    executeButton.enabled = true
+
+    accountField.text = '2019'
+
+    assertFalse(executeButton.enabled)
+    assertEquals('2099', guard.accountForExecution())
   }
 }

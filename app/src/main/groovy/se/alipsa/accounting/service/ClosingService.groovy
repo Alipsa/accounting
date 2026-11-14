@@ -268,13 +268,13 @@ final class ClosingService {
     Collection<ResultAccountBalance> operatingBalances = resultBalances.values().findAll { ResultAccountBalance balance ->
       balance.accountNumber != '8999'
     }
+    // Derive the totals from the debit/credit direction of the entries so that
+    // income - expenses = netResult even when an account's normal side contradicts
+    // its class; a misclassified account would otherwise flip the sign of one total.
     BigDecimal incomeTotal = operatingBalances.findAll { ResultAccountBalance balance -> balance.accountClass == 'INCOME' }
-        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
+        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> -naturalAmount(balance) } as BigDecimal
     BigDecimal expenseTotal = operatingBalances.findAll { ResultAccountBalance balance -> balance.accountClass == 'EXPENSE' }
-        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> balance.amount } as BigDecimal
-    // The class-based totals are display-only. The transfer must be derived from the
-    // debit/credit direction of the entries, otherwise an account whose normal side
-    // contradicts its class flips the sign of the result.
+        .sum(BigDecimal.ZERO) { ResultAccountBalance balance -> naturalAmount(balance) } as BigDecimal
     BigDecimal naturalNet = operatingBalances.sum(BigDecimal.ZERO) { ResultAccountBalance balance ->
       naturalAmount(balance)
     } as BigDecimal
@@ -317,6 +317,7 @@ final class ClosingService {
           (balance.accountClass == 'INCOME' && balance.normalBalanceSide == 'DEBIT') ||
               (balance.accountClass == 'EXPENSE' && balance.normalBalanceSide == 'CREDIT')
         }
+        .sort { ResultAccountBalance balance -> balance.accountNumber }
         .collect { ResultAccountBalance balance -> "${balance.accountNumber} (${balance.accountClass}/${balance.normalBalanceSide})" as String }
     if (!mismatched.isEmpty()) {
       warnings << ("Följande resultatkonton har en normalsida som avviker från kontoklassen: ${mismatched.join(', ')}. " +
