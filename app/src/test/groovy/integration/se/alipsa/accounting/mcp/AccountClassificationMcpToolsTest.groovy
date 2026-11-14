@@ -148,6 +148,29 @@ class AccountClassificationMcpToolsTest {
     assertEquals(1, usage.get('voucher_count'))
     assertEquals(1, usage.get('voucher_line_count'))
     assertEquals(1, usage.get('fiscal_year_count'))
+    assertEquals(0, usage.get('closed_fiscal_year_count'))
+    assertTrue(((List<String>) result.get('warnings')).isEmpty())
+    assertNotNull(result.get('preview_token'))
+  }
+
+  @Test
+  void previewAccountUpdateWarnsWhenAccountIsUsedInClosedFiscalYears() {
+    postVoucherTouching8314()
+    new FiscalYearService(databaseService).lockFiscalYear(fiscalYearId, 'Teststängning')
+
+    Map<String, Object> result = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'INCOME',
+        normal_balance_side: (Object) 'CREDIT'
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    Map<String, Object> usage = (Map<String, Object>) result.get('usage')
+    assertEquals(1, usage.get('fiscal_year_count'))
+    assertEquals(1, usage.get('closed_fiscal_year_count'))
+    List<String> warnings = (List<String>) result.get('warnings')
+    assertTrue(warnings.any { String warning -> warning.contains('1 stängda räkenskapsår') })
     assertNotNull(result.get('preview_token'))
   }
 

@@ -7,7 +7,6 @@ import se.alipsa.accounting.domain.AccountingInstruction
 import se.alipsa.accounting.domain.Company
 import se.alipsa.accounting.domain.FiscalYear
 import se.alipsa.accounting.domain.ImportJob
-import se.alipsa.accounting.domain.VatCode
 import se.alipsa.accounting.domain.VatPeriod
 import se.alipsa.accounting.domain.Voucher
 import se.alipsa.accounting.domain.VoucherLine
@@ -41,7 +40,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -66,11 +64,7 @@ class AccountingMcpTools {
   private Closure<Map<String, Object>> activeContextProvider
   private final PreviewTokenLedger previewTokenLedger = new PreviewTokenLedger()
   private final AiWorkspacePermissions aiWorkspacePermissions = new AiWorkspacePermissions()
-  // Per-account write sequence for preview tokens: raised on every successful MCP account
-  // update, so a token can never repeat even when the account returns to an earlier state
-  // (A->B->A->B). Independent per account, so previews of different accounts stay valid
-  // regardless of the order they are confirmed in.
-  private final Map<String, Integer> accountUpdateSequences = new ConcurrentHashMap<>()
+  private final AccountUpdateMcpSupport accountUpdateSupport = new AccountUpdateMcpSupport(accountService)
 
   AccountingMcpTools() {
     this(
@@ -176,9 +170,9 @@ class AccountingMcpTools {
       case 'list_accounts':
         return listAccounts(arguments)
       case 'preview_account_update':
-        return previewAccountUpdate(arguments)
+        return accountUpdateSupport.preview(arguments)
       case 'update_account':
-        return updateAccount(arguments)
+        return accountUpdateSupport.apply(arguments)
       case 'list_accounting_instructions':
         return listAccountingInstructions(arguments)
       case 'list_vouchers':
@@ -365,100 +359,6 @@ class AccountingMcpTools {
         ok: true,
         accounts: accounts.collect { Account a -> accountMap(a) }
     ]
-  }
-
-  private Map<String, Object> previewAccountUpdate(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
-    try {
-      if (!AccountService.isKnownAccountClass(accountClass)) {
-        return [ok: false, errors: ["Okänd kontoklass: ${accountClass}".toString()]]
-      }
-      if (!AccountService.isKnownNormalBalanceSide(normalBalanceSide)) {
-        return [ok: false, errors: ["Okänd normalsida: ${normalBalanceSide}".toString()]]
-      }
-      Account account = accountService.findAccount(companyId, accountNumber)
-      if (account == null) {
-        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
-      }
-      List<String> errors = []
-      if (account.vatCode) {
-        VatCode currentVatCode = AccountService.parseVatCode(account.vatCode)
-        if (currentVatCode == null) {
-          errors.add("Kontots momskod ${account.vatCode} är okänd och kan inte kombineras med kontoklass ${accountClass}.".toString())
-        } else if (!AccountService.isVatCompatible(new Account(accountClass: accountClass), currentVatCode)) {
-          errors.add(
-              "Kontoklass ${accountClass} är inte kompatibelt med kontots momskod ${account.vatCode}.".toString()
-          )
-        }
-      }
-      AccountService.AccountUsageSummary usage = accountService.summarizeAccountUsage(companyId, accountNumber)
-      boolean unchanged = account.accountClass == accountClass &&
-          account.normalBalanceSide == normalBalanceSide &&
-          !account.manualReviewRequired &&
-          !account.classificationNote
-      boolean valid = errors.isEmpty()
-      [
-          ok: valid,
-          errors: errors,
-          unchanged: unchanged,
-          account: accountMap(account),
-          proposed: [
-              account_class: accountClass,
-              normal_balance_side: normalBalanceSide
-          ],
-          usage: [
-              voucher_count: usage.voucherCount,
-              voucher_line_count: usage.voucherLineCount,
-              fiscal_year_count: usage.fiscalYearCount
-          ],
-          // No token when nothing would change; re-applying an already-used state must not
-          // return the identical, consumed token. The token binds the account's current state
-          // and its per-account write sequence, so a change made elsewhere after the preview
-          // invalidates it and no state sequence can ever repeat a consumed token.
-          preview_token: valid && !unchanged
-              ? accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, account)
-              : null
-      ]
-    } catch (Exception exception) {
-      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
-    }
-  }
-
-  private Map<String, Object> updateAccount(Map<String, Object> args) {
-    long companyId = requiredLong(args, 'company_id')
-    String accountNumber = requiredString(args, 'account_number')
-    String accountClass = requiredString(args, 'account_class').toUpperCase(Locale.ROOT)
-    String normalBalanceSide = requiredString(args, 'normal_balance_side').toUpperCase(Locale.ROOT)
-    String providedToken = args.get('preview_token') as String
-    if (!providedToken) {
-      return [ok: false, errors: ['preview_token krävs — kör preview_account_update först.']]
-    }
-    String token = "account-update:${providedToken}"
-    try {
-      Account current = accountService.findAccount(companyId, accountNumber)
-      if (current == null) {
-        return [ok: false, errors: ["Okänt kontonummer: ${accountNumber}".toString()]]
-      }
-      String expectedToken = accountUpdateToken(companyId, accountNumber, accountClass, normalBalanceSide, current)
-      if (providedToken != expectedToken) {
-        return [ok: false, errors: ['preview_token matchar inte kontot eller de förhandsgranskade värdena — kör preview_account_update igen.']]
-      }
-      if (!previewTokenLedger.reserve(token)) {
-        return [ok: false, errors: ['preview_token har redan använts — kör preview_account_update igen.']]
-      }
-      Account updated = (Account) previewTokenLedger.executeReservedWrite(token) {
-        accountService.updateAccountClassification(companyId, accountNumber, accountClass, normalBalanceSide)
-      }
-      accountUpdateSequences.merge(accountUpdateSequenceKey(companyId, accountNumber), 1) { Integer oldValue, Integer newValue ->
-        oldValue + newValue
-      }
-      [ok: true, account: accountMap(updated)]
-    } catch (Exception exception) {
-      [ok: false, errors: [exception.message ?: exception.class.simpleName]]
-    }
   }
 
   private static Map<String, Object> accountMap(Account account) {
@@ -1103,40 +1003,6 @@ class AccountingMcpTools {
         fiscal_year_id: fiscalYearId,
         closing_account: closingAccount
     ])
-  }
-
-  private String accountUpdateToken(
-      long companyId,
-      String accountNumber,
-      String accountClass,
-      String normalBalanceSide,
-      Account currentState
-  ) {
-    computePreviewToken([
-        company_id: companyId,
-        account_number: accountNumber,
-        account_class: accountClass,
-        normal_balance_side: normalBalanceSide,
-        // Bind the token to the account's current state so an outdated preview (changed
-        // elsewhere after previewing) no longer matches. The per-account write sequence makes
-        // the token strictly increasing: it is raised on every successful MCP account update,
-        // so even when the account returns to an earlier state (A->B->A->B) the token never
-        // repeats a consumed one - while writes to other accounts or unrelated audit entries
-        // do not invalidate it.
-        current_account_class: currentState?.accountClass,
-        current_normal_balance_side: currentState?.normalBalanceSide,
-        vat_code: currentState?.vatCode,
-        manual_review_required: currentState?.manualReviewRequired,
-        update_sequence: accountUpdateSequence(companyId, accountNumber)
-    ])
-  }
-
-  private int accountUpdateSequence(long companyId, String accountNumber) {
-    accountUpdateSequences.getOrDefault(accountUpdateSequenceKey(companyId, accountNumber), 0)
-  }
-
-  private static String accountUpdateSequenceKey(long companyId, String accountNumber) {
-    "${companyId}:${accountNumber}"
   }
 
   private static String sieImportToken(long companyId, SieImportPreview preview) {

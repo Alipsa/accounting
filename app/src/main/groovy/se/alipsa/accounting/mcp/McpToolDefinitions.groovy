@@ -62,7 +62,7 @@ final class McpToolDefinitions {
             ]
         ),
         toolDef('preview_account_update',
-            'Previews a classification change (account_class and/or normal_balance_side) for one account without writing anything. Account class and side are case-insensitive. Returns the current account, the proposed values, how many posted vouchers/lines and fiscal years reference the account, and any VAT-code compatibility problem. Returns a preview_token when the change is applicable; when the account already has exactly these values (and no manual review flag), ok is true, unchanged is true and no token is returned. Use it to clear accounts flagged manual_review_required, e.g. after a SIE import of BAS class 8 accounts. Apply with update_account.',
+            'Previews a classification change (account_class and/or normal_balance_side) for one account without writing anything. Account class and side are case-insensitive. Returns the current account, the proposed values, how many posted vouchers/lines and fiscal years reference the account, and any VAT-code compatibility problem. When some of those fiscal years are closed, a warning says how many, since reclassification restates their reports after the fact. Returns a preview_token when the change is applicable; when the account already has exactly these values (and no manual review flag), ok is true, unchanged is true and no token is returned. Use it to clear accounts flagged manual_review_required, e.g. after a SIE import of BAS class 8 accounts. Apply with update_account.',
             ['company_id', 'account_number', 'account_class', 'normal_balance_side'],
             [
                 company_id: intParam('Company ID'),
