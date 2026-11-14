@@ -194,6 +194,44 @@ class AccountClassificationMcpToolsTest {
   }
 
   @Test
+  void previewAccountUpdateDoesNotWarnWhenSidelessAccountGetsDebit() {
+    // A missing side is read as DEBIT everywhere, so null -> DEBIT is not a sign change even
+    // though the stored value differs from the proposed one.
+    insertOpeningBalance(fiscalYearId, '8314', 100.00G)
+
+    Map<String, Object> result = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '8314',
+        account_class: (Object) 'INCOME',
+        normal_balance_side: (Object) 'DEBIT'
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    Map<String, Object> usage = (Map<String, Object>) result.get('usage')
+    assertEquals(1, usage.get('opening_balance_year_count'))
+    List<String> warnings = (List<String>) result.get('warnings')
+    assertFalse(warnings.any { String warning -> warning.contains('vänder tecknet') })
+  }
+
+  @Test
+  void previewAccountUpdateDoesNotWarnForZeroAmountOpeningBalances() {
+    insertOpeningBalance(fiscalYearId, '1930', 0.00G)
+
+    Map<String, Object> result = tools.callTool('preview_account_update', [
+        company_id: (Object) 1L,
+        account_number: (Object) '1930',
+        account_class: (Object) 'ASSET',
+        normal_balance_side: (Object) 'CREDIT'
+    ])
+
+    assertTrue((boolean) result.get('ok'), "Expected ok but got: ${result.get('errors')}")
+    Map<String, Object> usage = (Map<String, Object>) result.get('usage')
+    assertEquals(0, usage.get('opening_balance_year_count'))
+    List<String> warnings = (List<String>) result.get('warnings')
+    assertFalse(warnings.any { String warning -> warning.contains('vänder tecknet') })
+  }
+
+  @Test
   void previewAccountUpdateRejectsUnknownNormalBalanceSide() {
     Map<String, Object> result = tools.callTool('preview_account_update', [
         company_id: (Object) 1L,

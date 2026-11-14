@@ -390,6 +390,7 @@ final class AccountService {
           select count(distinct fiscal_year_id) as openingBalanceYearCount
             from opening_balance
            where account_id = ?
+             and amount <> 0
       ''', [account.id]) as GroovyRowResult
       new AccountUsageSummary(
           ((Number) row.get('voucherCount')).intValue(),

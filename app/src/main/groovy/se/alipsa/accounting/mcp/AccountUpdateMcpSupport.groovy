@@ -62,7 +62,10 @@ final class AccountUpdateMcpSupport {
         warnings << ("Kontot har bokförda transaktioner i ${usage.closedFiscalYearCount} ${years}; " +
             'omklassificering ändrar rapporterna för dessa år i efterhand.' as String)
       }
-      if (account.normalBalanceSide != normalBalanceSide && usage.openingBalanceYearCount > 0) {
+      // Only a flip to or from CREDIT changes how stored amounts are read; a missing side is
+      // treated as DEBIT everywhere, so null -> DEBIT is not a sign change.
+      boolean sideFlips = (account.normalBalanceSide == 'CREDIT') != (normalBalanceSide == 'CREDIT')
+      if (sideFlips && usage.openingBalanceYearCount > 0) {
         warnings << ("Byte av normalsida vänder tecknet på kontots ingående balanser i " +
             "${usage.openingBalanceYearCount} räkenskapsår." as String)
       }
